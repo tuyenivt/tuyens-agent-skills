@@ -11,12 +11,9 @@ A **Claude Code plugin marketplace repository** - agent skills and agents for Cl
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-  codemap/       # Persistent codebase knowledge graph (any stack, opt-in)
   delivery/      # Release planning and delivery coordination
   architecture/  # Stack-agnostic architecture design and re-architecture
   oncall/        # Incident response workflows
-  spec/          # Spec-Driven Development (any stack, opt-in)
-  regression/    # Outside-in regression test orchestration (polyrepo, opt-in)
   java/          # Java 21+ / Spring Boot 3.5+
   dotnet/        # .NET 8 LTS / ASP.NET Core Web API, Clean Architecture
   kotlin/        # Kotlin 2.0+ / Spring Boot 3.5+
@@ -67,51 +64,6 @@ A skill belongs in `core` when **all** hold:
 
 Workflow skills stay in their domain plugin. Skills are resolved by name, not path, so moving a skill is a directory rename - `Use skill: <name>` references continue to work.
 
-## Spec-Driven Development (opt-in)
-
-The `spec` plugin adds an optional SDD pipeline mirroring GitHub Spec Kit. Nothing in `core` or stack plugins depends on it.
-
-All SDD artifacts for a feature live under `.specs/<slug>/`:
-
-```
-.specs/<slug>/
-  spec.md              # what + why (ACs, NFRs, out-of-scope)
-  clarifications.md    # append-only Q&A log
-  plan.md              # how (architecture, tech choices, contracts)
-  tasks.md             # ordered, dependency-aware execution list
-  analysis.md          # cross-artifact consistency findings (append-only)
-  checklists/          # requirements-quality gate (append-only per theme)
-  constitution.md      # project principles (append-only amendments)
-  evaluation.md        # post-implementation scoring (append-only)
-  handoffs/            # orchestration envelopes <NN>-<step>-<agent>.md
-```
-
-`speckit-detect` chooses dual-mode (defer to Spec Kit) or standalone; both produce the same `.specs/<slug>/` shape. Stack workflows (`task-spring-implement` etc.) accept `--spec <slug>` to ingest spec artifacts via `spec-aware-preamble` and skip their own GATHER/DESIGN steps. Orchestration, fix-loop, and evaluation details live in the `spec` plugin's own skills and README.
-
-## Codemap (persistent codebase graph, opt-in plugin)
-
-The `codemap` plugin owns a `task-codemap-*` workflow family that builds and consumes a persistent knowledge graph of the consuming project. It is opt-in - no other plugin depends on it. Requires `core` (for `behavioral-principles` and `stack-detect`). All artifacts live under `.codemap/`:
-
-```
-.codemap/
-  graph.json          # nodes + edges + layers (committed, source of truth)
-  guides.json         # generated guided walkthroughs (committed)
-  meta.json           # builtAt, gitCommitHash, version (committed)
-  config.json         # autoUpdate flag, scope (committed)
-  fingerprints.json   # per-file structural hashes (committed)
-  .codemapignore      # user-editable, defaults to .gitignore (committed)
-  .last-synced-head   # last HEAD the auto-update hook fired on (gitignore)
-  intermediate/       # transient build outputs (gitignore)
-```
-
-Schema is owned by the `codemap-schema` atomic - 12 node types, 14 edge types, 6 layer enum. Producer (`task-codemap`) and consumers (`task-codemap-ask`, `task-codemap-guide`, `task-codemap-explain`) all `Use skill: codemap-schema` for the contract. Build pipeline is pure-LLM extraction with sub-agent parallelism; skill-local Python helpers in `plugins/codemap/skills/task-codemap/` handle deterministic scan/batch/merge/fingerprint.
-
-`task-onboard` (in `core`, one-shot Markdown report, no graph dependency) remains the lightweight onboarding path. The codemap family does not duplicate it - orientation from the graph happens via `task-codemap-guide` (guided walkthroughs) and `task-codemap-ask` (ask anything).
-
-## Plugin Hooks
-
-Plugin folders may contain a `hooks/` directory with hook definitions that Claude Code auto-registers when the plugin is installed. Currently: `plugins/codemap/hooks/codemap-auto-update.json` plus `codemap-refresh-prompt.md`. Hooks are Claude-Code-only and must be opt-in (gated by a config flag in the consuming project, never always-on).
-
 ## Environment
 
 - **Shell:** Git Bash on Windows. Use Unix commands (`mv`, `cp`, `mkdir -p`, forward slashes). No PowerShell or CMD.
@@ -142,7 +94,7 @@ How Claude reasons and acts in this repo, in addition to the technical rules abo
 ### Composition Contracts
 
 - **Workflow skills must load `Use skill: behavioral-principles` as Step 1**, before any other delegation including `stack-detect`. Universal and unconditional - the behavioral rules must be in effect for every subsequent step.
-- Workflows that adapt output to the project's stack load `Use skill: stack-detect` immediately after behavioral-principles - as Step 2, or as Step 3 when a conditional `Use skill: spec-aware-preamble` occupies Step 2 (the shipped convention in core and stack routers). Workflows that don't depend on stack (delivery, release, db-migration-plan) skip it entirely.
+- Workflows that adapt output to the project's stack load `Use skill: stack-detect` immediately after behavioral-principles, as Step 2 (the shipped convention in core and stack routers). Workflows that don't depend on stack (delivery, release, db-migration-plan) skip it entirely.
 - Atomic skills that consume `stack-detect` output declare it at the top of the body with a blockquote: `> Load `Use skill: stack-detect` first to determine the project stack.` The consuming workflow loads `stack-detect`, not the atomic skill itself.
 
 ### Skill Content Standards

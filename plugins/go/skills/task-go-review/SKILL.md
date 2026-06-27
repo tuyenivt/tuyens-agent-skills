@@ -10,8 +10,6 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
->
-> **Spec-aware mode:** If `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles`. Cross-check every changed surface against `spec.md` / `plan.md`: each change must trace to an AC, NFR, or task; out-of-scope changes are **blockers**; missing in-scope coverage is a gap. Never edit spec artifacts.
 
 # Go Code Review
 
@@ -406,7 +404,6 @@ _Omit if no actionable findings._
 - [ ] Missing tests raised as named finding (not buried)
 - [ ] Every Must cites system risk
 - [ ] Every finding has label + `file:line` + Go fix
-- [ ] If `--spec`: every finding traces to AC/NFR/task or flagged out-of-scope
 - [ ] Extra scopes ran in parallel with pre-resolved handle + data-access detection
 - [ ] Subagent findings merged into one intent-ordered list; no raw reports appended
 - [ ] Failed / missing subagent scope noted as `Scope incomplete: <scope>`

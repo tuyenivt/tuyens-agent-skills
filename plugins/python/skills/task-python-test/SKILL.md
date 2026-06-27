@@ -10,8 +10,6 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
->
-> **Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble`. Generate one test per acceptance criterion (tag `# Satisfies: AC<N>`), cover every NFR per `plan.md`, refuse out-of-scope tests. Never edit spec artifacts; surface gaps as proposed amendments.
 
 # Python Test
 
@@ -183,7 +181,6 @@ Apply Step 7 risk bands: P1 AuthN/Z, P2 data integrity, P3 business-critical, P4
 - [ ] Code under test + sample existing tests + `conftest.py` read directly (Step 2)
 - [ ] `python-testing-patterns` consulted for canonical wiring (Step 4)
 - [ ] Auth approach explicit (FastAPI: dependency override or token fixture; Django: `force_authenticate` / `client.login`)
-- [ ] Spec-aware mode honored when `--spec` passed (one test per AC, NFR coverage, no out-of-scope)
 
 **Strategy Doc / Coverage Assessment:**
 

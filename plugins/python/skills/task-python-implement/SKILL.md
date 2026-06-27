@@ -10,8 +10,6 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles` and `stack-detect`. Follow its contract; skip GATHER (and DESIGN when `plan.md` is present). When DESIGN is skipped, still load STEP 3's pattern skills (implementation needs them) and present `plan.md` as the design for one approval before generating code - the approval gate is not skipped. Never edit spec artifacts; surface conflicts as proposed amendments.
 
 # Implement Python Feature
 
@@ -144,7 +142,6 @@ Use skill: `python-testing-patterns`. Generate:
 - Service unit tests (business logic, edge cases)
 - Celery task tests (if applicable)
 - Factory classes for test data
-- Spec-aware mode: one test per acceptance criterion (tag `# Satisfies: AC<N>`); cover every NFR from `plan.md`
 
 ### STEP 10 - VALIDATE
 

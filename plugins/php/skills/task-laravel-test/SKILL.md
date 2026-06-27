@@ -10,8 +10,6 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, generate one test per acceptance criterion (use `// Satisfies: AC<N>` mapping or Pest `it('AC1: ...', ...)` description), cover every NFR with a verification step from `plan.md`, and refuse to generate tests for behavior the spec marks out-of-scope.
 
 # Laravel Test
 
@@ -220,7 +218,6 @@ If coverage is below ~50%, **run before scaffolding** - determines which tests c
 - [ ] Code under test + representative existing tests + setup files read directly (Step 3)
 - [ ] `laravel-testing-patterns` consulted for canonical patterns (Step 5)
 - [ ] Auth approach explicit (`actingAs($user)` session; `Sanctum::actingAs($user, [scopes])` token)
-- [ ] Spec-aware mode honored when `--spec` was passed
 - [ ] SDK-bypass note applied when external SDKs (Stripe / AWS / Twilio) are in scope
 
 **For Strategy Doc / Coverage Assessment:**

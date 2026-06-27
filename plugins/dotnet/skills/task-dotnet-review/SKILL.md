@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the diff, load `Use skill: spec-aware-preamble` after `behavioral-principles`. Cross-check the diff against `spec.md` and `plan.md`: every changed surface must trace to an AC, NFR, or task; flag out-of-scope changes as blockers; flag missing AC coverage as gaps. Never edit `spec.md` / `plan.md` / `tasks.md`.
-
 # .NET Code Review
 
 .NET-aware staff-level PR review. Correctness, architecture, AI-quality, maintainability via Phase A-E. Coordinates .NET perf / security / observability subagents in parallel. Stack-specific delegate of `task-code-review` for .NET / ASP.NET Core; **runs standalone** with full PR/branch resolution.
@@ -383,7 +381,6 @@ Omit empty sections.
 - [ ] Phase D - `complexity-review` + `dotnet-overengineering-review` applied; remaining .NET AI smells covered _(or skipped via the Phase A low-risk short-circuit)_
 - [ ] Phase E - maintainability applied
 - [ ] Every Must cites system risk; every finding has label, `file:line`, actionable .NET fix
-- [ ] If `--spec` was passed, every finding traces to an AC/NFR/task or is flagged out-of-scope
 - [ ] Step 5 - for non-Core scopes, .NET subagents ran in parallel with pre-resolved diff handle + stack detection
 - [ ] Step 6 - subagent findings merged with dedup + strongest-intent-wins; raw reports not appended; failed/missing scope noted under Summary
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix

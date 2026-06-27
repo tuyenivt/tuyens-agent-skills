@@ -32,11 +32,7 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect`. If not Angular, stop. Record `Angular: <version>`, `Runner: Vitest | Jest | Karma`, `Helper: @testing-library/angular | TestBed (ComponentFixture)`, `SSR: enabled | disabled`.
 
-### Step 3 - Apply spec-aware mode (conditional)
-
-If `--spec <slug>` passed or `.specs/<slug>/spec.md` exists, Use skill: `spec-aware-preamble`. Generate one test per AC (`// Satisfies: AC<N>`), cover every NFR, refuse out-of-scope. Never edit spec artifacts.
-
-### Step 4 - Read code under test and existing tests
+### Step 3 - Read code under test and existing tests
 
 - Target module: component shape, service shape, guard/interceptor shape
 - One existing component spec, one service spec, one Playwright spec; setup files (`test-setup.ts` / `src/test.ts`, `playwright.config.ts`)
@@ -48,7 +44,7 @@ Greenfield defaults (state explicitly, no silent invention): Vitest + ATL + `use
 
 Use skill: `angular-testing-patterns` for canonical forms.
 
-### Step 5 - Runner migration decision
+### Step 4 - Runner migration decision
 
 When legacy Karma exists alongside new test ambitions:
 
@@ -57,7 +53,7 @@ When legacy Karma exists alongside new test ambitions:
 
 State the choice explicitly in Strategy Doc output.
 
-### Step 6 - Angular test pyramid
+### Step 5 - Angular test pyramid
 
 | Layer       | Tooling                                                                    | What belongs here                                                          |
 | ----------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -71,7 +67,7 @@ State the choice explicitly in Strategy Doc output.
 
 **Many** unit + service + component, **some** integration, **few** E2E. One test per guard / interceptor covering happy + denial paths.
 
-### Step 7 - Apply Angular test patterns
+### Step 6 - Apply Angular test patterns
 
 Canonical patterns (`HttpTestingController` shape, `runInInjectionContext` for guards/interceptors, `setInput` for signal inputs, ATL-vs-TestBed default, router stubs, NgRx effects, axe scans) live in `angular-testing-patterns`. **Workflow-level decisions** this skill owns:
 
@@ -80,7 +76,7 @@ Canonical patterns (`HttpTestingController` shape, `runInInjectionContext` for g
 - **Error tracker.** `vi.mock('@sentry/angular', ...)` at module scope - asserting capture on the error path belongs to the test, not the global setup.
 - **Zoneless test setup.** When the app is zoneless, configure tests with `provideZonelessChangeDetection()` in `TestBed.configureTestingModule`; `fixture.detectChanges()` is still required to flush effects.
 
-### Step 8 - Test boundaries
+### Step 7 - Test boundaries
 
 **Unit:** utilities, pipes without DI, NgRx selectors/reducers, validators (edge cases).
 
@@ -104,7 +100,7 @@ Canonical patterns (`HttpTestingController` shape, `runInInjectionContext` for g
 
 **Does NOT need a test:** framework behavior (`RouterLink`, NgRx internals, Forms primitives); typed inputs with no logic; trivial wrappers covered by parents; visual layout - belongs to visual regression; pure presentation - covered via parent.
 
-### Step 9 - Prioritize when coverage is low
+### Step 8 - Prioritize when coverage is low
 
 When coverage < ~50%, run before scaffolding:
 
@@ -116,7 +112,7 @@ When coverage < ~50%, run before scaffolding:
 
 **Multi-band rule.** Multi-band targets (checkout = P1 + P2) file under highest band, cover both axes.
 
-### Step 10 - Audit test infrastructure prerequisites
+### Step 9 - Audit test infrastructure prerequisites
 
 When any is missing, surface as **Test infrastructure prerequisites** subsection - "must land alongside P1":
 
@@ -170,7 +166,7 @@ When any is missing, surface as **Test infrastructure prerequisites** subsection
 4. P4 - High-churn: [files]
 5. P5 - Plumbing: [list]
 
-**Test infrastructure prerequisites** _(when any Step 10 item missing - must land alongside P1)_
+**Test infrastructure prerequisites** _(when any Step 9 item missing - must land alongside P1)_
 
 - [missing item]
 ```
@@ -209,7 +205,6 @@ When any is missing, surface as **Test infrastructure prerequisites** subsection
 ## Self-Check
 
 - [ ] Principles loaded; stack confirmed
-- [ ] Spec-aware mode honored when `--spec` passed
 - [ ] Code under test, sample tests, setup files read; `angular-testing-patterns` consulted
 - [ ] Runner migration decision stated when Karma exists
 - [ ] Pyramid mapped to Angular idioms; patterns applied (HTTP boundary, `runInInjectionContext`, harness, `setInput`)

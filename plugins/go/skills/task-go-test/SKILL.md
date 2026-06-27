@@ -10,8 +10,6 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
->
-> **Spec-aware mode:** If `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after `behavioral-principles`. Generate one test per AC (use `// Satisfies: AC<N>`), cover every NFR with a verification step from `plan.md`, refuse to generate tests for out-of-scope behavior. Never edit spec artifacts.
 
 # Go Test
 
@@ -235,7 +233,6 @@ If coverage < ~50%, run this **before** scaffolding - determines _which_ tests f
 - [ ] Code under test + existing tests + setup files read directly
 - [ ] `go-testing-patterns` consulted
 - [ ] Auth testing approach explicit (test-issued JWT or claims-injecting middleware)
-- [ ] Spec-aware mode honored when `--spec` was passed
 
 **Strategy / Coverage:**
 

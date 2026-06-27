@@ -30,47 +30,43 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect`. Identify Angular version, SSR, styling, state library, test framework.
 
-### Step 3 - Spec-Aware (conditional)
-
-If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, Use skill: `spec-aware-preamble`. Follow its mode contract; skip Step 4 (Gather) and Step 5 (Design) when `plan.md` is present. Never edit `spec.md`/`plan.md`/`tasks.md`.
-
-### Step 4 - Gather
+### Step 3 - Gather
 
 Feature name, user stories, components, data sources, interactions, routing, form inputs, a11y constraints.
 
-### Step 5 - Design
+### Step 4 - Design
 
 Use skill: `angular-component-patterns`. Propose component tree, file structure, routes. If routing is non-trivial (nested, lazy, guards), also Use skill: `angular-routing-patterns`. For Nx workspaces, also Use skill: `angular-nx-patterns` to place libraries and apply tag boundaries. Present for user approval before generating code.
 
-### Step 6 - State
+### Step 5 - State
 
 Use skill: `angular-state-patterns`. Classify state (local, shared, global, server, URL, form) and assign owners. Filters/sort/pagination/search default to route query params. State the URL contract: param schema, sync direction (form → URL, URL → fetch), debounce on URL writes, and cancellation strategy. (Component-level reactive state primitives live in `angular-signals-patterns`; load only if the design needs a `linkedSignal`, custom `resource`, or BehaviorSubject migration plan.)
 
-### Step 7 - Data
+### Step 6 - Data
 
-Use skill: `angular-data-fetching` (primary - HttpClient, `resource()`/`httpResource()`, TanStack Query, Apollo, cache invalidation, optimistic updates, SSR transfer cache). Use `angular-service-patterns` for service shape, DI scope, functional interceptors. Use `angular-rxjs-patterns` only if RxJS-specific timing (retry, multicast, complex flattening) is in scope. **Real-time / WebSocket / SSE:** wrap the connection in a service exposing a signal (`toSignal(socket$, { initialValue: [] })`), keep reconnection logic in the service. **File export (CSV / XLSX):** generate via a util in a `type:util` lib; trigger via `Blob` + anchor download. **Charts / heavy widgets:** lazy via `@defer (on viewport)` - see Step 8. Skip Step 7 entirely for pure-UI features.
+Use skill: `angular-data-fetching` (primary - HttpClient, `resource()`/`httpResource()`, TanStack Query, Apollo, cache invalidation, optimistic updates, SSR transfer cache). Use `angular-service-patterns` for service shape, DI scope, functional interceptors. Use `angular-rxjs-patterns` only if RxJS-specific timing (retry, multicast, complex flattening) is in scope. **Real-time / WebSocket / SSE:** wrap the connection in a service exposing a signal (`toSignal(socket$, { initialValue: [] })`), keep reconnection logic in the service. **File export (CSV / XLSX):** generate via a util in a `type:util` lib; trigger via `Blob` + anchor download. **Charts / heavy widgets:** lazy via `@defer (on viewport)` - see Step 7. Skip Step 6 entirely for pure-UI features.
 
-### Step 8 - Components
+### Step 7 - Components
 
 Generate standalone OnPush components with signals, typed DI, content projection, project styling (Use skill: `angular-styling-patterns`). Use `@defer` for heavy below-the-fold subtrees only when present. On SSR, guard browser APIs with `isPlatformBrowser` and hydrate via `TransferState`.
 
-### Step 9 - Forms
+### Step 8 - Forms
 
 Use skill: `angular-forms-patterns` (typed Reactive Forms, validators, FormArray, ControlValueAccessor, server validation surfacing). For multi-step wizards, state explicitly: one `FormGroup` per step, parent group aggregates, navigation gated on `step.valid`. Skip if the feature has no form.
 
-### Step 10 - A11y
+### Step 9 - A11y
 
 Use skill: `frontend-accessibility`. Audit generated components for WCAG 2.1 AA. Apply Angular-specific patterns: CDK `FocusTrap`/`LiveAnnouncer`/`FocusMonitor`, `NgOptimizedImage` alt, `host: {'aria-*': ...}`, `MatDialog` focus management.
 
-### Step 11 - I18n (conditional)
+### Step 10 - I18n (conditional)
 
 When the feature has user-facing strings and the project ships in multiple locales, Use skill: `angular-i18n-patterns` for `$localize` / `i18n` attribute / ICU and `LOCALE_ID` wiring. Skip if single-locale.
 
-### Step 12 - Tests
+### Step 11 - Tests
 
 Use skill: `angular-testing-patterns`. Component, service, integration tests; flag critical paths for e2e.
 
-### Step 13 - Validate
+### Step 12 - Validate
 
 Run `ng build` + `ng test` + `ng lint`. For features touching user-facing surfaces, also run an `axe` scan against the new route (Playwright + `@axe-core/playwright` or `vitest-axe` in component tests). For features adding lazy chunks or new dependencies, check the `angular.json` bundle budget and report the delta. Present file list, component tree, test count, and bundle delta.
 
@@ -128,9 +124,8 @@ Run `ng build` + `ng test` + `ng lint`. For features touching user-facing surfac
 ## Self-Check
 
 - [ ] Principles loaded; stack detected
-- [ ] Spec-aware mode resolved if a spec exists; Steps 4-5 skipped if `plan.md` present
-- [ ] Requirements captured or spec ingested
-- [ ] Component tree designed and approved by user (skipped under spec mode); Nx library placement decided when workspace is Nx
+- [ ] Requirements captured
+- [ ] Component tree designed and approved by user; Nx library placement decided when workspace is Nx
 - [ ] State classified and owned; URL state used for pagination/filters/search with explicit contract
 - [ ] Data layer defined with loading/error/empty states, cache invalidation strategy stated; or skipped for pure UI
 - [ ] Components are standalone, OnPush, signal-driven; SSR guards in place when applicable

@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `spec`, `codemap`, `regression`, `java`, `kotlin`, `python`, `ruby`, `node`, `go`, `dotnet`, `rust`, `php`, `react`, `vue`, and `angular`.
+Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `java`, `kotlin`, `python`, `ruby`, `node`, `go`, `dotnet`, `rust`, `php`, `react`, `vue`, and `angular`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -125,27 +125,6 @@ claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install oncall@tuyens-agent-skills --scope project
 ```
 
-**Spec-Driven Development (any stack, opt-in):**
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install spec@tuyens-agent-skills --scope project
-```
-
-**Codemap (persistent codebase knowledge graph, any stack, opt-in):**
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install codemap@tuyens-agent-skills --scope project
-```
-
-**Regression (outside-in regression test orchestration, polyrepo, opt-in):**
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install regression@tuyens-agent-skills --scope project
-```
-
 > `core` is always required - it provides the stack-agnostic workflow and governance skills used by all other plugins.
 
 ## How Skills Work
@@ -176,16 +155,7 @@ I want to...
   write a postmortem                      -> /task-postmortem (run after root-cause) [oncall]
   hand off an on-call shift               -> /task-oncall-start [oncall]
   onboard to a codebase                   -> /task-onboard
-  build a persistent codebase graph       -> /task-codemap [codemap]
-  sync the graph after edits/pulls        -> /task-codemap (auto-detects build vs sync) [codemap]
-  ask the graph anything                  -> /task-codemap-ask "<question>" [codemap]
-  walk through the codebase step by step  -> /task-codemap-guide [codemap]
   understand a file or function           -> /task-code-explain
-  deep-dive on a node from the graph      -> /task-codemap-explain `<path>` [codemap]
-  discover services and flows for E2E tests -> /task-regression-discover [regression]
-  scaffold a Playwright scenario for a flow -> /task-regression-scenario [regression]
-  export a readable test plan from flows.yaml + scenarios -> /task-regression-plan [regression]
-  run the regression suite (compose up/seed/test/report/teardown) -> /task-regression [regression]
   plan/review a database migration        -> /task-db-migration [architecture]
   refactor safely                         -> /task-code-refactor
   decompose monolith into services        -> /task-decompose-monolith [architecture]
@@ -198,22 +168,6 @@ I want to...
   triage tech debt by ROI                 -> /task-debt-triage [delivery]
   assess a version upgrade                -> /task-dependency-upgrade [architecture]
   draft release notes from a diff         -> /task-release-notes [delivery]
-```
-
-### Spec-Driven Development (plugin: spec, opt-in)
-
-```
-I want to...
-  set project-wide governance rules     -> /task-spec-constitution
-  capture a feature's requirements      -> /task-spec-specify
-  resolve ambiguities in a spec         -> /task-spec-clarify
-  produce an implementation plan        -> /task-spec-plan
-  break a plan into ordered tasks       -> /task-spec-tasks
-  cross-check spec/plan/tasks           -> /task-spec-analyze
-  audit requirements quality            -> /task-spec-checklist
-  execute tasks one at a time           -> /task-spec-implement
-  run multi-agent pipeline w/ fix loop  -> /task-spec-orchestrate
-  score implementation against spec     -> /task-spec-evaluate
 ```
 
 ### Stack-Specific Skills (language plugins)
@@ -350,9 +304,6 @@ Angular (plugin: angular)
 - "Debt triage" vs "Code review" - debt triage ranks existing debt by blast radius, change frequency, and team pain to produce a prioritized backlog. Code review evaluates a specific PR or file for quality. Use debt triage before a planning session, not as a substitute for PR review.
 - "PR conflict analysis" vs "Code review" - conflict analysis detects semantic conflicts across concurrent PRs (shared schema, API, shared code). Code review evaluates a single PR for quality. Run conflict analysis before batch-merging a sprint.
 - "Upgrade plan" vs "Feature implement" - upgrade plan assesses the risk and effort of a version bump and produces a Go/No-Go recommendation. Feature implement writes the migration code. Run upgrade plan first.
-- "Onboard" vs "Codemap" - `/task-onboard` produces a one-shot Markdown report by reading the repo live; nothing persists. `/task-codemap` builds a persistent `.codemap/graph.json` once, then `/task-codemap-guide` (guided walkthroughs) and `/task-codemap-ask` (free-form Q&A) handle ongoing orientation. Commit `.codemap/` and teammates skip the build.
-- "Codemap ask / guide / explain" vs "Code explain / debug" - the codemap family answers graph-shaped questions ("which handlers touch this table", "walk me through the auth flow", "what's the blast radius of changing X") and requires `/task-codemap` first. Use plain `/task-code-explain` when no graph exists or when the question is about a single file's mechanics, not its place in the system.
-- "Codemap ask" vs "Codemap explain" - `ask` answers a *question* about the system ("which handlers write to `orders`?", "where is the JWT key configured?"); `explain` produces a fixed structured deep-dive on a *named entity* (callers, callees, data touchpoints, tests, blast radius, related concepts). Pick `ask` when you don't know which entity matters yet; pick `explain` when you have one in hand.
 
 ## Plugin Catalog
 
@@ -362,9 +313,6 @@ Angular (plugin: angular)
 | [delivery](plugins/delivery)         | Sprint planning (vertical-slice user stories), scope breakdown, tech debt triage, release notes with rollback risk register                                                         |
 | [architecture](plugins/architecture) | Stack-agnostic architecture design and re-architecture: unified system design (boundaries + API contracts + C4 diagrams), monolith decomposition, service consolidation, legacy modernization, DB migration, dependency upgrade. Every workflow doubles as a review workflow. |
 | [oncall](plugins/oncall)             | Incident response: triage, investigation, root cause analysis, and postmortem                                                                                                       |
-| [spec](plugins/spec)                 | Spec-Driven Development: persistent per-feature artifacts under `.specs/<slug>/` (spec, plan, tasks, analysis, evaluation), multi-agent orchestration with fix loop, opt-in scoring |
-| [codemap](plugins/codemap)           | Persistent codebase knowledge graph at `.codemap/graph.json` plus workflows to ask the graph (`task-codemap-ask`), walk through it (`task-codemap-guide`), deep-dive entities (`task-codemap-explain`), and an opt-in auto-update hook. Pure-LLM, no tree-sitter. |
-| [regression](plugins/regression)     | Outside-in regression test orchestration owning end-to-end (black-box) regression for HTTP APIs, browser flows, WebSocket, and gRPC across many services - polyrepo-only, Playwright-only, stack-agnostic role-based (Frontend / Backend / Database), with `.regression/` as the runtime source of truth and codemap as an optional authoring-time accelerator. |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         |
 | [kotlin](plugins/kotlin)             | Kotlin 2.0+ / Spring Boot 3.5+                                                                                                                 |
 | [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                                                                                                 |
@@ -382,7 +330,6 @@ Angular (plugin: angular)
 
 - `core` is required by all other plugins.
 - Each plugin folder has its own README with stack-specific usage and examples.
-- **Persistent codebase graph (`.codemap/`).** The opt-in `codemap` plugin ships a `task-codemap-*` family that builds and consumes a JSON knowledge graph of your project. Commit `.codemap/graph.json`, `guides.json`, `meta.json`, `config.json`, `fingerprints.json`, `.codemapignore` so teammates skip the build. Gitignore `.codemap/intermediate/` and `.codemap/.last-synced-head`. See `plugins/codemap/README.md` for the workflow family and the optional Claude-Code-only auto-update hook.
 
 ## Optional: Claude Code Settings Template
 

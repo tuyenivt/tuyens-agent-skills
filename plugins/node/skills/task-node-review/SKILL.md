@@ -10,8 +10,6 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
->
-> **Spec-aware mode:** If `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles`. Cross-check every changed surface against `spec.md` / `plan.md`: each change must trace to an AC, NFR, or task; out-of-scope changes are **blockers**; missing in-scope coverage is a gap. Never edit spec artifacts.
 
 # Node.js Code Review
 
@@ -415,7 +413,6 @@ _Omit if no actionable findings._
 - [ ] Phase D: `complexity-review` + framework-matching necessity skill applied
 - [ ] Phase E: naming, magic numbers, function length, logging hygiene
 - [ ] Every Must cites system risk; every finding has label + `file:line` + actionable Node fix
-- [ ] Spec mode: every finding traces to AC/NFR/task or is flagged out-of-scope
 - [ ] Extra scopes ran in parallel; subagent findings merged intent-ordered (no raw reports); missing scope noted as `Scope incomplete: <scope>`
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered by intent

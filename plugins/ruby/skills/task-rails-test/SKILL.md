@@ -31,10 +31,7 @@ Use skill: `behavioral-principles`.
 ### Step 2 - Stack Detect
 Use skill: `stack-detect`. Accept pre-confirmed from parent. If not Rails, redirect to `/task-code-test`.
 
-### Step 3 - Spec-Aware Mode
-If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the code under test: use skill `spec-aware-preamble`. Generate one example per acceptance criterion (`Satisfies: AC<N>` in test names), cover every NFR via `plan.md` verification steps, refuse tests for out-of-scope behavior. Never edit `spec.md`/`plan.md`/`tasks.md`; surface coverage gaps as proposed amendments.
-
-### Step 4 - Pyramid
+### Step 3 - Pyramid
 
 | Layer       | RSpec types                                          | What belongs                                                                  |
 | ----------- | ---------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -44,7 +41,7 @@ If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the code und
 
 **Many** unit, **some** request, **few** system. System with JS are slow and brittle.
 
-### Step 5 - Strategy per Spec Type
+### Step 4 - Strategy per Spec Type
 
 Use skill: `rails-testing-patterns` for recipes (FactoryBot traits, shoulda-matchers, Pundit/Sidekiq idioms). Strategy rules on top:
 
@@ -55,13 +52,13 @@ Use skill: `rails-testing-patterns` for recipes (FactoryBot traits, shoulda-matc
 - **Job**: idempotency (call `perform` twice, side effect once); bounded retry per `sidekiq_options retry:`
 - **System**: one per critical journey; Cuprite over Selenium; query by role/label/text, not CSS
 
-### Step 6 - Boundaries
+### Step 5 - Boundaries
 
 **Needs a test:** model validations/scopes/methods/callbacks; service Result branches; Pundit `(role x action)`; Sidekiq idempotency / arg shape / retry; every controller action (happy + unauthorized + validation-error); auth flows; API contract (shape, status, headers); critical journeys.
 
 **Does NOT need a test:** Rails-provided behavior (default routing, `belongs_to` loading, default Devise endpoints - test you wired them up, not that they work); generated boilerplate; trivial delegation (`delegate :name, to: :user`).
 
-### Step 7 - Prioritize by Risk (coverage < ~50%)
+### Step 6 - Prioritize by Risk (coverage < ~50%)
 
 Run **before scaffolding**. Alphabetical is wrong when authorization holes go unspec'd while plumbing gets full coverage.
 
@@ -71,7 +68,7 @@ Run **before scaffolding**. Alphabetical is wrong when authorization holes go un
 4. **High-churn code** - frequent recent commits (`git log --since="3 months ago"`); bug-fix history (`git log --grep=fix`)
 5. **Plumbing** - pass-through controllers, simple CRUD - lower risk, can wait
 
-### Step 8 - API Contract (public/partner APIs)
+### Step 7 - API Contract (public/partner APIs)
 
 Plain request specs don't catch drift (renamed key, status 200->204, new required parameter). Pick one:
 
@@ -83,7 +80,7 @@ Plain request specs don't catch drift (renamed key, status 200->204, new require
 
 Skip for internal/admin apps with a single frontend consumer where drift is caught by frontend tests.
 
-### Step 9 - Infrastructure Hygiene
+### Step 8 - Infrastructure Hygiene
 
 When `rails_helper.rb`/CI config isn't in evidence, emit this as a confirm-checklist - don't claim items verified.
 
@@ -96,7 +93,7 @@ When `rails_helper.rb`/CI config isn't in evidence, emit this as a confirm-check
 - [ ] CI runs full suite; local default runs fast unit + request (use `slow:`/`system:` tags)
 - [ ] Parallelism: `parallel_tests` or RSpec built-in for suites > 5 minutes
 
-### Step 10 - Choose Output
+### Step 9 - Choose Output
 
 | Request                                              | Output                       |
 | ---------------------------------------------------- | ---------------------------- |
@@ -105,7 +102,7 @@ When `rails_helper.rb`/CI config isn't in evidence, emit this as a confirm-check
 | "Test strategy" / "test plan" / coverage < 50%       | Strategy Doc (+ Assessment)  |
 | Reviewing existing specs                             | Review Checklist (below)     |
 
-When several rows match, produce the most comprehensive (Strategy Doc subsumes Assessment). Review mode emits checklist findings + Step 9 infra findings; add an Assessment block only when coverage gaps are visible in the evidence. Policy/source files not shown: scaffold the known roles and mark unknowns `# TODO: confirm role`.
+When several rows match, produce the most comprehensive (Strategy Doc subsumes Assessment). Review mode emits checklist findings + Step 8 infra findings; add an Assessment block only when coverage gaps are visible in the evidence. Policy/source files not shown: scaffold the known roles and mark unknowns `# TODO: confirm role`.
 
 **Review Checklist (existing specs):**
 
@@ -139,7 +136,7 @@ When several rows match, produce the most comprehensive (Strategy Doc subsumes A
 **Pyramid target:** Unit {x}% / Request {y}% / System {z}%
 ```
 
-**Review (existing specs):** numbered findings tagged `[Critical | High | Medium]`, infra findings (Step 9) first, spec findings (checklist) after; when the user reported a symptom ("CI green, staging breaks"), open with one line tying the top findings to it. Append the Assessment block only when coverage gaps are visible in the evidence.
+**Review (existing specs):** numbered findings tagged `[Critical | High | Medium]`, infra findings (Step 8) first, spec findings (checklist) after; when the user reported a symptom ("CI green, staging breaks"), open with one line tying the top findings to it. Append the Assessment block only when coverage gaps are visible in the evidence.
 
 **Test Scaffolds:** ready-to-run RSpec files using project conventions. Each scaffold:
 
@@ -170,14 +167,13 @@ When several rows match, produce the most comprehensive (Strategy Doc subsumes A
 ## Self-Check
 
 - [ ] Step 1-2: behavioral-principles loaded; stack confirmed
-- [ ] Step 3: spec-aware mode honored when applicable
-- [ ] Step 4: pyramid mapped to spec types
-- [ ] Step 5: `rails-testing-patterns` consulted; per-type strategy applied
-- [ ] Step 6: boundaries defined; no duplicated assertions across layers
-- [ ] Step 7: risk prioritization applied when coverage is low
-- [ ] Step 8: API contract approach chosen (or skip rationale stated)
-- [ ] Step 9: infra hygiene confirmed - HTTP stubs verified to intercept
-- [ ] Step 10: output type matches request; Review Checklist applied when reviewing
+- [ ] Step 3: pyramid mapped to spec types
+- [ ] Step 4: `rails-testing-patterns` consulted; per-type strategy applied
+- [ ] Step 5: boundaries defined; no duplicated assertions across layers
+- [ ] Step 6: risk prioritization applied when coverage is low
+- [ ] Step 7: API contract approach chosen (or skip rationale stated)
+- [ ] Step 8: infra hygiene confirmed - HTTP stubs verified to intercept
+- [ ] Step 9: output type matches request; Review Checklist applied when reviewing
 
 ## Avoid
 

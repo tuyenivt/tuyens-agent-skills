@@ -20,7 +20,7 @@ Detects the project stack and delegates to the matching stack-specific review wo
 
 ## Invocation
 
-`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | full | core-only] [standard | deep] [--base <branch>] [--spec <slug>]`
+`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | full | core-only] [standard | deep] [--base <branch>]`
 
 All flags are forwarded to the dispatched stack workflow.
 
@@ -30,15 +30,11 @@ All flags are forwarded to the dispatched stack workflow.
 
 Use skill: `behavioral-principles`. Universal and unconditional.
 
-### Step 2 - Spec-Aware Preamble (conditional)
-
-If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the diff, use skill: `spec-aware-preamble` (from the `spec` plugin) and propagate spec context to the dispatched workflow.
-
-### Step 3 - Detect Stack
+### Step 2 - Detect Stack
 
 Use skill: `stack-detect`.
 
-### Step 4 - Dispatch to Stack Workflow
+### Step 3 - Dispatch to Stack Workflow
 
 | Detected stack       | Delegate to           |
 | -------------------- | --------------------- |
@@ -55,13 +51,13 @@ Use skill: `stack-detect`.
 | Vue                  | `task-vue-review`     |
 | Angular              | `task-angular-review` |
 
-Forward the user's invocation verbatim (target ref, `--base`, scope, depth, spec context). The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 5-6.**
+Forward the user's invocation verbatim (target ref, `--base`, scope, depth). The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 4-5.**
 
-If a row matches but the target skill does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 5-6 as a degraded generic review and note the degradation in the report.
+If a row matches but the target skill does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5 as a degraded generic review and note the degradation in the report.
 
-### Step 5 - Generic Fallback (no dispatch)
+### Step 4 - Generic Fallback (no dispatch)
 
-Runs when no Step 4 row matched the detected stack, or the matched workflow is unavailable.
+Runs when no Step 3 row matched the detected stack, or the matched workflow is unavailable.
 
 Use skill: `review-precondition-check` with the user's argument (default: current branch). On failure, surface the message verbatim and stop. On success, capture `base_sha`/`head_sha` via `git rev-parse <base_ref>` / `git rev-parse <head_ref>`, then read once: `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`.
 
@@ -86,9 +82,9 @@ Use skill: `review-precondition-check` with the user's argument (default: curren
 
 **Extra scopes.** If `+perf`, `+sec`, `+obs`, or `full` was passed, spawn the matching `task-code-review-*` skill as a subagent with the read-once diff/log and the detected stack handle. Run in parallel; merge findings by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations.
 
-### Step 6 - Write Report
+### Step 5 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review` and every required input: `branch` (current branch from the handle), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 5), `mode`/`round` (Step 5; plus `prior_head_sha` when round > 1), `scope` (enum value - `core-only` when no scope flag was passed), `depth` (`standard` when no depth flag), `stack` (the stack-detect identifier, e.g. `elixir-phoenix`; `unknown` only when detection failed).
+Use skill: `review-report-writer` with `report_type: review` and every required input: `branch` (current branch from the handle), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 4), `mode`/`round` (Step 4; plus `prior_head_sha` when round > 1), `scope` (enum value - `core-only` when no scope flag was passed), `depth` (`standard` when no depth flag), `stack` (the stack-detect identifier, e.g. `elixir-phoenix`; `unknown` only when detection failed).
 
 ## Feedback Labels
 
@@ -102,7 +98,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 
 ## Output Format
 
-When Step 4 dispatched: the stack workflow owns the output. When fallback ran:
+When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
 ```markdown
 ## Summary
@@ -160,15 +156,14 @@ _Omit sections with no findings._
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: spec-aware preamble loaded iff `--spec` or `.specs/<slug>/` present
-- [ ] Step 3: `stack-detect` ran
-- [ ] Step 4: if matched and available, stack workflow ran with all flags and spec context forwarded, Steps 5-6 skipped; if matched but unavailable, missing plugin named and fallback ran
-- [ ] Step 5: if no dispatch, SHAs captured; mode/round decided from `prior_checkpoint`; Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel; findings ordered Must > Recommend > Question
-- [ ] Step 6: report written via `review-report-writer` with all required inputs (fallback path only)
+- [ ] Step 2: `stack-detect` ran
+- [ ] Step 3: if matched and available, stack workflow ran with all flags forwarded, Steps 4-5 skipped; if matched but unavailable, missing plugin named and fallback ran
+- [ ] Step 4: if no dispatch, SHAs captured; mode/round decided from `prior_checkpoint`; Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel; findings ordered Must > Recommend > Question
+- [ ] Step 5: report written via `review-report-writer` with all required inputs (fallback path only)
 
 ## Avoid
 
-- Running both Step 4 dispatch and Step 5 fallback
+- Running both Step 3 dispatch and Step 4 fallback
 - Producing findings when a stack workflow was dispatched
 - State-changing git commands (`fetch`, `checkout`, `merge`)
 - Reviewing without reading the full diff first

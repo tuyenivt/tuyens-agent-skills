@@ -91,7 +91,7 @@ category: engineering
 
 This agent is the designated orchestrator for `task-angular-implement`. When invoked for end-to-end feature implementation, follow the workflow defined in `task-angular-implement`:
 
-Principles -> Detect -> Spec-aware -> Gather -> Design -> State -> Data -> Components -> Forms -> A11y -> I18n (if multi-locale) -> Tests -> Validate.
+Principles -> Detect -> Gather -> Design -> State -> Data -> Components -> Forms -> A11y -> I18n (if multi-locale) -> Tests -> Validate.
 
 Each step delegates to the appropriate atomic skills in sequence. Present the design for user approval before generating code. See `task-angular-implement` for full details.
 

@@ -27,11 +27,7 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect`. Identify Ruby/Rails version, DB (MySQL/PG), API-only vs server-rendered (presence of `views/` beyond mailers, `ActionController::Base` vs `API`), serializer library, view engine (ERB/HAML/Slim).
 
-### Step 3 - Spec-Aware Mode
-
-If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists: use skill `spec-aware-preamble`. Follow its mode contract; skip Step 4 (and Step 5 when `plan.md` exists). Never edit spec artifacts; surface conflicts as proposed amendments.
-
-### Step 4 - Gather Requirements
+### Step 3 - Gather Requirements
 
 Ask:
 1. Feature description and primary use case
@@ -45,7 +41,7 @@ Ask-vs-infer threshold: brief-but-unambiguous requests get inferred defaults, co
 - Referenced model doesn't exist - ask whether to generate or assume
 - Partial input - ask for entity fields, relationships, operations before design
 
-### Step 5 - Design (Approval Gate)
+### Step 4 - Design (Approval Gate)
 
 Use skill: `rails-activerecord-patterns` (associations, scopes, enums). Use skill: `rails-service-objects` (interface, transactions, Result).
 
@@ -77,15 +73,15 @@ db/migrate/<ts>_create_orders.rb
 
 **Generate code only after user approves.**
 
-### Step 6 - Migrations
+### Step 5 - Migrations
 
 Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG). One structural concern per migration. Indexes on FKs and frequently-filtered columns; partial indexes for non-terminal status; `null: false` + defaults where appropriate. Monetary values: integer cents columns (`amount_cents`) by default; `decimal` precision/scale only when matching an existing project convention.
 
-### Step 7 - Models
+### Step 6 - Models
 
 Use skill: `rails-activerecord-patterns`. Apply its rules: explicit `dependent:` on `has_many`/`has_one`, `enum` with integer mapping, chainable scopes, `counter_cache` where count queries appear, no `default_scope`.
 
-### Step 8 - Services
+### Step 7 - Services
 
 Use skill: `rails-service-objects`. Use skill: `rails-transaction-patterns` for boundary discipline (`after_commit` dispatch, nested transactions). If Sidekiq needed: use skill `rails-sidekiq-patterns`. If a rake/backfill task is needed: use skill `rails-rake-task-patterns`.
 
@@ -108,13 +104,13 @@ Cross-row invariants (per-user caps, quotas): enforce in the service under a row
 
 Time-based behavior (expiry, retention windows): owned here too - a cron-invoked rake task (`rails-rake-task-patterns`) or scheduled job; name the trigger in the design.
 
-### Step 9 - External HTTP Clients
+### Step 8 - External HTTP Clients
 
 Skip if no external APIs. Otherwise: use skill `rails-http-client-patterns`. Generate a dedicated `app/clients/<name>_client.rb` with explicit timeouts, JSON middleware + `:raise_error`, idempotency-aware retries (cap 2-3; Sidekiq handles longer waits), a domain error taxonomy translated from Faraday/HTTP errors. Services rescue **domain** errors only; tests stub at the boundary (WebMock unit / VCR integration).
 
 If the feature fans out across two or more external services on the same request or job, use skill `rails-concurrency-patterns` to pick the primitive (`load_async`, `Concurrent::Promises`, `async` gem, or Sidekiq fan-out).
 
-### Step 10 - Controllers
+### Step 9 - Controllers
 
 Strong params; pagination on list endpoints; delegate business logic to services. Domain error -> HTTP:
 
@@ -130,15 +126,15 @@ Strong params; pagination on list endpoints; delegate business logic to services
 
 **Idempotency keys** for non-GET write endpoints whose effect must not duplicate on retry (payments, orders, refunds). Two valid mechanisms: row-creating endpoints forward the `Idempotency-Key` header backed by a unique index; state transitions on existing rows are replay-safe via a status guard under row lock (no header needed - there's no row to key). See `rails-service-objects`.
 
-### Step 11 - Serializers (API only)
+### Step 10 - Serializers (API only)
 
 Skip for server-rendered. One serializer per resource; never `render json: @model`. Library: match the project convention (`alba`, `jsonapi-serializer`, `active_model_serializers`, `blueprinter`). New Rails 7.2+ default: `alba`.
 
-### Step 12 - Views (server-rendered only)
+### Step 11 - Views (server-rendered only)
 
-Skip for API-only. Use skill `rails-view-templates`. **Match the existing engine** (ERB/HAML/Slim) - never introduce a new one. Generate only the files this feature needs (`index`/`show`/`new`/`edit`, `_form`, collection partial, ViewComponents, Turbo Frames keyed by `dom_id(record)`, Stimulus controllers, fragment caching for hot collections). Live in-place updates (`turbo_stream_from` + broadcasts): use skill `rails-actioncable-patterns` *here* for scope and broadcast hooks - don't defer it to Step 13. Intentional HTML via `sanitize` allowlist; never `.html_safe` on user input.
+Skip for API-only. Use skill `rails-view-templates`. **Match the existing engine** (ERB/HAML/Slim) - never introduce a new one. Generate only the files this feature needs (`index`/`show`/`new`/`edit`, `_form`, collection partial, ViewComponents, Turbo Frames keyed by `dom_id(record)`, Stimulus controllers, fragment caching for hot collections). Live in-place updates (`turbo_stream_from` + broadcasts): use skill `rails-actioncable-patterns` *here* for scope and broadcast hooks - don't defer it to Step 12. Intentional HTML via `sanitize` allowlist; never `.html_safe` on user input.
 
-### Step 13 - Security + Exception Strategy
+### Step 12 - Security + Exception Strategy
 
 Use skill: `rails-security-patterns` (Pundit policies per resource, `verify_authorized` / `verify_policy_scoped`, strong params). Use skill: `rails-exception-handling` for the `ApplicationController#rescue_from` ladder and domain error taxonomy.
 
@@ -147,7 +143,7 @@ Public/token endpoints (shared links): the token *is* the capability - generate 
 - For file upload features: use skill `rails-active-storage-patterns`
 - For ActionCable channels (custom channels, connection auth): use skill `rails-actioncable-patterns`
 
-### Step 14 - Tests
+### Step 13 - Tests
 
 Use skill: `rails-testing-patterns`. Cover:
 - Model: associations, validations, scopes, enums
@@ -158,7 +154,7 @@ Use skill: `rails-testing-patterns`. Cover:
 - ViewComponent (server-rendered): `render_inline` per state
 - Factories: traits per status/state
 
-### Step 15 - Validate
+### Step 14 - Validate
 
 Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presenting output. If the environment can't execute them, say so explicitly, list the commands for the user to run, and report spec counts as "written, not executed" - never claim passes.
 
@@ -192,19 +188,18 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presentin
 
 - [ ] Step 1: behavioral-principles loaded
 - [ ] Step 2: stack confirmed (API-only vs server-rendered, view engine, serializer lib)
-- [ ] Step 3: spec-aware mode honored when applicable
-- [ ] Step 4: requirements gathered
-- [ ] Step 5: design approved before generating code
-- [ ] Step 6: migration-safety skill consulted; one concern per migration; indexes on FKs/filters
-- [ ] Step 7: `rails-activerecord-patterns` applied to models
-- [ ] Step 8: services return `Result`; transactions and post-commit dispatch via `rails-transaction-patterns`
-- [ ] Step 9: external APIs go through a dedicated client with timeouts and domain taxonomy
-- [ ] Step 10: strong params, pagination, domain-to-HTTP mapping, idempotency keys on writes
-- [ ] Step 11: serializer per resource (or skipped for server-rendered)
-- [ ] Step 12: views in existing engine via `rails-view-templates` (or skipped for API)
-- [ ] Step 13: Pundit policies + `rescue_from` ladder; Active Storage / ActionCable patterns when applicable
-- [ ] Step 14: model + service + policy + request + job + component specs; factory traits
-- [ ] Step 15: `rspec` and `rubocop` pass
+- [ ] Step 3: requirements gathered
+- [ ] Step 4: design approved before generating code
+- [ ] Step 5: migration-safety skill consulted; one concern per migration; indexes on FKs/filters
+- [ ] Step 6: `rails-activerecord-patterns` applied to models
+- [ ] Step 7: services return `Result`; transactions and post-commit dispatch via `rails-transaction-patterns`
+- [ ] Step 8: external APIs go through a dedicated client with timeouts and domain taxonomy
+- [ ] Step 9: strong params, pagination, domain-to-HTTP mapping, idempotency keys on writes
+- [ ] Step 10: serializer per resource (or skipped for server-rendered)
+- [ ] Step 11: views in existing engine via `rails-view-templates` (or skipped for API)
+- [ ] Step 12: Pundit policies + `rescue_from` ladder; Active Storage / ActionCable patterns when applicable
+- [ ] Step 13: model + service + policy + request + job + component specs; factory traits
+- [ ] Step 14: `rspec` and `rubocop` pass
 
 ## Avoid
 

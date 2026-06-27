@@ -40,7 +40,7 @@ Defaults to current branch vs base; fails fast on trunk. Use `pr-<N>` for a loca
 
 ### Step 1 - Load Behavioral Rules
 
-Use skill: `behavioral-principles`. If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, also use skill: `spec-aware-preamble`; out-of-scope diff = blocker, missing AC coverage = gap.
+Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
 
@@ -311,7 +311,6 @@ _Omit empty sections. Omit Next Steps entirely if no actionable findings._
 - [ ] Step 9.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
 - [ ] Step 10: findings merged with dedup + strongest-intent-wins; report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack)
 - [ ] Every Must cites system risk; every finding has label + `file:line` + actionable Rails fix
-- [ ] If `--spec` was passed, every finding traces to AC/NFR/task or is flagged out-of-scope
 
 ## Avoid
 

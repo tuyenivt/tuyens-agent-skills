@@ -34,11 +34,7 @@ Use skill: `stack-detect`. If invoked as a delegate of `task-code-test` (parent 
 
 Record `Framework` (Next.js App Router / Pages Router / Vite + React Router), `Runner` (Vitest / Jest), `React: <version>` for the output.
 
-### Step 3 - Apply spec-aware mode (conditional)
-
-If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the code under test, Use skill: `spec-aware-preamble`. Generate one test per acceptance criterion (`// Satisfies: AC<N>` or test-name suffix), cover every NFR from `plan.md`, refuse tests for out-of-scope behavior. Never edit spec artifacts; surface gaps as proposed amendments.
-
-### Step 4 - Read code under test and existing tests
+### Step 3 - Read code under test and existing tests
 
 Before producing output, read both production code and a representative sample of tests so output matches project convention.
 
@@ -52,7 +48,7 @@ Greenfield (no existing tests): state choices explicitly, do not invent silently
 
 Use skill: `react-testing-patterns` for canonical React test forms (`renderWithProviders`, MSW handler reset, `next/navigation` mock, Server Action flavors, React 19 form primitives, TanStack Query isolation, and timer-driven behavior - fake timers + the `userEvent.setup({ advanceTimers })` wiring required for debounce/throttle hooks).
 
-### Step 5 - React test pyramid
+### Step 4 - React test pyramid
 
 | Layer       | Tooling                                                                      | What belongs here                                                            |
 | ----------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -67,7 +63,7 @@ Use skill: `react-testing-patterns` for canonical React test forms (`renderWithP
 
 **Server Components.** RTL renders Client Components in jsdom; Server Components are async functions that return JSX before client lifecycle. Two paths: (a) test the **data function** the Server Component calls (`getOrders()`) as a unit test; (b) test the **rendered route** via Playwright. Do not import a Server Component into RTL.
 
-### Step 6 - Apply React test patterns
+### Step 5 - Apply React test patterns
 
 **Queries and interactions:** `getByRole` / `getByLabelText` / `getByText`; `getByTestId` only as last resort. `await userEvent.click(...)` over `fireEvent` (real focus, key, dispatch). Async: `await screen.findBy*` or `waitFor`, never `setTimeout`.
 
@@ -98,7 +94,7 @@ Use skill: `react-testing-patterns` for canonical React test forms (`renderWithP
 
 **Playwright E2E:** critical journeys only; `getByRole` / `getByLabel` over `data-testid`; auth via `storageState` fixture; API stubbing via `page.route`; run against built app (`pnpm build && pnpm start`), not dev mode.
 
-### Step 7 - Test boundaries
+### Step 6 - Test boundaries
 
 **Unit:** pure utilities (formatters, parsers, currency math), reducers / state machines, Zod validators (edge cases, refinements), selectors with logic.
 
@@ -122,7 +118,7 @@ State-machine wizards (XState, Zustand, `useReducer`): unit-test the machine sep
 
 **Does NOT need a test:** framework behavior (`next/link`, `useState`, Next.js routing); typed props with no logic; trivial wrappers covered by parents; visual layout (margin, padding) - belongs to visual regression.
 
-### Step 8 - Prioritize when coverage is low
+### Step 7 - Prioritize when coverage is low
 
 When coverage is below ~50%, run this **before** scaffolding - choose what to scaffold first.
 
@@ -134,7 +130,7 @@ When coverage is below ~50%, run this **before** scaffolding - choose what to sc
 
 **Multi-band rule.** When a target qualifies for multiple bands (e.g., checkout form is both P1 money and P2 form), file under the highest band and cover both axes (assert money path AND validation + back-nav).
 
-### Step 9 - Test infrastructure hygiene
+### Step 8 - Test infrastructure hygiene
 
 - [ ] Vitest `testEnvironment: 'jsdom'` for components / hooks; `'node'` for pure utilities
 - [ ] `@testing-library/jest-dom` matchers registered in setup
@@ -151,8 +147,8 @@ When coverage is below ~50%, run this **before** scaffolding - choose what to sc
 
 **Which output:**
 
-- "what tests are missing?" / "review coverage" -> Coverage Assessment (Step 6 pattern detail is reference-only; Step 8 bands drive the output)
-- "write tests for X" / "scaffold tests" -> Test Scaffolds (Step 6 pattern detail is load-bearing)
+- "what tests are missing?" / "review coverage" -> Coverage Assessment (Step 5 pattern detail is reference-only; Step 7 bands drive the output)
+- "write tests for X" / "scaffold tests" -> Test Scaffolds (Step 5 pattern detail is load-bearing)
 - "test strategy" / "test plan" / coverage < 50% without scaffold request -> Strategy Doc
 - Multiple deliverables in one ask -> produce in order separated by `---`: Coverage Assessment, Strategy Doc, Test Scaffolds. Do not silently drop one.
 - Unclear -> Strategy Doc as default.
@@ -223,13 +219,12 @@ Precedence when one ask matches several rows: an explicit verb ("write/scaffold"
 
 - [ ] Step 1 - `behavioral-principles` loaded before any other step
 - [ ] Step 2 - Stack confirmed as React; `Framework`, `Runner`, `React` recorded
-- [ ] Step 3 - Spec-aware mode honored when `--spec` passed (one test per AC, NFR coverage, no out-of-scope tests)
-- [ ] Step 4 - Code under test, a sample of existing tests, and setup files read directly; `react-testing-patterns` consulted
-- [ ] Step 5 - Pyramid mapped to React idioms; Server Component strategy explicit (data function + Playwright, not RTL)
-- [ ] Step 6 - Patterns applied: user-centric queries; `userEvent` over `fireEvent`; `findBy*` / `waitFor` for async; MSW `resetHandlers` in `afterEach`; `renderWithProviders` with fresh `QueryClient`; Server Action both flavors when both apply; `useFormStatus` pending + `useOptimistic` rollback covered; `next/navigation` mocked for App Router
-- [ ] Step 7 - Boundaries respected (no E2E for what a component test covers; framework internals not tested); multi-step wizard covers forward + backward-preserves-state + cross-step + submit
-- [ ] Step 8 - Risk bands applied when coverage is low; multi-band targets covered on both axes
-- [ ] Step 9 - Infra hygiene checks pass (MSW `onUnhandledRequest: 'error'` + `resetHandlers`, fresh `userEvent.setup()`, no real network, strict TS)
+- [ ] Step 3 - Code under test, a sample of existing tests, and setup files read directly; `react-testing-patterns` consulted
+- [ ] Step 4 - Pyramid mapped to React idioms; Server Component strategy explicit (data function + Playwright, not RTL)
+- [ ] Step 5 - Patterns applied: user-centric queries; `userEvent` over `fireEvent`; `findBy*` / `waitFor` for async; MSW `resetHandlers` in `afterEach`; `renderWithProviders` with fresh `QueryClient`; Server Action both flavors when both apply; `useFormStatus` pending + `useOptimistic` rollback covered; `next/navigation` mocked for App Router
+- [ ] Step 6 - Boundaries respected (no E2E for what a component test covers; framework internals not tested); multi-step wizard covers forward + backward-preserves-state + cross-step + submit
+- [ ] Step 7 - Risk bands applied when coverage is low; multi-band targets covered on both axes
+- [ ] Step 8 - Infra hygiene checks pass (MSW `onUnhandledRequest: 'error'` + `resetHandlers`, fresh `userEvent.setup()`, no real network, strict TS)
 
 ## Avoid
 

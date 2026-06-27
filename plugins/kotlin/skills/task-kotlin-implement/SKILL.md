@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Spec-aware mode:** If `--spec <slug>` is passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after STEP 1 and STEP 2. The preamble chooses mode and dictates which gather/design steps to skip. Treat the spec as source of truth; surface conflicts as proposed amendments. Never edit `spec.md`, `plan.md`, or `tasks.md`.
-
 # Implement Kotlin Feature
 
 ## When to Use

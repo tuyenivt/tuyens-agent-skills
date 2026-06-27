@@ -12,8 +12,6 @@ user-invocable: true
 
 Building a new React feature spanning components, state, data fetching, routing, and tests. Not for single-component edits, bug fixes (use `task-react-debug`), or refactors without new behavior.
 
-If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after Step 2 and follow its mode contract; skip GATHER (and DESIGN when `plan.md` is present). Never edit spec artifacts from this workflow.
-
 ## Workflow
 
 **Step 1 - Behavioral principles.** Use skill: `behavioral-principles`.

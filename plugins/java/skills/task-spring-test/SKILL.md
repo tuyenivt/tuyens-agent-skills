@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after `behavioral-principles`. One test per AC (`Satisfies: AC<N>` in name); cover every NFR from `plan.md`; refuse tests for out-of-scope behavior. Never edit spec artifacts; surface gaps as proposed amendments.
-
 # Spring Boot Test
 
 Spring-aware test strategy and scaffolding. Stack-specific delegate of `task-code-test` for Java / Spring Boot 3.5+.
@@ -176,7 +174,6 @@ Pick by request shape:
 - [ ] Step 6: builders / factories over JSON fixtures
 - [ ] Step 7: when coverage low, P1 auth and P2 data scaffolded before plumbing
 - [ ] Step 8: infrastructure hygiene applied (context cache, strict stubbing, no real network)
-- [ ] Spec-aware mode honored when `--spec` passed
 
 ## Avoid
 

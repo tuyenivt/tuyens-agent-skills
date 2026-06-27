@@ -35,7 +35,7 @@ Spring-aware staff-level review umbrella. Stack-specific delegate of `task-code-
 | + Obs             | `task-spring-review-observability` subagent|
 | Full              | All three in parallel                      |
 
-**Auto-escalation signals** (Step 4 scans the diff; pass `core-only` to suppress):
+**Auto-escalation signals** (Step 4 evaluates them; pass `core-only` to suppress):
 
 - **Security:** `MultipartFile`, `SecurityFilterChain`, `@PreAuthorize`/`@PostAuthorize`, `@RequestBody` DTO changes, raw JPQL/native SQL, secrets in `application.yml`, listener consuming user input.
 - **Perf:** new Flyway/Liquibase migration, new `@Query`/`@EntityGraph`, new `Pageable` endpoint, loop hitting DB/HTTP, new `@Cacheable`.
@@ -59,19 +59,15 @@ Flags compose: `/task-spring-review pr-50273 --base release/2026.05 +sec deep`. 
 
 Use skill: `behavioral-principles`.
 
-### Step 2 - Spec-Aware Preamble (conditional)
-
-If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the diff, use skill: `spec-aware-preamble`. Cross-check the diff against `spec.md` and `plan.md`: every changed surface traces to an AC/NFR/task; out-of-scope -> blocker; missing AC coverage -> gap. Never edit spec artifacts.
-
-### Step 3 - Confirm Stack
+### Step 2 - Confirm Stack
 
 Use skill: `stack-detect`. Accept pre-detected stack from a parent. If not Spring Boot, stop and tell the user to invoke `/task-code-review`.
 
-### Step 4 - Resolve the Diff
+### Step 3 - Resolve the Diff
 
 Use skill: `review-precondition-check` (forward `--base`). Surface fail-fast messages verbatim and stop.
 
-The handle may include a `prior_checkpoint` block (a prior `review-<branch>.md` exists). Decision logic is Step 4.5; for now, just hold onto it.
+The handle may include a `prior_checkpoint` block (a prior `review-<branch>.md` exists). Decision logic is Step 3.5; for now, just hold onto it.
 
 Once approved, read once and reuse (skip when a parent passed the handle plus artifacts):
 
@@ -84,15 +80,15 @@ Also capture the current SHAs for the report's checkpoint frontmatter:
 - `current_head_sha = git rev-parse <head_ref>`
 - `current_base_sha = git rev-parse <base_ref>`
 
-### Step 4.5 - Decide Mode (re-review auto-detect)
+### Step 3.5 - Decide Mode (re-review auto-detect)
 
-Skip if the handle has no `prior_checkpoint` -> `mode = full`, `round = 1`, no fetch, no reconciliation. Continue to Step 5.
+Skip if the handle has no `prior_checkpoint` -> `mode = full`, `round = 1`, no fetch, no reconciliation. Continue to Step 4.
 
-If `prior_checkpoint: legacy` (file present, frontmatter missing/invalid) -> `mode = full`, `round = 1`. Note in Summary: `Prior report lacks checkpoint metadata - treated as round 1.` Continue to Step 5.
+If `prior_checkpoint: legacy` (file present, frontmatter missing/invalid) -> `mode = full`, `round = 1`. Note in Summary: `Prior report lacks checkpoint metadata - treated as round 1.` Continue to Step 4.
 
 Otherwise (valid prior checkpoint present):
 
-**Step 4.5a - Auto-fetch the head branch.** Only when a valid prior checkpoint exists, refresh the local tracking ref so a script can re-run the same command without manually fetching:
+**Step 3.5a - Auto-fetch the head branch.** Only when a valid prior checkpoint exists, refresh the local tracking ref so a script can re-run the same command without manually fetching:
 
 ```bash
 upstream=$(git rev-parse --abbrev-ref --symbolic-full-name "<head_ref>@{u}" 2>/dev/null)
@@ -106,7 +102,7 @@ git fetch <remote> <branch>
 
 No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, detached HEAD, no remote configured), skip the fetch silently. If `git fetch` fails (offline, auth, deleted remote branch), continue silently - this is a convenience, not a gate. After a successful fetch, re-resolve `current_head_sha = git rev-parse <head_ref>`.
 
-**Step 4.5b - Compare checkpoints.**
+**Step 3.5b - Compare checkpoints.**
 
 | Condition                                                              | Decision                                                                                                                            |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -116,17 +112,17 @@ No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, 
 | `prior_checkpoint.base_ref != base_ref`                                | `mode = full`, `round = prior.round + 1`. Note in Summary: `Base ref changed since round <prior.round> - full re-review.`           |
 | None of the above                                                       | `mode = incremental`, `round = prior.round + 1`, `incremental_range = <prior_head_sha>...<current_head_sha>`.                       |
 
-**Step 4.5c - Incremental: re-read the diff scoped to the new range.**
+**Step 3.5c - Incremental: re-read the diff scoped to the new range.**
 
-If `mode = incremental`, replace the diff read from Step 4 with:
+If `mode = incremental`, replace the diff read from Step 3 with:
 
 - `git diff <prior_head_sha>...<current_head_sha>`
 - `git diff --name-status <prior_head_sha>...<current_head_sha>`
 - `git log --oneline <prior_head_sha>..<current_head_sha>`
 
-The full-range diff from Step 4 is discarded; all Phase A-E analysis operates on the incremental range only.
+The full-range diff from Step 3 is discarded; all Phase A-E analysis operates on the incremental range only.
 
-**Step 4.5d - Scope expansion handling.**
+**Step 3.5d - Scope expansion handling.**
 
 If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `core-only`, round 2 is `full`), the newly-added scopes have no prior findings to reconcile. Record in Summary based on mode:
 
@@ -135,7 +131,7 @@ If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `
 
 The reconciliation table (when emitted) only covers findings whose scope was active in the prior round.
 
-### Step 5 - Evaluate Auto-Escalation
+### Step 4 - Evaluate Auto-Escalation
 
 Scan files and diff against signal categories (above). Log `signal: <category> -> <file:line>` for each match. Resolve scope (Core / +X / Full) and surface in Summary: `auto-escalated from Core; signals: <list>` or, when user-pinned with conflicting signals, `Scope user-pinned; <category> signals present: <list>`.
 
@@ -218,7 +214,7 @@ Use skill: `backend-coding-standards`. Use skill: `ops-observability` for cross-
 - [ ] **Duplicated queries** - same JPQL/`Specification` predicate in 3+ places -> `Specification` factory or repo method.
 - [ ] **Logging hygiene** - SLF4J parameterized, not concatenation; correct levels; MDC for structured fields (depth -> `task-spring-review-observability`).
 
-### Step 6 - Delegate Extra Scopes in Parallel
+### Step 5 - Delegate Extra Scopes in Parallel
 
 Skip if Core only. Spawn each extra subagent in parallel with the main thread.
 
@@ -233,34 +229,34 @@ Skip if Core only. Spawn each extra subagent in parallel with the main thread.
 
 **Failure isolation:** if a subagent fails or times out, continue. Record `Scope incomplete: <scope> review did not complete` under Summary.
 
-### Step 7 - Synthesize
+### Step 6 - Synthesize
 
-Skip if Step 6 didn't run. Merge subagent findings into the single Output Format - never append raw reports.
+Skip if Step 5 didn't run. Merge subagent findings into the single Output Format - never append raw reports.
 
 - **Deduplicate** cross-cutting findings (e.g., external call in `@Transactional` flagged by Phase B and Perf) into one entry citing all scopes.
 - **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`.
 - **Preserve `file:line` citations**; order by severity, not by scope.
 - **Merge Next Steps**: combine, preserve `[Implement]`/`[Delegate]`, dedupe, re-sort.
 
-### Step 7.5 - Reconcile Prior Findings (incremental mode only)
+### Step 6.5 - Reconcile Prior Findings (incremental mode only)
 
 Skip if `mode = full`. Otherwise use skill: `review-prior-findings-reconcile` with:
 
 - `prior_report`: the loaded body of `review-<branch>.md` (frontmatter excluded)
-- `incremental_diff`: from Step 4.5c
-- `name_status`: from Step 4.5c
+- `incremental_diff`: from Step 3.5c
+- `name_status`: from Step 3.5c
 
 The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
 
 Fold any `Still open` rows into `## Next Steps` as `(open since round <prior.round>)`-suffixed entries, ordered by severity alongside this round's new findings. Do not emit a standalone "Carry-Over Open Items" section.
 
-### Step 8 - Write Report
+### Step 7 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review` and these checkpoint fields:
 
 - `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
-- `mode` (from Step 4.5), `round` (from Step 4.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 5), `depth` (resolved/auto-promoted in Phase A), `stack = java-spring-boot`
+- `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
+- `scope` (resolved in Step 4), `depth` (resolved/auto-promoted in Phase A), `stack = java-spring-boot`
 
 The report writer owns label semantics (`[Must]` / `[Recommend]` / `[Question]` - no severity-mixed `[Blocker]`/`[High]`/`[Suggestion]`, no `[Nit]`/`[Consider]`/`[Praise]`).
 
@@ -331,26 +327,25 @@ Omit empty sections.
 ## Self-Check
 
 - [ ] Step 1 - behavioral principles loaded
-- [ ] Step 2 - spec preamble loaded when `--spec` / `.specs/<slug>/spec.md` present; findings traced to AC/NFR/task or flagged out-of-scope
-- [ ] Step 3 - stack confirmed (or accepted from parent)
-- [ ] Step 4 - `review-precondition-check` ran (or handle received); diff/commit log read once; `current_head_sha` and `current_base_sha` captured
-- [ ] Step 4.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report
-- [ ] Step 5 - scope decision recorded with firing signals; user-pinned conflicts surfaced; scope expansion vs. prior round noted when applicable
+- [ ] Step 2 - stack confirmed (or accepted from parent)
+- [ ] Step 3 - `review-precondition-check` ran (or handle received); diff/commit log read once; `current_head_sha` and `current_base_sha` captured
+- [ ] Step 3.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report
+- [ ] Step 4 - scope decision recorded with firing signals; user-pinned conflicts surfaced; scope expansion vs. prior round noted when applicable
 - [ ] Phase A - Risk and Blast Radius stated before findings; depth auto-promoted on Wide/Critical
 - [ ] Phase B - Spring idioms applied (transactions, JPA-in-API, authz coverage, exception advice, VT pinning, dual-write); migration safety where applicable; missing tests raised as named finding
 - [ ] Phase C - layering, anemic domain, constructor injection, configuration, boundaries, multi-tenant (skipped under the Phase A low-risk short-circuit)
 - [ ] Phase D - `complexity-review` + `spring-overengineering-review` invoked; remaining AI smells covered (skipped under the Phase A low-risk short-circuit)
 - [ ] Phase E - maintainability applied
-- [ ] Step 6 - subagents ran in parallel with pre-resolved handle (when scope > Core)
-- [ ] Step 7 - findings deduped, highest-severity wins, severity-ordered, raw subagent reports not appended; missing scopes noted
-- [ ] Step 7.5 - on incremental rounds, `review-prior-findings-reconcile` ran; reconciliation table inserted; `Still open` rows folded into Next Steps with `(open since round <N>)` suffix
-- [ ] Step 8 - report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
+- [ ] Step 5 - subagents ran in parallel with pre-resolved handle (when scope > Core)
+- [ ] Step 6 - findings deduped, highest-severity wins, severity-ordered, raw subagent reports not appended; missing scopes noted
+- [ ] Step 6.5 - on incremental rounds, `review-prior-findings-reconcile` ran; reconciliation table inserted; `Still open` rows folded into Next Steps with `(open since round <N>)` suffix
+- [ ] Step 7 - report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
 - [ ] Every Must cites system risk; every finding has label, `file:line`, actionable Spring fix
 - [ ] Next Steps tagged `[Implement]`/`[Delegate]`, ordered Must > Recommend > Question (omit if none); carry-overs from prior round inline-suffixed, not in a separate section
 
 ## Avoid
 
-- State-changing git (`checkout`/`merge`/`pull`/`rebase`) from this workflow. The one allowed exception is `git fetch <remote> <branch>` in Step 4.5a, and only when a valid prior checkpoint exists.
+- State-changing git (`checkout`/`merge`/`pull`/`rebase`) from this workflow. The one allowed exception is `git fetch <remote> <branch>` in Step 3.5a, and only when a valid prior checkpoint exists.
 - Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
 - Reviewing without reading full diff + commit log first.
 - Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).

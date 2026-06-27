@@ -10,8 +10,6 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
->
-> **Spec-aware mode:** If `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles`. Cross-check every changed surface against `spec.md` / `plan.md`: each change must trace to an AC, NFR, or task; out-of-scope changes are **blockers**; missing in-scope coverage is a gap. Never edit spec artifacts.
 
 # React Code Review
 
@@ -411,7 +409,6 @@ _Omit if no actionable findings._
 - [ ] Missing tests raised as a named finding (not buried)
 - [ ] Every Must cites system risk
 - [ ] Every finding has label + `file:line` + actionable React fix
-- [ ] If `--spec` passed: every finding traces to AC/NFR/task or is flagged as out-of-scope blocker
 - [ ] Step 5: extra scopes ran in parallel with the pre-resolved diff/log handle plus framework detection
 - [ ] Step 6: subagent findings merged into one intent-ordered Findings list; raw reports not appended; failed/missing scope noted as `Scope incomplete: <scope>`; Next Steps tagged `[Implement]` / `[Delegate]` and ordered by intent
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix

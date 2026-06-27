@@ -38,8 +38,6 @@ The base branch is detected in Step 2; the user does not supply it unless detect
 
 Use skill: `behavioral-principles`.
 
-**Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the change being shipped, load `Use skill: spec-aware-preamble`. When a spec is loaded, derive Summary from `spec.md`'s problem statement, Test Plan from acceptance criteria, and Linked Context from `plan.md`'s Decisions Worth Recording. Reference the slug and completed task IDs from `tasks.md`. Do not re-elicit these from the user. Never edit `spec.md`, `plan.md`, or `tasks.md`.
-
 ### Step 2 - Resolve Branch and Base
 
 Establish `(base_ref, head_ref)` before any diff is read. PR creation runs against the current feature branch only.
@@ -169,7 +167,7 @@ Related: #[PR number or branch]
 
 ## Self-Check
 
-- [ ] Step 1: `behavioral-principles` loaded; spec-aware preamble loaded if applicable
+- [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: branch and base resolved; trunk-branch HEAD rejected; base auto-detected or asked when ambiguous
 - [ ] Step 3: stack detected and reflected in test plan command
 - [ ] Step 4: diff and commits gathered against resolved `base_ref`, not hardcoded `main`

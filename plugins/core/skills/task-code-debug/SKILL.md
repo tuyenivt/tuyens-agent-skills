@@ -29,8 +29,6 @@ The error itself: stack trace, error message, log lines, test output, or reprodu
 
 Use skill: `behavioral-principles`.
 
-**Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the affected feature, load `Use skill: spec-aware-preamble` and propagate spec context to the dispatched workflow.
-
 ### Step 2 - Detect Stack
 
 Use skill: `stack-detect`.
@@ -131,7 +129,7 @@ When fallback runs (Step 4):
 
 ## Self-Check
 
-- [ ] Step 1: `behavioral-principles` loaded; spec-aware preamble loaded if applicable
+- [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran
 - [ ] Step 3: stack matched -> dispatched with error report and stack-detect result, then stopped; plugin missing -> user told, fell through to Step 4
 - [ ] Step 4: stack unmatched or plugin missing -> fallback produced Classify / Locate / Root Cause / Fix / Prevent

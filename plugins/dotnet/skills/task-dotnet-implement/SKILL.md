@@ -8,8 +8,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after `behavioral-principles` and `stack-detect`. Follow its contract: skip GATHER (and DESIGN when `plan.md` exists). Never edit `spec.md` / `plan.md` / `tasks.md`; surface conflicts as proposed amendments.
-
 # Implement Feature
 
 ## When to Use

@@ -28,11 +28,9 @@ Stack-specific delegate of `task-code-test` for .NET. Preserves the parent's out
 
 Use skill: `behavioral-principles`.
 
-### Step 2 - Stack Detect and Spec Mode
+### Step 2 - Stack Detect
 
 Use skill: `stack-detect`. If not .NET, route to `/task-code-test`. Skip if parent already detected.
-
-If `--spec <slug>` or `.specs/<slug>/spec.md` exists, Use skill: `spec-aware-preamble`. With a spec loaded: one test per AC (tag `// Satisfies: AC<N>` or `[Fact(DisplayName = "AC1: ...")]`), cover every NFR from `plan.md`, refuse out-of-scope tests. Never edit spec artifacts; surface gaps as proposed amendments.
 
 Record for output: `Data Access` (EF Core / Dapper / mixed), `Mediator` (MediatR / none), `Messaging` (MassTransit / Hangfire / Channel / none), `Mock Framework` (NSubstitute / Moq), `Assertion Library`, `Test-Data Library`.
 
@@ -150,7 +148,7 @@ If coverage is below ~50%, run this **before** scaffolding. Order by risk:
 ## Self-Check
 
 - [ ] Step 1 - behavioral principles loaded
-- [ ] Step 2 - stack confirmed; data-access / mediator / messaging recorded; spec mode honored when `--spec` passed
+- [ ] Step 2 - stack confirmed; data-access / mediator / messaging recorded
 - [ ] Step 3 - code under test and existing tests / fixtures read before scaffolding or strategy
 - [ ] Step 4 - pyramid balance matched to .NET layers; no duplicated assertions across layers
 - [ ] Step 5 - `dotnet-test-integration` applied; workflow gates honored (no controller-direct-call, no `UseInMemoryDatabase` for Postgres / SqlServer, FluentValidation `TestValidate`, worker idempotency / retry / DLQ)

@@ -10,8 +10,6 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
->
-> **Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble`. Generate one test per acceptance criterion (tag `// Satisfies: AC<N>`), cover every NFR per `plan.md`, refuse out-of-scope tests. Never edit spec artifacts; surface gaps as proposed amendments.
 
 # Node.js Test
 
@@ -175,7 +173,6 @@ Apply Step 7 risk bands: P1 AuthN/Z, P2 data integrity, P3 business-critical, P4
 
 - [ ] Stack confirmed; Framework + ORM recorded; existing tests + setup read (Steps 1-2)
 - [ ] Pyramid mapped to Node idioms; risk prioritization applied when coverage < ~50% (Steps 3, 7)
-- [ ] Spec-aware mode honored when `--spec` passed (one test per AC, NFR coverage, no out-of-scope)
 - [ ] Scaffolds: factories over literals; endpoint = happy + 401 + 403 + validation + IDOR; same global pipes / guards as `main.ts` / `app.ts`; repository on Testcontainers PostgreSQL (never SQLite); BullMQ with idempotency + retry, real-broker for non-trivial `attempts` / `lockDuration`; typed mocks, no `as any`
 - [ ] Review mode: every test file in scope passes the Review Checklist
 

@@ -8,8 +8,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Spec-aware mode:** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after Steps 1-2. Follow its mode (`no-spec` / `spec-only` / `spec+plan` / `full-spec`); skip GATHER (and DESIGN when `plan.md` exists). Never edit `spec.md` / `plan.md` / `tasks.md`; surface conflicts as proposed amendments.
-
 # Implement Feature
 
 ## When to Use
@@ -147,4 +145,3 @@ Run `./gradlew compileJava compileTestJava` (Maven: `./mvnw compile test-compile
 - Unbounded `findAll()` without pagination
 - Missing CHECK constraint for known status enums
 - Missing unique index for idempotency keys
-- Editing `.specs/<slug>/spec.md` / `plan.md` / `tasks.md` in spec-aware mode

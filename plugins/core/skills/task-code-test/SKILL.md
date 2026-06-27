@@ -21,7 +21,7 @@ Detects the project stack and delegates to the matching stack-specific test work
 
 ## Invocation
 
-`/task-code-test [<file or path>] [--spec <slug>]`
+`/task-code-test [<file or path>]`
 
 ## Workflow
 
@@ -29,15 +29,11 @@ Detects the project stack and delegates to the matching stack-specific test work
 
 Use skill: `behavioral-principles`.
 
-### Step 2 - Spec-Aware Preamble (conditional)
-
-If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the code under test, use skill: `spec-aware-preamble` (from the `spec` plugin) and propagate spec context to the dispatched workflow.
-
-### Step 3 - Detect Stack
+### Step 2 - Detect Stack
 
 Use skill: `stack-detect` to identify language, framework, and `Stack Type`.
 
-### Step 4 - Dispatch to Stack Workflow
+### Step 3 - Dispatch to Stack Workflow
 
 | Detected stack       | Delegate to         |
 | -------------------- | ------------------- |
@@ -54,9 +50,9 @@ Use skill: `stack-detect` to identify language, framework, and `Stack Type`.
 | Vue                  | `task-vue-test`     |
 | Angular              | `task-angular-test` |
 
-Forward the user's invocation and spec context. The dispatched workflow owns the output. **If matched and available, stop. Skip Step 5.** If the matched workflow is unavailable (plugin not installed), name the plugin that provides it, then run Step 5 using the detected stack's idioms.
+Forward the user's invocation. The dispatched workflow owns the output. **If matched and available, stop. Skip Step 4.** If the matched workflow is unavailable (plugin not installed), name the plugin that provides it, then run Step 4 using the detected stack's idioms.
 
-### Step 5 - Generic Fallback (no dispatch match)
+### Step 4 - Generic Fallback (no dispatch match)
 
 **Pyramid.** Unit (many) > Integration (some) > E2E (few). Unit covers pure logic, validation, branch-heavy domain code, isolated error handling. Integration covers DB queries against a real schema, HTTP endpoints end-to-end, external service clients (stubs or contract tests), auth filters. E2E covers only critical business flows (checkout, login, data export) - keep this layer small.
 
@@ -75,7 +71,7 @@ For test scaffolds, use the project's existing test framework if detectable, els
 
 ## Output Format
 
-When Step 4 dispatched: the stack workflow owns the output. When fallback ran, produce the section matching the user's ask:
+When Step 3 dispatched: the stack workflow owns the output. When fallback ran, produce the section matching the user's ask:
 
 ```markdown
 ## Test Coverage Assessment
@@ -99,15 +95,14 @@ When Step 4 dispatched: the stack workflow owns the output. When fallback ran, p
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: spec-aware preamble loaded iff `--spec` or `.specs/<slug>/` present
-- [ ] Step 3: `stack-detect` ran
-- [ ] Step 4: if matched and available, stack workflow ran with invocation and spec context forwarded; Step 5 skipped
-- [ ] Step 5: if not dispatched, output covers pyramid balance + prioritized gaps (or scaffolds with a stated framework), matching the user's ask
+- [ ] Step 2: `stack-detect` ran
+- [ ] Step 3: if matched and available, stack workflow ran with invocation forwarded; Step 4 skipped
+- [ ] Step 4: if not dispatched, output covers pyramid balance + prioritized gaps (or scaffolds with a stated framework), matching the user's ask
 
 ## Avoid
 
-- Running both Step 4 dispatch and Step 5 fallback
+- Running both Step 3 dispatch and Step 4 fallback
 - Producing findings when a stack workflow was dispatched
-- Falling through to Step 5 when a table row matched and its workflow is available - the table is authoritative
+- Falling through to Step 4 when a table row matched and its workflow is available - the table is authoritative
 - Chasing a coverage number instead of prioritizing by risk
 - Treating the fallback as equivalent to a stack workflow

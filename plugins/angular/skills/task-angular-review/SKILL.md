@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Spec-aware mode:** If `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble`. Every change must trace to an AC, NFR, or task; out-of-scope changes are **blockers**.
-
 # Angular Code Review
 
 Staff-level Angular code review covering correctness, architecture, AI-quality, and maintainability through an Angular lens. Coordinates perf / security / observability subagents in parallel.

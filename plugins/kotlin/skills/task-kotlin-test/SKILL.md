@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Spec-aware mode:** If `--spec <slug>` is passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after Step 1 and Step 2. Generate one test per AC (`Satisfies: AC<N>` in test names), cover every NFR via a `plan.md` verification step, refuse to test out-of-scope behavior. Never edit `spec.md`, `plan.md`, `tasks.md`; surface coverage gaps as proposed amendments.
-
 # Kotlin / Spring Boot Test
 
 ## Purpose
@@ -234,7 +232,7 @@ Run before scaffolding.
 - [ ] Step 6 - test boundaries respect what does/doesn't need a test (no Spring-provided behavior, no trivial delegation)
 - [ ] Step 7 - test data via shared factory functions with named parameters; no per-class duplication
 - [ ] Step 8 - prioritization by risk when coverage < 50% (authz → data integrity → business → high-churn → plumbing)
-- [ ] Step 9 - infrastructure hygiene: Testcontainers reused via `@ServiceConnection`; `mockito-core` excluded from `spring-boot-starter-test`; `clearAllMocks()` in teardown; JaCoCo / Kover wired; spec-aware mode honored when applicable
+- [ ] Step 9 - infrastructure hygiene: Testcontainers reused via `@ServiceConnection`; `mockito-core` excluded from `spring-boot-starter-test`; `clearAllMocks()` in teardown; JaCoCo / Kover wired
 
 ## Avoid
 

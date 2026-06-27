@@ -10,8 +10,6 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows.
->
-> **Spec-aware mode:** If the user passed `--spec <slug>` or `.specs/<slug>/spec.md` exists for the diff under review, load `Use skill: spec-aware-preamble` (from the `spec` plugin) immediately after `behavioral-principles`. When a spec is loaded, cross-check the diff against `spec.md` and `plan.md`: every changed surface must trace to an acceptance criterion, NFR, or task; flag changes that touch out-of-scope items as **blockers**; flag missing coverage of in-scope acceptance criteria as gaps. Never edit `spec.md`, `plan.md`, or `tasks.md` from this workflow.
 
 # Laravel Code Review
 
@@ -248,7 +246,7 @@ Use skill: `ops-observability` for cross-cutting logging/metrics presence (subag
 
 Skip if Core only. Otherwise spawn each extra-scope subagent **in parallel** with the main Core thread: `+Perf` -> `task-laravel-review-perf`; `+Sec` -> `task-laravel-review-security`; `+Obs` -> `task-laravel-review-observability`; **Full** -> all three concurrently.
 
-Each subagent prompt must include: resolved `base_ref`/`head_ref` + pre-read diff/log (skips `review-precondition-check` and `git diff`); depth level + pre-confirmed stack/ORM/auth/queue signals (skips `stack-detect`); spec slug if `--spec` was passed; instruction to return findings in the subagent's own Output Format.
+Each subagent prompt must include: resolved `base_ref`/`head_ref` + pre-read diff/log (skips `review-precondition-check` and `git diff`); depth level + pre-confirmed stack/ORM/auth/queue signals (skips `stack-detect`); instruction to return findings in the subagent's own Output Format.
 
 **Failure isolation.** If a subagent fails or times out, continue with the rest; note the missing scope in the synthesized output.
 
@@ -385,7 +383,6 @@ On incremental rounds, prior-round Still open items are folded in with (open sin
 - [ ] Phase E: maintainability checks applied
 - [ ] Missing tests raised as a named Finding (not buried in Key Takeaways)
 - [ ] Every Must cites system risk; every finding has label, `file:line`, actionable Laravel fix
-- [ ] If `--spec` was passed, every finding traces to an AC/NFR/task or is flagged as out-of-scope blocker
 - [ ] Step 5: non-Core subagents ran in parallel with pre-resolved diff/log + stack signals
 - [ ] Step 6: findings merged with deduplication and strongest-intent-wins; raw subagent reports not appended; failed scopes noted as `Scope incomplete: <scope>`
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix

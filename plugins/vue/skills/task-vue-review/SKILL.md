@@ -10,8 +10,6 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
->
-> **Spec-aware mode:** If `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles`. Cross-check every changed surface against `spec.md` / `plan.md`: each change must trace to an AC, NFR, or task; out-of-scope changes are **blockers**; missing in-scope coverage is a gap. Never edit spec artifacts.
 
 # Vue Code Review
 
@@ -404,7 +402,6 @@ _Omit if no actionable findings._
 - [ ] Phase D: `complexity-review` applied to Vue AI smells (pattern inflation, redundant prop transforms, `watch` misuse, `as any`)
 - [ ] Phase E: naming, co-location, component length, conditional ladders, logging hygiene
 - [ ] Every finding: label + `file:line` + actionable fix; every Must cites system risk; missing tests named, not buried
-- [ ] `--spec` passed: every finding traces to AC/NFR/task or flagged out-of-scope
 - [ ] Steps 5-6: extra scopes ran in parallel; findings merged intent-ordered; missing scope noted; Next Steps tagged `[Implement]`/`[Delegate]`
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
 - [ ] Step 7: report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed

@@ -10,8 +10,6 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
->
-> **Spec-aware mode:** If `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles`. Cross-check every changed surface against `spec.md` / `plan.md`: each change must trace to an AC, NFR, or task; out-of-scope changes are **blockers**; missing in-scope coverage is a gap. Never edit spec artifacts.
 
 # Python Code Review
 
@@ -421,7 +419,6 @@ _Omit if no actionable findings._
 - [ ] Missing tests raised as a named finding (not buried)
 - [ ] Every Must cites system risk
 - [ ] Every finding has label + `file:line` + actionable Python fix
-- [ ] If `--spec` passed: every finding traces to AC/NFR/task or is flagged as out-of-scope blocker
 - [ ] Extra scopes ran in parallel with the pre-resolved diff/log handle + framework detection
 - [ ] Subagent findings merged into one intent-ordered Findings list; no raw reports appended
 - [ ] Failed/missing subagent scope noted as `Scope incomplete: <scope>`

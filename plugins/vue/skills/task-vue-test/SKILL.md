@@ -13,8 +13,6 @@ user-invocable: true
 
 Stack-specific delegate of `task-code-test` for Vue. Preserves the core workflow's output shape and prioritization rules; substitutes Vue idioms (Vitest, VTU / Testing Library Vue, `@nuxt/test-utils`, MSW, Playwright) and Vue-specific risks (composables, Nitro endpoints, Pinia, Suspense).
 
-If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the code under test, load `Use skill: spec-aware-preamble` after Step 1 and follow its mode contract: one test per acceptance criterion (`// Satisfies: AC<N>`), one verification step per NFR from `plan.md`, no tests for behavior the spec marks out-of-scope. Never edit `spec.md`/`plan.md`/`tasks.md` from this workflow; surface coverage gaps as proposed amendments.
-
 ## When to Use
 
 - Designing a test strategy for a new Vue app, page, or feature
@@ -230,7 +228,6 @@ Audit ongoing-maintenance items distinct from Step 9's first-time prerequisites:
 - [ ] Step 8 - risk-based prioritization applied when coverage <50% (P1 auth/money/Nitro, P2 forms, P3 empty/error, P4 high-churn, P5 plumbing)
 - [ ] Step 9 - infrastructure prerequisites audited; missing pieces surfaced as "must land alongside P1," not buried in Step 10
 - [ ] Step 10 - hygiene items checked when assessing or reviewing existing tests
-- [ ] Spec-aware mode honored when `--spec` was passed (one test per AC, NFR coverage from plan.md, no out-of-scope tests)
 - [ ] Scaffolds only: MSW handlers reset in `afterEach`; TanStack Query uses fresh `QueryClient` with `retry: false`; Sentry mock asserted on error paths; a11y (`axe`) on route-level scaffolds
 
 ## Avoid

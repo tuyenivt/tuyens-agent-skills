@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Spec-aware mode:** If `--spec <slug>` is passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after Step 1 and Step 2. Cross-check the diff against `spec.md` and `plan.md`: every changed surface must trace to an AC / NFR / task; flag out-of-scope changes as blockers; flag missing coverage of in-scope ACs as gaps. Never edit `spec.md`, `plan.md`, `tasks.md`.
-
 # Kotlin / Spring Boot Code Review
 
 ## Purpose
@@ -397,7 +395,6 @@ Print the confirmation line.
 - [ ] Risk + blast radius stated before findings
 - [ ] Phases B-E applied via the named atomic skills; missing tests raised as explicit finding
 - [ ] Every Must cites system risk; every finding has label + file:line + Kotlin fix
-- [ ] If `--spec`, every finding traces to AC / NFR / task or flagged out-of-scope blocker
 - [ ] Extra scopes ran in parallel; findings deduped, strongest intent wins; failed scopes noted
 - [ ] Step 6.5 - on incremental rounds, `review-prior-findings-reconcile` ran; reconciliation table inserted; `Still open` rows folded into Next Steps with `(open since round <N>)` suffix
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered by intent; carry-overs from prior round inline-suffixed, not in a separate section
