@@ -21,7 +21,7 @@ Rust's type system, `Option`/`Result`, exhaustive `match`, and the borrow checke
 - Intent:
   - `[Must]` requires a `Cost:` field. Reserved for measurable waste: extra query in a hot path, dynamic dispatch on a single-callsite hot path, lock on never-mutated data, hot-loop allocation.
   - `[Question]` when justification is plausible but not visible in the diff.
-  - `[Recommend]` otherwise.
+  - `[Recommend]` otherwise - the default for redundancy with no measurable runtime cost: a never-constructed `Result`, a cheap manual guard, gratuitous `async`, a dead `cfg(feature)`. No `Cost:` field.
 - A redundancy with visible justification (mock derive, second impl, public API, hot-path benchmark) is not a finding.
 - Collapse co-located findings into one block when they share a root cause (e.g., `Box<dyn Trait>` field plus its single-impl trait declared in the same module -> one finding citing both lines).
 
@@ -142,7 +142,7 @@ Findings contribute to the consuming workflow's unified output. One block per fi
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction | Wasted Work}
 - Code: {one-line citation, or multiple lines if collapsed}
 - Redundant because: {validator rule | sqlx column type | unique index | type system | exhaustive match | framework guarantee | no consumer of feature}
-- Cost: {extra query | dynamic dispatch on hot path | lock on read-only data | hot-loop allocation | gratuitous async | dead branch}
+- Cost: {extra query | dynamic dispatch on hot path | lock on read-only data | hot-loop allocation}
 - Recommendation: {concrete edit}
 - Justified when: {one-line note when a legitimate reason might apply, else omit}
 ```

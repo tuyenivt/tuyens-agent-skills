@@ -32,7 +32,14 @@ Stack-specific delegate of `task-code-review-security` for Rust / Axum. Preserve
 | **Medium**   | Hardening gap with mitigating control elsewhere, missing `validator` derives, weak rate limit on non-critical endpoint, `cargo audit` advisory not yet exploited. |
 | **Low**      | Defense-in-depth, advisory below actively-exploited threshold, hardening without a concrete current attack scenario.                                             |
 
-**Combined-finding rule.** When two findings compose on the same handler into a worse threat (e.g., missing auth + mass assignment = unauthenticated admin override), file as one elevated finding citing each component. If either is independently exploitable, file separately. If co-location is unclear from the diff, file separately and note "Combined-finding rule applies if both land on the same handler; verify before merge".
+The rows list a finding's *baseline* tier. Tier the **resulting threat**, not the named pattern, when these elevation conditions hold:
+
+- **Removal of the only gate on existing privileged surface** is auth bypass (Critical), not "missing auth middleware" (High) - High covers a *new* endpoint shipped without auth; deleting the sole layer on already-protected routes exposes live data now.
+- **Composition crosses tiers.** Two High components on one handler that together yield an unauthenticated privileged mutation (e.g., missing auth + mass assignment) are Critical via the auth-bypass clause.
+- **SSRF reaching metadata that returns credentials** (e.g., IMDS IAM role) is Critical (effective cloud auth bypass), above the bare High row; note IMDSv2/topology as the verify-before-merge condition.
+- **Untrusted deserialization** (`bincode` / `rmp_serde` / `ciborium` on an untrusted body) is High - DoS via attacker-chosen layout and validation bypass; not Critical absent a concrete RCE chain, which Rust rarely affords.
+
+**Combined-finding rule.** When two findings compose on the same handler into a worse threat (e.g., missing auth + mass assignment = unauthenticated admin override), file as one elevated finding citing each component, tiered by the resulting threat (see elevation rule). If either is independently exploitable, file separately. If co-location is unclear from the diff, file separately and note "Combined-finding rule applies if both land on the same handler; verify before merge". A combined finding may satisfy multiple `yes` OWASP rows (e.g., Broken Access Control + Insecure Design); point each such row at the single combined finding - do not split it to satisfy the one-row-per-finding shape.
 
 ## Invocation
 
@@ -148,7 +155,7 @@ _One row per category; `yes` rows must correspond to a Finding below. Do not dup
 
 - **Location:** [file:line, or comma-separated for multi-site]
 - **Issue:** [Rust-idiom name - e.g., "`OrderHandler::update` calls `serde_json::from_value::<Order>(req.body)?`; client submits `{ \"user_id\": 999 }` and overrides owner via mass assignment"]
-- **Threat label:** one of: **(a) Exploit** - concrete attack walkthrough; **(b) Regression risk** - next refactor silently removes the protection; **(c) Topology-dependent** - depends on infra not visible in diff. Do not invent an exploit when the realistic threat is regression or topology.
+- **Threat label:** one of: **(a) Exploit** - the weakness is attackable now; give a concrete walkthrough; **(b) Regression risk** - protection holds today but a future refactor could silently drop it; **(c) Topology-dependent** - the attack needs infra not visible in diff. Removing a protection that was live (auth deletion, opened CORS) is Exploit, not Regression risk - the gap is open now, not next refactor. When a finding is both a standalone Exploit and an escalation gated by infra (SSRF: exploitable against internal hosts now, metadata-credential reach is topology-dependent), label Exploit and name the topology condition as the escalation. Do not invent an exploit when the realistic threat is genuinely only regression or topology.
 - **Severity rationale:** [tier] per rubric - [which clause applies]
 - **Fix:** [Rust remediation with code]
 

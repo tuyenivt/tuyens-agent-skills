@@ -24,7 +24,7 @@ user-invocable: false
 - `Arc<T>` for cross-task sharing. `Rc`/`RefCell` are single-thread only and are `!Send`.
 - Lock the smallest data the shortest time: clone/copy out, drop the guard, then compute or await.
 - Multiple locks: define one global order (named, documented) and acquire in that order at every site.
-- Channel by topology: `oneshot` (1:1 reply), `mpsc` (N:1 pipeline), `broadcast` (1:N fanout, each msg to all), `watch` (latest value only). Always bounded; unbounded only with a documented upstream rate limit.
+- Channel by topology: `oneshot` (1:1 reply), `mpsc` (N:1 pipeline), `broadcast` (1:N fanout, each msg to all), `watch` (latest value only). Always bounded; unbounded only with a documented upstream rate limit. Size for in-flight work, not throughput: `mpsc` capacity = roughly consumer parallelism x per-item in-flight depth (small, e.g. 2-4x worker count) so `.send().await` backpressures early; `broadcast` capacity = the worst lag a slow subscriber may fall behind before it is allowed to skip.
 - Atomics for single counters/flags; switch to `Mutex`/`RwLock` once invariants span fields.
 - Never call rayon (`par_iter`, `join`, `scope`) directly inside an async fn -- it blocks the worker. Wrap in `spawn_blocking` or hop via `rayon::spawn` + `oneshot`.
 - Handle `PoisonError` (or use `parking_lot::Mutex` which can't poison); `.unwrap()` on a poisoned guard panics the request task.
@@ -89,7 +89,7 @@ fn current() -> Arc<Config> { CONFIG.load_full() }
 fn reload(c: Config)        { CONFIG.store(Arc::new(c)); }
 ```
 
-`RwLock` still fits when readers need a borrow into the value without cloning a whole snapshot.
+`load()` returns a guard you can borrow through (`&cfg.allowed_origins`) with no struct clone - bind it to a `let` first, since the guard must outlive the borrow; use `load_full()` only to move an owned `Arc` across an `.await` or into a spawned task. So the "needs a borrow" case does not force `RwLock`; `RwLock` only wins when readers need a long-lived mutable-in-place borrow. Choose `ArcSwap` when readers just poll the current value, `watch` when a task must be *notified* on change (re-arm a timer, wake a worker).
 
 ### Counters: atomics, not Mutex
 
@@ -193,7 +193,9 @@ Evidence: <one-line quote>
 Fix: <one-line action; name the Pattern>
 ```
 
-Omit no field; use `None` / `N/A` when not applicable.
+Omit no field; use `None` / `N/A` when not applicable. One block per root cause: if several Issue values describe one defect (e.g. an over-broad lock that also enables a deadlock), report the deepest cause and name the rest in `Fix`.
+
+Severity: `Blocker` = unsound or hangs the runtime (lock-across-await, deadlock, `!Send` across `.await`, rayon in async, data race). `High` = correctness/availability risk under load (unbounded channel, wrong topology). `Medium` = contention or panic-on-poison. `Low` = style/clarity.
 
 ## Avoid
 

@@ -19,7 +19,7 @@ user-invocable: false
 
 - Handlers orchestrate only: parse input, call a service via `State`, map to response. No DB, no business logic.
 - Validate every request DTO at the handler boundary (`validator::Validate` + `serde`).
-- Every endpoint returns `ApiResponse<T>` on success and `AppError` on failure. No bare strings, raw `Json(Vec<_>)`, or ad-hoc `(StatusCode, String)`.
+- Every endpoint returns `ApiResponse<T>` on success and `AppError` on failure. No bare strings, raw `Json(Vec<_>)`, or ad-hoc `(StatusCode, String)`. Bodyless success (DELETE) returns `StatusCode::NO_CONTENT`, not an empty envelope.
 - List endpoints clamp `page_size` to a server-side max and reject `page < 1`.
 - `AppState` is cheaply `Clone`: wrap heavy or non-`Clone` fields in `Arc`. Never put shared read state behind a `Mutex`.
 - Apply auth on the protected sub-router, not the top-level `Router`.
@@ -100,6 +100,23 @@ impl ListQuery {
         Ok((self.page, self.page_size.clamp(1, MAX_PAGE_SIZE)))
     }
 }
+```
+
+`normalize` rejects a bad `page` but silently clamps an over-cap `page_size` - the response is the source of truth, so the returned `meta.page_size` reflects the actual value served.
+
+The service returns `(rows, total_items)`; the handler builds `meta` and never touches the DB. `total_pages` is ceiling division (integer math, no float, `page_size >= 1` after clamp):
+
+```rust
+impl PaginationMeta {
+    pub fn new(page: i64, page_size: i64, total_items: i64) -> Self {
+        let total_pages = (total_items + page_size - 1) / page_size; // 0 items -> 0 pages
+        Self { page, page_size, total_items, total_pages }
+    }
+}
+
+let (page, page_size) = q.normalize()?;
+let (rows, total_items) = svc.list(page, page_size).await?;
+Ok(Json(ApiResponse::paginated(rows, PaginationMeta::new(page, page_size, total_items))))
 ```
 
 Bad: `q.page_size.unwrap_or(100)` - no upper bound; a client can request a million rows.

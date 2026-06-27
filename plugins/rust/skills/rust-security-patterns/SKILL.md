@@ -180,23 +180,26 @@ One Finding per issue:
 
 ```
 Severity: {Critical | High | Medium | Low | Info}
-Category: {Authn | Authz | Injection | MassAssignment | Crypto | Secrets | CORS | Unsafe | Deps | Other}
+Category: {Authn | Authz | Injection | MassAssignment | Crypto | Secrets | CORS | PathTraversal | Unsafe | Deps | Other}
 Location: <file>:<line>
 Finding: <one-sentence vulnerability description>
 Evidence: <code snippet or specific call>
 Fix: <minimal change, referencing a Pattern by name>
 ```
 
+Severity: `Critical` = exploitable now (auth bypass, injection, `format!`-into-SQL, alg confusion, path traversal, hardcoded prod secret); `High` = strong weakening needing a precondition (HS256 in prod, wildcard CORS + credentials, unjustified `unsafe`); `Medium` = defense-in-depth gap (missing `iss`/`aud`, hashing on the runtime, missing validation); `Low`/`Info` = hardening. One root cause spanning two categories (e.g. a `flatten` map that is both MassAssignment and Injection) emits one Finding per category, since each needs a distinct Fix.
+
 End with:
 
 ```
-Coverage: validation={ok|gap}, authn={ok|gap}, authz={ok|gap}, sql={ok|gap},
-          mass-assignment={ok|gap}, crypto={ok|gap}, secrets={ok|gap},
-          cors={ok|gap}, unsafe={ok|n/a}, deps={ok|gap}
+Coverage: validation={ok|gap|n/a}, authn={ok|gap|n/a}, authz={ok|gap|n/a},
+          sql={ok|gap|n/a}, mass-assignment={ok|gap|n/a}, crypto={ok|gap|n/a},
+          secrets={ok|gap|n/a}, cors={ok|gap|n/a}, path-traversal={ok|gap|n/a},
+          unsafe={ok|gap|n/a}, deps={ok|gap|n/a}
 Summary: <N> findings (<C> Critical, <H> High, <M> Medium, <L> Low)
 ```
 
-Use `gap` when the category was not addressed by the code under review; `n/a` only for `unsafe` when the codebase contains no `unsafe` blocks.
+Per category: `ok` = present and correctly defended; `gap` = the surface exists in the code under review but is unhandled or wrong (a finding); `n/a` = the surface does not appear at all (no SQL, no CORS layer, no `unsafe`). For `deps`, judge against CI/config when shown; mark `gap` when no `cargo audit` gate is present.
 
 ## Avoid
 

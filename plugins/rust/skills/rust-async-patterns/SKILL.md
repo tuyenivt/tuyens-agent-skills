@@ -25,9 +25,9 @@ For non-Tokio runtimes (async-std, smol), keep the structural rules (no sync blo
 - Never block the runtime: no `std::fs`/`std::thread::sleep`/blocking drivers/long CPU loops. Use async I/O (`tokio::fs`, `tokio::io`, async drivers) or wrap in `tokio::task::spawn_blocking`.
 - Every spawned task is owned: hold the `JoinHandle` or use `JoinSet`, and handle `JoinError` (distinguish panic vs. cancellation). No fire-and-forget.
 - Shutdown is explicit: propagate a `CancellationToken` to every long-running task. Drop is not a shutdown mechanism.
-- `select!` branches must be cancel-safe. Pin futures across iterations with `tokio::pin!`, or use cancel-safe primitives (`mpsc::Receiver::recv`, `Notified::notified`, `CancellationToken::cancelled`, `timeout` as the outer future).
+- `select!` branches must be cancel-safe. Pin futures across iterations with `tokio::pin!`, or use cancel-safe primitives (`mpsc::Receiver::recv`, `Notified::notified`, `CancellationToken::cancelled`, `timeout` as the outer future, `AsyncReadExt::read`/`read_buf`). Treat `read_line`/`read_until`, request builders (`reqwest::get`), and any future that buffers partial progress in its own state as NOT cancel-safe.
 - Bound everything: bounded `tokio::sync::mpsc`, `timeout` on external calls, capacity caps on fan-out. No `std::sync::mpsc` or unbounded channels in async.
-- No `std::sync::MutexGuard`, `Rc`, or `RefCell` held across `.await` (deadlocks the runtime, makes the future `!Send`). For shared state across `.await` see `rust-concurrency`.
+- No `std::sync::MutexGuard`, `Rc`, or `RefCell` held across `.await`. File this as `Lock-Across-Await` (not `Blocking-In-Async`), even when it surfaces as a `future cannot be sent between threads safely` error - the guard-across-await is the root cause, so report it once as `Lock-Across-Await`, not also as `Send-Bound`. Diagnosing and scoping the guard is this skill's job; defer only the shared-state *redesign* (which lock, async vs. sync, sharding) to `rust-concurrency`. Use `Send-Bound` for non-`Send` futures with a different cause (`Rc`/`RefCell`/`*const T`/non-`Send` library type held across `.await`).
 
 ## Patterns
 

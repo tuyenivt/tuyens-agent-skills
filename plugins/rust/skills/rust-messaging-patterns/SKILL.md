@@ -100,7 +100,7 @@ for _ in 0..WORKERS {
 // producer: tx.send(job).await?  -- awaits when full
 ```
 
-In-proc queues have no broker redelivery. Persist the job (DB row or outbox) before enqueueing if loss on crash is unacceptable. Drain on shutdown via `CancellationToken` + `workers.join_all().await`.
+In-proc queues have no broker redelivery. Persist the job (DB row or outbox) before enqueueing if loss on crash is unacceptable. Drain on shutdown via `CancellationToken` + `workers.join_all().await`. There is no broker DLQ: a job that exhausts bounded retries goes to a failed-jobs table (id, payload, reason), never a silent `let _ =`.
 
 ### Idempotency: dedupe before side effects
 
@@ -171,6 +171,8 @@ Relay polls with `SELECT ... FOR UPDATE SKIP LOCKED` for horizontal scaling. Con
 ## Output Format
 
 Workflows parse this contract.
+
+Severity by worst-case outcome: `Blocker` = data loss or duplicate side effect in normal operation (auto-commit/`no_ack`, dual write, dedupe-after-side-effect). `High` = loss/duplication only under failure or redelivery (no DLQ, unclassified errors, unbounded retry). `Medium` = degradation or correctness risk (blocking call, leaked internal schema). `Low` = hardening (silent drop, log gaps).
 
 ```
 Findings:

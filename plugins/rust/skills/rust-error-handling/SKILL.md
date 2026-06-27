@@ -9,7 +9,7 @@ user-invocable: false
 
 # Rust Error Handling
 
-> Load `Use skill: stack-detect` first to determine the project stack. For Axum `IntoResponse` wiring and response envelopes, defer to `rust-web-patterns`.
+> Load `Use skill: stack-detect` first to determine the project stack. This skill owns the error `IntoResponse` impl; the success envelope (`ApiResponse<T>`) and router wiring belong to `rust-web-patterns`.
 
 ## When to Use
 
@@ -73,6 +73,16 @@ sqlx::query_as!(User, "...", id).fetch_one(&pool).await
     })?
 ```
 
+Constraint violations arrive as `sqlx::Error::Database` with a SQLSTATE code, not a dedicated variant. Map the codes callers branch on (`23505` unique, `23503` foreign key); let the rest flow via `#[from]`.
+
+```rust
+.map_err(|e| match &e {
+    sqlx::Error::Database(db) if db.code().as_deref() == Some("23505")
+        => DomainError::EmailTaken(email.clone()),
+    _ => e.into(),
+})?
+```
+
 ### Option vs Result
 
 ```rust
@@ -104,6 +114,14 @@ let _ = sqlx::query!("UPDATE ...").execute(&pool).await;
 // Good
 let res = sqlx::query!("UPDATE ...").execute(&pool).await?;
 if res.rows_affected() == 0 { return Err(DomainError::UserNotFound(id)); }
+```
+
+A genuinely best-effort side effect (fire-and-forget notification) may proceed on failure, but log the `Err` with rationale - silence via `let _ =` is still a defect because it hides the failure entirely.
+
+```rust
+if let Err(e) = send_email(&user.email).await {
+    tracing::warn!(error = ?e, user = id, "notification failed; continuing");
+}
 ```
 
 ### Transport boundary (Axum)

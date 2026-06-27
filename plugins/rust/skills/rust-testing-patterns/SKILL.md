@@ -70,11 +70,14 @@ async fn get_user_returns_200() {
     let app = build_router(AppState::with(Arc::new(svc)));
     let req = Request::builder().uri("/users/1").body(Body::empty()).unwrap();
     let res = app.oneshot(req).await.unwrap();
+
     assert_eq!(res.status(), StatusCode::OK);
+    let body: UserDto = serde_json::from_slice(&to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body.id, 1);
 }
 ```
 
-`axum-test`'s `TestServer` is an equivalent higher-level option; pick one and stay consistent across the suite.
+Status alone is a weak assertion - deserialize the body and check the contract. Build the router with the same layers production uses so auth/middleware are exercised; a route tested without its auth layer proves nothing. Cover error paths (404, 422), not just the happy path. `axum-test`'s `TestServer` is an equivalent higher-level option; pick one and stay consistent across the suite.
 
 ### Integration Test with testcontainers
 
@@ -128,14 +131,14 @@ When reviewing a test suite, emit one finding per issue:
 
 ```
 Finding: <one-line summary>
-Category: {AsyncRuntime | Mocking | Boundary | Isolation | Synchronization}
+Category: {AsyncRuntime | Mocking | Boundary | Isolation | Synchronization | Coverage}
 Severity: {Critical | Major | Minor}
 Location: <path>:<line>
 Evidence: <code excerpt or pattern reference>
 Fix: <pattern name from this skill> - <one-line corrective action>
 ```
 
-If Docker is unavailable in CI, mark testcontainers gaps `Severity: Major` with `Fix: gate with #[ignore]` rather than dropping integration coverage.
+`Coverage` is for shallow assertions (status-only, no body), untested error paths, and test-config smells (`--test-threads=1`, missing `#[ignore]` gates). Severity: `Critical` for issues that make the suite flaky or hide real failures (wall-clock sleep, shared mutable DB state, masking races with `--test-threads=1`); `Major` for boundary/mock/coverage gaps that weaken signal; `Minor` for tests that pass but prove nothing. Collapse one anti-pattern repeated across N sites into a single finding listing each `Location`. If Docker is unavailable in CI, mark testcontainers gaps `Severity: Major` with `Fix: gate with #[ignore]` rather than dropping integration coverage.
 
 ## Avoid
 

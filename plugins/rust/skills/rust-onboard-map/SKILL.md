@@ -18,12 +18,12 @@ user-invocable: false
 ## Rules
 
 - Classify layout from root `Cargo.toml`: `[workspace]` present -> workspace (enumerate members and their `[[bin]]`/`[lib]`); else single-crate.
-- Toolchain source: `rust-toolchain.toml` (pinned, exact) vs `Cargo.toml` `rust-version` (minimum). Report which.
-- Runtime is single-valued: tokio | async-std | smol | none. Do not list multiple - mixing is a bug, flag if seen.
+- Toolchain source: `rust-toolchain.toml` `channel` (exact pin like `1.84.0`, or a floating channel like `stable`/`nightly`) vs `Cargo.toml` `rust-version` (minimum). Report which; for a floating channel say `pinned-channel via rust-toolchain.toml` not an exact version.
+- Runtime is the effective async runtime, single-valued: tokio | async-std | smol | none. Report the runtime even when pulled transitively by the framework (e.g. actix-web -> tokio). Do not list multiple - mixing distinct runtimes is a bug, flag if seen.
 - Framework, DB layer, error stack are each single-valued from `Cargo.toml` deps - pick the dominant one, name overrides explicitly.
 - Per-crate features: list non-default features actually enabled by binary crates or `default-features = false` overrides. Features change which code compiles - silently listing "has features" is useless.
 - `.sqlx/` cache must exist if `sqlx::query!`/`query_as!` macros are used and CI runs offline. Flag mismatch as Tech Debt.
-- Hexagonal/DDD detection: a `domain/` or `core/` crate (or module) with zero `axum`/`sqlx`/`reqwest` imports. Cite by checking its `Cargo.toml` deps, not just the directory name.
+- Hexagonal/DDD detection: a `domain/` or `core/` crate (or module) with zero `axum`/`sqlx`/`reqwest` imports. Cite by checking its `Cargo.toml` deps, not just the directory name. A project can be both a workspace and hexagonal - report `hexagonal` for Pattern when a pure domain crate is confirmed (it is the stronger architectural signal); the workspace shape still shows in Layout and member roles.
 
 ## Patterns
 
@@ -80,7 +80,7 @@ Emit the following keyed signals for `task-onboard` to merge into its report sec
 ```
 ### Stack and Tooling
 - Layout: {single-crate | workspace(<N> members)}
-- Toolchain: <version> ({pinned via rust-toolchain.toml | min via Cargo.toml rust-version})
+- Toolchain: <version-or-channel> ({pinned via rust-toolchain.toml | pinned-channel via rust-toolchain.toml | min via Cargo.toml rust-version})
 - Runtime: {tokio | async-std | smol | none}
 - Framework: {axum | actix-web | rocket | warp | hyper | none}
 - DB layer: {sqlx | sea-orm | diesel | refinery | none}
@@ -94,8 +94,8 @@ Emit the following keyed signals for `task-onboard` to merge into its report sec
 - build: `cargo build`
 - run: `cargo run` | `cargo run --bin <name>`
 - migrate: <one of: `sqlx migrate run` | `sea-orm-cli migrate up` | `diesel migration run` | `refinery migrate -e DATABASE_URL files`>
-- sqlx offline prep (if sqlx): `cargo sqlx prepare --workspace`
-- watch (if `cargo-watch` in dev-deps): `cargo watch -x run`
+- sqlx offline prep (if sqlx): `cargo sqlx prepare` (append `--workspace` only for a Cargo workspace)
+- watch: `cargo watch -x run` if `cargo-watch` in dev-deps, else omit this line
 - default port: <from config or `unknown`>; health: <`/health` if instrumented or `unknown`>
 
 ### Architecture

@@ -27,17 +27,19 @@ Stack-specific delegate of `task-code-review-perf` for Rust / Axum / sqlx / Toki
 Steady-state production impact, not "how scary it looks".
 
 | Severity   | Definition                                                                                                                                                                                                                                                                                  |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **High**   | Outage shape under steady load: unbounded growth (leaked tasks, unbounded channels/`Vec`), pool starvation, executor stall (sync I/O / `bcrypt` on runtime), N+1 multiplying RPS by O(N), `std::sync::Mutex` across `.await`. Or deploy-time outage: non-`CONCURRENTLY` index or `NOT NULL` add on a hot table (>10M rows). |
-| **Medium** | Degraded p95/p99: missing pool sizing, `SELECT *` over wide rows, missing pagination on growable lists, unjustified channel buffer, single-flight gap. Recoverable next PR.                                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **High**   | Outage shape under steady load: unbounded growth (leaked tasks, unbounded channels/`Vec`), pool starvation (incl. broker/HTTP I/O holding a tx connection - dispatch inside `pool.begin()`), executor stall (sync I/O / `bcrypt` on runtime), N+1 multiplying RPS by O(N), `std::sync::Mutex` across `.await`, read-amplification on a top DB consumer (no cache on a static/rarely-changing read at high RPS). Or deploy-time outage: non-`CONCURRENTLY` index or `NOT NULL` add on a hot table (`>10M` rows, or "large/hot" with row count unconfirmed - treat as High pending confirmation). Or **data loss / durability** in normal operation: at-most-once consume (offset/ack committed before handler success), event published before the tx commits. |
+| **Medium** | Degraded p95/p99: missing pool sizing, `SELECT *` over wide rows, missing pagination on growable lists, unjustified channel buffer, single-flight gap, per-request `reqwest::Client::new()` (defeats connection reuse), missing `tokio::time::timeout` on outbound I/O. Recoverable next PR.                                                                                                                |
 | **Low**    | CPU / alloc churn: `.clone()` overuse, `format!` in hot paths, missing `Vec::with_capacity`, missing `CompressionLayer`, missing `#[tracing::instrument]`.                                                                                                                                  |
+
+If a finding matches no row, rank by steady-state production impact (the principle above), not by which row names it - an unlisted anti-pattern is not automatically Low.
 
 ## Depth Levels
 
 | Depth      | When                                                       | Runs                                       |
 | ---------- | ---------------------------------------------------------- | ------------------------------------------ |
 | `standard` | Default                                                    | Steps 1-9                                  |
-| `deep`     | Profiling-driven (`flamegraph` / OTel / `criterion` data)  | All steps + capacity guidance + load plan  |
+| `deep`     | Profiling-driven (`flamegraph` / OTel / `criterion` data)  | All steps + capacity guidance + load plan (emit in the `Deep Addenda` section of the report) |
 
 ## Invocation
 
@@ -84,7 +86,7 @@ Workflow-specific add-ons on top of the atomic skills:
 - Pool config sized: `max_connections × replicas <= DB cap`; pool on `AppState`, not per-request
 - No HTTP / queue I/O inside `pool.begin()...tx.commit()` (capture, dispatch after commit)
 - Migration impact stated when DDL hits a hot table: row count, lock mode, expected duration. If row count unknown: "row count not in diff - confirm before deploy"
-- Reasoning rule: diff adds an index -> verify the column is hot in `WHERE`/`ORDER BY`/`GROUP BY`; diff adds a column the app queries on -> flag the missing index proactively
+- Reasoning rule: diff adds an index -> verify the column is hot in `WHERE`/`ORDER BY`/`GROUP BY`. Hot in the diff -> bless. Not in the diff but plausibly hot elsewhere -> `[Question]` ("is this column queried elsewhere?"), don't flag. Provably unused -> flag as unjustified. Diff adds a column the app queries on -> flag the missing index proactively
 
 ### Step 5 - Tokio Tasks, Locks, Blocking on Runtime
 
@@ -189,6 +191,13 @@ Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / schema / lo
 3. **[Implement]** [Recommend] file:line - [one-line action]
 
 _Omit if no actionable findings._
+
+## Deep Addenda
+
+_`deep` depth only; omit at `standard`._
+
+- **Capacity guidance:** pool/cache/channel sizing tied to the findings (e.g. cache entry count + TTL, `max_connections × replicas <= DB cap`, bounded-channel N).
+- **Load plan:** baseline -> after-fix measurements per finding (DB queries/s, p95/p99, egress, flamegraph share) and the steady-state watch metric.
 ```
 
 ## Self-Check
@@ -203,7 +212,7 @@ _Omit if no actionable findings._
 - [ ] Step 8 - `rust-messaging-patterns` consulted for any worker / broker change; post-commit dispatch + ID-only payloads + bounded channels verified
 - [ ] Step 9 - observability presence checked or `[Delegate]` added; report written via `review-report-writer`; confirmation printed
 - [ ] Every finding states impact (measured or estimated, never just "this is slow") and cites `file:line`
-- [ ] Depth honored: `standard` ran 1-9; `deep` adds capacity + load-test plan
+- [ ] Depth honored: `standard` ran 1-9; `deep` adds capacity + load plan in the `Deep Addenda` section
 
 ## Avoid
 

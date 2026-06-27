@@ -47,6 +47,10 @@ Read instrumentation wiring in `src/main.rs`, `src/observability/`, `Cargo.toml`
 
 Produce one verdict per surface: `wired | partial | absent` with file:line evidence. A missing wire is the finding, not a precondition.
 
+- `wired` - surface initialized and functional end-to-end.
+- `partial` - present but non-functional or incomplete: emit side wired but consumer/exporter absent (e.g. `TraceLayer` registered with no `Registry` init), or surface exists with a callsite defect (unbounded label, actual-path route label). Default to `partial` over `absent` when any wiring exists.
+- `absent` - surface not present at all.
+
 | Surface                   | Look for                                                                                                |
 | ------------------------- | ------------------------------------------------------------------------------------------------------- |
 | tracing logging           | `tracing_subscriber::fmt::layer().json()`, formatter + filter + redaction layers in `Registry`          |
@@ -56,9 +60,14 @@ Produce one verdict per surface: `wired | partial | absent` with file:line evide
 | Messaging instrumentation | `reqwest-tracing`, `tower-http::TraceLayer`, `rdkafka` / `lapin` traceparent extraction                |
 | Error tracker             | `sentry::init`, `sentry-tower`, `sentry-tracing`                                                       |
 
-**Grouping rule.** If a whole surface is `absent`, produce one High finding listing the missing pieces grouped by target file / symbol - not one finding per sub-check. Per-callsite findings only apply when the surface exists.
+**Grouping rule.** If a whole surface is `absent`, produce one finding listing the missing pieces grouped by target file / symbol - not one finding per sub-check. Per-callsite findings only apply when the surface exists.
 
-**Greenfield exception.** If 3+ surfaces are `absent`, run Steps 5-10 regardless of diff-touch gate (the absence is the finding).
+**Severity.** Bucket by production impact, not by checklist position:
+- **High** - breaks diagnosability or alertability for a live path, or risks prod stability: OTel SDK init after `Router::new()`, unbounded metric label (`user_id` / `order_id` / actual-path route label), missing `tracing-opentelemetry` bridge when OTel is wired, no subscriber init (logs discarded), `axum::serve` without `with_graceful_shutdown`, missing SIGTERM handling, consumer not extracting `traceparent`, an `absent` core surface (logging / OTel / metrics) on a service that serves traffic.
+- **Medium** - degraded but functional: business column with no metric / span attribute, missing spawn-context propagation, `install_batch` without `shutdown_tracer_provider`, no drain timeout, default `Sampler` in prod, missing per-task metrics, bare `reqwest::Client` (dropped traceparent).
+- **Low / quick win** - hygiene or optional/dev-only tooling: missing `describe_*!`, unnamed long-lived task, `absent` tokio-console or Sentry (gated, dev/optional surfaces - never High purely for being absent).
+
+**Greenfield exception.** If 3+ surfaces are `absent`, run Steps 5-11 regardless of diff-touch gate (the absence is the finding). Step 12 still depends on depth.
 
 ### Step 5 - Structured Logging
 
@@ -125,7 +134,7 @@ _Skip unless diff touches lifecycle / `main.rs` (or greenfield exception applies
 
 ### Step 11 - Error Tracking (Sentry)
 
-_Skip unless diff touches error handlers, Sentry config, or DSN handling._
+_Skip unless diff touches error handlers, Sentry config, or DSN handling (or greenfield exception applies)._
 
 - [ ] `sentry::init` in `main.rs`; `sentry-tower::NewSentryLayer` + `SentryHttpLayer` on router
 - [ ] DSN, `release`, `environment` from env / build metadata; never committed
@@ -207,14 +216,14 @@ Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]`
 - [ ] Step 1: behavioral principles loaded
 - [ ] Step 2: stack confirmed Rust / Axum; data access and messaging recorded
 - [ ] Step 3: diff and commit log read once and reused (or handle accepted from parent)
-- [ ] Step 4: surface map produced with 6 verdicts and evidence; grouping / greenfield rules applied
+- [ ] Step 4: surface map produced with 6 verdicts and evidence; grouping / severity / greenfield rules applied
 - [ ] Step 5: logging assessed (JSON, correlation, redaction, structured fields, error-chain rendering, levels)
 - [ ] Step 6: OTel SDK init order, `tracing-opentelemetry` bridge, exporter, sampling, auto-instrumentation, spawn context, span shutdown assessed
 - [ ] Step 7: exporter, runtime + HTTP metrics, namespace / labels / buckets, `describe_*!` assessed
-- [ ] Step 8: `console_subscriber` gating, `tokio_unstable` cfg, bind safety, task names (skipped per gate when applicable)
-- [ ] Step 9: per-task metrics, instrument fields, broker outbound wrapping (skipped per gate when applicable)
-- [ ] Step 10: signals, graceful drain + timeout, tracer / pool shutdown (skipped per gate when applicable)
-- [ ] Step 11: Sentry SDK, DSN externalization, PII scrub, sample rates, panic capture (skipped per gate when applicable)
+- [ ] Step 8: `console_subscriber` gating, `tokio_unstable` cfg, bind safety, task names (run if gate or greenfield fires, else skipped)
+- [ ] Step 9: per-task metrics, instrument fields, broker outbound wrapping (run if gate or greenfield fires, else skipped)
+- [ ] Step 10: signals, graceful drain + timeout, tracer / pool shutdown (run if gate or greenfield fires, else skipped)
+- [ ] Step 11: Sentry SDK, DSN externalization, PII scrub, sample rates, panic capture (run if gate or greenfield fires, else skipped)
 - [ ] Step 12: SLIs and three-way health split assessed (deep only)
 - [ ] Step 13: report written via `review-report-writer`; confirmation printed
 

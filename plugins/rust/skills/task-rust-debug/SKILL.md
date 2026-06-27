@@ -77,6 +77,9 @@ Other common multi-symptom roots: unhandled `23505` from a missing `ON CONFLICT`
 **Build / compile**
 - `unresolved import` -> wrong path, missing `pub`, or missing dep in `Cargo.toml`.
 
+**Silent data loss** (no error; a field arrives empty/default)
+- Throws nothing, so it routes to no atomic skill - run the Step 3 boundary analysis to find which boundary drops the field. The root is usually a `..Default::default()` in a `From<Dto>` conversion or a serde `rename`/`default` mismatch; fix it at that boundary.
+
 **Background jobs**
 - `JoinError` -> spawned task panicked; root cause is inside the task, not the join site. Use skill: `rust-async-patterns`.
 - Kafka/AMQP consumer reprocess loop -> handler returns error on poison message; needs DLQ. Use skill: `rust-messaging-patterns`.
@@ -104,6 +107,8 @@ let cfg = { std_mutex.lock().unwrap().clone() };
 fetch(&cfg).await?;
 ```
 
+If the lock genuinely must be held across the `.await` (shared state mutated mid-await), switch the field to `tokio::sync::Mutex`, whose guard is `Send`, instead of cloning out.
+
 **Step 9 - Prevention.** Add one guard so this class cannot recur:
 
 | Class                          | Guard                                                              |
@@ -111,6 +116,7 @@ fetch(&cfg).await?;
 | std-Mutex across `.await`      | `cargo clippy -- -W clippy::await_holding_lock` in CI              |
 | Concurrency bug (load-only)    | Load test or `#[tokio::test(flavor = "multi_thread")]` reproducer  |
 | Runtime `query_as` field drop  | `sqlx::test` integration test; prefer compile-time `query_as!`     |
+| `From<Dto>` conversion drop     | Drop `..Default::default()` so an unmapped field fails to compile; round-trip test |
 | Unique-violation race          | DB unique index + `ON CONFLICT`; idempotency-key test              |
 | `unwrap()` on fallible API     | `#[must_use]`, newtype invariants, or `?` propagation              |
 

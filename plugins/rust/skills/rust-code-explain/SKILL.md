@@ -77,6 +77,7 @@ Good: `fn handlers() -> Vec<Box<dyn Handler + Send + Sync>>` - heterogeneous, cr
 - `query!` / `query_as!` validate SQL at compile time against `DATABASE_URL` or `.sqlx/` cache; drift between cache and live schema breaks the build.
 - `Transaction<'_, Postgres>` borrows the pool, is not `Clone`, and cannot cross `tokio::spawn` boundaries.
 - `tx.commit().await` finalizes; drop without commit rolls back. **Any `?` between `begin()` and `commit()` rolls back silently** - call out which DB writes are reverted on the failure path.
+- Check the executor of every `await` inside the tx window: `&mut *tx` runs on the transaction; `&pool` / `&self.pool` runs on a separate connection and is **not** rolled back. A pool call between `begin()` and `commit()` silently escapes the transaction (e.g. an audit write that persists even when the tx aborts).
 
 ### Axum (per-handler, only if target is a handler)
 
@@ -100,6 +101,7 @@ Emit signals as bullets under tags matching the host's section names. The host (
 [Non-Obvious Behavior]
 - <each value held across .await that is !Send or a sync guard>
 - <each `?` between begin() and commit() and what is rolled back>
+- <awaits inside the tx window that use the pool (&pool) instead of &mut *tx and so escape the rollback>
 - <detached spawns (JoinHandle dropped) and what is lost on shutdown / panic>
 - <select! branches whose loss cancels in-flight work>
 - <cache / DB writes that can diverge on partial failure>

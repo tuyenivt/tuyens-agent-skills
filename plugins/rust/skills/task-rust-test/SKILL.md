@@ -34,11 +34,7 @@ Use skill: `stack-detect`. If invoked as a delegate of `task-code-test` and the 
 
 Record `Data Access` (sqlx / diesel / mixed), `Messaging` (Tokio queue / AMQP / Kafka / none), `Mock Framework` (`mockall` / hand-written / `mockito` / `wiremock`) for the output.
 
-### Step 3 - Apply spec-aware mode (conditional)
-
-If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists for the code under test, Use skill: `spec-aware-preamble`. One test per acceptance criterion (`// Satisfies: AC<N>`), cover every NFR via `plan.md`, refuse out-of-scope tests. Never edit spec artifacts; surface gaps as proposed amendments.
-
-### Step 4 - Read code and existing tests
+### Step 3 - Read code and existing tests
 
 Read before producing output:
 
@@ -49,7 +45,7 @@ Read before producing output:
 
 Greenfield: state choices explicitly. Defaults: `tests/` for integration / handler, `#[cfg(test)] mod tests` for unit; `#[tokio::test]` (multi-thread only when handlers spawn or workers run cross-thread); `axum-test::TestServer`; testcontainers Postgres shared via `OnceCell` with per-test schema or transactional rollback; `mockall #[automock]`; `proptest`; `cargo nextest`; `cargo clippy --all-targets -- -D warnings`; `tests/common/mod.rs` for fixtures.
 
-### Step 5 - Map pyramid and boundaries
+### Step 4 - Map pyramid and boundaries
 
 Use skill: `rust-testing-patterns` for canonical forms (async, mockall, oneshot, testcontainers, proptest, sleep-free sync).
 
@@ -65,13 +61,13 @@ Use skill: `rust-testing-patterns` for canonical forms (async, mockall, oneshot,
 
 Many unit, some handler / integration, few E2E.
 
-### Step 6 - Apply Rust-specific guardrails
+### Step 5 - Apply Rust-specific guardrails
 
 **Handler tests must build the router with the same global middleware as `main.rs`** (TraceLayer, request-id, error handler, auth). Missing auth in test masks authorization bugs.
 
 **Repository tests use testcontainers Postgres, never SQLite.** sqlx compile-checked queries validate against Postgres; SQLite diverges on JSONB, partial indexes, `ON CONFLICT`, arrays, `LATERAL`.
 
-**Background-task tests cover idempotency (invoke twice, side effect once), retry (fail-N-then-succeed), and max-retries / DLQ (fail forever, no infinite loop).** In-process is fine for fast tests; use testcontainers Redis / Kafka + real worker for non-trivial retry / ack / DLQ semantics. For `rdkafka`: `mock_cluster::MockCluster` in-process or testcontainers Kafka.
+**Background-task tests cover idempotency (invoke twice, side effect once), retry (fail-N-then-succeed), and max-retries / DLQ (fail forever, no infinite loop).** In-process is fine for fast tests; use testcontainers Redis / Kafka + real worker for non-trivial retry / ack / DLQ semantics. For `rdkafka`: `mock_cluster::MockCluster` in-process or testcontainers Kafka. If the job has no retry / idempotency / DLQ logic to test, flag that absence as a reliability defect (a dropped side effect is at-most-once), not just a coverage gap.
 
 **Table-driven when behavior varies** (`Vec<Case>` loop or `rstest::case`). Failure messages cite the case (line for `rstest`, explicit `name` for manual loops).
 
@@ -79,7 +75,7 @@ Many unit, some handler / integration, few E2E.
 
 **Every protected endpoint:** happy + 401 + 403 + 4xx validation; pagination / filtering / sorting contracts.
 
-**Web hazards (handler-level; default to P1 in Step 8):**
+**Web hazards (handler-level; default to P1 in Step 6):**
 
 | Hazard                | Handler-shape signal                                  | Test                                                                |
 | --------------------- | ----------------------------------------------------- | ------------------------------------------------------------------- |
@@ -90,14 +86,15 @@ Many unit, some handler / integration, few E2E.
 | SSRF                  | `reqwest::get(user_url)`                              | Allowlist rejects metadata IP, loopback, RFC1918; DNS-rebind        |
 | Privilege escalation  | `update_user` / `update_role` handlers                | Non-admin cannot self-promote; explicit admin guard                 |
 | Command injection     | `Command::new("sh").arg("-c")` or `format!`-built     | Arg-list invocation; reject metacharacters                          |
+| Webhook auth          | inbound `POST` from Stripe / GitHub / payment provider | Valid HMAC `Signature` accepted; tampered body, missing / replayed / out-of-window timestamp rejected; idempotency-key dedup |
 
 **Does NOT need a test:** framework behavior (Axum routing, default `validator` rules), generated boilerplate (DTOs, trivial `From` impls), trivial delegation (`service::get -> repository::get` with no logic).
 
-### Step 7 - Prioritize when coverage is low
+### Step 6 - Prioritize when coverage is low
 
-When line coverage is below ~50%, run this **before** scaffolding.
+When line coverage is below ~50% **or** more than 5 gaps surfaced, run this **before** scaffolding (matches the Output-Format prioritization trigger).
 
-1. **P1 - Authz / authn:** handler tests per protected endpoint (401 anonymous, 403 wrong-role); JWT middleware (issuer, audience, signature, expiry); custom auth middleware fns.
+1. **P1 - Authz / authn:** handler tests per protected endpoint (401 anonymous, 403 wrong-role); JWT middleware (issuer, audience, signature, expiry); webhook HMAC-signature verification for inbound provider callbacks; custom auth middleware fns.
 2. **P2 - Data integrity:** repository integration tests for non-trivial queries; service writes (happy + rollback); background-task idempotency.
 3. **P3 - Business-critical:** revenue paths (checkout, billing); state-machine transitions (exhaustive `match`); scheduled tasks touching billing or notifications.
 4. **P4 - High-churn:** files with frequent recent commits or fix history.
@@ -105,7 +102,7 @@ When line coverage is below ~50%, run this **before** scaffolding.
 
 **Multi-band rule.** File a target under the highest band (lowest number) and note the secondary band; cover both axes (a refund test asserts idempotency AND refund-amount invariants). Do not split across bands.
 
-### Step 8 - Infra hygiene
+### Step 7 - Infra hygiene
 
 - [ ] testcontainers shared via `OnceCell` / `Lazy` with per-test isolation (unique schema or transactional rollback), not per-test container
 - [ ] `cargo clippy --all-targets -- -D warnings` in CI; `cargo audit` / `cargo deny check advisories` block merge on new advisories
@@ -141,8 +138,8 @@ When line coverage is below ~50%, run this **before** scaffolding.
 - **Property:** [pure fns with invariants but no proptest]
 - **Handler:** [endpoints without tests; missing 401/403/validation paths]
 - **Integration:** [repositories with non-trivial queries untested; SQLite on a Postgres app]
-- **Auth:** [endpoints missing authz tests; missing JWT middleware tests]
-- **Web hazards:** [IDOR triples / open-redirect / file-upload / bulk-export / SSRF / priv-esc gaps]
+- **Auth:** [endpoints missing authz tests; missing JWT middleware tests; webhook signature verification untested]
+- **Web hazards:** [IDOR triples / open-redirect / file-upload / bulk-export / SSRF / priv-esc / webhook-auth gaps]
 - **Job:** [background tasks without idempotency / retry tests]
 - **Concurrency:** [async fns spawning cross-thread tested only on single-thread runtime]
 - **Contract:** [OpenAPI / Pact contracts without verification]
@@ -180,12 +177,11 @@ When line coverage is below ~50%, run this **before** scaffolding.
 
 - [ ] Step 1 - `behavioral-principles` loaded first
 - [ ] Step 2 - Stack confirmed Rust / Axum; `Data Access`, `Messaging`, `Mock Framework` recorded
-- [ ] Step 3 - Spec-aware mode honored when `--spec` was passed
-- [ ] Step 4 - Code, existing tests, `Cargo.toml`, CI config read; greenfield defaults stated when no tests exist
-- [ ] Step 5 - Pyramid + boundaries mapped; `rust-testing-patterns` consulted for canonical forms
-- [ ] Step 6 - Guardrails applied: handler middleware matches `main.rs`; repos use testcontainers Postgres (not SQLite); jobs cover idempotency + retry + DLQ; validators unit-tested; web-hazard table applied where signal present
-- [ ] Step 7 - Risk bands applied when coverage is low; multi-band targets noted with secondary band
-- [ ] Step 8 - Infra hygiene checked (shared containers, clippy / audit in CI, no silent auth bypass, SDK stub hits asserted, doc tests run)
+- [ ] Step 3 - Code, existing tests, `Cargo.toml`, CI config read; greenfield defaults stated when no tests exist
+- [ ] Step 4 - Pyramid + boundaries mapped; `rust-testing-patterns` consulted for canonical forms
+- [ ] Step 5 - Guardrails applied: handler middleware matches `main.rs`; repos use testcontainers Postgres (not SQLite); jobs cover idempotency + retry + DLQ; validators unit-tested; web-hazard table applied where signal present
+- [ ] Step 6 - Risk bands applied when coverage is low; multi-band targets noted with secondary band
+- [ ] Step 7 - Infra hygiene checked (shared containers, clippy / audit in CI, no silent auth bypass, SDK stub hits asserted, doc tests run)
 
 ## Avoid
 

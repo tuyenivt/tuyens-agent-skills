@@ -128,9 +128,13 @@ Rollback Coverage: {Complete | Partial | Missing | Irreversible}
 CI Check: {Pass | Fail: <reason>}
 ```
 
-Severity: `Critical` blocks production writes; `High` is a full-table scan under `ACCESS EXCLUSIVE` or a deployed-code break; `Medium` is an unsafe or missing rollback; `Low` is style or idempotency.
+Severity: `Critical` blocks production writes, or the migration cannot apply at all (e.g. `CONCURRENTLY` without `-- no-transaction` aborts in the wrapping transaction); `High` is a full-table scan under `ACCESS EXCLUSIVE`, a deployed-code break, or an unbatched DML statement that holds row locks / bloats WAL on a large table; `Medium` is an unsafe or missing rollback; `Low` is style or idempotency.
 
-Blocking Risk: `Critical` if any deploy-breaking change (drop/rename referenced column, in-place type change); `High` if any `ACCESS EXCLUSIVE` scan on a large table; `Low` if only metadata-only DDL; `None` otherwise.
+Blocking Risk: take the highest finding severity. `Critical` if any deploy-breaking change (drop/rename referenced column, in-place type change) or a migration that cannot apply; `High` if any `ACCESS EXCLUSIVE` scan or row-lock-holding backfill on a large table; `Low` if only metadata-only DDL; `None` otherwise.
+
+CI Check: `Fail` if any finding is `High` or `Critical`, or any Rule is violated (mixed concerns, missing `-- no-transaction`, edited applied migration, missing `IF EXISTS` rollback); `Pass` otherwise. State the first failing reason.
+
+Rollback Coverage: `Complete` if every step is reversibly restored with `IF EXISTS`; `Partial` if some steps reverse but one is missing guards or silently drops backfilled data; `Missing` if there is no `.down.sql`; `Irreversible` only when the down declares irreversibility in a header comment (a backfill that overwrites data is irreversible, not `Partial`).
 
 ## Avoid
 

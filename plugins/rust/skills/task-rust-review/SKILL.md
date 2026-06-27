@@ -10,8 +10,6 @@ user-invocable: true
 ---
 
 > **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
->
-> **Spec-aware mode:** If `--spec <slug>` or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` immediately after `behavioral-principles`. Cross-check every changed surface against `spec.md` / `plan.md`: each change must trace to an AC, NFR, or task; out-of-scope changes are **blockers**; missing in-scope coverage is a gap. Never edit spec artifacts.
 
 # Rust Code Review
 
@@ -140,12 +138,12 @@ The full-range diff from Step 3 is discarded; all Phase A-E analysis operates on
 
 **Step 3.5d - Scope expansion handling.**
 
-If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `core-only`, round 2 is `full`), the newly-added scopes have no prior findings to reconcile. Record in Summary based on mode:
+If the round's resolved scope (Step 4) added categories vs. `prior_checkpoint.scope` - whether the user expanded it by flag or signals auto-escalated it - the newly-added scopes have no prior findings to reconcile. Record in Summary based on mode:
 
 - `mode = incremental`: `Scope expanded round <N>: +<list> - new scopes reviewed in full; previously-reviewed scopes reviewed incrementally.`
 - `mode = full`: `Scope expanded round <N>: +<list>.` (the incremental clause does not apply)
 
-The reconciliation table (when emitted) only covers findings whose scope was active in the prior round.
+This line replaces Step 4's `auto-escalated from Core` line when the round expanded over the prior scope; do not emit both. The reconciliation table (when emitted) only covers findings whose scope was active in the prior round.
 
 ### Step 4 - Scope Auto-Escalation
 
@@ -154,11 +152,11 @@ Scan file list / diff for signals listed under **Scope**. Log each as `signal: <
 - Zero signals or `core-only` -> Core
 - One category -> add matching scope
 - 2+ categories -> Full
-- Explicit scope -> respect; still log signals
+- Explicit scope flag -> pins scope; firing signals in other categories are logged but do not add scopes (user flag > firing signals, on every round)
 
 **Scope precedence on round 2+:** user flag > firing signals > inherit from `prior_checkpoint.scope`. If the user passed no flag and the diff (incremental, in incremental mode) fires no signals, inherit the prior round's scope so reviewer coverage does not silently narrow. Surface as `Scope: <inherited> (inherited from round <prior.round>)`.
 
-Surface decision in Summary; if escalated, append `auto-escalated from Core; signals: <list>`.
+Surface decision in Summary; if escalated, append `auto-escalated from Core; signals: <list>` (unless Step 3.5d replaces it on a round that expanded over the prior scope).
 
 ### Phase A - PR Risk Snapshot
 
@@ -167,7 +165,7 @@ Surface decision in Summary; if escalated, append `auto-escalated from Core; sig
 
 Output risk level + blast radius before any findings.
 
-**Low-risk short-circuit:** if Risk is Low, Blast Radius is Narrow, **and** change does not touch architecture-relevant files (auth middleware, JWT, router composition, shared traits, `main.rs` / `lib.rs` wiring, sqlx migrations), skip Phases C-D and produce streamlined output with Phase B only.
+**Low-risk short-circuit:** if Risk is Low, Blast Radius is Narrow, **and** change does not touch architecture-relevant files (auth middleware, JWT, router composition, shared traits, `main.rs` / `lib.rs` wiring, sqlx migrations), skip Phases C-D only; Phases B and E still run. Streamlined output omits the `## Architecture Notes` section; mark the skipped Phase C/D Self-Check lines `N/A (low-risk short-circuit)`.
 
 If Blast Radius is Wide/Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
 
@@ -297,7 +295,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide
+**Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Rust <version> / Axum <version>
 **Runtime:** Tokio <version>
 **Data Access:** sqlx <version> | diesel <version> | mixed
@@ -378,9 +376,9 @@ _Omit if no actionable findings._
 - [ ] Step 1: `behavioral-principles` loaded (or accepted from parent)
 - [ ] Step 2: stack confirmed Rust / Axum; runtime, data-access, messaging recorded
 - [ ] Step 3: `review-precondition-check` ran (or handle received); diff and commit log read once and reused; for `pr-ref` mode the fetch was surfaced; when `head_matches_current` was false, approval obtained; current_head_sha and current_base_sha captured
-- [ ] Step 3.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report
+- [ ] Step 3.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report; scope expansion vs. prior round recorded once (3.5d, not duplicated with Step 4's escalation line)
 - [ ] Step 4: scope auto-escalation evaluated; promotion (or `core-only`) recorded with firing signals
-- [ ] Phase A: risk + blast radius stated before any finding; depth auto-promoted to `deep` when Blast Radius is Wide/Critical; low-risk short-circuit applied when applicable
+- [ ] Phase A: risk + blast radius stated before any finding; depth auto-promoted to `deep` when Blast Radius is Wide/Critical; on low-risk short-circuit, Phases B+E still ran and C/D Self-Check lines marked `N/A (low-risk short-circuit)`
 - [ ] Phase B: atomic skills applied (`rust-error-handling`, `rust-async-patterns`, `rust-concurrency`, `rust-db-access`, `rust-web-patterns`, plus `rust-messaging-patterns` / `rust-migration-safety` when relevant); test coverage, authorization, `Json(<domain>)`, `unsafe` discipline checked
 - [ ] Phase C: layering, trait-at-consumer, `AppState` + typed config, multi-tenant, router + `IntoResponse` applied
 - [ ] Phase D: `complexity-review` + `rust-overengineering-review` applied; AI smells covered (redundant mapping, test verbosity, `anyhow::Error` in domain types)
@@ -388,7 +386,6 @@ _Omit if no actionable findings._
 - [ ] Missing tests raised as a named finding (not buried)
 - [ ] Every Must cites system risk
 - [ ] Every finding has label + `file:line` + actionable Rust fix
-- [ ] If `--spec`: every finding traces to AC/NFR/task or flagged out-of-scope blocker
 - [ ] Step 5: extra scopes ran in parallel with pre-resolved handle + stack detection
 - [ ] Step 6: subagent findings merged into one intent-ordered list; raw reports not appended; failed/missing scope noted as `Scope incomplete: <scope>`; Next Steps tagged `[Implement]` / `[Delegate]` and ordered by intent
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix

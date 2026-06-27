@@ -58,6 +58,9 @@ sqlx::query_as!(User, "SELECT id, name, email FROM users WHERE name = $1", name)
     .fetch_optional(pool).await?;
 ```
 
+For `LIKE`, bind the wildcard pattern as a value - never splice `%` into the SQL:
+`query_as!(User, "... WHERE name LIKE $1", format!("%{name}%"))`.
+
 ### Transaction for multi-step mutation
 
 ```rust
@@ -105,6 +108,8 @@ let orders = sqlx::query_as!(Order,
 "SELECT ... WHERE (created_at, id) < ($1, $2) ORDER BY created_at DESC, id DESC LIMIT $3"
 ```
 
+Keyset needs a composite index matching the ORDER BY (`(created_at DESC, id DESC)`); without it the scan is no faster than offset. Carry the last row's `(created_at, id)` as the cursor.
+
 ### Streaming for large result sets
 
 ```rust
@@ -119,6 +124,8 @@ while let Some(user) = stream.try_next().await? {
     export(user).await?;
 }
 ```
+
+A stream pins its connection until exhausted or dropped; account for long-running exports in pool sizing, or run them off a dedicated pool.
 
 ## Output Format
 

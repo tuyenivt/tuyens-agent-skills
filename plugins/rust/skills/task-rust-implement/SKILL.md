@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Spec-aware mode.** If `--spec <slug>` was passed or `.specs/<slug>/spec.md` exists, load `Use skill: spec-aware-preamble` after Step 2. Follow its contract; skip Step 3 (and Step 4 when `plan.md` is present). Never edit spec artifacts.
-
 ## When to Use
 
 Building a new feature in a Rust/Axum/sqlx service that spans migration, repository, service, handler, DTO, and tests.
@@ -70,7 +68,7 @@ Decisions to confirm: endpoints (method/URI/status/DTOs), schema (indexes, FKs, 
 
 Webhooks: signature-verifying middleware reads the raw body before any JSON deserialization; route lives outside the JWT auth group.
 
-**Step 9 - Tests.** Use skill: `rust-testing-patterns`. Service unit tests with `mockall` + `#[tokio::test]`; handler tests with `tower::ServiceExt::oneshot`; integration tests with `testcontainers`. Cover happy path, validation, not-found, conflict, timeout. Webhooks: valid / invalid / missing signature. Idempotency: duplicates return the same result. State transitions: every valid + invalid.
+**Step 9 - Tests.** Use skill: `rust-testing-patterns`. Service unit tests with `mockall` + `#[tokio::test]`; handler tests with `tower::ServiceExt::oneshot`; integration tests with `testcontainers`. Cover happy path, validation, not-found, conflict, timeout. Webhooks: valid / invalid / missing signature. Idempotency: duplicates return the same result. State transitions: every valid + invalid. Jobs/events: dispatched after a successful commit, suppressed on rollback.
 
 **Step 10 - Validate.** Run `cargo build`, `cargo test`, `cargo clippy -- -D warnings`. Fix failures before reporting.
 
@@ -108,7 +106,7 @@ Webhooks: signature-verifying middleware reads the raw body before any JSON dese
 - [ ] Step 6: repository trait in service module; `query_as!` compile-time checked
 - [ ] Step 7: `Arc<dyn Trait>` injection; `thiserror` + `?`; jobs/events dispatched after `tx.commit()`; idempotency atomic when applicable
 - [ ] Step 8: handlers thin; validator DTOs with `deny_unknown_fields`; `IntoResponse` maps domain errors; list endpoints paginated; webhook outside JWT group with raw-body signature check
-- [ ] Step 9: unit + handler + integration cover happy/validation/not-found/conflict/timeout; webhooks and idempotency tested when applicable
+- [ ] Step 9: unit + handler + integration cover happy/validation/not-found/conflict/timeout; webhooks, idempotency, and after-commit job dispatch tested when applicable
 - [ ] Step 10: `cargo build`, `cargo test`, `cargo clippy -- -D warnings` pass
 
 ## Avoid

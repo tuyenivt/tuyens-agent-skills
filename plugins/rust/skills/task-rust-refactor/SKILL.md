@@ -36,13 +36,13 @@ Use skill: `stack-detect`. If not Rust, route to `/task-code-refactor`. Record `
 
 Read files directly; do not classify from prose.
 
-- Target file: function count, longest fn, sync/async mix, transaction placement (`pool.begin()` ... `tx.commit()`), external collaborators (`reqwest`, queues), `.await` points
+- Target file: function count, longest fn, sync/async mix, transaction placement (`pool.begin()` ... `tx.commit()`), external collaborators (`reqwest`, queues), `.await` points, and for any lock (`Mutex`/`RwLock`) whether its guard is held across an `.await` (drives the Step 7 Lock/await stance)
 - Matching tests: outcomes covered (happy, validation, external failure, authz). Confirm clippy clean
 - Immediate callers when obvious
 
 **Sibling smells.** Real targets sit in fat files. List other smells under `Sibling Smells (Out of Scope)` with deferral rationale and follow-up skill - never silently included or dropped.
 
-**Severity inversion.** If a sibling smell is higher severity than the named target (working SQLi, RCE, auth bypass, `alg: none`), pause the refactor and route through `task-rust-review-security`. Branch the eventual refactor PR off the security fix, not main.
+**Severity inversion.** If a sibling smell is higher severity than the named target (working SQLi, RCE, auth bypass, `alg: none`), pause the refactor and route through `task-rust-review-security`. Branch the eventual refactor PR off the security fix, not main. Stop after this step like a refused gate: emit Smells Identified, Sibling Smells (with the inversion verdict), and the Coverage Gate status if already computed; omit Blast Radius and Step Sequence. Do not emit a deferred plan - re-run this workflow once the security fix lands.
 
 ### Step 4 - Coverage Gate (mandatory)
 
@@ -58,7 +58,7 @@ Happy-path-only is `Inadequate`, not `Thin` - one success case can't prove valid
 
 **Lint gate.** `cargo clippy --all-targets -- -D warnings`: `clean` | `warnings present` (Step 0a folds them in) | `not run`.
 
-**Concurrency gate.** If the target uses `tokio::spawn`, `JoinSet`, `Arc<Mutex>`, `Arc<RwLock>`, or channels, tests must exercise concurrent paths (`#[tokio::test(flavor = "multi_thread")]`). If absent, downgrade status one tier.
+**Concurrency gate.** If the target uses `tokio::spawn`, `JoinSet`, `Arc<Mutex>`, `Arc<RwLock>`, or channels, tests must exercise concurrent paths (`#[tokio::test(flavor = "multi_thread")]`). If absent, downgrade status one tier (`Adequate` -> `Thin`, `Thin` -> `Inadequate`, `Inadequate` stays `Inadequate`) and add the multi-thread row to the prerequisite table.
 
 When `Thin` or `Inadequate`, render a prerequisite table: `entry point | outcome | recommended layer`. Outcomes must cover validation failure, authz denial, not-found/IDOR, external failure, and (when concurrency-gate fires) a multi-thread row. Layers: handler (`axum-test`/`oneshot`), service unit (`#[tokio::test]` + `mockall`), repository (testcontainers), background-task, multi-thread.
 
@@ -90,7 +90,7 @@ Rust signals: public handler API, crate/workspace boundary (`pub` in `lib.rs`), 
 
 Every step is independently committable (`cargo build` + `cargo test` + clippy pass), behaviorally invariant (unless `coupled-fix`), reversible in one revert, tested.
 
-**Primary recipe.** Pick one recipe matching the goal as the spine; fold supporting recipes as additive sub-steps where dependencies require. Never concatenate two plans. State `Primary recipe:` in the output. If the spine exceeds ~8 steps, split into two PRs.
+**Primary recipe.** Pick one recipe matching the goal as the spine; fold supporting recipes as additive sub-steps where dependencies require. Never concatenate two plans. State `Primary recipe:` in the output - a named recipe (R-Tx/R-Mass/R-Static/R-Trait) or, for the unnamed ones below, a short verb-noun label (e.g. `extract service + repo`, `split god service`). If the spine exceeds ~8 steps, split into two PRs.
 
 **Coupled-fix.** When the refactor genuinely requires behavior change (extracting a service needs middleware to supply the principal), label `coupled-fix` with its own test gate and rationale.
 
@@ -157,7 +157,7 @@ _Other smells in the target file; hand-off, not action. Omit if none._
 | ------- | --------- | ------------ | ------------------------------------ |
 | [Smell] | file:line | [reason]     | `task-rust-review-security` / other |
 
-[If a sibling smell outranks the named target: "Severity inversion: pause this refactor; route through `task-rust-review-security` first; branch the refactor PR off the security fix, not main."]
+[If a sibling smell outranks the named target: "Severity inversion: pause this refactor; route through `task-rust-review-security` first; branch the refactor PR off the security fix, not main." Then stop - omit Blast Radius and Step Sequence below; do not emit a deferred plan.]
 
 ## Blast Radius
 
@@ -199,7 +199,7 @@ _Other smells in the target file; hand-off, not action. Omit if none._
 
 - [ ] Step 1 - `behavioral-principles` loaded
 - [ ] Step 2 - stack confirmed Rust/Axum; data access + messaging recorded
-- [ ] Step 3 - target + tests read directly; sibling smells listed or section omitted; severity inversion flagged
+- [ ] Step 3 - target + tests read directly (incl. lock-across-`.await`); sibling smells listed or section omitted; severity inversion flagged and, if present, stops before Blast Radius/Step Sequence
 - [ ] Step 4 - Coverage Gate verdict with sharp boundaries; `Inadequate` refuses Steps 1+; happy-path-only -> `Inadequate`; concurrency-gate downgrade applied; lint state recorded; prerequisite table when Thin/Inadequate
 - [ ] Step 5 - smells classified by delegating to atomic skills (async, concurrency, db, web, error, security, messaging, overengineering); each finding cites its owning skill
 - [ ] Step 6 - blast radius stated
