@@ -20,7 +20,7 @@ user-invocable: false
 
 - Authenticate once at the STOMP `CONNECT` frame via `ChannelInterceptor`. Prefer CONNECT-frame JWT over handshake query params (query strings leak to proxy logs and browser history).
 - `/topic/**` for broadcasts; `/user/queue/**` via `convertAndSendToUser` for per-user delivery. Never broadcast sensitive payloads on `/topic`.
-- `enableSimpleBroker` is in-process. For >1 instance, use `enableStompBrokerRelay` (RabbitMQ / Artemis / ActiveMQ). `convertAndSendToUser` still breaks across instances unless the sender's instance knows where the user is connected: enable `setUserRegistryBroadcast` / `setUserDestinationBroadcast` on the relay (or pin connections with sticky sessions). A relay alone does not fix per-user routing.
+- `enableSimpleBroker` is in-process. For >1 instance, use `enableStompBrokerRelay` (broker choice: whatever STOMP-capable broker the org already runs - RabbitMQ / Artemis / ActiveMQ; RabbitMQ needs the STOMP plugin). `convertAndSendToUser` still breaks across instances unless the sender's instance knows where the user is connected: enable `setUserRegistryBroadcast` / `setUserDestinationBroadcast` on the relay. Sticky sessions are the fallback only when the broker cannot carry the registry topics. A relay alone does not fix per-user routing.
 - Set heartbeats, message size, send buffer, and send time limits. Without them stale or slow clients consume threads and memory indefinitely.
 - Use `ReentrantLock` or concurrent collections in handlers - `synchronized` pins Virtual Threads.
 - Handle errors with `@MessageExceptionHandler`. Unhandled exceptions close the session with no client-visible reason.
@@ -33,15 +33,23 @@ user-invocable: false
 @Configuration @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
+    @Value("${app.cors.origins}") private String[] allowedOrigins;  // ${...} in a plain method argument is NOT resolved
+
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
         // Single instance: in-process broker
         registry.enableSimpleBroker("/topic", "/queue")
                 .setHeartbeatValue(new long[]{10_000, 10_000});
-        // Multi-instance: swap the line above for the relay below
+        // Multi-instance: swap the line above for the relay below. The relay has no
+        // setHeartbeatValue - heartbeats use the system API. The two broadcasts are what
+        // make convertAndSendToUser reach users connected to another instance.
         // registry.enableStompBrokerRelay("/topic", "/queue")
         //         .setRelayHost("rabbitmq").setRelayPort(61613)
-        //         .setClientLogin("app").setClientPasscode("${broker.password}");
+        //         .setClientLogin("app").setClientPasscode(brokerPassword)
+        //         .setUserRegistryBroadcast("/topic/simp-user-registry")
+        //         .setUserDestinationBroadcast("/topic/simp-user-destination")
+        //         .setSystemHeartbeatSendInterval(10_000)
+        //         .setSystemHeartbeatReceiveInterval(10_000);
         registry.setApplicationDestinationPrefixes("/app");
         registry.setUserDestinationPrefix("/user");
     }
@@ -49,8 +57,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("${app.cors.origins}") // patterns, not origins, when behind proxy
-                .withSockJS();
+                .setAllowedOriginPatterns(allowedOrigins); // patterns, not origins, when behind proxy
+        // .withSockJS() only if legacy fallback is required - its HTTP transports need
+        // sticky sessions, which contradicts the relay-based multi-instance story
     }
 
     @Override
@@ -100,15 +109,31 @@ public class WebSocketSecurityConfig {
         return messages
             .nullDestMatcher().authenticated()               // CONNECT/DISCONNECT
             .simpSubscribeDestMatchers("/topic/admin/**").hasRole("ADMIN")
-            .simpDestMatchers("/app/admin/**").hasRole("ADMIN")
-            .simpSubscribeDestMatchers("/user/queue/**").authenticated()
-            .anyMessage().authenticated()
+            .simpDestMatchers("/app/**").authenticated()     // client SENDs enter through /app only
+            .simpDestMatchers("/topic/**", "/queue/**").denyAll() // clients never SEND to broker prefixes -
+                                                             // a relay fans such frames out verbatim (broadcast spoofing)
+            .simpSubscribeDestMatchers("/topic/**", "/user/queue/**").authenticated()
+            .anyMessage().denyAll()
             .build();
     }
+
+    // @EnableWebSocketSecurity enforces a CSRF token on CONNECT by default. A header-JWT
+    // SPA has no CSRF token, so every CONNECT is rejected with an ERROR frame - disable
+    // STOMP CSRF via the no-op interceptor when auth is CONNECT-frame JWT:
+    @Bean(name = "csrfChannelInterceptor")
+    ChannelInterceptor noopCsrfChannelInterceptor() { return new ChannelInterceptor() {}; }
 }
 ```
 
 `simpSubscribeDestMatchers` guards SUBSCRIBE; `simpDestMatchers` guards SEND. Both are needed - a SEND-only rule lets attackers subscribe.
+
+Claim-scoped subscriptions (`/topic/region.{region}`, per-tenant feeds): matchers cannot compare the destination to a principal claim - use `.access(...)` with a custom manager:
+
+```java
+.simpSubscribeDestMatchers("/topic/region.{region}").access((auth, ctx) ->
+    new AuthorizationDecision(ctx.getVariables().get("region")
+        .equals(((JwtAuthenticationToken) auth.get()).getToken().getClaimAsString("region"))))
+```
 
 ### Controller + per-user send
 

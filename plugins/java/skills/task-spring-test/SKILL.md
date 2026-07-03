@@ -53,7 +53,7 @@ If no existing tests, state conventions explicitly in the strategy.
 | Contract     | Spring Cloud Contract / Pact                       | Consumer/provider API contracts                                        |
 | E2E          | `@SpringBootTest(RANDOM_PORT)` + REST Assured      | Critical journeys only (signup, checkout, payment)                     |
 
-Many unit, some slice, few full-context / E2E. `@SpringBootTest` is slow - reserve it. A workable default balance to anchor the percentage fields below: ~60-70% unit, ~20-30% slice, <10% full-context/E2E; shift toward slice for repository/controller-heavy services. State it as a target, not a measured value.
+Many unit, some slice, few full-context / E2E. `@SpringBootTest` is slow - reserve it. For the percentage fields below, default to 65/25/10 (unit/slice/full-context+E2E; contract tests tracked separately), shifting 5-10 points toward slice for repository/controller-heavy services. State it as a target, not a measured value.
 
 ### Step 5 - Apply Patterns
 
@@ -63,7 +63,7 @@ Use skill: `spring-test-integration` for canonical patterns - load once, referen
 - `@Async` / `@Scheduled` / event listeners → `spring-async-processing`
 - Kafka / Rabbit / outbox / idempotent listeners → `spring-messaging-patterns`
 - `@DataJpaTest` N+1 (`Statistics.getQueryExecutionCount()`), fetch graphs → `spring-jpa-performance`
-- `@TransactionalEventListener` phase, `REQUIRES_NEW`, `@RecordApplicationEvents` → `spring-transaction`
+- `@TransactionalEventListener` phase, `REQUIRES_NEW` → `spring-transaction` (`@RecordApplicationEvents` usage: `@SpringBootTest` row below)
 - `@RestControllerAdvice` / ProblemDetail → `spring-exception-handling`
 
 **Layer-specific essentials:**
@@ -71,7 +71,7 @@ Use skill: `spring-test-integration` for canonical patterns - load once, referen
 | Layer            | Non-negotiables                                                                                                                                                                                |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Unit             | One test per outcome. Stub HTTP via Mockito on client interface. `ArgumentCaptor<DomainEvent>` on `ApplicationEventPublisher` for richer assertions than `verify(...)`.                        |
-| `@WebMvcTest`    | One test per `(method+path, role, outcome)`. Mock service via `@MockitoBean`. State-changing methods need `.with(csrf())`. 401 (anonymous) + 403 (wrong role) + validation per protected endpoint. |
+| `@WebMvcTest`    | One test per `(method+path, role, outcome)`. Mock service via `@MockitoBean`. State-changing methods need `.with(csrf())` when the prod chain has CSRF enabled (session-based apps); stateless JWT chains with CSRF disabled omit it - tests mirror prod. 401 (anonymous) + 403 (wrong role) + validation per protected endpoint. |
 | `@DataJpaTest`   | Testcontainers Postgres via `@ServiceConnection` - H2 diverges on JSONB, partial indexes, window functions, `ON CONFLICT`. One test per `@Query` / derived method asserting SQL behavior, not nullability. |
 | `@SpringBootTest`| Reserve for full context (auth flow, outbox, listeners, scheduled jobs). `@Transactional` rollback fails for `@Async` threads - drop it and clean via `@Sql(AFTER_TEST_METHOD)`. Use `@RecordApplicationEvents` for `BEFORE_COMMIT` vs `AFTER_COMMIT`. Avoid `@DirtiesContext`. |
 | HTTP stubs       | WireMock in `@SpringBootTest` (exercises real `RestClient` config); `@MockitoBean` in `@WebMvcTest`; Mockito on interface in plain unit. Mocking `RestClient` in integration bypasses the wiring under test. |
@@ -89,11 +89,11 @@ Use skill: `spring-test-integration` for canonical patterns - load once, referen
 
 ### Step 7 - Prioritize When Coverage Is Low
 
-When line coverage < ~50%, scaffold in this order - alphabetical scaffolding misses authz holes while plumbing gets covered.
+When line coverage < ~50% (no coverage tooling: estimate from the test-class-to-class ratio and state the estimate), scaffold in this order - alphabetical scaffolding misses authz holes while plumbing gets covered.
 
 | Priority | Target                                                                                  |
 | -------- | --------------------------------------------------------------------------------------- |
-| P1 Auth  | `@WebMvcTest` 401/403 per protected endpoint; JWT issuer/audience/signature/expiry; service-layer `@PreAuthorize` |
+| P1 Auth  | `@WebMvcTest` 401/403 per protected endpoint; JWT issuer/audience/signature/expiry (as a `JwtDecoder`-bean unit test or full-context with a local issuer - the `@WebMvcTest` slice stubs the decoder, so they cannot fire there); service-layer `@PreAuthorize` |
 | P2 Data  | `@DataJpaTest` per repo with `@Query`/derived; write-path happy + rollback; outbox idempotency                    |
 | P3 Revenue | Checkout, billing, subscription transitions; scheduled jobs touching money / notifications                       |
 | P4 Churn | High-commit-frequency files (`git log --since="3 months ago"`); bug-fix-heavy files                              |
@@ -105,9 +105,9 @@ When line coverage < ~50%, scaffold in this order - alphabetical scaffolding mis
 - [ ] `@SpringBootTest` and `@MockitoBean` sparingly - each unique mock set forks the context cache
 - [ ] Test profile overrides only what differs from prod; never silently disables security
 - [ ] JUnit 5 parallel execution where safe
-- [ ] Mockito strict stubbing (default in 4+)
+- [ ] Mockito strict stubbing (default under the JUnit 5 `MockitoExtension`)
 - [ ] WireMock / Testcontainers for HTTP; no real network
-- [ ] JaCoCo in CI with per-module thresholds; excluded from prod JAR
+- [ ] JaCoCo in CI with per-module thresholds; generated / boilerplate classes excluded from thresholds
 
 ## Output Format
 
@@ -119,6 +119,8 @@ Pick by request shape:
 | "Write tests for X" / "scaffold tests"        | Test Scaffolds                                |
 | "Test strategy" / "test plan" / coverage <50% | Strategy Doc (+ optional Coverage Assessment) |
 | Unclear                                       | Strategy Doc                                  |
+
+Compound requests produce each matched deliverable (e.g. "test plan and scaffolding" -> Strategy Doc + Test Scaffolds).
 
 **Coverage Assessment:**
 
@@ -136,17 +138,21 @@ Pick by request shape:
 - **Full-context:** [transactional flows, listeners, jobs]
 - **Contract:** [provider/consumer]
 
-**Recommended balance:** Unit {x}% / Slice {y}% / Full-context {z}%
+**Recommended balance:** Unit {x}% / Slice {y}% / Full-context+E2E {z}% (Step 4 fill rule)
 ```
 
 **Test Scaffolds** - ready-to-run JUnit 5 files in project conventions:
 
 - Right test type per target
+- Layout mirrors the prod package under `src/test/java`; naming `<Class>Test` (unit / slice), `<Flow>IT` (full-context) - unless existing tests establish another convention (Step 3 wins)
+- Full-context tests share a singleton-container base class (per `spring-test-integration`); create it when absent
+- Security cases (401/403/role) live in the same controller slice class as the functional tests unless the existing suite separates `*SecurityTest` classes
 - Builders / factories (not `new Order(...)`)
 - Controllers: happy + 401 + 403 + validation-error
 - Repos: Testcontainers via `@ServiceConnection`; Postgres semantics
 - Security: `@WithMockUser` / `.with(jwt())` / anonymous; positive and denied
 - Inline comments only where non-obvious (e.g., why `.with(csrf())`)
+- `spring-test-integration`'s per-class output blocks go in the Strategy Doc (when produced), never inside scaffold files
 
 **Strategy Doc:**
 
@@ -154,9 +160,9 @@ Pick by request shape:
 ## Spring Boot Test Strategy
 
 **Objective:** [what this achieves]
-**Pyramid balance:** Unit {x}% / Slice {y}% / Full-context {z}%
+**Pyramid balance:** Unit {x}% / Slice {y}% / Full-context+E2E {z}% (Step 4 fill rule)
 **Tooling:** JUnit 5, Mockito (strict), AssertJ, Spring Boot Test, Testcontainers (Postgres / Kafka), Spring Security Test
-**DB isolation:** Testcontainers Postgres via @ServiceConnection + transactional rollback
+**DB isolation:** [singleton Testcontainers Postgres base + @ServiceConnection; transactional rollback, or @Sql cleanup for @Async / @Scheduled flows]
 **Concurrency:** [JUnit parallel config]
 
 **Prioritized gaps:**
@@ -182,7 +188,7 @@ Pick by request shape:
 - `@SpringBootTest` where `@WebMvcTest` or unit suffices
 - H2 in `@DataJpaTest` for Postgres-feature apps
 - `verify(repository).save(any())` when `@DataJpaTest` could assert persistence
-- Disabling CSRF in tests to avoid `.with(csrf())` - the test no longer mirrors prod
+- Disabling CSRF in tests to avoid `.with(csrf())` when prod has it enabled - the test no longer mirrors prod
 - Skipping `@PreAuthorize` tests because the controller has `@WebMvcTest` - method security tests separately
 - Testing Spring internals (`@Autowired`, `@RequestMapping` resolution)
 - `@DirtiesContext` as a shared-state workaround - fix isolation instead

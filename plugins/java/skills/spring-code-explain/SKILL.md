@@ -24,7 +24,7 @@ If no `org.springframework.*` / `jakarta.persistence.*` imports and no Spring an
 - Name the transaction boundary explicitly - where it opens, where it commits, what runs inside vs after
 - External IO (HTTP, Kafka, email) inside `@Transactional` is a correctness signal - the side effect can happen before commit or be retried on rollback
 - JPA mutations flush at commit via dirty checking, not `save()` - say so when the code mutates entities
-- Entities crossing the transaction boundary are detached - lazy access fails after return
+- Entities crossing the transaction boundary are detached - uninitialized lazy access fails after return (unless OSIV holds the session open; Boot MVC defaults `spring.jpa.open-in-view=true`). Associations already initialized inside the tx survive detachment
 - Identify the security context (filter chain / method security / none) before describing endpoint behavior. When the chain isn't in the snippet, say so and note it's defined elsewhere rather than guessing the policy
 
 ## Patterns
@@ -58,7 +58,7 @@ Bad:
 ```
 Good: extract `inner` to a separate bean, or self-inject (`@Autowired OrderService self; self.inner();`).
 
-Canonical fix details: `spring-transaction`.
+Canonical fix details: `spring-transaction`. In explain output, phrase fixes as change-impact hypotheticals ("extracting `inner` to its own bean would..."), not refactor instructions - the parent workflow forbids refactoring suggestions.
 
 ### `@Transactional` boundary
 
@@ -74,7 +74,7 @@ Surface, per transactional method:
 Per entity-touching method:
 
 - **Dirty checking** - mutations in an open tx flush at commit without `save()`; outside a tx, no DB effect
-- **Lazy boundary** - lazy associations throw `LazyInitializationException` when touched after the tx closes (controller, mappers, async threads)
+- **Lazy boundary** - uninitialized lazy associations throw `LazyInitializationException` when touched after the session closes (controller, mappers, async threads). Check `spring.jpa.open-in-view` first: the Boot MVC default (true) keeps the session open for the whole request, masking the boundary; async threads never inherit it. Associations touched inside the tx are initialized and stay readable when detached - intermittent failures usually mean initialization is code-path-dependent
 - **Flush timing** - writes buffer until commit / JPQL query / explicit `flush()`
 - **Detached entities** - returned from a `@Transactional` method are detached; `merge()` returns a new managed instance, the original stays detached
 - **`@Version`** - throws `OptimisticLockException` on concurrent writes; callers retry or escalate
@@ -97,6 +97,7 @@ N+1, fetch strategy, projection depth: defer to `spring-jpa-performance`.
 
 ### Configuration and Boot 3.x cues
 
+- `spring.jpa.open-in-view` (Boot MVC default: true) decides whether lazy loading works in the controller layer - check it before explaining any `LazyInitializationException`
 - `application.yml` + profile variants; `@ConditionalOn*` may leave a bean absent at runtime
 - `@ConfigurationProperties` is type-safe and `jakarta.validation`-validated; `@Value("${...}")` typos fail at runtime
 - `jakarta.*` imports = Boot 3+; `javax.persistence` = pre-3.0
@@ -104,7 +105,7 @@ N+1, fetch strategy, projection depth: defer to `spring-jpa-performance`.
 
 ## Output Format
 
-Inject into the parent workflow's sections. Cite class/method, omit blocks with nothing to report.
+Inject into the parent workflow's sections, reshaped to the parent's own labels (e.g., fold the scenario-form Change Impact items below into the parent's `Logic / Signature / Side effects / ...` labels) - never emit a parallel list alongside the parent's. If the user asked a direct question, open the parent's `What it does` with the one-sentence answer. Cite class/method, omit blocks with nothing to report.
 
 **Flow Context**
 - Stereotype + bean scope

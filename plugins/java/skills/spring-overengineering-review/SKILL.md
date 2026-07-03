@@ -20,6 +20,7 @@ user-invocable: false
 - Intent:
   - `[Recommend]` - default; cite the constraint and recommend the edit. Escalate to `[Must]` when measurable cost is present (extra SELECT, masked exception, forced two-file refactor, broken proxy semantics) - record cost in `Cost:` field
   - `[Question]` - plausible justification not visible in the diff; ask before recommending removal
+- Code matching multiple patterns (e.g., a blanket catch that also rethrows) gets one finding under the higher-intent pattern
 - Skip when the diff shows justification (non-controller write path, second implementation, async consumer bypassing the DTO)
 
 ## Patterns
@@ -65,9 +66,9 @@ catch (DataIntegrityViolationException e) { throw new DuplicateEmailException(e)
 
 Justified only when no unique index exists - then recommend adding the index instead.
 
-### Category 2 - Defensive code for framework guarantees
+### Category 2 - Defensive Impossibility (guards on framework guarantees)
 
-Spring guarantees non-null for `@Autowired` beans, `@Valid @NotNull` request fields, and the principal inside `@PreAuthorize`'d methods. Re-checking them hides regressions that should crash loudly.
+Spring guarantees non-null for injected dependencies (constructor or `@Autowired`), `@Valid @NotNull` request fields, and the principal inside `@PreAuthorize`'d methods. Re-checking them hides regressions that should crash loudly.
 
 ```java
 // Bad - @Valid + @NotNull already returned 400 before this runs
@@ -106,7 +107,7 @@ return ResponseEntity.ok(service.fulfill(orderId));
 
 ### Category 3 - Premature abstraction
 
-**`@Service` interface with one implementation** - `[Must]`. Every refactor touches two files; Mockito mocks concrete classes via CGLIB; Spring proxies concrete classes by default.
+**`@Service` interface with one implementation** - `[Must]`. Every refactor touches two files; Mockito mocks concrete classes directly (ByteBuddy); Spring proxies concrete classes by default.
 
 ```java
 // Bad
@@ -155,6 +156,12 @@ One block per finding:
 ```
 
 For each of the three categories with no findings, state `No <category> findings.` so the workflow sees the check ran.
+
+When the request asks what should stay (or reviewed code was contested but is justified), close with a keep-list - one line per element:
+
+```
+Keep: {code element} - {constraint or reason it is necessary}
+```
 
 ## Avoid
 

@@ -39,6 +39,8 @@ user-invocable: false
 | Service (Spring wiring) | `@SpringBootTest` + `@MockitoBean` externals        |
 | Full integration        | `@SpringBootTest` + Testcontainers + WebTestClient  |
 
+"Spring wiring" means the proxy behavior itself is under test (tx rollback, `@PreAuthorize`, listener firing). Injectable collaborators (`ApplicationEventPublisher`, repos) alone don't make it Spring wiring - use plain JUnit.
+
 ## Patterns
 
 ### `@DataJpaTest` with `@ServiceConnection`
@@ -117,43 +119,59 @@ class OrderServiceTest {
 
 ### Singleton containers across the suite
 
-`@Container` restarts per class - the main cost in multi-class suites. Hoist to a JVM-level singleton in a base class:
+`@Container` stops/starts per test class - the main cost in multi-class suites. For one container per JVM, start it manually in a base class and skip the `@Testcontainers`/`@Container` lifecycle entirely; multi-class suites always extend this base (the per-class `@Container` form above is for isolated examples):
 
 ```java
 public abstract class AbstractIntegrationTest {
-    @Container @ServiceConnection
+    @ServiceConnection
     static final PostgreSQLContainer<?> POSTGRES =
         new PostgreSQLContainer<>("postgres:16-alpine").withReuse(true);
+    static { POSTGRES.start(); }  // manual start = JVM singleton; @Container would restart it per class
 }
 ```
 
-`withReuse(true)` + `testcontainers.reuse.enable=true` in `~/.testcontainers.properties` keeps the container across JVM exits. Local-only; CI runs clean.
+`withReuse(true)` + `testcontainers.reuse.enable=true` in `~/.testcontainers.properties` additionally keeps the container across JVM exits. Local-only; CI runs clean.
+
+### Test dependencies (H2 -> Testcontainers migration)
+
+```groovy
+testImplementation 'org.springframework.boot:spring-boot-testcontainers'  // @ServiceConnection
+testImplementation 'org.testcontainers:junit-jupiter'
+testImplementation 'org.testcontainers:postgresql'
+testImplementation 'org.awaitility:awaitility'   // not part of spring-boot-starter-test
+// remove: testRuntimeOnly 'com.h2database:h2'
+```
 
 ### Security tests
 
 Controller slices auto-wire the filter chain but bind no user. Import your `SecurityConfig` and use Spring Security Test post-processors. `@WebMvcTest` does not pick up `@EnableMethodSecurity`, so `@PreAuthorize`/`@PostAuthorize` silently no-op unless you `@Import` the method-security config (or the test passes for the wrong reason). Method-security rules are better asserted in a `@SpringBootTest` that loads them.
+
+Importing a resource-server `SecurityConfig` makes the slice context require a `JwtDecoder` bean - stub it, or the context fails to load (and a config using `fromIssuerLocation` would fetch the issuer over the network at startup):
 
 ```java
 @WebMvcTest(OrderController.class) @Import(SecurityConfig.class)
 class OrderControllerSecurityTest {
     @Autowired MockMvc mockMvc;
     @MockitoBean OrderService orderService;
+    @MockitoBean JwtDecoder jwtDecoder;   // required once SecurityConfig configures oauth2ResourceServer
 
-    @Test @WithMockUser(roles = "ADMIN")
-    void admin_can_delete() throws Exception {
-        mockMvc.perform(delete("/api/orders/1").with(csrf())).andExpect(status().isNoContent());
-    }
-
-    @Test
-    void anonymous_unauthorized() throws Exception {
-        mockMvc.perform(delete("/api/orders/1").with(csrf())).andExpect(status().isUnauthorized());
-    }
-
+    // stateless JWT resource server: use jwt(); no csrf() needed (CSRF disabled)
     @Test
     void jwt_scope_allows_read() throws Exception {
         mockMvc.perform(get("/api/orders/1")
                 .with(jwt().jwt(j -> j.claim("scope", "orders:read"))))
             .andExpect(status().isOk());
+    }
+
+    @Test
+    void anonymous_unauthorized() throws Exception {
+        mockMvc.perform(get("/api/orders/1")).andExpect(status().isUnauthorized());
+    }
+
+    // session-based apps instead use @WithMockUser(roles = ...) and .with(csrf()) on writes
+    @Test @WithMockUser(roles = "ADMIN")
+    void admin_can_delete_session_style() throws Exception {
+        mockMvc.perform(delete("/api/orders/1").with(csrf())).andExpect(status().isNoContent());
     }
 }
 ```
@@ -181,7 +199,7 @@ Exercises the real `RestClient` / `WebClient` config (timeouts, retries, deseria
 
 ```java
 @SpringBootTest(webEnvironment = RANDOM_PORT)
-@WireMockTest(httpPort = 8089)
+@WireMockTest  // dynamic port (inject WireMockRuntimeInfo, override the client base-url property); hardcoded ports collide in parallel CI
 class PaymentIntegrationTest extends AbstractIntegrationTest {
     @Test
     void processesPayment() {
@@ -216,6 +234,8 @@ assertThat(actual).usingRecursiveComparison()
 ```
 
 ## Output Format
+
+One block per test class (a suite restructuring emits several):
 
 ```
 Layer: {Controller | Service | Repository | JSON | Integration}

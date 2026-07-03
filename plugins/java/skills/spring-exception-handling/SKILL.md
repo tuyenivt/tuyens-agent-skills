@@ -41,8 +41,10 @@ user-invocable: false
 | `UnprocessableEntityException` (domain)                  | 422    |
 | `RateLimitedException` (domain)                          | 429    |
 | Unhandled `Exception`                                    | 500    |
+| `RetryableException` subtypes (transient upstream failure) | 503  |
+| Vendor-gateway wrapper (unclassified upstream failure, e.g. `PaymentGatewayException`) | 502 |
 
-Spring 6.2+: extend `ResponseEntityExceptionHandler` to convert framework defaults to `ProblemDetail`, or throw `ErrorResponseException` directly for one-off cases.
+Spring 6+: the advice extends `ResponseEntityExceptionHandler` (see Global handler) so framework exceptions keep their table statuses as `ProblemDetail`; `spring.mvc.problemdetails.enabled: true` additionally converts Boot's default rendering for errors that never reach the advice. Use both. One-off cases can throw `ErrorResponseException` directly.
 
 ## Patterns
 
@@ -55,6 +57,9 @@ public abstract class DomainException extends RuntimeException {
 
     protected DomainException(String msg, HttpStatus status, String errorCode) {
         super(msg); this.status = status; this.errorCode = errorCode;
+    }
+    protected DomainException(String msg, Throwable cause, HttpStatus status, String errorCode) {
+        super(msg, cause); this.status = status; this.errorCode = errorCode;
     }
     public HttpStatus getStatus() { return status; }
     public String getErrorCode() { return errorCode; }
@@ -71,23 +76,35 @@ Mark retryable failures with a sibling abstract (`RetryableException extends Dom
 
 ### Global handler
 
+Extend `ResponseEntityExceptionHandler`: a standalone advice with a bare `@ExceptionHandler(Exception.class)` intercepts framework exceptions (405, 415, `NoResourceFoundException`, ...) before Spring's default handling and collapses them to 500, contradicting the mapping table.
+
 ```java
 @RestControllerAdvice
-public class GlobalExceptionHandler {
+public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(DomainException.class)
     ProblemDetail handleDomain(DomainException ex) {
-        log.warn("{}: {}", ex.getErrorCode(), ex.getMessage());
+        if (ex.getStatus().is5xxServerError()) log.error("{}", ex.getErrorCode(), ex);  // wrapped upstream failures are unexpected
+        else log.warn("{}: {}", ex.getErrorCode(), ex.getMessage());
         return problem(ex.getStatus(), ex.getErrorCode(), ex.getMessage());
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
+    // ResponseEntityExceptionHandler already claims MethodArgumentNotValidException -
+    // override it; re-declaring it via @ExceptionHandler fails startup (ambiguous mapping)
+    @Override
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
+            HttpHeaders headers, HttpStatusCode status, WebRequest request) {
         var pd = problem(BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed");
         pd.setProperty("fieldErrors", ex.getBindingResult().getFieldErrors().stream()
             .collect(toMap(FieldError::getField, FieldError::getDefaultMessage, (a, b) -> a)));
-        return pd;
+        return ResponseEntity.badRequest().body(pd);
+    }
+
+    // param/path-variable validation - not covered by ResponseEntityExceptionHandler
+    @ExceptionHandler(ConstraintViolationException.class)
+    ProblemDetail handleConstraint(ConstraintViolationException ex) {
+        return problem(BAD_REQUEST, "VALIDATION_FAILED", ex.getMessage());
     }
 
     @ExceptionHandler(Exception.class)
@@ -101,7 +118,7 @@ public class GlobalExceptionHandler {
         pd.setType(URI.create("urn:problem:" + code.toLowerCase().replace('_', '-')));  // RFC 9457 machine id
         pd.setTitle(status.getReasonPhrase());                                            // human-readable summary
         pd.setProperty("code", code);                                                     // machine code for clients
-        pd.setProperty("traceId", MDC.get("traceId"));  // populated by a request-boundary MDC filter
+        pd.setProperty("traceId", MDC.get("traceId"));  // from MDC filter or Micrometer Tracing; null if absent
         return pd;
     }
 }
@@ -131,6 +148,8 @@ class StripePaymentGateway implements PaymentGateway {
 ```
 
 ## Output Format
+
+One block per exception type that reaches the web layer; vendor exceptions wrapped at the boundary are covered by their wrapping domain type's block:
 
 ```
 Exception: {fully-qualified class}

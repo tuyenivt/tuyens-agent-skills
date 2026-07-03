@@ -53,21 +53,23 @@ Plans grounded in user prose hallucinate smells and miss real ones. Read before 
 2. Matching test file: count cases by outcome (happy path, validation, external failure, security denial)
 3. Immediate callers - reshaping a public method without seeing call sites breaks silently
 
-If only the goal was given without a target file, ask for the target.
+If only the goal was given without a target file, ask for the target. If targets were given with only symptoms as the goal, synthesize the concrete end state from the symptoms and state it up front.
 
 ### Step 4 - Coverage Gate (target-scoped, mandatory)
 
 Refactoring without coverage is a rewrite. "60% project coverage" is not the question - the question is what covers *this target's behavior*.
 
 1. Identify covering tests: `<Target>Test.java`, `@WebMvcTest(<Target>.class)`, `@DataJpaTest`, integration tests asserting end-to-end behavior
-2. If missing or thin: **stop and require coverage first**. Recommend `task-spring-test`
-3. If happy-path-only: flag boundary tests as a prerequisite step in the plan
+2. Gate **per refactor target**; the overall status is the worst target in scope:
+   - `Adequate` - behavior-asserting tests exist for the paths the refactor touches
+   - `Thin` - happy-path-only: proceed, but boundary tests become prerequisite (Phase 0) steps ahead of the refactor steps that rely on them
+   - `Inadequate` - no behavior-asserting tests: still deliver the full plan (smells, blast radius, step sequence), but the Step Sequence opens with coverage-building steps (recommend `task-spring-test`) and every refactor step is gated on them. "Stop" means no refactor step executes before its coverage exists - never that the analysis is withheld
 
-**Output:** `Adequate` | `Thin (boundary tests missing)` | `Inadequate (cannot proceed)`.
+**Output:** `Adequate` | `Thin (boundary tests missing)` | `Inadequate (coverage steps precede all refactor steps)`.
 
 ### Step 5 - Identify Spring Smells
 
-For any flagged smell, delegate diagnosis to the matching atomic skill rather than restating its rules:
+For any flagged smell, delegate diagnosis to the matching atomic skill rather than restating its rules. A delegate's Output Format block goes in the plan's `Appendix - Delegated Diagnoses`; the plan body cites it, never duplicates it:
 
 - JPA / N+1 / EAGER / `JOIN FETCH` / `MultipleBagFetchException` -> `spring-jpa-performance`
 - `@Transactional` placement / propagation / self-invocation / IO-in-tx / post-commit -> `spring-transaction`
@@ -83,6 +85,7 @@ For any flagged smell, delegate diagnosis to the matching atomic skill rather th
 - Fat Controller - handler > 10 lines of orchestration (multiple service calls, conditional dispatch, response shaping)
 - Logic in Controller - business rules / calculation in the handler
 - Direct Repository in Controller - bypasses the service layer
+- `@Transactional` on Controller - tx boundary belongs on the service; on handlers it spans serialization and filter work (-> `spring-transaction`)
 - JPA Entity in API - returns `@Entity` or accepts entity as `@RequestBody` (mass assignment + lazy load)
 - Validation Duplicating DTO - re-checks `@NotNull` / `@Size` already on the DTO
 
@@ -115,7 +118,7 @@ For any flagged smell, delegate diagnosis to the matching atomic skill rather th
 
 - Aspect as Hidden Control Flow - `@Around` swallowing exceptions / rewriting returns
 - `@KafkaListener` Without Idempotency - re-runs side effects on redelivery
-- `synchronized` on Virtual Thread Path - pins carrier thread, defeats Boot 3.2+ VT
+- `synchronized` on Virtual Thread Path - pins the carrier thread on JDK < 24 (JEP 491 removes this), defeating Boot 3.2+ VT
 - `@Async` Without `TaskDecorator` - loses trace / MDC / SecurityContext across boundary
 
 **Test (when in scope):**
@@ -137,7 +140,7 @@ Use skill: `review-blast-radius`. Spring-specific signals:
 - JPA entity used in many queries / `Specification`s
 - `@Transactional` method called from outside the bean (removing the annotation silently changes caller semantics)
 
-State **Narrow** / **Moderate** / **Wide** / **Critical** before proposing steps.
+State **Narrow** / **Moderate** / **Wide** / **Critical** before proposing steps - the whole-plan level, with per-step escalations noted where a single step exceeds it. Emit `review-blast-radius`'s full block in the plan's Blast Radius section, headed by the one-line summary.
 
 ### Step 7 - Propose the Step Sequence
 
@@ -166,7 +169,7 @@ Each step is:
 | Move external I/O out of `@Transactional`     | Integration test -> choose outbox (strong) or AFTER_COMMIT listener (simple) -> tx contains DB only -> audit receiver idempotency | `spring-transaction` |
 | Replace JPA entity in API with record DTO     | Define request/response records -> mapping inside tx (lazy assoc) -> update controller -> assert no entity fields leak | -            |
 | Fix `@Transactional` self-invocation          | See `spring-transaction` (extract bean / self-inject / `TransactionTemplate`) + regression test that tx *actually starts* | `spring-transaction` |
-| Replace `synchronized` on VT path             | Confirm VT enabled -> `ReentrantLock` (or `StampedLock` read-heavy) -> concurrency test -> audit siblings | `spring-async-processing` |
+| Replace `synchronized` on VT path             | Confirm VT enabled + JDK < 24 -> `ReentrantLock` (or `StampedLock` read-heavy) -> concurrency test -> audit siblings | `spring-async-processing` |
 
 **Failure-mode disclosure.** When moving I/O out of `@Transactional`: old code rolled back DB on HTTP failure; new code does not. State this as a behavioral change, not a refactor.
 
@@ -192,9 +195,9 @@ Each step is:
 
 ## Coverage Gate
 
-**Status:** Adequate | Thin (boundary tests missing) | Inadequate (cannot proceed)
+**Status:** Adequate | Thin (boundary tests missing) | Inadequate (coverage steps precede all refactor steps)
 
-[If Inadequate: required coverage; recommend `task-spring-test` first.]
+[If Thin/Inadequate: name the prerequisite (Phase 0) coverage steps; recommend `task-spring-test`.]
 
 ## Smells Identified
 
@@ -204,7 +207,8 @@ Each step is:
 
 ## Blast Radius
 
-[Narrow | Moderate | Wide | Critical] - [callers, tests, public surface]
+[Narrow | Moderate | Wide | Critical] - [callers, tests, public surface; per-step escalations if any]
+[full `review-blast-radius` output block]
 
 ## Step Sequence
 
@@ -221,6 +225,10 @@ Each step is:
 ## Out of Scope
 
 [Adjacent improvements deliberately deferred]
+
+## Appendix - Delegated Diagnoses
+
+[Output blocks emitted by delegated atomic skills; omit the section when no delegate produced one]
 ```
 
 ## Self-Check
@@ -228,7 +236,7 @@ Each step is:
 - [ ] Behavioral principles loaded as Step 1
 - [ ] Stack confirmed (or accepted from parent dispatcher)
 - [ ] Target file(s) and tests read directly - no inference from prose
-- [ ] Coverage gate evaluated against the target (not project-wide); refused if inadequate
+- [ ] Coverage gate evaluated per target (worst target governs); Thin/Inadequate produce Phase 0 coverage steps gating the refactor steps
 - [ ] Spring smells named from the Step 5 catalog; deep dives delegated to atomic skills
 - [ ] Blast radius stated before any step
 - [ ] Each step independently committable with a test gate and transaction stance

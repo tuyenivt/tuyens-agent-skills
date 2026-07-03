@@ -23,7 +23,9 @@ Workflow needs Spring-specific orientation: where code lives, how to run, what w
 - List `@ConfigurationProperties` classes (and any `@EnableConfigurationProperties`) - typed config beats grepping yml for keys.
 - Identify persistence stack (JPA / JDBC / MyBatis / R2DBC / none) and migration tool. Flyway + Liquibase both present is a misconfiguration - call it out and state which actually runs (both auto-configs fire unless one is disabled via `spring.flyway.enabled` / `spring.liquibase.enabled`).
 - Identify the `SecurityFilterChain` bean. `WebSecurityConfigurerAdapter` = unsupported pre-Boot-3 pattern, surface as migration signal. No security config + `spring-boot-starter-security` on classpath = HTTP Basic with generated password; starter absent = no auth.
-- Cross-reference route inventory (`@RequestMapping` / `@GetMapping` family) with `SecurityFilterChain.requestMatchers(...)` so each route is labeled public / authenticated / role-restricted. Also check `@PreAuthorize` / `@PostAuthorize` on controllers and services - these enforce auth outside the chain, so a route that looks "authenticated" from matchers alone may carry a stricter role rule.
+- Cross-reference route inventory (`@RequestMapping` / `@GetMapping` family) with `SecurityFilterChain.requestMatchers(...)` so each route is labeled public / authenticated / role-restricted. Also check `@PreAuthorize` / `@PostAuthorize` on controllers and services - these enforce auth outside the chain, so a route that looks "authenticated" from matchers alone may carry a stricter role rule. A matcher with no matching controller is listed as "no controller found - confirm", never dropped (a permitAll orphan is security-relevant).
+- Inventory non-HTTP entry points - `@Scheduled` jobs, message listeners (`@KafkaListener` / `@RabbitListener`), `@EventListener` / `@TransactionalEventListener` - a service's runtime behavior is often dominated by them.
+- Report missing expected inputs (no wrapper, no tests, no migrations) as absent plus what that implies - never emit a command that assumes them (`./mvnw` on a wrapper-less repo fails).
 
 ## Patterns
 
@@ -35,7 +37,7 @@ Workflow needs Spring-specific orientation: where code lives, how to run, what w
 | `build.gradle(.kts)` | Gradle; `plugins { id 'org.springframework.boot' }`; `java { toolchain { languageVersion = ... } }` |
 | `settings.gradle(.kts)` `include(...)` / multi-module `<modules>` | Multi-module fan-out - map each module's role |
 | `gradle/libs.versions.toml` | Version catalog - version source of truth |
-| `mvnw` / `gradlew` | Use wrapper, not system tool |
+| `mvnw` / `gradlew` | Use wrapper, not system tool; if absent, flag it and give the system-tool command |
 
 ### Bootstrap (clone -> running)
 
@@ -83,7 +85,7 @@ Name and locate; defer depth to the owning atomic:
 - **`@PostConstruct` heavy work** delays startup, precedes health checks.
 - **Scan divergence**: custom `scanBasePackages` / `@EntityScan` / `@EnableJpaRepositories` outside the app package.
 - **Ambiguous wiring**: multiple `DataSource` / `PlatformTransactionManager` without `@Primary`.
-- **Filter ordering**: custom `OncePerRequestFilter` without explicit order vs Spring Security chain.
+- **Filter ordering / double registration**: custom `OncePerRequestFilter` without explicit order vs Spring Security chain; a filter that is both a `@Component` and `addFilterBefore(...)`'d registers twice (servlet container + chain) unless suppressed via `FilterRegistrationBean`.
 - **`@EnableAsync` without `TaskExecutor`** -> unbounded `SimpleAsyncTaskExecutor` (-> `spring-async-processing`).
 - **Lombok `@Data` on JPA entities** - generated `equals`/`hashCode`/`toString` traverse lazy associations.
 - **Flyway `out-of-order` enabled** masks dev/CI/prod schema drift.
@@ -108,11 +110,11 @@ Name and locate; defer depth to the owning atomic:
 
 Inject into the parent workflow's onboarding output:
 
-**Stack and Tooling:** build system, Boot version, Java toolchain, key starters, persistence + migration tool, web stack (MVC / WebFlux), security state (configured / autoconfigured / absent).
+**Stack and Tooling:** build system, Boot version, Java toolchain, key starters, persistence + migration tool, web stack (MVC / WebFlux), security state (configured / autoconfigured / absent - annotate hybrids, e.g. configured chain but no `UserDetailsService`, so HTTP Basic falls back to the generated user).
 
 **Local Bootstrap:** exact run command, required local services, profile inventory (every `application-<profile>.yml`, default active, override mechanism, precedence chain), default port, actuator base path.
 
-**Architecture Map:** component-scan root, any divergent `@EntityScan` / `@EnableJpaRepositories`, layer directories with file counts, `@Configuration` classes (what each wires), `@ConfigurationProperties` classes (key prefix), cross-cutting (`@RestControllerAdvice`, custom filters, AOP), route table (method + path -> controller method -> auth label from chain).
+**Architecture Map:** component-scan root, any divergent `@EntityScan` / `@EnableJpaRepositories`, layer directories with `.java` file counts, `@Configuration` classes (what each wires), `@ConfigurationProperties` classes (key prefix), cross-cutting (`@RestControllerAdvice`, custom filters, AOP), route table (method + path -> controller method -> auth label from chain), non-HTTP entry points (`@Scheduled` / message listeners / event listeners -> trigger + handler).
 
 **Conventions:** chosen value per axis from the list above.
 

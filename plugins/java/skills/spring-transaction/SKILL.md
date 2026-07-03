@@ -26,7 +26,7 @@ user-invocable: false
 - No remote IO (HTTP, broker, email, S3) inside a transaction - it pins the DB connection
 - Side effects that must not run on rollback fire from `@TransactionalEventListener(AFTER_COMMIT)`
 - Pass IDs across thread boundaries (`@Async`, virtual threads, executors), never managed entities
-- Set `timeout` on long methods to bound pool exposure
+- Set `timeout` on long methods to bound pool exposure - derive from the p99 of the queries inside (typically 2-5s), never from remote-call time (that IO belongs outside the tx)
 
 ## Patterns
 
@@ -43,7 +43,8 @@ class OrderService {
 
 // Good - inject self so the proxy intercepts (or extract to a separate bean)
 class OrderService {
-    @Lazy private final OrderService self;
+    private final OrderService self;
+    OrderService(@Lazy OrderService self) { this.self = self; }  // @Lazy goes on the ctor param; on a final field it is ignored
     Order create(OrderRequest req) { return self.createWithAudit(req); }
     @Transactional Order createWithAudit(OrderRequest req) { ... }
 }
@@ -82,16 +83,36 @@ void onPlaced(OrderPlacedEvent e) { kafkaTemplate.send("orders", e.orderId()); }
 
 If the side effect must survive a crash between commit and publish, use a transactional outbox - see `spring-messaging-patterns`.
 
+Pre-tx calls add a compensation duty: if `saveOrder` then fails, the reservation leaks - release it in a catch block or reserve with a TTL.
+
+When the remote call's **result must be persisted** (payment charge), neither pre-tx nor AFTER_COMMIT fits. Use a state machine - short tx before, no tx around the call, short tx after:
+
+```java
+public Order placeOrder(OrderRequest req) {
+    Order order = self.createPending(req);          // tx 1: PENDING row
+    try {
+        ChargeResult r = paymentGateway.charge(order);   // no DB connection held
+        return self.finalize(order.getId(), r);     // tx 2: PAID or DECLINED
+    } catch (Exception e) {
+        self.markFailed(order.getId());              // compensating write
+        throw e;
+    }
+}
+```
+
+A crash between charge and finalize leaves charged-but-PENDING rows: reconcile against the gateway with a scheduled job, and use gateway idempotency keys so re-driving is safe.
+
 Virtual threads (Java 21, Spring Boot 3.5+) do not change this: a parked HTTP call still holds the JDBC connection bound to that thread. Pool sizing matters more, not less.
 
-### "Not rolling back" - four causes
+### "Not rolling back" - five causes
 
 Before assuming a Spring bug, rule these out in order:
 
 1. **Checked exception** - Spring rolls back on unchecked only by default. Add `rollbackFor`.
 2. **Exception caught inside the method** - a swallowed `try/catch` means nothing propagates to trigger rollback. Rethrow or mark `setRollbackOnly()`.
 3. **Self-invocation** - `this.txMethod()` never enters the proxy, so no transaction exists to roll back (see above).
-4. **Non-public method** - the proxy cannot advise it; the annotation is silently ignored.
+4. **Private method (or non-public behind a JDK interface proxy)** - silently ignored. Boot 3.x class-based (CGLIB) proxies do advise protected/package-private methods since Spring 6 - only private never works.
+5. **Write on a non-Spring connection** - raw `dataSource.getConnection()` / hand-rolled JDBC never joins the managed transaction; no annotation can roll it back. Route it through the Spring-managed `DataSource`/`JdbcTemplate` inside the tx.
 
 ```java
 // Bad - PaymentException is checked → transaction COMMITS despite the failure
@@ -106,6 +127,8 @@ void processPayment(Order order) throws PaymentException { ... }
 ### Read-only services
 
 `readOnly = true` lets Hibernate skip dirty-check snapshots and signals the JDBC driver/replica router. Apply at class level for query services, override per method for writes.
+
+An UPDATE inside a `readOnly` method often still commits: the flag only takes effect when this method *starts* the transaction - joining a caller's read-write tx keeps the caller's setting. Fix the annotation anyway; behavior flips silently when the call path changes.
 
 ```java
 @Service @Transactional(readOnly = true) @RequiredArgsConstructor
@@ -171,15 +194,17 @@ PaymentResponse processPayment(PaymentRequest req) {
 
 ## Output Format
 
+One block per method, describing the recommended configuration; on diagnosis tasks, carry the current broken value in `Reason` (`was: ...`):
+
 ```
 Method: {class.method}
-Propagation: {REQUIRED | REQUIRES_NEW | MANDATORY | ...}
-Read-Only: {Yes | No}
-Rollback: {default | rollbackFor=Exception.class | custom}
-Timeout: {seconds | none}
+Propagation: {REQUIRED | REQUIRES_NEW | MANDATORY | none - orchestrator, tx lives in callees | ...}
+Read-Only: {Yes | No | n/a}
+Rollback: {default | rollbackFor=Exception.class | custom | n/a}
+Timeout: {seconds | none | n/a}
 External-IO-In-Tx: {Yes | No}
 Post-Commit Hooks: {AFTER_COMMIT events | none}
-Reason: {why this configuration}
+Reason: {why this configuration; on diagnosis runs include "was: <current setting>"}
 ```
 
 ## Avoid

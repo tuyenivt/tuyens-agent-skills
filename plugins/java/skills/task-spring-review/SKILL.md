@@ -23,9 +23,9 @@ Spring-aware staff-level review umbrella. Stack-specific delegate of `task-code-
 | Depth      | When                                                              | Runs                                  |
 | ---------- | ----------------------------------------------------------------- | ------------------------------------- |
 | `standard` | Default                                                           | Phases A-E                            |
-| `deep`     | Architectural PRs, post-incident review, Principal sign-off       | A-E + historical pattern matching     |
+| `deep`     | Architectural PRs, post-incident review, Principal sign-off       | A-E + repo-history pass: `git log` the touched files for recurring fix/revert/hotfix churn and check prior review reports for repeat findings; cite matches as evidence in findings. If history is too shallow to signal, say so in Summary Notes |
 
-**Auto-promote to `deep`** when Phase A yields Blast Radius `Wide`/`Critical`. Surface as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
+**Auto-promote to `deep`** when Phase A yields Blast Radius `Wide`/`Critical`. Surface as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`. Subagents interpret the passed `depth` per their own depth tables (e.g., perf `deep` is profiling-driven; lacking profiling access it delivers estimates and says so) - the umbrella does not redefine their semantics.
 
 | Scope             | Adds                                       |
 | ----------------- | ------------------------------------------ |
@@ -147,7 +147,7 @@ Scan files and diff against signal categories (above). Log `signal: <category> -
 
 ### Phase B - Spring Correctness and Safety
 
-Logical correctness, error handling, backward compatibility, transaction boundary correctness. Use atomic skills `spring-transaction`, `spring-jpa-performance`, `spring-async-processing`, `spring-exception-handling`, `spring-messaging-patterns` as relevant.
+Logical correctness, error handling, backward compatibility, transaction boundary correctness. Use atomic skills `spring-transaction`, `spring-jpa-performance`, `spring-async-processing`, `spring-exception-handling`, `spring-messaging-patterns` as relevant - as diagnostic checklists only: their own Output Format blocks are not emitted; findings go solely into this workflow's report format.
 
 **Spring idioms (cite the named smell in findings):**
 
@@ -216,14 +216,7 @@ Use skill: `backend-coding-standards`. Use skill: `ops-observability` for cross-
 
 ### Step 5 - Delegate Extra Scopes in Parallel
 
-Skip if Core only. Spawn each extra subagent in parallel with the main thread.
-
-| Scope                | Subagents                                                          |
-| -------------------- | ------------------------------------------------------------------ |
-| Core + Perf          | `task-spring-review-perf`                                          |
-| Core + Sec           | `task-spring-review-security`                                      |
-| Core + Obs           | `task-spring-review-observability`                                 |
-| Full                 | All three in parallel                                              |
+Skip if Core only. Spawn the subagents the resolved scope requires (scope table in Depth and Scope) immediately after Phase A resolves depth - the earliest point the prompt contract below is satisfiable - so they run in parallel with Phases B-E.
 
 **Subagent prompt contract:** pass the resolved `base_ref`/`head_ref`, the already-read diff and commit log, depth level, and pre-confirmed stack. Subagent skips `review-precondition-check` and re-reading the diff. Return findings using its own Output Format.
 
@@ -256,7 +249,7 @@ Use skill: `review-report-writer` with `report_type: review` and these checkpoin
 
 - `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
 - `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4), `depth` (resolved/auto-promoted in Phase A), `stack = java-spring-boot`
+- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `Full` -> `full` - the writer rejects unmapped values), `depth` (resolved/auto-promoted in Phase A), `stack = java-spring-boot`
 
 The report writer owns label semantics (`[Must]` / `[Recommend]` / `[Question]` - no severity-mixed `[Blocker]`/`[High]`/`[Suggestion]`, no `[Nit]`/`[Consider]`/`[Praise]`).
 
@@ -274,6 +267,9 @@ The report writer owns label semantics (`[Must]` / `[Recommend]` / `[Question]` 
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_
+**Notes:** <free text> _(omit if empty - home for checkpoint gaps, `Scope incomplete: ...` records, subagent failures, deep-pass limitations)_
+
+[full Risk and Blast Radius blocks from Phase A's atomics]
 
 ## Prior Round Reconciliation _(incremental rounds only; omit otherwise)_
 

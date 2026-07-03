@@ -30,6 +30,8 @@ Spring-aware security review naming `SecurityFilterChain`, OAuth2 Resource Serve
 | `/task-spring-review-security <branch>` | `<branch>` vs base (3-dot diff)                        |
 | `/task-spring-review-security pr-<N>`   | PR head fetched into `pr-<N>` (user runs fetch first)  |
 
+**Whole-service audit** (pre-deployment hardening, pen-test prep, or drift sweep with no feature branch): when Step 3 fails fast on trunk, do not stop - skip the diff gate and run Steps 4-9 against the full security surface at `HEAD` (no diff scoping; findings cite current code).
+
 When invoked as a subagent, the parent passes the precondition handle plus pre-read diff and commit log; Step 3 is skipped.
 
 ## Workflow
@@ -40,11 +42,11 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect`. Accept pre-confirmed stack from a parent. If not Spring Boot, stop and tell the user to invoke `/task-code-review-security`.
+Use skill: `stack-detect`. Accept pre-confirmed stack from a parent. If not Spring Boot (standalone only): stop and tell the user to invoke `/task-code-review-security`; as a subagent, return the mismatch to the parent instead.
 
 ### Step 3 - Resolve the Diff
 
-Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent. Surface fail-fast messages verbatim and stop. No state-changing git.
+Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent. On fail-fast on trunk, switch to the whole-service audit path (Invocation section); on any other fail-fast, surface the message verbatim and stop. No state-changing git.
 
 ### Step 4 - Read the Security Surface
 
@@ -107,7 +109,7 @@ Use skill: `spring-security-patterns`.
 
 ### Step 9 - Spring-Specific OWASP Sweep
 
-Cover each category. State "No issues found" per category that is clean - never silently skip.
+Cover each category. State "No issues found" per category that is clean - never silently skip. Results land in the Output Format's `OWASP Sweep` section.
 
 | Risk                          | Spring-specific check                                                                                                                                |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -128,24 +130,26 @@ Plus Spring-specific: open redirect (`response.sendRedirect(userInput)` allowlis
 
 **Subagent mode:** if invoked by `task-spring-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.
 
-Standalone: use skill: `review-report-writer` with `report_type: review-security`. Write to the report file before ending; print confirmation.
+Standalone: use skill: `review-report-writer` with `report_type: review-security` and these inputs: `branch`, `base_ref`, `base_sha`/`head_sha` (`git rev-parse` the refs Step 3 resolved; whole-service audit: both = `HEAD`), `scope: +sec`, `depth: standard` (this workflow defines no `deep`), `stack = java-spring-boot`, and `mode`/`round` via your own lookup of `review-security-<branch>.md` (`review-precondition-check` keys prior checkpoints to `review-<branch>.md`, so its lookup never finds this report): exists with valid frontmatter -> increment its `round` and pass its `head_sha` as `prior_head_sha`; else `mode: full`, `round: 1`. Write to the report file before ending; print confirmation.
 
 ## Self-Check
 
 - [ ] Step 1 - behavioral principles loaded
 - [ ] Step 2 - stack confirmed Spring Boot (else delegated out)
-- [ ] Step 3 - precondition handle obtained; diff and commit log read once and reused
+- [ ] Step 3 - precondition handle obtained (or received from parent, or audit path taken on trunk); diff and commit log read once and reused
 - [ ] Step 4 - security surface read (filter chain, controllers, config, build deps, modified tests); prior revision consulted when annotations / matchers were removed
 - [ ] Step 5 - `spring-security-patterns` consulted
 - [ ] Step 6 - auth checks run for the mechanism in use (form / OAuth2 / JWT)
 - [ ] Step 7 - authorization drift sweep complete; every new endpoint has a matcher or `@PreAuthorize`
 - [ ] Step 8 - Bean Validation on every `@RequestBody`; no entity as input DTO; file-upload / process-execution checks where applicable
-- [ ] Step 9 - every OWASP row addressed; clean categories explicitly marked "No issues found"
+- [ ] Step 9 - every OWASP row addressed in the OWASP Sweep section; clean categories explicitly marked "No issues found"
 - [ ] Step 10 - standalone: report written via `review-report-writer`, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding includes an attack scenario and a concrete Spring fix
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omit if none)
 
 ## Output Format
+
+**Severity assignment:** Critical = exploitable now for auth/authz bypass or data compromise (IDOR, matcher-order bypass, unvalidated JWT, injection on a reachable path, MD5 password hashing). High = exploitable with preconditions or exposes sensitive internals (public `heapdump`/`env`, open redirect, missing brute-force protection on auth endpoints). Medium = defense-in-depth gap with no direct exploit path (missing `@PreAuthorize` behind a correct matcher, undocumented `csrf().disable()` rationale). Low = hardening polish (headers, cookie flags on non-sensitive paths). Intent labels follow severity: Critical/High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on an exposed path; Low -> `[Recommend]` or `[Question]`.
 
 ```markdown
 ## Spring Boot Security Review Summary
@@ -160,15 +164,21 @@ Standalone: use skill: `review-report-writer` with `report_type: review-security
 ## Findings
 
 ### Critical
-- **Location:** [file:line]
-- **Issue:** [vulnerability in Spring terms - e.g., "`@RequestBody` binds entity directly in OrderController#update, allowing mass assignment of `ownerId`"]
-- **Attack scenario:** [how the attacker exploits this]
-- **Fix:** [specific Spring remediation with code]
+
+1. **Location:** [file:line]
+   **Issue:** [vulnerability in Spring terms - e.g., "`@RequestBody` binds entity directly in OrderController#update, allowing mass assignment of `ownerId`"]
+   **Attack scenario:** [how the attacker exploits this]
+   **Fix:** [specific Spring remediation with code]
 
 ### High / Medium / Low
-[Same structure]
+[Same numbered-block structure; numbering continues across tiers]
 
 _Omit empty severity sections. If all omitted, state "No security issues found."_
+
+## OWASP Sweep
+
+- A01 Broken Access Control: [Finding <n> | No issues found]
+- ... [one line per Step 9 table row A01-A10, plus one for the Spring-specific extras (open redirect / SSTI / XSS / SPA CSRF)]
 
 ## Recommendations
 

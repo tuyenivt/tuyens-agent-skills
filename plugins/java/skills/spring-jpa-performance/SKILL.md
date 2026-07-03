@@ -35,8 +35,8 @@ user-invocable: false
 // Bad - N+1
 userRepository.findAll().forEach(u -> log.info("{}", u.getOrders()));
 
-// Good - JPQL fetch join (custom query)
-@Query("SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.orders")
+// Good - JPQL fetch join (custom query; Hibernate 6 de-duplicates parents, no DISTINCT needed)
+@Query("SELECT u FROM User u LEFT JOIN FETCH u.orders")
 List<User> findAllWithOrders();
 
 // Good - @EntityGraph (derived query)
@@ -51,17 +51,21 @@ Fetch join for custom JPQL; `@EntityGraph` for derived methods. Don't combine.
 1. **Two `JOIN FETCH` on `List` collections** -> `MultipleBagFetchException` at startup. Fix: change one to `Set`, split into two queries, or use `@BatchSize`.
 2. **`Pageable` + collection `JOIN FETCH`** -> `HHH90003004` warning; Hibernate paginates in memory (silent OOM).
 
+Read-only endpoint? Drop the fetch join and project to a DTO (see DTO projections) - the trap disappears. When full entities are required:
+
 ```java
 // Bad - in-memory pagination
-@Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.lines")
+@Query("SELECT o FROM Order o LEFT JOIN FETCH o.lines")
 Page<Order> findAllWithLines(Pageable p);
 
-// Good - two-query: page IDs, then fetch associations
-@Query("SELECT o.id FROM Order o ORDER BY o.id")
+// Good - two-query: page IDs (caller's Pageable sort applies here), then fetch associations
+@Query("SELECT o.id FROM Order o")
 Page<Long> findIds(Pageable p);
 
-@Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.lines WHERE o.id IN :ids ORDER BY o.id")
+@Query("SELECT o FROM Order o LEFT JOIN FETCH o.lines WHERE o.id IN :ids")
 List<Order> findWithLinesByIds(@Param("ids") List<Long> ids);
+// second query returns DB order: re-sort to match idPage.getContent(),
+// then new PageImpl<>(orders, p, idPage.getTotalElements())
 ```
 
 Alternative: drop `JOIN FETCH` on paginated endpoints and use batch fetching.
@@ -90,6 +94,21 @@ List<OrderSummary> findSummaries(@Param("cid") Long cid);
 ```
 
 Skips dirty-checking and association loading. Prefer over entities for any read-only response.
+
+Summary DTO needing an aggregate over a lazy collection, paginated - `GROUP BY` collapses the fan-out so `Pageable` stays in SQL:
+
+```java
+public record OrderRow(Long id, String customer, BigDecimal itemTotal) {}
+
+@Query(value = """
+       SELECT new com.example.dto.OrderRow(o.id, c.name, COALESCE(SUM(i.price), 0))
+       FROM Order o JOIN o.customer c LEFT JOIN o.items i
+       GROUP BY o.id, c.name""",
+       countQuery = "SELECT count(o) FROM Order o")
+Page<OrderRow> findRows(Pageable p);
+```
+
+With `GROUP BY`, the explicit `countQuery` is mandatory, not an optimization: the derived count query counts per group, breaking `totalElements`.
 
 ### Pagination
 
@@ -177,9 +196,10 @@ public class Country { ... }
 
 ```
 Optimization: {N+1 Fix | Projection | Batch Fetch | Pagination | Bulk Write | Locking | Cache}
+  (one value - when several apply, label by the primary mechanism of the shipped change)
 Trigger: {symptom - e.g., "P95 3s on /customers, N queries per request"}
-Entity/Repo: {name}
-Change: {what changed - code + config}
+Entity/Repo: {name(s)}
+Change: {what changed - code + config; list form allowed for multi-part changes}
 Query Count: {before} -> {after}
 ```
 

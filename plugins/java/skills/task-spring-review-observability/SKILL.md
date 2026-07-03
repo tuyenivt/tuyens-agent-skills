@@ -36,7 +36,7 @@ Stack-specific delegate of `task-code-review-observability` for Java / Spring Bo
 | `standard` | Default                                                       | All steps except 11                                  |
 | `deep`     | Pre-release of critical service or post-incident review       | All steps + SLI/SLO suggestions                      |
 
-Default: `standard`.
+Default: `standard`. Post-incident and pre-release-of-critical-service invocations run `deep` without needing a flag (the Depth table's When column authorizes it).
 
 ## Invocation
 
@@ -45,6 +45,8 @@ Default: `standard`.
 | `/task-spring-review-observability`          | Current branch vs base; fails fast on trunk                   |
 | `/task-spring-review-observability <branch>` | `<branch>` vs base (3-dot diff)                               |
 | `/task-spring-review-observability pr-<N>`   | PR head fetched into `pr-<N>` (user runs fetch first)         |
+
+**Whole-service audit** (post-incident or pre-release with no feature branch): when Step 3 fails fast on trunk, do not stop - skip the diff gate and run Steps 4-12 against the full instrumentation surface at `HEAD` (no diff scoping; findings cite current code). The report is always `mode: full`, `round: 1`.
 
 When invoked as a subagent, the parent passes the precondition handle + pre-read diff and commit log; Step 3 is skipped.
 
@@ -60,7 +62,7 @@ Use skill: `stack-detect`. Accept a pre-confirmed stack from a Spring-aware pare
 
 ### Step 3 - Resolve the Diff
 
-Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent with parent-supplied artifacts. On fail-fast, surface the message verbatim and stop. No state-changing git.
+Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent with parent-supplied artifacts. On fail-fast on trunk, switch to the whole-service audit path (Invocation section); on any other fail-fast, surface the message verbatim and stop. No state-changing git.
 
 ### Step 4 - Read the Instrumentation Surface
 
@@ -146,19 +148,21 @@ Open the files that wire observability so findings cite real lines, even when th
 
 **Subagent mode:** if invoked by `task-spring-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.
 
-Standalone: use skill: `review-report-writer` with `report_type: review-observability`. Write the file before ending; print confirmation.
+Standalone: use skill: `review-report-writer` with `report_type: review-observability` and these inputs: `branch`, `base_ref`, `base_sha`/`head_sha` (`git rev-parse` the refs Step 3 resolved; whole-service audit: both = `HEAD`), `scope: +obs`, `depth` (Depth table), `stack = java-spring-boot`, and always `mode: full`, `round: 1` - this report type has no incremental machinery (`review-precondition-check` keys prior checkpoints to `review-<branch>.md`, not `review-observability-<branch>.md`, so prior-round lookup never applies). Write the file before ending; print confirmation.
 
 ## Output Format
+
+**Severity assignment:** High = the gap blocks incident diagnosis or exposes data (lost trace/MDC context across a hop, swallowed stack traces, PII in logs, unsecured Actuator). Medium = diagnosis possible but degraded or costly (unstructured logs, missing metrics on key flows, unbounded tag cardinality). Low = polish (naming, levels, encoder tuning). Intent labels follow severity: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on an incident-path surface; Low -> `[Recommend]` or `[Question]`.
 
 ```markdown
 ## Spring Boot Observability Review Summary
 
 **Stack Detected:** Java <version> / Spring Boot <version>
-**Logging:** Logback + Logstash JSON | Logback JsonEncoder | log4j2 | other
-**Metrics:** Micrometer + Prometheus | Micrometer + StatsD | none
+**Logging:** Logback + Logstash JSON | Logback JsonEncoder | log4j2 | plain-text pattern (unstructured) | other
+**Metrics:** Micrometer + Prometheus | Micrometer + StatsD | Micrometer via Actuator - no export registry | none
 **Tracing:** Micrometer Tracing (OTel) | Micrometer Tracing (Brave/Zipkin) | Sleuth (deprecated) | none
 **Error Tracker:** Sentry | Honeybadger | Rollbar | none
-**Overall:** Adequate | Gaps Found - [count: High/Medium/Low]
+**Overall:** Adequate | Gaps Found - [<N> High / <N> Medium / <N> Low]
 
 ## Findings
 
@@ -174,7 +178,7 @@ Standalone: use skill: `review-report-writer` with `report_type: review-observab
 ### Low Impact / Quick Wins
 [Same structure]
 
-_Omit empty sections._
+_Repeat the four-line block per finding, numbered, within its severity section. Omit empty sections._
 
 ## Recommendations
 

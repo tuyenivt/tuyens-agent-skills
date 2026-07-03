@@ -26,12 +26,14 @@ Stack-specific delegate of `task-code-review-perf`.
 
 ## Depth
 
-| Depth      | When                                                     | Steps Run                       |
-| ---------- | -------------------------------------------------------- | ------------------------------- |
-| `standard` | Default                                                  | All                             |
-| `deep`     | Profiling-driven (JFR / async-profiler / Micrometer)     | All + capacity + load-test plan |
+| Depth      | When                                                                        | Steps Run                                     |
+| ---------- | --------------------------------------------------------------------------- | --------------------------------------------- |
+| `standard` | Default                                                                      | All                                           |
+| `deep`     | Requested, or handed down by `task-spring-review`                            | All + `Capacity and Load-Test Plan` section   |
 
-Invocation forms (`/task-spring-review-perf [<branch>|pr-<N>]`) follow `task-code-review-perf`. When invoked as subagent, parent passes the precondition handle plus pre-read diff and commit log; Step 3 is skipped.
+At `deep`, use profiling data (JFR / async-profiler / Micrometer) when available; without it, derive capacity estimates from pool sizes, thread model, and query counts, and label every number as an estimate.
+
+Invocation forms (`/task-spring-review-perf [<branch>|pr-<N>] [standard|deep] [--base <branch>]`) follow `task-code-review-perf`. When invoked as subagent, parent passes the pre-confirmed stack, the precondition handle, and pre-read diff and commit log; Steps 2-3 consume those instead of re-running.
 
 ## Workflow
 
@@ -41,11 +43,11 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect`. If not Spring Boot, stop and route the user to `/task-code-review-perf`. This workflow assumes Java 21+ and Spring Boot 3.5+.
+Accept a pre-confirmed stack from a parent (`task-spring-review`) and skip detection. Standalone: use skill: `stack-detect`; if not Spring Boot, stop and route the user to `/task-code-review-perf`. This workflow assumes Java 21+ and Spring Boot 3.5+.
 
 ### Step 3 - Resolve the Diff
 
-Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent with handle + artifacts pre-passed. Surface any fail-fast verbatim.
+Use skill: `review-precondition-check`. Once the handle is emitted (after approval, or immediately when the check skips the gate), read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent with handle + artifacts pre-passed. Surface any fail-fast verbatim.
 
 ### Step 4 - Read the Performance Surface
 
@@ -70,7 +72,8 @@ Use skill: `spring-jpa-performance` for canonical N+1 / fetch / projection / bat
 - [ ] **`Page<T>` vs `Slice<T>` vs cursor** - `Page` issues `count(*)`; for next/prev UIs use `Slice`, for infinite scroll use cursor.
 - [ ] **`@Transactional(timeout = N)`** on long reads; untimed queries hold a connection until DB `wait_timeout`.
 - [ ] **Transaction scope** - no HTTP / broker / external IO inside `@Transactional`; use `AFTER_COMMIT` or outbox.
-- [ ] Missing indexes on any `@Query` `where` / `order by` / `group by` field (defer detail to Step 6).
+
+(Index coverage for `@Query` `where` / `order by` / `group by` fields: Step 6.)
 
 ### Step 6 - Indexes and Migrations
 
@@ -87,8 +90,8 @@ Use skill: `spring-db-migration-safety`.
 
 Use skill: `spring-async-processing`.
 
-- [ ] **No `synchronized` on shared state in VT paths** - pins the carrier and defeats the model. Use `ReentrantLock`, `StampedLock`, or `ConcurrentHashMap.compute`.
-- [ ] Virtual Threads enabled (`spring.threads.virtual.enabled=true`); Tomcat + `@Async` use `VirtualThreadPerTaskExecutor`.
+- [ ] **No `synchronized` on shared state in VT paths on JDK < 24** - pins the carrier and defeats the model (JEP 491 removes pinning in JDK 24). Use `ReentrantLock`, `StampedLock`, or `ConcurrentHashMap.compute`.
+- [ ] **If** VT enabled (`spring.threads.virtual.enabled=true`): Tomcat + `@Async` use `VirtualThreadPerTaskExecutor`. Do not recommend enabling VT for CPU-bound services.
 - [ ] **HikariCP sizing** - "small pool, fast queries" still holds with VT. OLTP baseline: `maximumPoolSize = cores * 2..4`, `connectionTimeout` 1-3s, `maxLifetime` < DB `wait_timeout`, `leakDetectionThreshold: 5000` non-prod.
 - [ ] HTTP clients (`RestClient`, `WebClient`, `RestTemplate`) reused as beans with explicit connect / read / response timeouts.
 - [ ] Resilience4j circuit breaker on flaky externals; bulkheads on shared executors.
@@ -127,36 +130,45 @@ Use skill: `spring-messaging-patterns`.
 
 **Subagent mode:** if invoked by `task-spring-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.
 
-Standalone: use skill: `review-report-writer` with `report_type: review-perf`. Write to the report file, then print confirmation.
+Standalone: use skill: `review-report-writer` with `report_type: review-perf`. Assemble every checkpoint field the writer requires: `scope: +perf`, `depth` as invoked, `stack` from Step 2 (kebab-case language-framework), `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Write to the report file, then print confirmation.
 
 ## Output Format
+
+**Severity assignment:** High = user-facing latency/throughput regression or resource exhaustion (pool, executor, memory) on a hot path; Medium = measurable waste off the hot path, or a hot-path risk gated on load growth; Low = polish with minor measurable benefit. Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a hot path; Low -> `[Recommend]` or `[Question]`.
 
 ```markdown
 ## Spring Boot Performance Review Summary
 
 **Stack Detected:** Java <version> / Spring Boot <version>
 **Scope:** Backend (Spring Boot)
-**Overall:** Clean | Issues Found - [count: High/Medium/Low]
+**Overall:** Clean | Issues Found - [<N> High / <N> Medium / <N> Low]
 
 ## Findings
 
 ### High Impact
-- **Location:** [file:line]
-- **Issue:** [name the idiom: N+1 via lazy association, missing index, mid-tx publish, `synchronized` on VT, etc.]
-- **Impact:** [measured "p95 800ms -> 120ms" or estimated "adds ~200 queries/request at 100 orders"]
-- **Fix:** [`@EntityGraph`, fetch join, projection DTO, post-commit event, etc.]
+
+1. **Location:** [file:line]
+   **Issue:** [name the idiom: N+1 via lazy association, missing index, mid-tx publish, `synchronized` on VT, etc.]
+   **Impact:** [measured "p95 800ms -> 120ms" or estimated "adds ~200 queries/request at 100 orders"]
+   **Fix:** [`@EntityGraph`, fetch join, projection DTO, post-commit event, etc.]
 
 ### Medium Impact
-[Same structure]
+[Same numbered-block structure; numbering continues across tiers]
 
 ### Low Impact / Quick Wins
-[Same structure]
+[Same numbered-block structure]
 
 _Omit empty sections._
 
 ## Recommendations
 
 [Structural improvements not tied to a single finding]
+
+## Capacity and Load-Test Plan
+
+_(`deep` only - omit at `standard`.)_
+**Capacity:** [bottleneck resource and estimated ceiling, e.g. "HikariCP 10 conns at ~40ms/query -> ~250 req/s before pool wait"; label estimates when derived without profiling data]
+**Load-Test Plan:** [scenario, target endpoints, load shape, success criteria tied to the findings above]
 
 ## Next Steps
 
@@ -169,8 +181,10 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, schema, load test
 
 ## Self-Check
 
+Mark a line N/A when the diff has no matching surface (e.g. no migrations, no messaging).
+
 - [ ] Step 1: behavioral principles loaded
-- [ ] Step 2: stack confirmed Spring Boot 3.5+ / Java 21+
+- [ ] Step 2: stack confirmed Spring Boot 3.5+ / Java 21+ (or pre-confirmed stack accepted from parent)
 - [ ] Step 3: precondition check ran (or handle received); diff + log read once
 - [ ] Step 4: entities, repos, services, HikariCP/JPA config, migrations, observability prep read
 - [ ] Step 5: `spring-jpa-performance` consulted; mapper N+1, `Page`/`Slice`, tx timeout, tx scope checked
@@ -181,7 +195,7 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, schema, load test
 - [ ] Step 10: standalone: report written via `review-report-writer`, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding states impact (measured or estimated), never "this is slow"
 - [ ] Findings ordered by impact; quick wins separated from structural changes
-- [ ] Depth honored: `standard` ran all; `deep` adds capacity + load-test plan
+- [ ] Depth honored: `standard` ran all; `deep` filled the Capacity and Load-Test Plan section (estimates labeled when no profiling data)
 - [ ] Next Steps tagged and ordered by intent (omit if none)
 
 ## Avoid
@@ -192,5 +206,5 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, schema, load test
 - Suggesting caching without an invalidation strategy
 - Conflating perf with general review or security
 - Treating broker retries as a substitute for idempotency
-- Recommending `synchronized` in VT-enabled paths
+- Recommending `synchronized` in VT-enabled paths on JDK < 24
 - Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.

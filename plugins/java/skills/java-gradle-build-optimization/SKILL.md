@@ -21,12 +21,12 @@ user-invocable: false
 
 ## Rules
 
-- Kotlin DSL (`.gradle.kts`) for new projects; Groovy only for legacy maintenance
+- Kotlin DSL (`.gradle.kts`) for new projects and active modernizations; keep Groovy only in maintenance-only legacy builds
 - All dependency and plugin versions in `gradle/libs.versions.toml`
 - Parallel + build cache + configuration cache on by default
 - Shared logic via convention plugins in `build-logic/`, never `allprojects {}` / `subprojects {}`
 - Spring Boot plugin only on application modules (it disables `jar` and produces `bootJar`)
-- `implementation()` is the default; `api()` only when a type appears in the module's public API
+- `implementation()` is the default; `api()` only when a type appears in the module's public API; `runtimeOnly` for deps never referenced at compile time (JDBC drivers, Flyway DB modules); `compileOnly` for compile-time-only (annotation processors, Lombok)
 - Toolchain declared with foojay resolver so CI auto-provisions the JDK
 - Commit `gradlew` / `gradle-wrapper.jar`; CI invokes only `./gradlew`
 
@@ -52,6 +52,8 @@ spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
 spring-dep-mgmt = { id = "io.spring.dependency-management", version.ref = "spring-dep-mgmt" }
 ```
 
+Versioning policy: Boot-managed libraries get no `version` entry (the `platform()` BOM aligns them); pin `version`/`version.ref` only for deps outside Boot's BOM.
+
 ```kotlin
 dependencies {
     implementation(platform(libs.spring.boot.bom))
@@ -65,7 +67,7 @@ dependencies {
 `settings.gradle.kts`:
 
 ```kotlin
-plugins { id("org.gradle.toolchains.foojay-resolver-convention") version "0.8.0" }
+plugins { id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0" }  // use latest release
 ```
 
 Without this, fresh CI runners fail when no matching JDK is found.
@@ -95,18 +97,29 @@ Wire the modules and the `build-logic` included build in the root `settings.grad
 rootProject.name = "acme"
 includeBuild("build-logic")
 include(":domain", ":app")
+
+dependencyResolutionManagement {
+    repositories { mavenCentral() }   // replaces allprojects { repositories {...} }
+}
 ```
 
-`build-logic/build.gradle.kts` needs the `kotlin-dsl` plugin so its `*.gradle.kts` files compile to plugins:
+`build-logic/build.gradle.kts` needs the `kotlin-dsl` plugin so its `*.gradle.kts` files compile to plugins, plus its own repositories (an included build does not inherit the main build's):
 
 ```kotlin
 plugins { `kotlin-dsl` }
+repositories {
+    gradlePluginPortal()
+    mavenCentral()
+}
 ```
 
-`build-logic/src/main/kotlin/java-conventions.gradle.kts`:
+`build-logic/src/main/kotlin/java-conventions.gradle.kts` - `group`/`version` land here (replacing `allprojects`); `toolchain` replaces `sourceCompatibility`/`targetCompatibility` (delete those):
 
 ```kotlin
 plugins { java }
+
+group = "com.acme"
+version = "0.1.0"
 
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(21)) } }
 
@@ -194,9 +207,10 @@ Run periodically; surface unused deps and incorrect `api`/`implementation` scopi
 ```kotlin
 tasks.bootJar {
     mainClass.set("com.example.Application")
-    layered { enabled.set(true) }   // faster Docker layer rebuilds
 }
 ```
+
+Layering is enabled by default in Boot 3.x - do not present `layered {}` as an optimization; the Docker-rebuild benefit only materializes with a layertools-aware Dockerfile.
 
 GraalVM native (only when `org.graalvm.buildtools.native` plugin is applied):
 
@@ -229,7 +243,7 @@ Local builds reuse a long-lived daemon (this is what makes incremental fast). On
 ./gradlew integrationTest --parallel --build-cache --no-daemon
 ```
 
-Remote build cache (the biggest multi-module CI win - one job's output feeds the next):
+Remote build cache (the biggest multi-module CI win - one job's output feeds the next). Requires an existing cache node (Develocity or an HTTP cache server); when none exists, use the Actions cache below instead of emitting placeholder config:
 
 ```kotlin
 // settings.gradle.kts
@@ -256,16 +270,16 @@ GitHub Actions local-cache fallback:
 ## Output Format
 
 ```
-Optimization: {version-catalog | build-cache-local | build-cache-remote | configuration-cache | parallel | convention-plugin | scope | bom-platform | locking | dependency-analysis | toolchain | layered-jar | ci-cache}
-File: {repo path}
-Change: {one-line diff}
+Optimization: {dsl-migration | version-catalog | build-cache-local | build-cache-remote | configuration-cache | parallel | convention-plugin | scope | bom-platform | locking | dependency-analysis | toolchain | ci-cache | ci-workflow}
+File: {repo path(s) - list all touched files for multi-file optimizations}
+Change: {summary diff - one line per touched file}
 Priority: {High | Medium | Low}
 Effort: {Trivial | Small | Medium | Large}
-Expected Impact: {clean delta | incremental delta | maintainability}
+Expected Impact: {clean delta | incremental delta | maintainability} - {quantify when estimable, e.g. "clean delta ~-25%"}
 Risk: {None | Plugin-incompat | Behavior-change}
 ```
 
-Aggregate: `Aggregate: estimated total clean-build reduction (%)`.
+Aggregate: `Aggregate: estimated clean-build reduction (%); incremental/no-op reduction (%) when changed`.
 
 ## Avoid
 

@@ -23,6 +23,8 @@ user-invocable: false
 - Destructive changes (NOT NULL, rename, drop) span multiple releases via expand-then-contract.
 - One concern per migration file: DDL and DML separate; one DDL statement per file.
 - Large-table DDL must be non-blocking - Postgres `CONCURRENTLY`, MySQL `ALGORITHM=INPLACE, LOCK=NONE`.
+- DDL on hot tables: `SET lock_timeout = '5s'` + retry - a blocked ALTER queues behind long transactions and blocks all traffic behind it.
+- Batched backfills are jobs, not versioned migrations - Flyway runs at startup in one transaction, so a large DML file stalls the deploy.
 - `spring.jpa.hibernate.ddl-auto: validate` beyond local; never `update`.
 - Forward-only fixes: amending a merged migration breaks Flyway checksum validation. Ship a new `Vx__revert_*.sql`.
 - Liquibase: declare `<rollback>` for every non-auto-reversible changeset.
@@ -31,39 +33,43 @@ user-invocable: false
 
 ### Three-step NOT NULL
 
-Adding `NOT NULL` with `DEFAULT` in one statement rewrites every row and holds an ACCESS EXCLUSIVE lock - unsafe on large tables.
+On Postgres 11+ `ADD COLUMN ... NOT NULL DEFAULT <constant>` is metadata-only (safe). The three-step is for values computed per row (backfill from another table) or volatile defaults, where a one-statement approach rewrites the table under ACCESS EXCLUSIVE:
 
 ```sql
 -- V1__add_status_nullable.sql (release N)
 ALTER TABLE orders ADD COLUMN status VARCHAR(50);
 
--- V2__backfill_status.sql (release N, batched DML)
-UPDATE orders SET status = 'PENDING'
-WHERE status IS NULL AND id BETWEEN :lo AND :hi;
+-- Backfill: NOT a versioned migration (Flyway would run it at startup in one
+-- transaction, stalling the deploy). Run batched from a job/ops script:
+--   UPDATE orders SET status = 'PENDING' WHERE status IS NULL AND id BETWEEN :lo AND :hi;
 
--- V3__constrain_status.sql (release N+1, after backfill verified)
+-- V2__constrain_status.sql (release N+1, after backfill verified)
 ALTER TABLE orders ALTER COLUMN status SET NOT NULL;
 ```
 
-Batched backfill avoids long-held locks and WAL bloat. Run from app or job, not as a single `UPDATE`.
+Batching avoids long-held locks and WAL bloat.
 
 `SET NOT NULL` on an *existing* column scans the whole table under an ACCESS EXCLUSIVE lock. Postgres 12+ skips the scan if a validated equivalent CHECK already proves no nulls - add `CHECK (status IS NOT NULL) NOT VALID`, `VALIDATE CONSTRAINT` (lock-free), then `SET NOT NULL` (now instant), then drop the CHECK.
 
-### Three-step rename with dual-write
+### Rename via expand-then-contract (three releases)
+
+A rename is never one release: release N adds the new column and dual-writes; release N+1 stops referencing the old column; the drop ships in N+2. Dropping in N+1 breaks the still-running N instances mid-rolling-deploy (Flyway runs on the first new instance's startup while old code still writes the old column).
 
 ```sql
--- V1__add_customer_id.sql (expand)
+-- V1__add_customer_id.sql (release N - expand)
 ALTER TABLE orders ADD COLUMN customer_id BIGINT;
 
--- V2__backfill_customer_id.sql (batched)
-UPDATE orders SET customer_id = customer_ref
-WHERE customer_id IS NULL AND id BETWEEN :lo AND :hi;
+-- Backfill (release N): batched job/ops script, not a versioned migration:
+--   UPDATE orders SET customer_id = customer_ref
+--   WHERE customer_id IS NULL AND id BETWEEN :lo AND :hi;
 
--- V3__drop_customer_ref.sql (release N+1)
+-- (release N+1: code reads/writes customer_id only - no migration)
+
+-- V2__drop_customer_ref.sql (release N+2 - contract, after N+1 fully deployed)
 ALTER TABLE orders DROP COLUMN customer_ref;
 ```
 
-During release N rollout both columns are read by some instances. Keep them in sync at the app layer until release N+1 ships:
+During release N both columns are live. Keep them in sync at the app layer until release N+1 is fully rolled out:
 
 ```java
 @PrePersist @PreUpdate
@@ -136,7 +142,7 @@ class MigrationIntegrityTest {
 
 ### Flyway conventions
 
-Versioned: `V{yyyyMMdd}_{HHmm}__{description}.sql`. Repeatable: `R__{description}.sql` for views/functions/triggers (re-runs on checksum change).
+Versioned: `V{yyyyMMdd}_{HHmm}__{description}.sql`. Repeatable: `R__{description}.sql` for views/functions/triggers (re-runs on checksum change). The `V1`/`V2` names in this skill's examples are shorthand - real files follow the timestamp convention.
 
 ```yaml
 spring:
@@ -148,22 +154,25 @@ spring:
 
 ## Output Format
 
+Open multi-release plans with one line mapping releases to steps (`Plan: N: V1 + backfill job; N+1: code switch; N+2: V2`), then one block per migration or job:
+
 ```
-Migration: {filename}
+Migration: {filename | backfill job}
+Release: {N | N+1 | N+2}
 Type: {DDL | DML}
 Operation: {ADD_COLUMN | ADD_INDEX | BACKFILL | DROP_COLUMN | RENAME | CONSTRAINT}
 Table: {name}
 Phase: {expand | migrate | contract}
-Locks Table: {yes | no}
-Concurrency Safe: {yes-CONCURRENTLY | yes-INPLACE | no}
+Locks Table: {yes | brief-metadata | no}
+Concurrency Safe: {yes-CONCURRENTLY | yes-INPLACE | yes-metadata-only | no}
 Backward Compatible With N-1: {yes | no - what changes with code release}
 Rollback: {auto-reversible | liquibase-rollback | forward-fix | restore-from-backup}
 ```
 
 ## Avoid
 
-- `ADD COLUMN ... NOT NULL DEFAULT ...` in one statement on large tables (full rewrite under lock).
-- Renaming or dropping a column in the same release that stops reading it.
+- `ADD COLUMN ... NOT NULL DEFAULT ...` with a computed/volatile default on large tables (full rewrite under lock; constant defaults are metadata-only on PG 11+).
+- Dropping a column in the same release that stops reading it - contract one release later, after that code is fully deployed.
 - Blocking index creation on large tables (omitting `CONCURRENTLY` / `INPLACE`).
 - Editing a merged migration to "fix" it - breaks checksum validation downstream.
 - Unbounded `UPDATE` for backfill - batch by primary key range.

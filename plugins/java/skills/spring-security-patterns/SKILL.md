@@ -19,7 +19,7 @@ user-invocable: false
 ## Rules
 
 - One `SecurityFilterChain` bean per `securityMatcher` path scope; order with `@Order`
-- STATELESS APIs: `csrf().disable()` and `sessionCreationPolicy(STATELESS)` together
+- STATELESS APIs: `csrf(AbstractHttpConfigurer::disable)` and `sessionCreationPolicy(STATELESS)` together
 - Stateful sessions: keep CSRF on; use `CookieCsrfTokenRepository.withHttpOnlyFalse()`
 - `@EnableMethodSecurity` on any `@Configuration`; method security uses `@PreAuthorize`/`@PostAuthorize` with SpEL
 - `hasRole("X")` matches authority `ROLE_X`. If JWT claims already carry `ROLE_*`, set `JwtGrantedAuthoritiesConverter` prefix to `""` to avoid `ROLE_ROLE_X`
@@ -60,7 +60,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                 .anyRequest().hasRole("OPS"))
-            .httpBasic(withDefaults())
+            .httpBasic(withDefaults())   // needs a UserDetailsService; on a pure JWT app use oauth2ResourceServer here too
             .build();
     }
 }
@@ -99,12 +99,22 @@ JwtDecoder jwtDecoder(@Value("${spring.security.oauth2.resourceserver.jwt.issuer
 @Bean
 JwtAuthenticationConverter jwtAuthenticationConverter() {
     var granted = new JwtGrantedAuthoritiesConverter();
-    granted.setAuthoritiesClaimName("roles");   // or "scope", "realm_access.roles"
+    granted.setAuthoritiesClaimName("roles");   // top-level claims only (e.g. "roles", "scope")
     granted.setAuthorityPrefix("ROLE_");        // "" if claim already has ROLE_
     var c = new JwtAuthenticationConverter();
     c.setJwtGrantedAuthoritiesConverter(granted);
     return c;
 }
+```
+
+Nested claims (Keycloak's `realm_access.roles`) are NOT resolvable by `JwtGrantedAuthoritiesConverter` - it silently yields zero authorities and every `hasRole` fails. Use a custom converter:
+
+```java
+c.setJwtGrantedAuthoritiesConverter(jwt -> {
+    var realm = (Map<String, Object>) jwt.getClaims().getOrDefault("realm_access", Map.of());
+    return ((List<String>) realm.getOrDefault("roles", List.of())).stream()
+        .map(r -> new SimpleGrantedAuthority("ROLE_" + r)).toList();
+});
 ```
 
 Multi-tenant: dispatch by `iss` claim:
@@ -139,7 +149,14 @@ class OrderService {
 }
 ```
 
-Domain-object checks use `hasPermission(...)` backed by a `PermissionEvaluator` - prefer this over scattering ownership checks across services. SS6 wires it through a custom expression handler (the old `GlobalMethodSecurityConfiguration` override is gone):
+One-off conditional checks can call a bean directly in SpEL - no evaluator wiring needed:
+
+```java
+@PreAuthorize("#req.amount() <= 1000 or @storeAuthz.isManagerOf(authentication, #req.storeId())")
+Refund issue(RefundRequest req) { ... }
+```
+
+When the same domain-object check recurs across services, centralize it as `hasPermission(...)` backed by a `PermissionEvaluator`. SS6 wires it through a custom expression handler (the old `GlobalMethodSecurityConfiguration` override is gone):
 
 ```java
 @Bean
@@ -149,6 +166,8 @@ static MethodSecurityExpressionHandler expressionHandler(PermissionEvaluator eva
     return handler;
 }
 ```
+
+A custom handler replaces the auto-wired one: if a `RoleHierarchy` bean exists, also call `handler.setRoleHierarchy(roleHierarchy)` - otherwise the hierarchy silently stops applying to method security.
 
 ### Password encoding
 
@@ -195,6 +214,8 @@ http.csrf(csrf -> csrf
 
 ### Security headers
 
+Apply in every chain that serves browsers (typically all non-webhook chains):
+
 ```java
 http.headers(h -> h
     .contentSecurityPolicy(csp ->
@@ -221,10 +242,14 @@ SecurityFilterChain webhookChain(HttpSecurity http) throws Exception {
 
 ### Tests
 
+`@WebMvcTest` does not pick up custom `SecurityFilterChain` `@Configuration` classes - without `@Import` the tests run against Boot's default security and pass for the wrong reason. Stub `JwtDecoder` so an imported config's `fromIssuerLocation` doesn't fetch the issuer at context startup:
+
 ```java
 @WebMvcTest(OrderController.class)
+@Import({SecurityConfig.class, MethodSecurityConfig.class})
 class OrderControllerSecurityTest {
     @Autowired MockMvc mockMvc;
+    @MockitoBean JwtDecoder jwtDecoder;
 
     @Test void unauthenticated_returns_401() throws Exception {
         mockMvc.perform(get("/api/orders")).andExpect(status().isUnauthorized());
@@ -241,13 +266,16 @@ class OrderControllerSecurityTest {
 
 ## Output Format
 
+One block per `SecurityFilterChain`; list its endpoints inside (chain-scoped fields are not repeated per endpoint):
+
 ```
-Endpoint: {path pattern}
-Auth: {permitAll | authenticated | hasRole(X) | @PreAuthorize(expr)}
+Chain: {securityMatcher pattern} (order {n})
 CSRF: {enabled | disabled - reason}
 Session: {STATELESS | IF_REQUIRED}
 CORS Origins: {list or N/A}
-JWT Issuer: {URI or N/A}
+JWT Issuer: {URI | N/A}
+Endpoints:
+- {path pattern}: {permitAll | authenticated | hasRole(X) | @PreAuthorize(expr)}
 ```
 
 ## Avoid

@@ -19,13 +19,14 @@ user-invocable: false
 
 ## Rules
 
-- Name the executor on `@Async("name")` - the unnamed default is `SimpleAsyncTaskExecutor`, unbounded (a thread per task; VT-backed when `spring.threads.virtual.enabled=true` on Boot 3.2+, platform otherwise)
+- Unnamed `@Async` runs on the global executor: VT-per-task when `spring.threads.virtual.enabled=true` (Boot 3.2+), otherwise an unbounded platform-thread `SimpleAsyncTaskExecutor`. Name an executor (`@Async("name")`) whenever the workload differs from that global default
 - Pick the executor by workload: `ThreadPoolTaskExecutor` (bounded + queue + back-pressure) for CPU-bound or rate-limited; Virtual Threads for IO-bound fan-out
 - Async handlers should be idempotent where redelivery is possible (`@Retryable`, broker redelivery). In-process `@TransactionalEventListener(AFTER_COMMIT)` events are NOT redelivered - a crash after commit loses them; use a transactional outbox when the side effect must survive (see `spring-messaging-patterns`)
 - `@Async` self-invocation is silently ignored (proxy bypass) - see `spring-transaction`
 - Configure `AsyncUncaughtExceptionHandler` - unchecked exceptions on `void` returns are otherwise swallowed; for `CompletableFuture` returns use `.exceptionally(...)`
 - Prefer `@TransactionalEventListener(AFTER_COMMIT)` over `@EventListener` when the handler must not run on rollback
-- Never `synchronized` inside async code that may run on a Virtual Thread - it pins the carrier thread. Use `ReentrantLock`, `StampedLock`, or concurrent collections
+- On JDK < 24, `synchronized` inside code that may run on a Virtual Thread pins the carrier (JEP 491 removes this in JDK 24+). On Java 21 LTS use `ReentrantLock`, `StampedLock`, or concurrent collections
+- `@Scheduled(fixedRate)` on the Boot 3.2+ VT scheduler (`SimpleAsyncTaskScheduler`) overlaps itself when a run exceeds the interval; `fixedDelay` serializes within one JVM, ShedLock serializes across replicas
 
 ## Patterns
 
@@ -95,7 +96,7 @@ public void update(String key) {
 }
 ```
 
-Run with `-Djdk.tracePinnedThreads=short` in dev to surface pinning sites.
+Surface pinning sites with the JFR event `jdk.VirtualThreadPinned` (or legacy `-Djdk.tracePinnedThreads=short`). JDK 24+ (JEP 491) removes `synchronized` pinning entirely.
 
 ### `@TransactionalEventListener` for post-commit side effects
 
@@ -131,6 +132,22 @@ public void recover(MailSendException ex, Long orderId) {
 
 Always define `@Recover` - without it, exhausted retries are swallowed. `@Async` needs `@EnableAsync`, `@Retryable`/`@Recover` need `@EnableRetry` (Spring Retry dependency) on a `@Configuration`; without them the annotations are silent no-ops.
 
+### `@Scheduled`: overlap and error handling
+
+```java
+// bad - fixedRate fires on schedule; the Boot 3.2+ VT scheduler runs each tick
+// on its own thread, so a run slower than the interval overlaps the next one
+@Scheduled(fixedRate = 60_000)
+public void reconcileInventory() { ... }
+
+// good - fixedDelay counts from completion: never self-overlaps in this JVM
+@Scheduled(fixedDelay = 60_000)
+public void reconcileInventory() { ... }
+```
+
+- `fixedDelay` does not serialize across replicas - for cluster-wide single execution use ShedLock (`@SchedulerLock(name = "reconcileInventory", lockAtMostFor = "10m")`)
+- Exceptions from a `@Scheduled` method go to the scheduler's `ErrorHandler` (default: log, schedule continues) - the tick's work is lost, so make jobs idempotent/resumable and alert from the `ErrorHandler` when a lost tick matters
+
 ### Context propagation across the async boundary
 
 - **MDC / trace IDs / SecurityContext**: wrap the executor with `ContextPropagatingTaskDecorator` (Micrometer Context Propagation). It copies registered `ThreadLocal`s including MDC, security, and trace. `InheritableThreadLocal` is unreliable with Virtual Threads - do not rely on it.
@@ -138,21 +155,25 @@ Always define `@Recover` - without it, exhausted retries are swallowed. `@Async`
 
 ## Output Format
 
+One block per async or scheduled operation:
+
 ```
-Operation: {what runs async}
-Executor: {bean name | global VT | bounded pool}
+Operation: {what runs async/scheduled}
+Executor: {bean name | global VT | bounded pool | scheduler}
 Workload: {IO-bound | CPU-bound | rate-limited}
 Event Phase: {AFTER_COMMIT | AFTER_ROLLBACK | N/A}
-Error Handling: {AsyncUncaughtHandler | exceptionally | @Recover}
-Idempotent: {Yes | No - rationale}
-Pinning Risk: {None | synchronized replaced with ReentrantLock}
+Overlap Policy: {fixedDelay | ShedLock | N/A - not scheduled}
+Error Handling: {AsyncUncaughtHandler | exceptionally | @Recover | scheduler ErrorHandler}
+Idempotent: {Yes | No - rationale | N/A - no redelivery path}
+Pinning Risk: {None | Present - unfixed | Fixed - synchronized -> ReentrantLock}
 ```
 
 ## Avoid
 
 - `@Async` without an explicit executor name when the workload differs from the global default
 - Calling `@Async` methods via `this.X()` (proxy bypass, silent no-op)
-- `synchronized` blocks inside async methods that may run on Virtual Threads (carrier pinning)
+- `synchronized` blocks inside async methods that may run on Virtual Threads (carrier pinning on JDK < 24)
+- `@Scheduled(fixedRate)` for jobs that must not overlap themselves
 - CPU-bound work on Virtual Threads (use a bounded pool)
 - `@EventListener` for handlers that must not run on rollback
 - Relying on `InheritableThreadLocal` or `MODE_INHERITABLETHREADLOCAL` to carry context to Virtual Threads

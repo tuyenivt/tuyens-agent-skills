@@ -42,7 +42,7 @@ Edge inputs: feature name only -> ask for fields and operations. Existing entity
 
 ### Step 4 - Design (Approval Gate)
 
-Present and wait for explicit approval:
+Present and wait for explicit approval. When the request already contains complete requirements and no interactive user is available, state the design and assumptions, flag the skipped gate in the deliverable, and proceed - do not stall:
 
 - Endpoint table (method, URI, params, request/response DTO records, status codes)
 - Entity model + Flyway DDL outline (indexes, FK, CHECK constraints for status enums, unique index for idempotency keys)
@@ -56,7 +56,9 @@ Generate code only after approval.
 
 Use skill: `spring-jpa-performance`, `spring-db-migration-safety`.
 
-Entity is a class (records cannot be JPA entities). Audit fields via `@MappedSuperclass` base + `AuditingEntityListener`. Bean Validation from gathered constraints. LAZY on all associations. `@Column(nullable, unique, precision, scale)` matches the Flyway DDL exactly. Status enums get a CHECK constraint; idempotency keys get a unique index. FK and frequently-filtered columns get indexes.
+Entity is a class (records cannot be JPA entities). Audit fields via `@MappedSuperclass` base + `AuditingEntityListener`. Validation constraints live on request DTOs (Step 8); the entity mirrors them as DB constraints (`@Column(nullable, unique, precision, scale)` matching the Flyway DDL exactly, CHECK), not duplicate Bean Validation annotations. LAZY on all associations. Status enums get a CHECK constraint; idempotency keys get a unique index. FK and frequently-filtered columns get indexes.
+
+Soft delete (when required): `deleted_at` column with repository-level filtering (or `@SQLDelete` + `@SQLRestriction`). A uniqueness rule that must allow re-creation after delete needs a partial unique index (`... WHERE deleted_at IS NULL`) - a plain unique constraint blocks the re-create.
 
 ### Step 6 - Repository
 
@@ -68,13 +70,15 @@ Extend `JpaRepository<{Name}, Long>`. Derived methods for simple filters; `@Quer
 
 Use skill: `spring-transaction`, `spring-exception-handling`.
 
-`@Service @Transactional(readOnly = true) @RequiredArgsConstructor @Slf4j`. Read-write `@Transactional` only on mutating methods. Entity-to-DTO via record static factory (`XxxResponse.from(entity)`); never return entities. Status transitions validated against an allowed-transitions map before persistence; invalid transitions throw a domain exception. Post-commit side effects via `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)`.
+`@Service @Transactional(readOnly = true) @RequiredArgsConstructor @Slf4j` (Lombok annotations only if the project already uses Lombok; otherwise explicit constructor + logger). Read-write `@Transactional` only on mutating methods. Entity-to-DTO via record static factory (`XxxResponse.from(entity)`); never return entities. Status transitions validated against an allowed-transitions map before persistence; invalid transitions throw a domain exception. Post-commit side effects via `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)`.
 
 ### Step 8 - Controller
 
-Use skill: `spring-exception-handling`.
+Use skill: `spring-exception-handling`. When Step 3's visibility answer is anything but fully public, also Use skill: `spring-security-patterns`.
 
-`@RestController @RequestMapping("/api/v1/{resources}") @RequiredArgsConstructor`. `@Valid @RequestBody` on writes. `Pageable` on list. `@RequestParam(required = false)` for filters. `201 CREATED` on POST, `204 NO_CONTENT` on DELETE, custom verbs as `POST /{id}/{verb}`. Request and Response DTOs are records.
+`@RestController @RequestMapping("/api/v1/{resources}") @RequiredArgsConstructor`. `@Valid @RequestBody` on writes. `Pageable` on list. `@RequestParam(required = false)` for filters. `201 CREATED` on POST, `204 NO_CONTENT` on DELETE, custom verbs as `POST /{id}/{verb}`. Request and Response DTOs are records. Sub-resources nest for creation/listing (`POST /api/v1/products/{id}/reviews`) with direct access by own id (`/api/v1/reviews/{id}`) - adjust the class-level mapping accordingly.
+
+Enforce Step 3's API visibility here: role-restricted endpoints get `@PreAuthorize` (or rules in the existing `SecurityFilterChain`) - a gathered visibility requirement that no step implements has silently evaporated.
 
 ### Step 9 - Tests
 
@@ -84,11 +88,11 @@ Use skill: `spring-test-integration`.
 - Repository: `@DataJpaTest` + Testcontainers (matching production DB), no H2
 - Controller: `@WebMvcTest` + MockMvc, `@MockitoBean` (not `@MockBean`)
 
-Cover: happy path, not-found, validation errors, unique-constraint conflict (409), filter/search, idempotent replay returns same response, invalid state transition (409 or 422).
+Cover: happy path, not-found, validation errors, filter/search, invalid state transition (409 or 422), plus the duplicate-POST case the feature actually has: business-dedup uniqueness (one X per Y) -> 409 conflict; idempotency-key replay -> original response returned. Test both only when both exist.
 
 ### Step 10 - Validate
 
-Run `./gradlew compileJava compileTestJava` (Maven: `./mvnw compile test-compile`). Report file list, endpoint table, test count, warnings.
+Run `./gradlew compileJava compileTestJava` (Maven: `./mvnw compile test-compile`); if no build wrapper is runnable, verify statically and flag that in the warnings. Report file list, endpoint table, test count, warnings.
 
 ## Output Format
 
@@ -100,8 +104,9 @@ Run `./gradlew compileJava compileTestJava` (Maven: `./mvnw compile test-compile
 - Repository: `src/main/java/.../repository/{Name}Repository.java`
 - Service: `src/main/java/.../service/{Name}Service.java`
 - Controller: `src/main/java/.../controller/{Name}Controller.java`
-- Migration: `src/main/resources/db/migration/V{timestamp}__create_{table}.sql` (new table) or `__add_{column}_to_{table}.sql` (additive change to an existing entity; omit entirely if no schema change)
+- Migration: `src/main/resources/db/migration/V{timestamp}__create_{table}.sql` (new table) or `__add_{column}_to_{table}.sql` (additive change to an existing entity; omit entirely if no schema change); version format follows the project's Flyway convention
 - Tests: service unit, `@DataJpaTest` repository, `@WebMvcTest` controller
+- Supporting: domain exceptions, config beans, extra DTOs/projections, test fixtures - list whatever Steps 4-9 produced
 
 ## Endpoints
 
@@ -130,16 +135,15 @@ Run `./gradlew compileJava compileTestJava` (Maven: `./mvnw compile test-compile
 - [ ] Step 5 - entity + migration match (columns, constraints, indexes); CHECK constraints on status enums
 - [ ] Step 6 - repository uses `Page<>` on lists; idempotency lookup present when needed
 - [ ] Step 7 - `@Transactional(readOnly = true)` default; write boundaries only on mutations; DTO mapping via records; transition map enforced
-- [ ] Step 8 - controller returns DTOs (never entities); correct status codes; `@Valid` on writes
-- [ ] Step 9 - Testcontainers (no H2); `@MockitoBean`; conflict, replay, invalid-transition covered
+- [ ] Step 8 - controller returns DTOs (never entities); correct status codes; `@Valid` on writes; Step 3's visibility enforced (`@PreAuthorize` / chain rules)
+- [ ] Step 9 - Testcontainers (no H2); `@MockitoBean`; applicable duplicate-POST semantics and invalid-transition covered
 - [ ] Step 10 - compilation passes; file list, endpoint table, test count reported
 
 ## Avoid
 
 - Generating code before requirements and design approval
 - Exposing JPA entities in API responses (always DTO records)
-- `@Autowired` field injection (constructor only via `@RequiredArgsConstructor`)
-- `synchronized` blocks (pins Virtual Threads; use `ReentrantLock`)
+- `@Autowired` field injection (constructor injection only)
 - `@MockBean` (deprecated since Boot 3.4; use `@MockitoBean`)
 - H2 for integration tests (use Testcontainers matching production)
 - Unbounded `findAll()` without pagination
