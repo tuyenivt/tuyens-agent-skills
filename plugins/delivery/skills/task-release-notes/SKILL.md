@@ -58,19 +58,19 @@ Place every change in exactly one bucket. No "Other". Precedence (highest first)
 
 | Category | Includes |
 | --- | --- |
-| **Breaking** | Removed/renamed public APIs, schema removals, required fields, behavior changes needing consumer action |
+| **Breaking** | Removed/renamed public APIs, schema removals, a request/event field made required, behavior changes needing consumer action. (A DB column made NOT NULL is not by itself a Breaking API change - see Improvements.) |
 | **Security** | CVE patches, security hardening, vuln fixes. A dep bump that names a CVE is Security, not Internal. |
-| **Features** | New user-facing capability, endpoints, or UI (including flag-gated) |
+| **Features** | New capability, endpoints, or UI (including flag-gated). Admin- or staff-facing capabilities land here, not Internal. |
 | **Fixes** | User-visible bugs corrected. `fix(internal)` or admin-only fixes go to Internal. |
 | **Improvements** | Performance, UX polish, observability, expanded capability. Pure schema/data changes with no API surface (e.g., index add, NOT NULL backfill) land here and always trigger Risk Register evaluation. |
 | **Deprecations** | Marked for removal in a future release (already-removed features go in Breaking) |
-| **Internal** | Refactors, tests, CI, dep bumps with no behavior change and no CVE. Drop entirely for `external` audience. |
+| **Internal** | Refactors, tests, CI, docs, dep bumps with no behavior change and no CVE. Drop entirely for `external` audience. |
 
 ### STEP 4 - Risk, Rollout, and Rollback
 
 Load `Use skill: ops-release-safety` to ground the rollout strategy and detection signals.
 
-For each change touching data, auth, money, or external contracts, load `Use skill: review-blast-radius`. When blast radius is Wide or Critical, load `Use skill: review-change-risk` and use its `Reversibility` as authoritative for the Risk Register row.
+For each change touching data, auth, money, or external contracts, load `Use skill: review-blast-radius` for the `Blast Radius` value. When blast radius is Wide or Critical, load `Use skill: review-change-risk`; the Reversibility column uses its enum (`Reversible | Partially reversible | Irreversible`), not blast-radius's. For Moderate rows write one plain-language reversibility line.
 
 Conditional deep-dives:
 
@@ -158,7 +158,9 @@ Cite by PR number, not SHA. `[#1421]` renders as a literal token unless your CHA
 
 | Change | Blast Radius | What Could Break | Detection Signal | Rollback Step | Reversibility | Data Impact | Owner |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| <change> | Wide / Critical (or Moderate w/ material context) | <failure mode> | <dashboard / metric / log> | <revert / flag-flip / reverse-migration / staged-rollout pause> | <review-change-risk verdict for Wide/Critical; one plain-language line for Moderate rows> | clean \| dirty - <one-line> | <team or TBD> |
+| <change> | Wide / Critical (or Moderate w/ material context) | <failure mode> | <dashboard / metric / log> | <revert / flag-flip / reverse-migration / staged-rollout pause> | Reversible \| Partially reversible \| Irreversible (from review-change-risk for Wide/Critical; one plain-language line for Moderate rows) | clean \| dirty - <one-line> | <team or TBD> |
+
+Omit the Risk Register subsection entirely when no row is required (all changes Narrow); the Default Rollback paragraph stands alone.
 
 ### Default Rollback
 
@@ -181,7 +183,7 @@ Omit empty categories. Rollout & Rollback is mandatory for every audience; in `e
 - [ ] **Categorize:** every change in exactly one bucket via precedence; no "Other"; Internal dropped for `external`
 - [ ] **Highlights:** 1-3 by user impact; non-engineer phrasing for `external` or `both`
 - [ ] **Risk inclusion:** ops-release-safety loaded; rollout strategy chosen; every Wide/Critical row present; every Moderate-with-material-context row present
-- [ ] **Risk content:** Reversibility column sourced from review-change-risk for Wide/Critical; Detection signal concrete or `TBD` with Assumption; Owner present or `TBD` with Assumption; no atomic assessment blocks pasted into the document
+- [ ] **Risk content:** Reversibility column uses the review-change-risk enum (Reversible/Partially reversible/Irreversible) for Wide/Critical, not blast-radius's; Detection signal concrete or `TBD` with Assumption; Owner present or `TBD` with Assumption; no atomic assessment blocks pasted into the document
 - [ ] **Rollback:** Default Rollback paragraph per deploy-target stack; Mobile path named when iOS/Android present; Migration Notes present iff migrations ship
 - [ ] **Compose:** Breaking entries lead with consumer action; PR numbers (not SHAs); no raw commit messages; Known Limitations populated for flags-without-expiry
 - [ ] **Placeholders:** `<version>` and date placeholders kept literal when not supplied; Assumption noted

@@ -38,9 +38,9 @@ Use skill: `stack-detect`. Stack output picks which deep-dive atomics fire and n
 
 ### STEP 2 - Map the Design to Work
 
-Read the design and extract the work it implies. When the input follows the `task-design-architecture` template, map by section; when it is a free-form HLD/LLD, map the equivalent content.
+Read the design and extract the work it implies. Match the design's content to the rows below by topic - the bold label is the key; the trailing S-numbers are `task-design-architecture` section hints, present only when the input follows that template. For a free-form HLD/LLD, ignore the S-numbers and map by heading or topic.
 
-| Design source (task-design-architecture section) | Produces |
+| Design content | Produces |
 | --- | --- |
 | **Module Boundaries / Components** (S2, S3) | Foundation tasks - one per new/changed module or data owner |
 | **Data and Consistency Model** (S4) | Foundation + data tasks; schema, migration, backfill |
@@ -56,12 +56,12 @@ State which design sections you drew from. If a required design section is absen
 
 ### STEP 3 - Hidden Complexity Scan
 
-The design names components; this scan names the risks inside building them. Walk the checklist, state which signals apply with one-line evidence citing the design. Skipping the scan is the most common failure of this workflow.
+The design names components; this scan names the risks inside building them. Walk the checklist, state which signals apply with one-line evidence citing the design (a section, a heading, or a quoted phrase). The trailing S-references below are `task-design-architecture` hints; on a free-form doc cite the heading instead. Skipping the scan is the most common failure of this workflow.
 
 | Signal | Look for in the design |
 | --- | --- |
 | Database changes | New table/column/index; zero-downtime required; backfill (S4) |
-| Data store migration | Moving data between stores (Redis->Postgres, session->token) |
+| Data store migration | Moving data between stores (Memcached->Redis, Postgres->DynamoDB) |
 | API or protocol contract change | New/changed endpoints, field changes, auth-token format (S11) |
 | Auth / permissions | New roles, scopes, token formats, key rotation (S2, S11) |
 | Async / events | New queues, topics, consumers; idempotency requirements (S3) |
@@ -102,7 +102,7 @@ Each task:
 - **Name** - action-oriented ("Implement dual-mode /auth/validate"). Never "Backend work" or "Testing".
 - **Type** - one of: `implementation`, `infrastructure`, `data`, `validation`, `ops`, `analysis` (specs, contracts, audits, decision records)
 - **Description** - one or two sentences; what to build, not how
-- **Traces to** - the design section or component this task implements (e.g., "S3 NotificationRouter", "S11 POST /refunds"). Every task traces to the design; a task with no trace is scope creep - move it to Scope and Risk Flags.
+- **Traces to** - the design section, heading, or component this task implements (e.g., "S3 NotificationRouter", or a free-form heading like "Approach: WebSocket gateway"). An ops-readiness task may trace to an implied need the design carries rather than states (e.g., observability or rollback for a flagged rollout) - that is not scope creep. A task tracing to nothing in the design is scope creep - move it to Scope and Risk Flags.
 - **Depends on** - task name(s), external (<team/system>), or none
 - **Size** - S (<1d) / M (1-2d) / L (3-5d focused engineering days) / XL (>5d - keep in the backlog with a `split` note naming the cohorts/waves it breaks into). Size measures engineering effort; fixed elapsed time (soak windows, parallel runs) goes in the description, not the size.
 - **Complexity signals** - required for L or XL; cite which Step 3 signals justify the size
@@ -154,6 +154,7 @@ When the verdict is `add spike`, define:
 ## Complexity Signals
 
 - **<signal>:** <one-line evidence citing the design>
+- **Checked, not applicable:** <non-material signals in one line>
 
 ## Tasks
 

@@ -41,9 +41,9 @@ State in one sentence each: what the plan builds, its stated scope/exclusions, t
 
 ### STEP 3 - Coverage Audit
 
-Does the plan cover the work the design (or stated scope) implies? For each design area, mark **Covered** (a task implements it), **Under-specified** (named but no real task), or **Missing** (no task). When a source design is supplied, walk its sections:
+Does the plan cover the work the design (or stated scope) implies? For each area, mark **Covered** (a task implements it), **Under-specified** (named but no real task), or **Missing** (no task). When a source design is supplied, walk its sections against the areas below. When no design is supplied, replace the rows with each in-scope item the stated scope names plus the ops areas it implies (an export needs failure/retry + alerting; a write path needs rollback), and mark `n/a` any area the scope does not reach - `n/a` is not Missing.
 
-| Design area | A complete plan has |
+| Area | A complete plan has |
 | --- | --- |
 | Module boundaries / components | A Foundation/Build task per new or changed component |
 | Data and consistency model | Schema, migration, and backfill tasks; rollback data handling |
@@ -54,9 +54,14 @@ Does the plan cover the work the design (or stated scope) implies? For each desi
 | Deployment and rollback | Rollout, migration-order, rollback-drill, flag-config tasks |
 | Guardrails | Validation tasks that enforce each guardrail |
 
-The most common defect is a plan that tasks out the happy-path build and omits migration, backward-compat, rollback, and observability the design calls for. A Missing item for a high-blast-radius area (rollback, migration for a Wide change) is a Blocker; other Missing items are Major minimum; Under-specified is Minor minimum, Major if it forces guesswork on a load-bearing task.
+The most common defect is a plan that tasks out the happy-path build and omits migration, backward-compat, rollback, and observability the design calls for. Severity of a Missing item:
 
-Load `Use skill: review-blast-radius` when a coverage gap's severity hinges on how wide the affected change is; a Critical/Wide verdict lifts a Missing rollback/migration gap to Blocker.
+- **Blocker** - a high-blast-radius area is untasked: rollback or migration on a Wide change, **or any money/data-integrity mitigation the design calls for** (idempotency on a money path, dedup, backfill of a required column).
+- **Major** (minimum) - any other Missing area the design or stated scope implies.
+- **Minor** (minimum) - Under-specified; **Major** if it forces guesswork on a load-bearing task.
+- Not a finding - scope silence on an area the plan's purpose does not touch (mark it `n/a`, not Missing).
+
+Treat a change as Wide/Critical - and its Missing rollback/migration/idempotency gap as a Blocker - when it touches a core data model, money movement, or an externally consumed contract (public API, published events, partner export). Load `Use skill: review-blast-radius` to confirm the level against the design's described impact (read its Code/Data/User scope against the design, not a codebase) when the call is not obvious.
 
 ### STEP 4 - Structural Soundness
 
@@ -64,7 +69,7 @@ Check the plan's internal mechanics. Record each as a finding with severity.
 
 - **Dependency graph:** every task states dependencies; no cycles; no task depends on work sequenced after it; another team's deliverable is `external`, not a task the plan owns
 - **Critical path:** correctly identified (longest chain by hop count, not summed sizes; externals are not hops); the named chain matches the dependency graph
-- **Sizing:** L/XL tasks justify their size; XL tasks carry a `split` note and are not silently dropped; sizes are engineering effort, not calendar time
+- **Sizing:** L/XL tasks justify their size; XL tasks carry a `split` note and are not silently dropped; sizes are engineering effort, not calendar time. When the coverage gaps invalidate the author's own task-count or timeline claim, fold that into the driving coverage findings - do not raise it as a separate scored finding.
 - **Scope creep:** tasks with no design trace and not in stated scope; must-have framing on work that was never agreed
 - **Phasing:** foundation work precedes the build that needs it; ops-readiness is not deferred past the risky launch
 
@@ -107,9 +112,9 @@ Any non-Approve verdict lists its required changes as a checkbox list (for Needs
 
 ## Coverage Audit
 
-| Design area | Status | Note |
+| Area | Status | Note |
 | --- | --- | --- |
-| <area> | Covered / Under-specified / Missing | <task name or gap> |
+| <area> | Covered / Under-specified / Missing / n/a | <task name or gap> |
 
 ## Structural Soundness
 
@@ -136,7 +141,7 @@ Required changes (omit if Approve):
 
 - [ ] **Setup:** behavioral-principles + stack-detect loaded
 - [ ] **Intake:** plan, stated scope, and source-design status stated
-- [ ] **Coverage:** each design area (or stated-scope area) marked Covered/Under-specified/Missing; high-blast-radius Missing items are Blockers; blast-radius atomic loaded when a gap's severity depends on it
+- [ ] **Coverage:** each area marked Covered/Under-specified/Missing/n/a; no-design reviews key rows to stated scope + implied ops areas; Missing on a Wide/money/data-integrity area is a Blocker; scope-silent areas marked `n/a`, not Missing
 - [ ] **Structure:** dependency graph, critical path, sizing, scope creep, and phasing each assessed
 - [ ] **Findings:** each numbered, cites a specific task/omission, carries a severity, recommends the smallest change; each root cause once
 - [ ] **Verdict:** driven by highest severity; non-Approve lists required changes as a checklist
