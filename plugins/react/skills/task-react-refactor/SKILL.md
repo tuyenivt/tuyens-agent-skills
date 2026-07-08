@@ -24,7 +24,6 @@ Stack-specific delegate of `task-code-refactor` for React.
 
 **Not for:**
 
-- Prioritizing across many candidates (use `task-debt-prioritize`)
 - Feature changes (use `task-react-implement`)
 - Cross-module architecture moves (use `task-design-architecture`)
 - Bug fixes (use `task-react-debug`)

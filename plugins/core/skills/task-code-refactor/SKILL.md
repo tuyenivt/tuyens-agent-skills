@@ -18,7 +18,7 @@ Detects stack and delegates to the matching refactor workflow. Stack workflows n
 - Technical debt reduction with a test-coverage gate
 - Safe refactoring planning
 
-**Not for:** prioritizing debt across the codebase (`task-debt-prioritize`), feature changes (`task-implement`), architecture-level restructuring (architecture plugin).
+**Not for:** feature changes (`task-implement`), architecture-level restructuring (architecture plugin).
 
 ## Inputs
 

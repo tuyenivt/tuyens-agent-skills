@@ -26,7 +26,6 @@ Stack-specific delegate of `task-code-refactor` for Python.
 
 **Not for:**
 
-- Choosing which debt to tackle (`task-debt-prioritize`)
 - Feature changes (`task-python-implement`)
 - Cross-module restructuring (`task-design-architecture`)
 - Bug fixes (`task-python-debug`)

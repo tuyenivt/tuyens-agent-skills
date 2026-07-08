@@ -18,7 +18,7 @@ Stack-specific delegate of `task-code-refactor` for Rust. Produce a phased, gate
 - Plan a safe refactor of a Rust target with code smells
 - Clean up a fat-handler / god-service before merge
 
-**Not for:** prioritizing many candidates (`task-debt-prioritize`), feature changes (`task-rust-implement`), cross-module moves (`task-design-architecture`), bug/panic investigation (`task-rust-debug`).
+**Not for:** feature changes (`task-rust-implement`), cross-module moves (`task-design-architecture`), bug/panic investigation (`task-rust-debug`).
 
 If Target or Goal is missing, ask before proceeding.
 

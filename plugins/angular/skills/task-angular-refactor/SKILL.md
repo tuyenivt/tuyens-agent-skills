@@ -22,7 +22,7 @@ Stack-specific delegate of `task-code-refactor` for Angular.
 - Pre-merge "this PR grew the god-component / subscription-leak problem - what's the cleanup?"
 - Migrating BehaviorSubject to signals, NgModule to standalone, Default CD to OnPush, class-based to functional guards/interceptors
 
-**Not for:** debt prioritization (`task-debt-prioritize`), feature changes (`task-angular-implement`), architecture restructuring (`task-design-architecture`), bug fixes (`task-angular-debug`).
+**Not for:** feature changes (`task-angular-implement`), architecture restructuring (`task-design-architecture`), bug fixes (`task-angular-debug`).
 
 ## Inputs
 

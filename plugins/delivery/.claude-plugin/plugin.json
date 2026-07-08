@@ -1,7 +1,7 @@
 {
   "name": "delivery",
   "version": "1.123.0",
-  "description": "Software delivery plugin: scope breakdown and tech debt triage.",
+  "description": "Software delivery plugin: design-to-tasks breakdown, task-breakdown review, release notes.",
   "author": {
     "name": "Tuyen"
   },

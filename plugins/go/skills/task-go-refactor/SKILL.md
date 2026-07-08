@@ -21,7 +21,7 @@ Safe, step-by-step refactor plan for a Go target (handler, service, repository, 
 - Tech-debt reduction with a concrete plan
 - Safe refactor of a handler / service / repository / Asynq processor
 
-**Not for:** debt prioritization (`task-debt-prioritize`), feature changes (`task-go-implement`), cross-package restructuring (`task-design-architecture`), bug fixes (`task-go-debug`).
+**Not for:** feature changes (`task-go-implement`), cross-package restructuring (`task-design-architecture`), bug fixes (`task-go-debug`).
 
 ## Inputs
 

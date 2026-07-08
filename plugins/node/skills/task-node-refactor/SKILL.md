@@ -23,7 +23,6 @@ Safe, step-by-step refactoring plan for a Node target (NestJS controller / modul
 - "This PR grew the fat-controller / god-service problem - what's the cleanup?"
 
 **Not for:**
-- Choosing what debt to tackle (`task-debt-prioritize`)
 - Feature changes (`task-node-implement`)
 - Cross-module restructuring (`task-design-architecture`)
 - Bug fixes (`task-node-debug`)

@@ -24,7 +24,7 @@ The stack-specific delegate of `task-code-refactor`.
 - Safe refactoring of a `@RestController` / `@Service` / `@Repository` / `@Entity` / configuration class
 - Java-to-Kotlin idiom modernization
 
-**Not for:** debt prioritization (`task-debt-prioritize`), feature changes (`task-kotlin-implement`), multi-module architecture (`task-design-architecture`), bug fixes (`task-kotlin-debug`).
+**Not for:** feature changes (`task-kotlin-implement`), multi-module architecture (`task-design-architecture`), bug fixes (`task-kotlin-debug`).
 
 ## Inputs
 

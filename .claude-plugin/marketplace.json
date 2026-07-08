@@ -28,13 +28,13 @@
     {
       "name": "delivery",
       "source": "./plugins/delivery",
-      "description": "Workflow skills for software delivery: scope breakdown and tech debt triage.",
+      "description": "Workflow skills for software delivery: design-to-tasks breakdown, task-breakdown review, release notes.",
       "version": "1.123.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
       },
-      "tags": ["delivery", "scope-breakdown", "tech-debt", "stack-agnostic"]
+      "tags": ["delivery", "task-breakdown", "release-notes", "stack-agnostic"]
     },
     {
       "name": "architecture",

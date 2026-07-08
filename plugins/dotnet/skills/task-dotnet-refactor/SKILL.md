@@ -19,7 +19,7 @@ Phased, commit-safe refactor plan for a .NET target (controller / Minimal API en
 - Pre-merge cleanup of fat controllers / god services / handlers
 - Technical-debt reduction with a concrete step sequence
 
-Not for: debt prioritization (`task-debt-prioritize`), features (`task-dotnet-implement`), cross-project re-architecture (`task-design-architecture`), bug fixes (`task-dotnet-debug`).
+Not for: features (`task-dotnet-implement`), cross-project re-architecture (`task-design-architecture`), bug fixes (`task-dotnet-debug`).
 
 ## Inputs
 

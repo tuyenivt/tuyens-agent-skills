@@ -19,7 +19,7 @@ Stack-specific delegate of `task-code-refactor`. Identifies Rails code smells on
 - Safe refactor of a controller / model / service / concern / job into committable steps
 - Pre-merge "this PR grew the fat-controller problem - what's the cleanup?"
 
-Not for: deciding which debt to tackle first (`task-debt-prioritize`), feature changes (`task-rails-implement`), cross-cutting architecture change (`task-design-architecture`), bug fixes (`task-rails-debug`).
+Not for: feature changes (`task-rails-implement`), cross-cutting architecture change (`task-design-architecture`), bug fixes (`task-rails-debug`).
 
 ## Workflow
 

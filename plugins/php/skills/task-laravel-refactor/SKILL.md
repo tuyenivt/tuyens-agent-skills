@@ -24,7 +24,7 @@ Produce a safe, step-by-step refactor plan for a Laravel target (Controller acti
 - Safe refactor of a controller / service / job / Policy / API Resource / model
 - Pre-merge cleanup of fat-controller / god-service growth
 
-**Not for:** debt prioritization (`task-debt-prioritize`), feature changes (`task-laravel-implement`), cross-package restructuring (`task-design-architecture`), bug fixes (`task-laravel-debug`).
+**Not for:** feature changes (`task-laravel-implement`), cross-package restructuring (`task-design-architecture`), bug fixes (`task-laravel-debug`).
 
 ## Inputs
 

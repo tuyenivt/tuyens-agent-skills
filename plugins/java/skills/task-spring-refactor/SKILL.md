@@ -21,7 +21,6 @@ Safe, step-by-step refactoring plan for a Spring Boot target. Stack-specific del
 
 **Not for:**
 
-- Debt prioritization across many targets - `task-debt-prioritize`
 - Feature changes - `task-spring-implement`
 - Architecture restructuring across modules - `task-design-architecture`
 - Bug fixes - `task-spring-debug`

@@ -147,8 +147,8 @@ I want to...
   review code (PR / AI-gen)               -> /task-code-review
   implement a feature                     -> /task-implement (dispatches to stack-specific)
   fix a bug or crash                      -> /task-code-debug (dispatches to stack-specific)
-  break an epic into user stories         -> /task-breakdown-epic [delivery]
-  break a story into dev tasks            -> /task-breakdown-story [delivery]
+  break a design (HLD/LLD) into tasks     -> /task-breakdown-design [delivery]
+  review a task breakdown                 -> /task-breakdown-review [delivery]
   design/review system, API, diagrams     -> /task-design-architecture [architecture]
   write tests                             -> /task-code-test
   create a PR description                 -> /task-pr-create
@@ -165,7 +165,6 @@ I want to...
   check for security issues               -> /task-code-review-security
   check for performance issues            -> /task-code-review-perf
   check for observability gaps            -> /task-code-review-observability
-  triage tech debt by ROI                 -> /task-debt-triage [delivery]
   assess a version upgrade                -> /task-dependency-upgrade [architecture]
   draft release notes from a diff         -> /task-release-notes [delivery]
 ```
@@ -299,9 +298,8 @@ Angular (plugin: angular)
 - "Universal entry points vs stack-specific" - most `task-code-*` skills (`debug`, `refactor`, `review`, `review-perf`, `review-security`, `review-observability`, `test`) are **thin routers**: they auto-detect your stack and dispatch to `/task-<stack>-<verb>`. Use the universal entry point if unsure; for installed language plugins, calling the stack-specific skill directly skips the routing layer. `/task-code-explain` and `/task-onboard` are **composing workflows**: they remain direct entry points and weave a stack-specific atomic into a single output. `/task-implement` is a router (delegates to `/task-<stack>-implement`).
 - "Review code" vs "Review a design" - `/task-code-review` (and stack-specific reviews) target source code and PRs, and also handle pre-merge risk analysis of a change. Architecture workflows (`/task-design-architecture`, `/task-db-migration`, `/task-dependency-upgrade`, `/task-decompose-monolith`, `/task-consolidate-services`, `/task-modernize-legacy`) each double as a review workflow for the corresponding design artifact - paste an existing artifact instead of authoring requirements.
 - "Debug" vs "Explain" - if something is broken, use `/task-code-debug`. If it works but you don't understand it, use `/task-code-explain`.
-- "Scope breakdown" vs "Architecture" - scope breakdown produces sprint tasks and effort sizing. Architecture produces a design proposal with boundaries and failure modes. They complement each other; run architecture first on complex features.
+- "Design-to-tasks breakdown" vs "Architecture" - `/task-breakdown-design` turns an approved design into a phased, dependency-ordered task graph with effort sizing. Architecture produces the design proposal itself (boundaries, failure modes). Run architecture first, then break the resulting design into tasks.
 - "Root cause" vs "Postmortem" - root cause runs during or immediately after an incident. Postmortem runs after resolution to extract systemic improvements.
-- "Debt triage" vs "Code review" - debt triage ranks existing debt by blast radius, change frequency, and team pain to produce a prioritized backlog. Code review evaluates a specific PR or file for quality. Use debt triage before a planning session, not as a substitute for PR review.
 - "PR conflict analysis" vs "Code review" - conflict analysis detects semantic conflicts across concurrent PRs (shared schema, API, shared code). Code review evaluates a single PR for quality. Run conflict analysis before batch-merging a sprint.
 - "Upgrade plan" vs "Feature implement" - upgrade plan assesses the risk and effort of a version bump and produces a Go/No-Go recommendation. Feature implement writes the migration code. Run upgrade plan first.
 
@@ -310,7 +308,7 @@ Angular (plugin: angular)
 | Plugin                               | Focus                                                                                                                                                                               |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, frontend, and review patterns                                                                                                            |
-| [delivery](plugins/delivery)         | Sprint planning (vertical-slice user stories), scope breakdown, tech debt triage, release notes with rollback risk register                                                         |
+| [delivery](plugins/delivery)         | Design-to-tasks breakdown (HLD/LLD -> task graph), task-breakdown review, release notes with rollback risk register                                                                  |
 | [architecture](plugins/architecture) | Stack-agnostic architecture design and re-architecture: unified system design (boundaries + API contracts + C4 diagrams), monolith decomposition, service consolidation, legacy modernization, DB migration, dependency upgrade. Every workflow doubles as a review workflow. |
 | [oncall](plugins/oncall)             | Incident response: triage, investigation, root cause analysis, and postmortem                                                                                                       |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         |
