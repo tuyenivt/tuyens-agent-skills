@@ -1,6 +1,6 @@
 {
   "name": "tuyens-agent-skills",
-  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, delivery, oncall, java, kotlin, python, ruby, node, go, dotnet, rust, php, react, vue, and angular.",
+  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, oncall, java, kotlin, python, ruby, node, go, dotnet, rust, php, react, vue, and angular.",
   "owner": {
     "name": "Tuyen",
     "contact": "github.com/tuyenivt"
@@ -26,20 +26,9 @@
       ]
     },
     {
-      "name": "delivery",
-      "source": "./plugins/delivery",
-      "description": "Workflow skills for software delivery: design-to-tasks breakdown, task-breakdown review, release notes.",
-      "version": "1.124.0",
-      "author": {
-        "name": "Tuyen",
-        "url": "https://github.com/tuyenivt"
-      },
-      "tags": ["delivery", "task-breakdown", "release-notes", "stack-agnostic"]
-    },
-    {
       "name": "architecture",
       "source": "./plugins/architecture",
-      "description": "Stack-agnostic architecture design plugin: unified system design (boundaries + API contracts + C4 diagrams), re-architecture (monolith decomposition, service consolidation, legacy modernization), database migration planning, and dependency upgrade assessment. Every workflow doubles as a review workflow with severity-tagged findings and verdict.",
+      "description": "Stack-agnostic architecture plugin: unified system design (boundaries + API contracts + C4 diagrams), re-architecture (monolith decomposition, service consolidation, legacy modernization), database migration planning, dependency upgrade assessment, design-to-tasks breakdown, and release notes. Every design workflow doubles as a review workflow with severity-tagged findings and verdict.",
       "version": "1.124.0",
       "author": {
         "name": "Tuyen",
@@ -53,6 +42,8 @@
         "re-architecture",
         "db-migration",
         "upgrade-plan",
+        "task-breakdown",
+        "release-notes",
         "review",
         "stack-agnostic"
       ]

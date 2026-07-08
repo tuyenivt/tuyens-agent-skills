@@ -1,9 +1,0 @@
-{
-  "name": "delivery",
-  "version": "1.124.0",
-  "description": "Software delivery plugin: design-to-tasks breakdown, task-breakdown review, release notes.",
-  "author": {
-    "name": "Tuyen"
-  },
-  "license": "MIT"
-}

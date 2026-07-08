@@ -11,8 +11,7 @@ A **Claude Code plugin marketplace repository** - agent skills and agents for Cl
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-  delivery/      # Release planning and delivery coordination
-  architecture/  # Stack-agnostic architecture design and re-architecture
+  architecture/  # Stack-agnostic architecture design, re-architecture, task breakdown, and release notes
   oncall/        # Incident response workflows
   java/          # Java 21+ / Spring Boot 3.5+
   dotnet/        # .NET 8 LTS / ASP.NET Core Web API, Clean Architecture
@@ -60,7 +59,7 @@ A skill belongs in `core` when **all** hold:
 1. It is atomic (`user-invocable: false`), not a workflow.
 2. It is referenced by skills/agents in two or more other plugins, OR is needed by a `core` workflow.
 3. It is stack-agnostic.
-4. It does not encode a single plugin's domain identity (ADRs are architecture's; release plans are delivery's).
+4. It does not encode a single plugin's domain identity (ADRs and release plans are architecture's; postmortems are oncall's).
 
 Workflow skills stay in their domain plugin. Skills are resolved by name, not path, so moving a skill is a directory rename - `Use skill: <name>` references continue to work.
 
@@ -94,7 +93,7 @@ How Claude reasons and acts in this repo, in addition to the technical rules abo
 ### Composition Contracts
 
 - **Workflow skills must load `Use skill: behavioral-principles` as Step 1**, before any other delegation including `stack-detect`. Universal and unconditional - the behavioral rules must be in effect for every subsequent step.
-- Workflows that adapt output to the project's stack load `Use skill: stack-detect` immediately after behavioral-principles, as Step 2 (the shipped convention in core and stack routers). Workflows that don't depend on stack (delivery, release, db-migration-plan) skip it entirely.
+- Workflows that adapt output to the project's stack load `Use skill: stack-detect` immediately after behavioral-principles, as Step 2 (the shipped convention in core and stack routers). Workflows that don't depend on stack (e.g. `task-db-migration`) skip it entirely.
 - Atomic skills that consume `stack-detect` output declare it at the top of the body with a blockquote: `> Load `Use skill: stack-detect` first to determine the project stack.` The consuming workflow loads `stack-detect`, not the atomic skill itself.
 
 ### Skill Content Standards

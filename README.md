@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `delivery`, `oncall`, `java`, `kotlin`, `python`, `ruby`, `node`, `go`, `dotnet`, `rust`, `php`, `react`, `vue`, and `angular`.
+Single marketplace repository for Claude Code plugins: `architecture`, `oncall`, `java`, `kotlin`, `python`, `ruby`, `node`, `go`, `dotnet`, `rust`, `php`, `react`, `vue`, and `angular`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -104,18 +104,11 @@ claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install angular@tuyens-agent-skills --scope project
 ```
 
-**Architecture project:**
+**Architecture and delivery project:**
 
 ```bash
 claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install architecture@tuyens-agent-skills --scope project
-```
-
-**Delivery project:**
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install delivery@tuyens-agent-skills --scope project
 ```
 
 **On-call / Incident project:**
@@ -147,8 +140,8 @@ I want to...
   review code (PR / AI-gen)               -> /task-code-review
   implement a feature                     -> /task-implement (dispatches to stack-specific)
   fix a bug or crash                      -> /task-code-debug (dispatches to stack-specific)
-  break a design (HLD/LLD) into tasks     -> /task-breakdown-design [delivery]
-  review a task breakdown                 -> /task-breakdown-review [delivery]
+  break a design (HLD/LLD) into tasks     -> /task-breakdown-design [architecture]
+  review a task breakdown                 -> /task-breakdown-review [architecture]
   design/review system, API, diagrams     -> /task-design-architecture [architecture]
   write tests                             -> /task-code-test
   create a PR description                 -> /task-pr-create
@@ -166,7 +159,7 @@ I want to...
   check for performance issues            -> /task-code-review-perf
   check for observability gaps            -> /task-code-review-observability
   assess a version upgrade                -> /task-dependency-upgrade [architecture]
-  draft release notes from a diff         -> /task-release-notes [delivery]
+  draft release notes from a diff         -> /task-release-notes [architecture]
 ```
 
 ### Stack-Specific Skills (language plugins)
@@ -308,8 +301,7 @@ Angular (plugin: angular)
 | Plugin                               | Focus                                                                                                                                                                               |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, frontend, and review patterns                                                                                                            |
-| [delivery](plugins/delivery)         | Design-to-tasks breakdown (HLD/LLD -> task graph), task-breakdown review, release notes with rollback risk register                                                                  |
-| [architecture](plugins/architecture) | Stack-agnostic architecture design and re-architecture: unified system design (boundaries + API contracts + C4 diagrams), monolith decomposition, service consolidation, legacy modernization, DB migration, dependency upgrade. Every workflow doubles as a review workflow. |
+| [architecture](plugins/architecture) | Stack-agnostic architecture, re-architecture, and delivery: unified system design (boundaries + API contracts + C4 diagrams), monolith decomposition, service consolidation, legacy modernization, DB migration, dependency upgrade, design-to-tasks breakdown (HLD/LLD -> task graph), task-breakdown review, and release notes with rollback risk register. Every design workflow doubles as a review workflow. |
 | [oncall](plugins/oncall)             | Incident response: triage, investigation, root cause analysis, and postmortem                                                                                                       |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         |
 | [kotlin](plugins/kotlin)             | Kotlin 2.0+ / Spring Boot 3.5+                                                                                                                 |
