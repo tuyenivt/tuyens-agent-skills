@@ -1,6 +1,7 @@
 ---
 name: task-design-architecture
 description: "Design or review architecture: boundaries, failures, consistency, trade-offs, deployment, guardrails, API contracts (RFC 9457), C4 diagrams."
+agent: architecture-architect
 metadata:
   category: architecture
   tags: [architecture, design, system-design, trade-offs, risk-analysis]

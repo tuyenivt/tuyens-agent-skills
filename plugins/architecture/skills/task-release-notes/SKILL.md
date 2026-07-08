@@ -1,6 +1,7 @@
 ---
 name: task-release-notes
 description: Compose dual-audience release notes from a commit range or PR list; categorize changes, classify risk, produce risk register and rollback.
+agent: architecture-planner
 metadata:
   category: planning
   tags: [release, changelog, release-notes, rollout, rollback, communication]

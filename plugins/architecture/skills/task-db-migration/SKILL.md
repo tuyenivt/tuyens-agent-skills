@@ -1,6 +1,7 @@
 ---
 name: task-db-migration
 description: "Plan or review zero-downtime DB migration: expand-contract phasing, lock risk, backfill, rollback for risky schema changes."
+agent: architecture-architect
 metadata:
   category: data
   tags: [migration, database, schema, zero-downtime, rollback, expand-contract]

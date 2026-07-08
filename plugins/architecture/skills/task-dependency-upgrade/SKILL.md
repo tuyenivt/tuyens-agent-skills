@@ -1,6 +1,7 @@
 ---
 name: task-dependency-upgrade
 description: "Plan or review library/platform upgrade: changelog analysis, breaking change detection, effort estimate (S/M/L/XL), Go/No-Go."
+agent: architecture-planner
 metadata:
   category: planning
   tags: [dependencies, upgrade, migration, breaking-changes, risk]

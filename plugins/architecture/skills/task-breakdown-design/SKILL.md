@@ -1,6 +1,7 @@
 ---
 name: task-breakdown-design
 description: Break a system design (HLD/LLD) into an implementable task graph - phases, dependency order, critical path, sizing, scope flags - or review a breakdown someone else authored.
+agent: architecture-planner
 metadata:
   category: planning
   tags: [planning, task-breakdown, system-design, hld, lld, critical-path, review]

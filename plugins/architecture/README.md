@@ -2,6 +2,15 @@
 
 Stack-agnostic architecture plugin for Claude Code, for architects and tech leads. Covers the pipeline from design through build planning to release: system design (bundling API contract design and C4 diagrams into the same workflow), re-architecture (monolith decomposition, microservices consolidation, legacy system modernization), database migration planning, dependency upgrade assessment, design-to-tasks breakdown, and release notes. Every design, re-architecture, and task-breakdown workflow doubles as a review workflow - pass an existing artifact and you get a severity-tagged review (Blocker / Major / Minor / Nit) with an Approve / Approve-with-changes / Needs-rework verdict.
 
+## Agents
+
+Stack-agnostic by design - the agents name patterns and boundaries, never a framework. For stack-specific design, use the matching stack plugin's architect. The architect owns the system; the planner owns the plan to build and ship it.
+
+| Agent                  | Description                                                                                                                                                     | Drives                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| architecture-architect | Design authority: system design, re-architecture (decomposition, consolidation, modernization), and zero-downtime DB migration - authoring and review.        | `task-design-architecture`, `task-decompose-monolith`, `task-consolidate-services`, `task-modernize-legacy`, `task-db-migration` |
+| architecture-planner   | Delivery planner: design-to-task-graph breakdown, dependency upgrade assessment (effort, Go/No-Go), and release notes with rollback and risk register - authoring and review. | `task-breakdown-design`, `task-dependency-upgrade`, `task-release-notes`                   |
+
 ## Workflow Skills
 
 Workflow skills (`task-*`) for architecture design, re-architecture, and delivery planning. Invoked as slash commands.

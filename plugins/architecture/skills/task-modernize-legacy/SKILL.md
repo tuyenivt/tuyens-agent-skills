@@ -1,6 +1,7 @@
 ---
 name: task-modernize-legacy
 description: "Plan or review legacy modernization: strangler fig migration, behavioral verification, target stack evaluation, team transition."
+agent: architecture-architect
 metadata:
   category: architecture
   tags: [architecture, migration, legacy, modernization, rewrite, strangler-fig]

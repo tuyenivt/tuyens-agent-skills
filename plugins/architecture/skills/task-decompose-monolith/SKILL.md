@@ -1,6 +1,7 @@
 ---
 name: task-decompose-monolith
 description: "Plan or review monolith-to-services migration: strangler fig, domain-first decomposition, risk-ordered extraction into bounded services."
+agent: architecture-architect
 metadata:
   category: architecture
   tags: [architecture, migration, monolith, microservices, decomposition, strangler-fig]

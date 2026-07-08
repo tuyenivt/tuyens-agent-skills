@@ -1,6 +1,7 @@
 ---
 name: task-consolidate-services
 description: "Plan or review microservices consolidation: smell detection, merge candidates, data reunification, phased execution with rollback."
+agent: architecture-architect
 metadata:
   category: architecture
   tags: [architecture, migration, microservices, consolidation, merge, simplification]
