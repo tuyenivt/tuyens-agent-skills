@@ -1,6 +1,6 @@
 # Tuyen's Agent Skills - Architecture
 
-Stack-agnostic architecture plugin for Claude Code, for architects and tech leads. Covers the pipeline from design through build planning to release: system design (bundling API contract design and C4 diagrams into the same workflow), re-architecture (monolith decomposition, microservices consolidation, legacy system modernization), database migration planning, dependency upgrade assessment, design-to-tasks breakdown, and release notes. Every design and re-architecture workflow doubles as a review workflow - pass an existing artifact and you get a severity-tagged review (Blocker / Major / Minor / Nit) with an Approve / Approve-with-changes / Needs-rework verdict.
+Stack-agnostic architecture plugin for Claude Code, for architects and tech leads. Covers the pipeline from design through build planning to release: system design (bundling API contract design and C4 diagrams into the same workflow), re-architecture (monolith decomposition, microservices consolidation, legacy system modernization), database migration planning, dependency upgrade assessment, design-to-tasks breakdown, and release notes. Every design, re-architecture, and task-breakdown workflow doubles as a review workflow - pass an existing artifact and you get a severity-tagged review (Blocker / Major / Minor / Nit) with an Approve / Approve-with-changes / Needs-rework verdict.
 
 ## Workflow Skills
 
@@ -14,11 +14,10 @@ Workflow skills (`task-*`) for architecture design, re-architecture, and deliver
 | `task-modernize-legacy`             | Plan or review a legacy system modernization - migrate from outdated language/framework to modern stack with behavioral verification and incremental cutover.                                                                                                                       |
 | `task-db-migration`            | Plan or review a database migration for complex schema changes - zero-downtime sequencing, expand-contract phasing, lock risk, backfill, and rollback.                                                                                                                              |
 | `task-dependency-upgrade`                 | Plan or review a library or platform upgrade - changelog analysis, breaking change detection, compatibility conflicts, effort estimate (S/M/L/XL), and Go/No-Go.                                                                                                                    |
-| `task-breakdown-design`             | Break a system design (HLD/LLD, ideally a `task-design-architecture` proposal) into an implementable task graph - phases, dependency order, critical path, sizing, and scope-creep flags.                                                                                           |
-| `task-breakdown-review`             | Review a task breakdown authored by another architect or engineer: design coverage, dependency and critical-path soundness, sizing, missing ops-readiness, scope creep. Severity-tagged findings and a verdict.                                                                     |
+| `task-breakdown-design`             | Break a system design (HLD/LLD, ideally a `task-design-architecture` proposal) into an implementable task graph - phases, dependency order, critical path, sizing, scope-creep flags - or review a breakdown someone else authored (severity-tagged findings and a verdict).        |
 | `task-release-notes`                | Generate stakeholder-ready release notes from a commit range or PR list. Categorized changelog plus a folded-in rollback and risk register section for on-call.                                                                                                                     |
 
-The last three continue the design pipeline: `task-design-architecture` produces the design, `task-breakdown-design` turns it into a task graph (and `task-breakdown-review` critiques a graph someone else wrote), and `task-release-notes` communicates the shipped result. All target the architect or tech lead who owns the build.
+The last two continue the design pipeline: `task-design-architecture` produces the design, `task-breakdown-design` turns it into a task graph (or, in review mode, critiques a graph someone else wrote), and `task-release-notes` communicates the shipped result. All target the architect or tech lead who owns the build.
 
 ## Atomic Skills
 
@@ -72,8 +71,7 @@ The architecture workflow skills compose with these core atomics via `Use skill:
 | `task-modernize-legacy`             | `strangler-fig-pattern`, `tradeoff-analysis`, `stack-detect`, `architecture-guardrail`, `architecture-data-consistency`, `ops-backward-compatibility`, `review-blast-radius`, `dependency-impact-analysis`, `ops-failure-classification`, `failure-propagation-analysis`, `ops-resiliency`, `ops-feature-flags`, `architecture-review-lens` (review mode)                                                                                                                                                                                                                                                                                           |
 | `task-db-migration`            | `review-change-risk`, `ops-backward-compatibility`, `backend-db-indexing`, `backend-idempotency`, `ops-release-safety`, `dependency-impact-analysis`, `review-blast-radius`, `architecture-review-lens` (review mode)                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `task-dependency-upgrade`                 | `stack-detect`, `ops-backward-compatibility`, `review-blast-radius`, `ops-release-safety`, `dependency-impact-analysis`, `architecture-review-lens` (review mode)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `task-breakdown-design`             | `stack-detect`, `backend-db-migration`, `ops-backward-compatibility`, `dependency-impact-analysis`, `ops-feature-flags`, `review-blast-radius`, `review-change-risk`                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `task-breakdown-review`             | `stack-detect`, `review-blast-radius`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `task-breakdown-design`             | `stack-detect`, `backend-db-migration`, `ops-backward-compatibility`, `dependency-impact-analysis`, `ops-feature-flags`, `review-blast-radius`, `review-change-risk` (breakdown mode); `stack-detect`, `review-blast-radius` (review mode)                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `task-release-notes`                | `stack-detect`, `backend-db-migration`, `ops-backward-compatibility`, `dependency-impact-analysis`, `ops-feature-flags`, `ops-release-safety`, `review-blast-radius`, `review-change-risk`                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ## Usage Examples
@@ -152,18 +150,16 @@ Deployment: Rolling, zero-downtime required
 Upgrade: Spring Boot 3.3 -> 3.5
 ```
 
-**Break a system design into an engineering task graph:**
+**Break a system design into an engineering task graph (or review a breakdown):**
+
+`task-breakdown-design` is dual-mode. Paste a design to get a task graph; paste an authored task plan to get a severity-tagged review of it.
 
 ```
 /task-breakdown-design
 [paste a task-design-architecture proposal, HLD, or LLD here]
-```
 
-**Review a task breakdown someone else authored:**
-
-```
-/task-breakdown-review
-[paste the task plan; optionally include the design it implements]
+/task-breakdown-design
+[paste an authored task plan; optionally include the design it implements]
 ```
 
 **Generate release notes for a deploy:**
