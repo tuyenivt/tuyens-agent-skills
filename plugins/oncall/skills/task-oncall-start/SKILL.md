@@ -1,6 +1,7 @@
 ---
 name: task-oncall-start
 description: Oncall entry point routing shift-starts and alerts: classifies work type and severity, dispatches to incident-root-cause or oncall-investigate.
+agent: oncall-responder
 metadata:
   category: ops
   tags: [oncall, routing, incident, investigation, handoff, rotation]

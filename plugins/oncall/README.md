@@ -2,6 +2,14 @@
 
 Incident response and investigation plugin for Claude Code: triage, investigation, root cause analysis, and postmortem. Requires the `core` plugin for shared atomic skills (`ops-failure-classification`, `review-blast-radius`, `ops-observability`, `ops-resiliency`, `ops-engineering-governance`, etc.).
 
+## Agents
+
+Stack-agnostic - the agent classifies failures and enforces guardrails without assuming a framework, and routes stack-specific debugging to the matching stack plugin.
+
+| Agent            | Description                                                                                                                                    | Drives                                     |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| oncall-responder | Incident responder / SRE walking the incident lifecycle: shift-start health checks, alert triage and routing, and prevention-focused postmortems. | `task-oncall-start`, `task-postmortem`     |
+
 ## Workflow Skills
 
 Workflow skills (`task-*`) for oncall work.

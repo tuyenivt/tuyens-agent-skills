@@ -1,6 +1,7 @@
 ---
 name: task-postmortem
 description: Post-incident postmortem producing enforceable guardrails (with persistence targets) plus MTTR-anchored systemic fixes from confirmed root cause.
+agent: oncall-responder
 metadata:
   category: ops
   tags: [incident, postmortem, retrospective, prevention, governance, reliability]
