@@ -1,6 +1,7 @@
 ---
 name: task-spring-implement
 description: "End-to-end Spring Boot feature: entity, Flyway migration, repository, service, controller, DTO records, tests across all layers."
+agent: spring-architect
 metadata:
   category: backend
   tags: [spring-boot, java, feature, implementation, workflow, jpa, rest-api, testing]

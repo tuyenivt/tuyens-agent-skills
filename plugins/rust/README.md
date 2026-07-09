@@ -6,7 +6,7 @@ Claude Code plugin for Rust development.
 
 - Rust 1.94+
 - Tokio (async runtime)
-- Axum (primary) / Actix-web (secondary)
+- Axum 0.8 (primary) / Actix-web (secondary)
 - sqlx (compile-time checked SQL)
 - sqlx-cli (migrations)
 - PostgreSQL

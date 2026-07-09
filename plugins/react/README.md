@@ -1,6 +1,6 @@
 # Tuyen's Agent Skills - React
 
-Claude Code plugin for React 19+ / TypeScript / Next.js (primary), Vite (secondary) development.
+Claude Code plugin for React 18+ (React 19 hooks) / TypeScript / Next.js 15 App Router (primary), Vite 5+ (secondary) development.
 
 ## Stack
 

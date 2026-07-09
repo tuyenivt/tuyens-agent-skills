@@ -1,6 +1,7 @@
 ---
 name: task-spring-debug
 description: "Debug Spring Boot stack trace, error log, test failure, or behavior bug: classify, root cause, minimal fix diff, regression test."
+agent: java-tech-lead
 metadata:
   category: backend
   tags: [debug, stack-trace, error, fix, troubleshooting]
