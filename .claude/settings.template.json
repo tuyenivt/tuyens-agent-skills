@@ -170,6 +170,7 @@
     "defaultMode": "acceptEdits"
   },
   "skillListingBudgetFraction": 0.02,
+  "enableWorkflows": false,
   "spinnerTipsEnabled": false,
   "alwaysThinkingEnabled": false,
   "effortLevel": "xhigh",
