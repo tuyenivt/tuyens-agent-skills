@@ -26,9 +26,9 @@ Whenever ranked hypotheses with calibrated confidence are needed; typically afte
 
 ### Confidence Scoring
 
-Score each hypothesis with this procedure; the table below is a sanity band, not a second method.
+Score each hypothesis with this procedure; the table below is a sanity band, not a second method, and is checked against the raw score before normalization.
 
-- Start at 50% for correlation + plausible mechanism
+- Start at 50% for observed correlation + plausible mechanism; start at 25% when either is speculative (pattern-match without observed linkage) - this is how scores reach the 15-39% band
 - +15 for direct evidence at the failure point (stack trace there, or resource metric showing saturation)
 - +10 per additional independent direct signal, counting at most two (+20 max)
 - +10 when an independent pattern matches the mechanism's prediction (e.g., regional error distribution matches a canary rollout order)

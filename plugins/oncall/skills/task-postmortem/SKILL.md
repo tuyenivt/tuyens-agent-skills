@@ -75,7 +75,7 @@ For compound failures, map the root type; load a second domain skill only when t
 
 For each structural condition, name both the weakness and the architectural change that eliminates it (boundary erosion → boundary enforcement; shared mutable state / resource contention → per-workload isolation, bulkheads; hidden assumptions → explicit timeouts, statement budgets; blast radius amplification → circuit breakers, fail-fast paths).
 
-Use skill: `review-blast-radius` for propagation scope (its scope feeds the Priority column).
+Use skill: `review-blast-radius` for propagation scope; derive the Priority column from it: Critical/Wide → P0, Moderate → P1, Narrow → P2.
 Use skill: `architecture-guardrail` for boundary violations.
 Use skill: `ops-resiliency` for fault tolerance and resource isolation (skip if already loaded as the Step 2 domain skill).
 Use skill: `backend-idempotency` only if duplicate writes or retry-safety was a contributing factor.
@@ -102,7 +102,7 @@ Produce one row per distinct failure-class/enforcement pair surfaced by the step
 
 | Target                                                                 | Use when                                              | Patch shape                                                          |
 | ---------------------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------- |
-| Stack-specific skill (`<stack>-<concern>`)                             | Rule encodes a framework pattern                      | New bullet under `## Rules` or `## Patterns` with bad/good pair      |
+| Stack-specific skill (`<stack>-<concern>`)                             | Rule encodes a framework pattern (stack from the incident's repo, diff, or deploy metadata) | New bullet under `## Rules` or `## Patterns` with bad/good pair      |
 | Stack-agnostic core skill (`ops-resiliency`, `architecture-guardrail`) | Rule applies across stacks                            | New bullet in the relevant core skill                                |
 | Project `CLAUDE.md`                                                    | Project-specific policy that does not generalize      | Entry under `## Lessons from Incidents` (create if absent)           |
 | Review checklist / CI gate                                             | Mechanically enforceable                              | Concrete file + check name + failure message                         |

@@ -28,7 +28,8 @@ Required: report or symptom. Optional: affected entity (user/order/request ID), 
 
 - Classify the request type before gathering evidence - it determines what to look at
 - Verify expected behavior before concluding "bug" (in code; for alerts, the monitor's intent)
-- Always produce a clear finding (Bug | Working as designed | Config | Data | Permission | False positive alert | Insufficient evidence)
+- Always produce a clear finding (Bug | Working as designed | Config | Data | Permission | False positive / known-condition alert | Insufficient evidence). Known-condition = the signal is real but the load is expected (scheduled job, known peak); it shares the alert-tuning action path
+- When a system a check needs is inaccessible (DB, flags, config, cache contents) and the ticket does not answer it, record the check as unchecked or `Not run` - never skip it silently
 
 ## Workflow
 
@@ -60,7 +61,7 @@ Narrow first, then verify it is not silently affecting others.
 
 ### Step 4 - Verify Expected Behavior
 
-Before concluding "bug", read the code and confirm what the system is *designed* to do. Use skill: `task-code-explain` if the path is unfamiliar. Check feature flags, config values, A/B assignments, and recent deploys; when these systems are inaccessible and the ticket is silent, record them as unchecked rather than skipping silently.
+Before concluding "bug", read the code and confirm what the system is *designed* to do. Use skill: `task-code-explain` if the path is unfamiliar. Check feature flags, config values, A/B assignments, and recent deploys (inaccessible systems: see Rules).
 
 For Alert investigations, "expected behavior" means the monitor's intent: compare threshold, evaluation window, and recovery threshold against the observed metric pattern, and check whether the triggering pattern is scheduled or known load.
 
@@ -88,7 +89,7 @@ Use skill: `ops-observability-fetch` for any row whose evidence lives in an APM/
 | Config                   | Identify the change; assess change risk                             |
 | Data                     | Identify correction; hotfix vs migration for stored data, invalidation + code fix for stale caches |
 | Permission               | Identify role/flag/entitlement to update                            |
-| False positive alert     | Name the tuning: raise threshold above known peak, add recovery threshold, widen evaluation window, or mute window for scheduled load - AND state whether the system should change instead (e.g., stagger the load) when the pattern itself is a risk |
+| False positive / known-condition alert | Name the tuning: raise threshold above known peak, add recovery threshold, widen evaluation window, or mute window for scheduled load - AND state whether the system should change instead (e.g., stagger the load) when the pattern itself is a risk |
 | Insufficient evidence    | State what additional logging or data is needed                     |
 
 ## Output
@@ -104,7 +105,7 @@ Time Window: {when}
 ### Expected vs Actual
 - Expected: {what should happen; for alerts, the monitor's intent}
 - Actual: {what is happening - may be correct behavior with a miscalibrated monitor}
-- Verdict: {Bug | Working as designed | Config | Data | Permission | False positive alert | Insufficient evidence}
+- Verdict: {Bug | Working as designed | Config | Data | Permission | False positive / known-condition alert | Insufficient evidence}
 
 ### Evidence
 - {Finding 1 with source - log line, query result, code path, config value}

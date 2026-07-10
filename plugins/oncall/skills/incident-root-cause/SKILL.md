@@ -34,7 +34,7 @@ Extract: symptom onset (timestamp, or relative like "~40 min ago"), duration, af
 | Medium   | Partial degradation <10%, single service, no data risk                  |
 | Low      | Non-user-facing, minimal impact                                         |
 
-**Thin evidence** (no metrics, no deploy data, scope unknown): assign severity from the worst plausible reading, recommend containment by error class in Step 2, and list the 3-5 evidence items that would raise confidence in the output's `Evidence Needed` section.
+**Thin evidence** (all three missing: metrics, deploy data, scope): assign severity from the worst plausible reading and recommend containment by error class in Step 2. Whenever any of the three is missing - fully thin or not - list the 3-5 evidence items that would raise confidence in the output's `Evidence Needed` section.
 
 ### Step 2 - Recommend Containment
 
@@ -113,7 +113,7 @@ Affected Services:
 
 ## Evidence Needed
 
-- {missing evidence item + where to get it} (thin-evidence incidents only; 3-5 items)
+- {missing evidence item + where to get it} (whenever metrics, deploy data, or scope was missing; 3-5 items)
 
 ## Observability Gaps
 
@@ -138,7 +138,7 @@ Affected Services:
 - [ ] 1-3 containment actions with ETA appear before diagnosis; rollback carries safety verdict
 - [ ] Every hypothesis cites evidence and has a verification step
 - [ ] Triggering change identified if evidence exists; propagation path traced when cascading
-- [ ] Thin evidence: Evidence Needed section lists 3-5 items
+- [ ] Missing signals (metrics/deploys/scope): Evidence Needed section lists 3-5 items
 - [ ] Prevention notes limited to 1-3 startable-now items; guardrail/persistence deferred to postmortem
 - [ ] Empty sections omitted
 

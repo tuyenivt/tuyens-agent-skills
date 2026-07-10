@@ -15,7 +15,7 @@ Transport-agnostic evidence gathering for oncall workflows. Detects available MC
 
 | Capability      | Emits block     | Inputs                              | URL pattern (auto-fetch trigger)                                                          |
 | --------------- | --------------- | ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `fetch_issue`   | `error_event`   | issue ID or URL                     | `*.sentry.io/.../issues/{id}` (numeric); short-IDs like `PROJ-123` need org+project slugs |
+| `fetch_issue`   | `error_event`   | issue ID or URL                     | `*.sentry.io/.../issues/{id}` (numeric or short-ID - the URL host carries the org); a bare short-ID like `PROJ-123` with no URL needs org+project slugs |
 | `fetch_monitor` | `monitor_state` | monitor ID or URL                   | `app.datadoghq.*/monitors/{id}`                                                           |
 | `fetch_trace`   | `trace`         | trace ID or URL                     | `app.datadoghq.*/apm/trace/{id}` (or vendor equivalent)                                   |
 | `query_logs`    | `log_window`    | service, window, filters / corr. ID | `app.datadoghq.*/logs?query=...&from_ts=...&to_ts=...` (extract query + window)           |
@@ -32,7 +32,7 @@ Transport-agnostic evidence gathering for oncall workflows. Detects available MC
 - **URL recognition runs before asking for paste.** If input contains a recognized URL, auto-fetch. Parse IDs and windows out of URLs even when the transport is unavailable - they belong in the unavailable block.
 - **Never invent values.** Unknown fields stay `unknown`; missing transport produces an unavailable block with a paste prompt.
 - **Source tag uses roles, not vendor names:** `mcp` (any MCP transport), `user-paste`, `unavailable`. Name the vendor in the block's `Tool:` line when relevant. When the user later pastes the requested data, re-emit the block normalized with `Source: user-paste`.
-- **Emit every block the consumer asked for** (as unavailable if it cannot be fetched and the input gives no anchor) **plus blocks the input directly anchors** - one block per capability/target, deduplicated across the two sets. Anchors: a recognized URL, or an explicit ID, metric name, or service+window in the request text. Nothing else - no speculative padding.
+- **Emit every block the consumer asked for** - as unavailable when it cannot be fetched, even when the input gives no anchor for it - **plus blocks the input directly anchors** - one block per capability/target, deduplicated across the two sets. Anchors: a recognized URL, or an explicit ID, metric name, or service+window in the request text. Nothing else - no speculative padding.
 - **Block order:** consumer-requested blocks first in requested order, then input-anchored extras in input order.
 - **Output starts with the first block.** No preamble, no transport narration. Notes and questions (dashboard panel question, skipped/unrecognized URLs) go after the last block, one line each.
 - **Window required** for `query_metrics`, `query_logs`, `list_deploys`. Resolve relative windows ("last 48h") against the current time, convert epoch-ms URL parameters, and display ISO timestamps. Other capabilities carry their own context.

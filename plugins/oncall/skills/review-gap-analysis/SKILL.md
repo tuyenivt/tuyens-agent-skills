@@ -22,7 +22,7 @@ Required: incident summary, root cause. Optional: PR diff, review history, CI/CD
 ## Rules
 
 - Distinguish "missed in review" from "not catchable by review" - the second needs a different quality gate. A failure is reviewable if its trigger is visible in the diff, even when the consequence only manifests under load; Non-Reviewable is reserved for failures with no diff-visible trigger.
-- Collapse gaps only when they share one causal mechanism (e.g., PR size drove both the rubber-stamp and the skipped checklist). Keep separate rows when mechanisms are distinct - one gap let the defect ship, another made it invisible to CI, another delayed detection. Two rows may share a Type when their mechanisms differ; a shared organizational cause (e.g., team offsite) may legitimately recur across rows' Why-It-Existed cells.
+- Collapse gaps only when they share one causal mechanism (e.g., PR size drove both the rubber-stamp and the skipped checklist). Keep separate rows when mechanisms are distinct - one gap let the defect ship, another made it invisible to CI, another delayed detection. Two rows may share a Type when their mechanisms differ; a shared organizational cause (e.g., team offsite) may legitimately recur across rows' Why-It-Existed cells. Review-attention and Expertise on the same review event share one mechanism (the risky path was not competently assessed) - one row; pick the Type by the binding constraint: more time with the same reviewer would have caught it → Review-attention; the right reviewer at the same pace would have → Expertise. Name both causes in Why-It-Existed.
 - Every finding is exactly one row in the Gaps table - including non-reviewable ones, which use Type `Non-Reviewable` and a Fix naming the missing quality gate. Cap at 3-5 rows; when more qualify, keep the highest-priority rows. The Highest-Leverage Fix is always the load-bearing output and may be a missing quality gate.
 - When composed by `task-postmortem`, the Highest-Leverage Fix plus the top 1-2 P0/P1 rows are what gets surfaced upward.
 
@@ -42,7 +42,7 @@ Required: incident summary, root cause. Optional: PR diff, review history, CI/CD
 
 Identify the introducing change (PR, commit, config, deploy). Map the causal chain from the change to the production failure: *"PR added retry → retry holds connections longer → pool exhausted under load → cascading timeouts."* This shows what a reviewer would have needed to reason about.
 
-**No-PR path** (config drift, traffic/data growth, latent bug): write the causal chain in condition form - *"{latent condition} → {accumulating effect} → {failure}"*, naming accelerants in parentheses. Skip the diff-dependent categories (Review-attention, Expertise) in Step 2; still evaluate Checklist and Automated-gate. The absence of any gate covering this failure class becomes a `Non-Reviewable` row (Step 3). Steps 3 and 4 always run.
+**No-PR path** (config drift, traffic/data growth, latent bug): write the causal chain in condition form - *"{latent condition} → {accumulating effect} → {failure}"*, naming accelerants in parentheses. Skip the diff-dependent categories (Review-attention, Expertise) in Step 2; still evaluate Checklist, Automated-gate, and Resilience-pattern. The absence of any gate covering this failure class becomes a `Non-Reviewable` row (Step 3). Steps 3 and 4 always run.
 
 ### Step 2 - Evaluate Each Category
 
@@ -58,7 +58,7 @@ Walk every applicable category, then collapse same-mechanism overlaps so each di
 
 Some failures cannot be caught by code review regardless of skill: latent bugs surfaced by later traffic/data growth, config drift, emergent behavior between independently correct components, load-dependent failures with no diff-visible trigger, or feedback that was overruled.
 
-For these, the question shifts from "why didn't review catch it?" to "what quality gate should exist?" (load test, config validation, chaos test, canary, trend alerting). Each becomes a Gaps-table row with Type `Non-Reviewable` whose Fix names the missing gate; the Non-Reviewable Factors output section is prose explaining why review could not catch the class, referencing those rows by # - it does not duplicate them.
+For these, the question shifts from "why didn't review catch it?" to "what quality gate should exist?" (load test, config validation, chaos test, canary, trend alerting). A gate that existed but was miscalibrated or skipped stays a normal category row (usually Automated-gate); `Non-Reviewable` is for a failure class no existing gate covered - the row's Fix names the missing gate; the Non-Reviewable Factors output section is prose explaining why review could not catch the class, referencing those rows by # - it does not duplicate them.
 
 ### Step 4 - Prioritize by Leverage
 

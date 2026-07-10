@@ -22,6 +22,7 @@ Two modes:
 
 - "starting my shift", "taking over", "what should I check?" → **Shift-Start**
 - A specific alert, error, ticket, or symptom is provided → **Triage**
+- Both (handover plus a live alert/symptom) → run Triage on the alert first, then Shift-Start; do not ask
 - Ambiguous → ask: "Are you starting your shift, or do you have a specific alert to triage?"
 
 ---
@@ -124,7 +125,7 @@ Mirrors `incident-root-cause` Step 1 - keep in sync:
 | Medium   | Partial degradation <10%, single service, no data risk                  |
 | Low      | Non-user-facing, minimal impact                                         |
 
-When criteria from multiple rows match, take the highest row. For Critical/High: route immediately, skip further classification.
+When criteria from multiple rows match, take the highest row. For Critical/High: route immediately - skip further work-type refinement, but still run Steps 5-6 in one fast pass; Step 5 feeds the rollback line in Immediate Action.
 
 ### Step 5 - Scope Check
 
@@ -172,7 +173,7 @@ Shift-Start:
 Triage:
 - [ ] Stack detected; URLs hydrated via `ops-observability-fetch` when present; deploys pulled when recent-change info was missing
 - [ ] Work type classified using hydrated evidence and the precedence rule (not URL alone)
-- [ ] Severity assigned (highest matching row); Critical/High routed without further classification time
+- [ ] Severity assigned (highest matching row); Critical/High routed without further work-type refinement (Steps 5-6 still run, fast)
 - [ ] Scope check completed (data risk, recent change, prior occurrence)
 - [ ] Context package names symptom, time window, affected scope, recent change, and fetched evidence
 

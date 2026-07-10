@@ -26,7 +26,7 @@ user-invocable: false
 
 ## Inputs
 
-Required: a known failure window OR a log/trace/issue URL the fetch step can use. Use skill: `ops-observability-fetch` to obtain `log_window` and `trace` blocks. In paste mode (no MCP transport), analyze the pasted logs directly - do not re-emit normalized blocks.
+Required: a known failure window OR a log/trace/issue URL the fetch step can use. Use skill: `ops-observability-fetch` to obtain `log_window` and `trace` blocks - plus `metric_series` when the Step 4 saturation check or the metric-precedence rule needs a resource metric. In paste mode (no MCP transport), analyze the pasted logs directly - do not re-emit normalized blocks.
 
 ## Patterns
 
@@ -76,7 +76,7 @@ Common upstream → downstream chains:
 
 State the chain link by link: *"{upstream} causes {downstream} because {mechanism}, confirmed by {evidence}."* Chains may have more than two links (e.g., dependency timeout → pool exhausted → 503); state each link's mechanism. A single error class can still have a multi-link resource chain behind it (e.g., heap pressure → GC pauses → query timeouts) - state that chain rather than writing "Single class".
 
-Label the trigger's confidence: `confirmed` (mechanism + timing both fit), `candidate` (timing fits, mechanism unproven), or `unknown`.
+Label the trigger's confidence: `confirmed` (mechanism + timing both fit), `candidate` (timing fits, mechanism unproven), or `unknown`. An external-dependency trigger stays `candidate` until evidence from the dependency itself (status page, its own metrics) confirms it - caller-side timeouts alone do not.
 
 ### Step 5 - Healthy vs Unhealthy Comparison
 
@@ -89,7 +89,7 @@ Missing expected entries observable from the unhealthy window alone still belong
 ```
 ## Log Analysis
 
-Time Window: {start} to {end} ({duration})
+Time Window: {start} to {end | "ongoing at window end"} ({duration})
 Comparison Window: {healthy period | "unavailable"}
 
 ### Correlation Trace
