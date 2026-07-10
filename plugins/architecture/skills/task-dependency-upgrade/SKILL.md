@@ -117,7 +117,7 @@ Use skill: `review-blast-radius` for upgrade risk: affected features/flows, blas
 | Breaking changes    | None/Low/High     | High = removals or behavior changes present; Low = renames/config only |
 | Test coverage       | Good/Partial/Poor | Confidence level for catching regressions |
 | Rollback complexity | Easy/Hard         | Whether rollback requires data changes    |
-| Blast radius        | Narrow/Wide       | Scope of affected functionality           |
+| Blast radius        | Narrow/Wide       | Scope of affected functionality (review-blast-radius Moderate or above maps to Wide) |
 
 Summary Risk Level: High when 2+ factors sit at their worst level (High/Poor/Hard/Wide), Medium when exactly one does, Low otherwise. Partial or Poor test coverage on an upgrade with behavior changes adds a prerequisite (backfill tests on affected flows) to Recommended Next Steps.
 

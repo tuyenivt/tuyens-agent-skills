@@ -48,7 +48,7 @@ Hidden: Internal state machine, pricing calculation, DB schema
 Failure Isolation: OrderService failure does not affect PaymentService reads; pending payments remain queued
 ```
 
-Contracts are listed at capability level (endpoints and event types, not payload schemas). Exposed Contract lists only what the boundary provides; contracts it consumes appear as Communication Map rows. Internal queues or workers own no data and are not boundaries - record them under Hidden Internals. A contested entity (refunds: orders or payments?) is assigned to the boundary that owns its lifecycle writes; everyone else reads via API, event, or replication.
+Contracts are listed at capability level (endpoints and event types, not payload schemas). Exposed Contract lists only what the boundary provides; contracts it consumes appear as Communication Map rows. Internal queues or workers own no data and are not boundaries - record them under Hidden Internals. A contested entity (refunds: orders or payments?) is assigned to the boundary that owns its lifecycle writes; when several boundaries write its lifecycle, the one writing the terminal (completing) transitions owns it - refunds settle in payments. Everyone else reads via API, event, or replication.
 
 ### Communication patterns
 
@@ -67,7 +67,7 @@ This table is the canonical Pattern enum for the Communication Map.
 
 **Keep together when** strong transactional consistency is required between entities, data is tightly coupled and queried together, or splitting would force distributed transactions.
 
-**When signals conflict** (consistency says merge, failure isolation says split), consistency wins: keep the data in one boundary and isolate the failing concern inside it (internal queue or worker) instead of splitting the data. A stated target architecture outranks this tie-break - apply it only when the decision is open, and name any overridden signal in the rationale.
+**When signals conflict** (consistency says merge, failure isolation says split), consistency wins: keep the data in one boundary and isolate the failing concern inside it (internal queue or worker) instead of splitting the data. The tie-break binds transactional consistency only - read-coupling ("queried together") is resolved with Data replication or Shared cache and does not force a merge. A stated target architecture outranks this tie-break - apply it only when the decision is open, and name any overridden signal in the rationale.
 
 ## Output Format
 
@@ -87,7 +87,7 @@ This table is the canonical Pattern enum for the Communication Map.
 | {module} | {module} | Sync API / Async event / Shared cache / Data replication  | {what crosses} | {coupling, latency, consistency} |
 ```
 
-In a partially decomposed system, monolith-resident boundaries get rows too - note "in monolith" under Hidden Internals so the migration seam stays visible. Failure Isolation holds one clause per inbound dependent; move overflow to a note under the table.
+In a partially decomposed system, monolith-resident boundaries get rows too - note "in monolith" under Hidden Internals so the migration seam stays visible. Failure Isolation holds one clause per inbound dependent; move overflow to a note under the table. A boundary with no runtime communication writes "none (shared-nothing)" in Exposed Contract and appears in no Communication Map row.
 
 When the task is a split/merge or placement decision, prepend this section:
 

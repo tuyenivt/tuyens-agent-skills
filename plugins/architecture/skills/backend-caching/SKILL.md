@@ -21,7 +21,7 @@ user-invocable: false
 ## Rules
 
 - Cache reads only; the cache must reflect the source of truth, never override it
-- Every cache entry has a TTL and a defined invalidation strategy
+- Every cache entry has a TTL and a defined invalidation strategy. Indefinite TTL is legitimate only for static-until-changed data with event-based invalidation plus a memory bound; otherwise missing TTL is a gap
 - Cache DTOs or response objects, never ORM entities or other mutable references
 - Invalidate after the DB commit, never before - an eviction before commit can be refilled with stale data by a concurrent read
 - Never bare-delete a hot key; overwrite with the recomputed value or bump a version segment, or the delete itself triggers a stampede
@@ -80,7 +80,7 @@ JSON.stringify(query) // property order is not guaranteed
 | Near-real-time               | 1-10 seconds                          | Inventory counts, live prices  |
 | Infrequent                   | 5-60 minutes                          | Product catalog, user profiles |
 | Rare                         | 1-24 hours                            | Reference data, feature flags  |
-| Static until explicit change | Indefinite (event-based invalidation) | Config, CMS content            |
+| Static until explicit change | Indefinite (event-based invalidation + memory bound) | Config, CMS content            |
 
 When a staleness budget is stated, TTL = budget minus a safety margin (e.g., 4s for a 5s budget); otherwise pick within the band by change frequency. Stagger TTLs with jitter (+/- 10%) to avoid synchronized expiration storms. For predictable spikes (flash sales, launches), pre-warm hot keys with a background job before opening traffic. Bound distributed-cache memory explicitly (e.g., Redis `maxmemory` + `allkeys-lru`) - TTL alone does not bound key cardinality for query caches.
 
@@ -139,7 +139,7 @@ Cache DTOs (records/dataclasses/structs), never ORM entities. Project at the que
 ## Avoid
 
 - Caching mutable objects or ORM entities (stale shared state)
-- Cache without TTL (unbounded memory)
+- Cache without TTL or event-based invalidation (unbounded memory and staleness)
 - Cache without invalidation strategy (indefinite staleness)
 - Caching write-heavy data (low hit rate, high invalidation churn)
 - Ignoring stampede on popular keys

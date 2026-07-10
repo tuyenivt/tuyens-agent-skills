@@ -27,6 +27,8 @@ Two or more proposals exist for the same problem space, including:
 - A tie is not a valid output - declare a winner with reasoning
 - Distinguish scope mismatch (proposals solving different problems) from coverage gap (proposal omits criteria) - flag scope mismatch in the Scope Check, then compare against the full underlying problem. If the proposals are complementary (each solves a different real problem), the winner is what to fund first; record the other as a follow-up under Conditions for Adoption
 - If the artifact contains an explicit author recommendation (e.g., an ADR author's pick among alternatives), explicitly agree with or overturn it in the Recommendation, with reasoning. Proposals advocating themselves do not count as a recommendation
+- Constraint/NFR fit is not a seventh criterion: the Scope Check states the binding constraints, each proposal's conflicts with them surface in its Per-Proposal Profile, and the Recommendation may name constraint fit as decisive alongside criteria
+- More than three candidates: pre-screen to the strongest three against the binding constraints, recording each elimination in one line under Proposals Evaluated; only survivors enter the matrix
 
 ## Pattern
 

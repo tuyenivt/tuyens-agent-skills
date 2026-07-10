@@ -73,6 +73,8 @@ Use skill: `architecture-guardrail` to assess current boundary quality.
 
 Capture deploy frequency/duration/rollback frequency (this gates Section 4's cadence check) and specific pain points (vague drivers produce vague plans). The coupling matrix in the Output template is the artifact.
 
+Validate the driver here: it passes when the problem needs independently deployable or scalable units (scaling hotspots, cross-team deploy contention, fault isolation); it fails when a cheaper same-architecture remedy addresses it (slow tests -> parallelize; tangled code -> modular monolith; single-team velocity -> CI/CD). A failed driver triggers the Not-recommended deliverable defined under Depth Levels.
+
 ### 2. Domain Decomposition
 
 Identify bounded contexts before drawing service lines.
@@ -182,7 +184,7 @@ Supply this decomposition-plan-specific factor list to the completeness audit. R
 | Current state assessment        | No       | Module inventory, deployment profile, pain points justifying decomposition         |
 | Domain decomposition            | Yes      | Bounded contexts identified; data ownership per service stated                     |
 | Target architecture             | Yes      | Services named with single-sentence responsibility and primary failure mode        |
-| Extraction order                | Yes      | Sequenced with rationale (lowest-coupling first, highest-pain first, etc.)         |
+| Extraction order                | Yes      | Sequenced with risk-ordered rationale (lowest coupling / lowest criticality first) |
 | Strangler-fig routing           | Yes      | Coexistence phases, traffic routing strategy, sync between monolith and services   |
 | Data ownership transfer         | Yes      | Per-service: how data moves out of monolith DB; dual-write or read-replica phase   |
 | Cross-cutting concerns          | No       | Auth, observability, deployment pipeline addressed for new services                |
@@ -287,7 +289,7 @@ Duration: {estimate}
 
 ## 6. Risks and Mitigations
 
-| Risk                    | Blast Radius | Mitigation               | Rollback               |
+| Risk                    | Blast Radius (Narrow/Moderate/Wide/Critical) | Mitigation               | Rollback               |
 | ----------------------- | ------------ | ------------------------ | ---------------------- |
 | Distributed transaction | Moderate     | Saga with compensation   | Route back to monolith |
 | Latency amplification   | Narrow       | Circuit breaker, caching | Feature flag disable   |

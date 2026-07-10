@@ -43,11 +43,13 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 
 | Depth      | When to Use                                           | Sections Produced                                          |
 | ---------- | ----------------------------------------------------- | ---------------------------------------------------------- |
-| `quick`    | Early feasibility, "should we modernize and to what?" | Legacy assessment + target evaluation + top risks          |
+| `quick`    | Early feasibility, "should we modernize and to what?" | Sections 1-3 (assessment, driver analysis, target evaluation) + top risks from 8 + Staff-Level Summary |
 | `standard` | Default -- modernization plan for leadership sign-off | All 8 sections                                             |
 | `deep`     | Large legacy system, multi-year migration, high risk  | All 8 sections + full behavioral matrix (Section 4) + Failure Simulation section |
 
-**Failure Simulation (deep only):** rendered as `## Failure Simulation` between Section 8 and the Staff-Level Summary. Per scenario (one to two), walk the highest-risk migration phase end to end - failure cause -> propagation path -> user-visible impact -> mitigation that activates -> recovery - then state Blast radius {Narrow | Moderate | Wide}, MTTR estimate, and the gap the plan must close.
+At `quick`, keep template numbering, omit unproduced sections silently, and waive their Self-Check items.
+
+**Failure Simulation (deep only):** rendered as `## Failure Simulation` between Section 8 and the Staff-Level Summary. Per scenario (one to two), walk the highest-risk migration phase end to end - failure cause -> propagation path -> user-visible impact -> mitigation that activates -> recovery - then state Blast radius {Narrow | Moderate | Wide | Critical}, MTTR estimate, and the gap the plan must close.
 
 ## Rules
 

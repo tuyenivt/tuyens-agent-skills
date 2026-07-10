@@ -150,7 +150,7 @@ Use skill: `review-blast-radius` for impact scope per scenario.
 Use skill: `ops-resiliency` for mitigation patterns.
 Use skill: `architecture-concurrency` for concurrency risk.
 
-For each high-risk scenario: failure mode, blast radius (Narrow / Moderate / Wide), mitigation. Cover backpressure and retry amplification explicitly - hand-waved retry storms are a common cause of cascading failure.
+For each high-risk scenario: failure mode, blast radius (Narrow / Moderate / Wide / Critical), mitigation. Cover backpressure and retry amplification explicitly - hand-waved retry storms are a common cause of cascading failure.
 
 ### 6. Observability Plan
 
@@ -286,7 +286,7 @@ Downstream Consumers:
 
 | Scenario            | Component | Blast Radius         | Mitigation                |
 | ------------------- | --------- | -------------------- | ------------------------- |
-| Dependency down     | Name      | Narrow/Moderate/Wide | Circuit breaker, fallback |
+| Dependency down     | Name      | Narrow/Moderate/Wide/Critical | Circuit breaker, fallback |
 | Data corruption     | Name      | Scope                | Mechanism                 |
 | Resource exhaustion | Name      | Scope                | Mechanism                 |
 
@@ -452,7 +452,7 @@ Walk through the failure end-to-end:
 4. {Mitigation that activates}
 5. {Recovery path}
 
-**Blast radius:** {Narrow | Moderate | Wide}
+**Blast radius:** {Narrow | Moderate | Wide | Critical}
 **MTTR estimate:** {minutes / hours}
 **Gap identified:** {What the design is missing to contain this faster}
 

@@ -71,7 +71,7 @@ Place every change in exactly one bucket. No "Other". Precedence (highest first)
 
 Load `Use skill: ops-release-safety` to ground the rollout strategy and detection signals.
 
-For each change touching data, auth, money, or external contracts, load `Use skill: review-blast-radius` for the `Blast Radius` value. When blast radius is Wide or Critical, load `Use skill: review-change-risk`; the Reversibility column uses its enum (`Reversible | Partially reversible | Irreversible`), not blast-radius's. For Moderate rows write one plain-language reversibility line.
+For each change touching data, auth, money, external contracts, or cross-cutting code paths (middleware, routing, serving infrastructure), load `Use skill: review-blast-radius` for the `Blast Radius` value. When blast radius is Wide or Critical, load `Use skill: review-change-risk`; the Reversibility column uses its enum (`Reversible | Partially reversible | Irreversible`), not blast-radius's. For Moderate rows write one plain-language reversibility line.
 
 Conditional deep-dives:
 

@@ -78,6 +78,8 @@ Use skill: `ops-backward-compatibility` to assess application-level compatibilit
 | Backfill existing rows  | Variable   | Medium-High - batch sizing critical          |
 | Split or merge tables   | Very High  | Very high - requires dual-write phase        |
 
+"Variable" (backfill) resolves by scale: Medium below the Step 2 high-risk threshold (1M rows), High at or above it.
+
 **Compound migrations:** When a single migration request contains multiple change types, classify each sub-change separately. State the dependency order (which changes must complete before others can begin). The overall risk level is the highest individual risk level among the sub-changes.
 
 State the type and risk level before continuing.
@@ -175,7 +177,7 @@ Use skill: `review-blast-radius` to assess the impact if the rollback itself fai
 
 ### Step 6 - Execution Plan
 
-For each step: action, pre-condition, lock acquired with duration, step-level rollback, concrete validation that confirms success before the next step - every phase's step table carries all five columns. Vague validation ("verify the migration ran") is not acceptable on Blocker-risk steps. This step renders as the per-phase step tables in the Output; the three template phases are canonical, not exhaustive - insert additional deploy phases (e.g., a per-service read/write flip between Migrate and Contract) and renumber. State which steps run as migration-tool versions vs runbook/background jobs, and flag tool constraints (e.g., `CREATE INDEX CONCURRENTLY` cannot run in a transaction - mark the migration non-transactional in Flyway/Alembic; MySQL DDL is non-transactional regardless - one statement per golang-migrate version, plan dirty-state recovery).
+For each step: action, pre-condition, lock acquired with duration, step-level rollback, concrete validation that confirms success before the next step - every phase's step table carries all five columns. Vague validation ("verify the migration ran") is not acceptable on Blocker-risk steps. This step renders as the per-phase step tables in the Output; the three template phases are canonical, not exhaustive - insert additional deploy phases (e.g., a per-service read/write flip between Migrate and Contract) and renumber; a single-phase additive change emits Phase 1 only - omit phases with no steps. State which steps run as migration-tool versions vs runbook/background jobs, and flag tool constraints (e.g., `CREATE INDEX CONCURRENTLY` cannot run in a transaction - mark the migration non-transactional in Flyway/Alembic; MySQL DDL is non-transactional regardless - one statement per golang-migrate version, plan dirty-state recovery).
 
 ## Review Mode
 

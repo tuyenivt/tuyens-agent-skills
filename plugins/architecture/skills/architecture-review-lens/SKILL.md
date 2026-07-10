@@ -38,13 +38,13 @@ Apply in order. A step that does not fit the artifact (e.g., Section 6 scoring o
 
 ### 1. Intake
 
-State in one sentence each: the problem (per the artifact), stated scope and non-goals, stated NFRs/constraints, the author's recommendation. For multiple artifacts on the same problem, run `architecture-proposal-compare` first, then apply the rest of the lens to the recommended artifact.
+State in one sentence each: the problem (per the artifact), stated scope and non-goals, stated NFRs/constraints, the author's recommendation. For multiple artifacts on the same problem - or a single artifact with three or more considered alternatives (an ADR) - run `architecture-proposal-compare` first, then apply the rest of the lens to the recommended option.
 
 ### 2. Completeness Audit
 
-The workflow provides the factor list. For each factor mark **Present** (explicit, specific), **Under-specified** (mentioned but vague), or **Missing**.
+The workflow provides the factor list; standalone, use the Section 6 criteria as the factor list, all required (the Section 5/6 overlap rule then applies). For each factor mark **Present** (explicit, specific), **Under-specified** (mentioned but vague), or **Missing**. A factor irrelevant to the artifact is N/A with a one-line reason (mirrors Section 6), not Missing.
 
-- Missing -> Major minimum; Blocker if the factor is required to make the approval decision (e.g., rollback for a high-blast-radius change)
+- Missing -> Major minimum; Blocker if the decision cannot be made without it (e.g., rollback for a high-blast-radius change) - a distinct test from workflow-marked required, which gates the Approve verdict in Section 8
 - Under-specified -> Minor minimum; Major if the gap forces guesswork on a load-bearing decision
 - A factor can be Present yet **Wrong**: mark it Present here and raise the error once - in Section 3 if it contradicts the artifact, otherwise in Section 5 - Major minimum, Blocker if load-bearing. Arithmetic on the artifact's own numbers counts as artifact evidence, not reviewer context
 

@@ -23,7 +23,7 @@ user-invocable: false
 - Map only what is known; mark every row **Confirmed** (authored documentation or code-verified) or **Inferred** (derived from config, naming, or convention - a compose file or IaC alone is Inferred; a system known only from another system's doc is Inferred). A row's confidence is that of its least-confirmed cell; note mixed confidence in Notes. Unknown cell values do not change confidence - confidence rates what is asserted
 - Integration entries state protocol and coupling separately - sync/async belongs to protocol; tight/loose is coupling
 - Risks cite landscape evidence (which services share what), not generic concerns
-- Every entry cites a Source: doc path, code path, or config artifact (or "assessment brief" when facts arrive as a brief rather than artifacts)
+- Every entry cites a Source: doc path, code path, or config artifact (or "assessment brief" when facts arrive as a brief rather than artifacts). Unhedged brief statements are Confirmed - the brief is authored documentation; statements the brief hedges ("probably", "not sure") are Inferred
 - Never invent values - unknown Owner/Stack cells say Unknown. Undocumented systems still get inventory rows; they are usually where the risk lives
 
 ## Pattern
@@ -39,7 +39,8 @@ A sync call can be loose if the caller has a fallback; an async event can be tig
 
 - One row per direct edge, From = initiator; describe a multi-hop chain in Notes, never as one aggregate row. Exception: a uniform fan-out (every service calls auth) may be one row with From "all services"; an unnamed caller population gets one aggregate row plus a Gap row for the unknown members
 - Broker-mediated flows: one row per producer-consumer pair, Protocol async event, topic/queue named in Notes; the broker itself is inventoried as infrastructure
-- Direct cross-service DB or cache access (read or write) is an integration row with Protocol direct DB/cache. A service's link to infrastructure only it uses (its own DB) is not an integration row
+- Direct cross-service DB or cache access (read or write) is an integration row with Protocol direct DB/cache; To = the data's owning system with the DB/cache named in Notes (mirroring broker rows), or the infrastructure system itself when no single owner exists. A service's link to infrastructure only it uses (its own DB) is not an integration row
+- External dependencies (SaaS, third-party APIs) are integration rows with To marked external (e.g., `Stripe (external)`); inventory one as infrastructure only when multiple systems share it
 
 ### Discovery when docs are incomplete
 
@@ -53,7 +54,7 @@ Read what is available; flag the rest as Inferred. Sources in decreasing reliabi
 
 When a finding fits two categories, file one row under the category driving its severity and name the other in Evidence. Stack divergence is a risk only when it causes operational friction or hiring strain - record it as an SPOF or shared-data risk row, not its own category.
 
-**Severity rubric:** High = failure halts multiple systems or risks data loss/corruption; Medium = degrades function or has a workaround; Low = friction or maintenance cost only. Severity rates consequence, not confidence - an Inferred-evidence risk keeps its severity; the evidence cell shows the confidence.
+**Severity rubric:** High = failure halts multiple systems, risks data loss/corruption, or breaches a stated regulatory/compliance obligation; Medium = degrades function or has a workaround; Low = friction or maintenance cost only. Severity rates consequence, not confidence - an Inferred-evidence risk keeps its severity; the evidence cell shows the confidence.
 
 ### Risks vs Gaps
 

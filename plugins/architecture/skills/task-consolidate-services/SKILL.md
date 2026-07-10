@@ -9,7 +9,7 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows. If a delegated skill is unavailable (standalone use), apply the section's inline instructions on judgment and say so in the output.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows. Then load `Use skill: stack-detect` - the stack grounds smell evidence and merge feasibility (cross-language merges mean rewrites) at every depth; if no stack is found, proceed stack-agnostic. If a delegated skill is unavailable (standalone use), apply the section's inline instructions on judgment and say so in the output.
 
 # Microservices Consolidation -- Staff Edition
 
@@ -39,7 +39,7 @@ Staff-level plan to consolidate over-split microservices into fewer, well-bounde
 
 Handle partial inputs gracefully. State assumptions explicitly when input is missing.
 
-For inputs naming only 1-3 specific services, skip the full landscape map and focus smell detection on the named services and their immediate dependencies only. If `stack-detect` finds no stack, proceed with stack-agnostic guidance.
+For inputs naming only 1-3 specific services, skip the full landscape map and focus smell detection on the named services and their immediate dependencies only.
 
 ## Depth Levels
 
@@ -63,7 +63,7 @@ At `quick`, keep template numbering, omit unproduced sections silently, and waiv
 
 ### 1. Service Landscape Assessment [standard/deep only]
 
-Use skill: `stack-detect`, `architecture-guardrail`, `architecture-landscape`.
+Use skill: `architecture-guardrail`, `architecture-landscape`.
 
 `architecture-landscape` produces the system inventory, integration map, ownership, and cross-system risks that drive Section 2's merge candidate identification. If the user supplied a raw service inventory, feed it as input to `architecture-landscape` to enrich.
 
@@ -279,7 +279,7 @@ Duration: {estimate}
 
 ## 7. Risks and Mitigations
 
-| Risk                  | Blast Radius (Narrow/Moderate/Wide) | Mitigation              | Rollback           |
+| Risk                  | Blast Radius (Narrow/Moderate/Wide/Critical) | Mitigation              | Rollback           |
 | --------------------- | ----------------------------------- | ----------------------- | ------------------ |
 | Blast radius increase | Wide                                | Bulkhead within service | Re-split if needed |
 

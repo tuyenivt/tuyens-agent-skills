@@ -249,12 +249,12 @@ Does the plan cover the work the design (or stated scope) implies? For each area
 
 The most common defect is a plan that tasks out the happy-path build and omits migration, backward-compat, rollback, and observability the design calls for. Severity of a Missing item:
 
-- **Blocker** - a high-blast-radius area is untasked: rollback or migration on a Wide change, **or any money/data-integrity mitigation the design calls for** (idempotency on a money path, dedup, backfill of a required column).
+- **Blocker** - a high-blast-radius area is untasked: rollback or migration on a Wide change, **any money/data-integrity mitigation the design calls for** (idempotency on a money path, dedup, backfill of a required column), **or authz/audit on a sensitive surface the plan exposes** (bulk PII, money movement, admin action).
 - **Major** (minimum) - any other Missing area the design or stated scope implies.
 - **Minor** (minimum) - Under-specified; **Major** if it forces guesswork on a load-bearing task.
 - Not a finding - scope silence on an area the plan's purpose does not touch (mark it `n/a`, not Missing).
 
-Treat a change as Wide/Critical - and its Missing rollback/migration/idempotency gap as a Blocker - when it touches a core data model, money movement, or an externally consumed contract (public API, published events, partner export). That trigger is self-sufficient: tag the Blocker from it directly. Load `Use skill: review-blast-radius` only to settle a borderline level (read its Code/Data/User scope against the design, not a codebase) when the call is not obvious.
+Treat a change as Wide/Critical - and its Missing rollback/migration/idempotency/authz gap as a Blocker - when it touches a core data model, money movement, bulk PII exposure, or an externally consumed contract (public API, published events, partner export). That trigger is self-sufficient: tag the Blocker from it directly. Load `Use skill: review-blast-radius` only to settle a borderline level (read its Code/Data/User scope against the design, not a codebase) when the call is not obvious.
 
 ### STEP 3 - Structural Soundness
 
@@ -334,7 +334,7 @@ Required changes (omit if Approve):
 
 - [ ] **Setup:** behavioral-principles + stack-detect loaded
 - [ ] **Intake:** plan, stated scope, and source-design status stated
-- [ ] **Coverage:** each area marked Covered/Under-specified/Missing/n/a; no-design reviews key rows to stated scope + implied ops areas; Missing on a Wide/money/data-integrity area is a Blocker; scope-silent areas marked `n/a`, not Missing
+- [ ] **Coverage:** each area marked Covered/Under-specified/Missing/n/a; no-design reviews key rows to stated scope + implied ops areas; Missing on a Wide/money/data-integrity/PII area is a Blocker; scope-silent areas marked `n/a`, not Missing
 - [ ] **Structure:** dependency graph, critical path, sizing, scope creep, and phasing each assessed
 - [ ] **Findings:** each numbered, cites a specific task/omission, carries a severity, recommends the smallest change; each root cause once
 - [ ] **Verdict:** driven by highest severity; non-Approve lists required changes as a checklist
@@ -348,7 +348,7 @@ Required changes (omit if Approve):
 - Designing the system - resolve open architecture decisions as spikes/questions, never silently
 - Implementation code or technical design (that is the design doc's job)
 - Recomputing the critical path by summing sizes instead of counting hops
-- Treating a missing rollback/migration/idempotency task on a Wide/money/data-integrity change as low severity
+- Treating a missing rollback/migration/idempotency/authz task on a Wide/money/data-integrity/PII change as low severity
 
 **Breakdown Mode**
 
