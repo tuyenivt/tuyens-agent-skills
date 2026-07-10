@@ -21,7 +21,8 @@ user-invocable: false
 
 - `identified_by :current_user` in `ApplicationCable::Connection`; `reject_unauthorized_connection` on missing/invalid identity
 - Every channel `subscribed` authorizes the requested resource - never `stream_from` a client-supplied identifier without an ownership check
-- `turbo_stream_from` scope is a capability; pass the user-scoped object (`turbo_stream_from current_user, :orders`), not a public ID
+- `turbo_stream_from` scope is a capability; pass model objects, not public IDs. Per-user data: `turbo_stream_from current_user, :orders`. Shared resources: `turbo_stream_from project, :comments` - authorization is the controller only rendering the tag for permitted viewers
+- Keep `allowed_request_origins` strict in production and never set `disable_request_forgery_protection` - cookie-authenticated connections are Cross-Site WebSocket Hijacking targets otherwise
 - Redis adapter in production; PostgreSQL adapter only for low-volume (LISTEN/NOTIFY caps throughput, one DB conn per process); `async` for tests only
 - Broadcast from `after_commit`, not `after_save` - subscribers querying mid-broadcast see uncommitted state otherwise
 - Fan-out > 100 recipients goes through Sidekiq (`broadcast_later_to` or a batched job), not inline in the request thread
@@ -76,7 +77,7 @@ Same rule for Turbo Stream scope:
 <%= turbo_stream_from current_user, :orders %>
 ```
 
-`turbo_stream_from` signs the scope so the signature proves the server emitted it - **not** that the current viewer is entitled. Authorization is the scope the controller chooses to render. For a user-owned resource, scope as `[current_user, record]` (and broadcast to the identical array) - including the owner makes the scope unguessable even if a signed tag leaks.
+`turbo_stream_from` signs the scope so the signature proves the server emitted it - **not** that the current viewer is entitled. Authorization is the scope the controller chooses to render. For a user-owned resource, scope as `[current_user, record]` (and broadcast to the identical array) - including the owner makes the scope unguessable even if a signed tag leaks. For a shared resource (project, team, room), scope as `[record, :collection]` and gate access in the controller/policy before rendering the tag - every holder of the signed tag can read the stream.
 
 ### Broadcast Adapters
 
@@ -120,7 +121,7 @@ followers.merge(Follow.where(muted: false)).in_batches(of: 500) do |batch|
 end
 ```
 
-Per-connection rate limiting for channel actions - a minimal Redis fence:
+Per-connection rate limiting for channel actions - a minimal Redis fence (any Redis pool works; counter keys are tiny, so borrowing `Sidekiq.redis` here does not conflict with keeping broadcast pub/sub on its own instance):
 
 ```ruby
 def send_message(data)

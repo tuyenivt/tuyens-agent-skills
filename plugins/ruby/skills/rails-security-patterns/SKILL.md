@@ -18,6 +18,7 @@ For template-layer XSS (`sanitize` allowlists, engine escape operators), see `ra
 - Implementing rate limiting (`Rack::Attack`)
 - Setting up Rails credentials, signed cookies, host authorization
 - Auditing `redirect_to` / SQL composition / CSRF posture
+- Verifying inbound webhook signatures
 
 ## Rules
 
@@ -44,7 +45,7 @@ current_user.orders.new(order_params)
 
 Arrays need explicit brackets; omitting them silently drops input. When the client must reference a FK (e.g., `:product_id`), validate via `policy_scope` before save.
 
-`params.expect` (Rails 7.2) raises 400 on type mismatch and resists hash-confusion; prefer on new code:
+`params.expect` (Rails 8.0+) raises 400 on type mismatch and resists hash-confusion; prefer on new code:
 
 ```ruby
 params.expect(order: [:total, :status, items: [[:product_id, :quantity]]])
@@ -52,7 +53,7 @@ params.expect(order: [:total, :status, items: [[:product_id, :quantity]]])
 
 ### Authentication
 
-`authenticate_by` (Rails 7.2+) is constant-time and defeats user-enumeration timing. `find_by(email:)&.authenticate(...)` returns fast on a missing user - that delta is observable.
+`authenticate_by` (Rails 7.1+) is constant-time and defeats user-enumeration timing. `find_by(email:)&.authenticate(...)` returns fast on a missing user - that delta is observable.
 
 ```ruby
 class User < ApplicationRecord
@@ -162,6 +163,25 @@ Rails.application.credentials.api_key!       # raises if missing
 
 A secret found hardcoded is already leaked (git history) - moving it into credentials is half the fix; rotate it at the provider.
 
+### Webhook Signature Verification
+
+Verify over the **raw body** before parsing, with a constant-time compare; parse only after the signature passes.
+
+```ruby
+class WebhooksController < ActionController::API   # no session -> no CSRF token; on ActionController::Base this is the one legitimate skip_before_action :verify_authenticity_token site
+  before_action :verify_signature!
+
+  private
+
+  def verify_signature!
+    expected = OpenSSL::HMAC.hexdigest("SHA256", Rails.application.credentials.webhook_secret!, request.raw_post)
+    head :unauthorized unless ActiveSupport::SecurityUtils.secure_compare(expected, request.headers["X-Signature"].to_s)
+  end
+end
+```
+
+Replay protection: reject when the provider's signed timestamp is older than ~5 minutes, and de-duplicate on a persisted `event_id` unique index (processing side: see `rails-http-client-patterns` Webhooks). Prefer the provider SDK's verifier (`Stripe::Webhook.construct_event`) when one exists - it does raw-body + timestamp + constant-time for you.
+
 ### Content Security Policy
 
 ```ruby
@@ -180,7 +200,7 @@ Existing inline scripts: migrate via nonces (`javascript_tag nonce: true`) rathe
 One block per finding (reviews and audits emit several):
 
 ```
-Pattern: {Strong Params | Authentication | Pundit | CSRF | Rate Limit | Credentials | SQLi | IDOR | Open Redirect | Cookies | CSP | Host Auth | Transport}
+Pattern: {Strong Params | Authentication | Pundit | CSRF | Rate Limit | Credentials | SQLi | IDOR | Open Redirect | Cookies | CSP | Host Auth | Transport | Webhook Signature}
 Severity: {Critical - exploitable now | High - exploitable with effort | Medium - hardening | Low - defense in depth}
 Resource: {controller / model / config file}
 Change: {what was applied}

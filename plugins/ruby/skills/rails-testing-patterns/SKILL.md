@@ -298,12 +298,17 @@ Built-in - no `timecop` needed; auto-resets after each example.
 
 ### N+1 Assertions
 
+Rails has no built-in query counter; subscribe to `sql.active_record` (or use `rspec-sqlimit` / `n_plus_one_control`):
+
 ```ruby
-require "active_record/query_recorder"
 it "index runs <= 4 queries regardless of order count" do
   create_list(:order, 10, :with_order_items, user: user)
-  queries = ActiveRecord::QueryRecorder.new { get "/api/v1/orders", headers: auth_headers(user) }
-  expect(queries.count).to be <= 4
+  count = 0
+  counter = ->(*, payload) { count += 1 unless payload[:name].in?(["SCHEMA", "TRANSACTION"]) }
+  ActiveSupport::Notifications.subscribed(counter, "sql.active_record") do
+    get "/api/v1/orders", headers: auth_headers(user)
+  end
+  expect(count).to be <= 4
 end
 ```
 
@@ -328,7 +333,7 @@ it "broadcasts to the user's stream" do
 end
 ```
 
-`have_broadcasted_to` ships with `action-cable-testing`.
+`have_broadcasted_to` is built into rspec-rails 4+ (the standalone `action-cable-testing` gem was merged upstream - don't add it).
 
 ### VCR / WebMock
 

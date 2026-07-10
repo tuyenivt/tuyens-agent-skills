@@ -90,15 +90,17 @@ add_index :orders, :status, where: "status IN (0, 1, 2)",
           algorithm: :concurrently, name: "idx_orders_active_status"
 ```
 
-### Renaming columns (four steps)
+### Renaming columns (five-step copy)
+
+`RENAME COLUMN` is metadata-only on PG but breaks rolling deploys (old code still reads/writes the old name) and every external reader. Use it only with a coordinated cutover; default to the five-step copy:
 
 ```ruby
-add_column :orders, :amount, :decimal                          # 1
+add_column :orders, :amount, :decimal, precision: 10, scale: 2 # 1
 # Deploy dual-writes (model writes both columns) BEFORE the    # 2
 # backfill - rows inserted mid-backfill otherwise keep NULL
 Order.in_batches { |b| b.update_all("amount = total") }        # 3 backfill (rake)
 # Cut reads to :amount; self.ignored_columns += ["total"]      # 4 deploy
-safety_assured { remove_column :orders, :total, :string }      # 5
+safety_assured { remove_column :orders, :total, :decimal }     # 5
 ```
 
 ### Dropping columns (two deploys + audit)

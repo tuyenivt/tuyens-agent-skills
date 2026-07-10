@@ -41,6 +41,8 @@ Use skill: `stack-detect`. Accept pre-confirmed from parent. If not Rails, redir
 
 **Many** unit, **some** request, **few** system. System with JS are slow and brittle.
 
+Default pyramid target (by example count): ~70% unit / ~25% request / ~5% system. Adjust to app shape - API-only apps fold the system share into request; JS-heavy UIs may need more system. State the adjustment when you deviate.
+
 ### Step 4 - Strategy per Spec Type
 
 Use skill: `rails-testing-patterns` for recipes (FactoryBot traits, shoulda-matchers, Pundit/Sidekiq idioms). Strategy rules on top:
@@ -57,6 +59,8 @@ Use skill: `rails-testing-patterns` for recipes (FactoryBot traits, shoulda-matc
 **Needs a test:** model validations/scopes/methods/callbacks; service Result branches; Pundit `(role x action)`; Sidekiq idempotency / arg shape / retry; every controller action (happy + unauthorized + validation-error); auth flows; API contract (shape, status, headers); critical journeys.
 
 **Does NOT need a test:** Rails-provided behavior (default routing, `belongs_to` loading, default Devise endpoints - test you wired them up, not that they work); generated boilerplate; trivial delegation (`delegate :name, to: :user`).
+
+Assert each behavior at the lowest layer that can catch it; upper layers verify wiring, not re-assert logic (a request spec checks the 422, not every validation message).
 
 ### Step 6 - Prioritize by Risk (coverage < ~50%)
 
@@ -136,7 +140,7 @@ When several rows match, produce the most comprehensive (Strategy Doc subsumes A
 **Pyramid target:** Unit {x}% / Request {y}% / System {z}%
 ```
 
-**Review (existing specs):** numbered findings tagged `[Critical | High | Medium]`, infra findings (Step 8) first, spec findings (checklist) after; when the user reported a symptom ("CI green, staging breaks"), open with one line tying the top findings to it. Append the Assessment block only when coverage gaps are visible in the evidence.
+**Review (existing specs):** numbered findings tagged `[Critical | High | Medium]`. Assign by consequence: Critical = tests can pass while auth or data-integrity is broken (missing policy/unauthorized coverage, HTTP stubs not intercepting); High = green-but-broken risk (global `Sidekiq::Testing.inline!`, happy-path-only actions, mocked AR); Medium = maintainability (duplicated factories, deep chains, wrong layer). Infra findings (Step 8) first, spec findings (checklist) after; when the user reported a symptom ("CI green, staging breaks"), open with one line tying the top findings to it. Append the Assessment block only when coverage gaps are visible in the evidence.
 
 **Test Scaffolds:** ready-to-run RSpec files using project conventions. Each scaffold:
 

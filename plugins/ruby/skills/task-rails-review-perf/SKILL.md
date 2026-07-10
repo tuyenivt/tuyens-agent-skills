@@ -19,14 +19,16 @@ Reviewing a Rails PR for perf regressions; investigating a slow controller/view/
 
 ## Depth
 
-| Depth      | What Runs                            |
-| ---------- | ------------------------------------ |
-| `standard` | All steps (default)                  |
-| `deep`     | All steps + capacity + load-test     |
+| Depth      | What Runs                                                                                                                              |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `standard` | All steps (default)                                                                                                                    |
+| `deep`     | All steps; Step 8 ceiling checks run even without a config-change trigger; emit a load-test plan (tool, scenario, target p95, dataset scale) as a `[Delegate]` Next Step |
 
 ## Invocation
 
 `/task-rails-review-perf [<branch>|pr-<N>] [standard|deep]` - current branch vs base; fails fast on trunk. When invoked as subagent with pre-read artifacts, Steps 1-3 are skipped.
+
+**Investigation mode** (no PR/diff: slow endpoint, quarterly N+1 sweep): skip Step 3. Scope = the named path(s) plus the models, serializers, views, and jobs they touch; run Steps 4-9 against current code. Report `**Target:** <path>` in the Summary instead of checkpoint fields; skip `review-report-writer` checkpointing and write the report body directly.
 
 ## Workflow
 
@@ -48,7 +50,7 @@ For N+1 on `update`/`save` paths (not list/index), also use skill: `rails-implic
 - [ ] **N+1** in controllers/serializers/views/helpers/jobs; preload at the boundary (controller, not serializer). Multi-level: `includes(line_items: :product)`. Service N+1: preload before passing AR collection in
 - [ ] **Ruby-side aggregation** (`group_by`/`sum`/`count` over loaded records) -> push into SQL (`group`, `sum`, grouped selects)
 - [ ] **Indexes** on every column in `where`/`order`/`group`; composite indexes match leftmost-prefix; FKs indexed
-- [ ] `pluck`/`pick` over `.map(&:col)`; `exists?` over `any?`/`present?`
+- [ ] `pluck`/`pick` over `.map(&:col)`; existence checks: `exists?` or blockless `any?` (equivalent on unloaded relations) over `.present?`/`count > 0`; on already-loaded associations prefer `any?`/`size` - `exists?`/`count` re-query
 - [ ] Iteration over >1k records uses `find_each`/`in_batches`
 - [ ] `counter_cache` for counts displayed with lists
 
@@ -141,7 +143,7 @@ _Omit sections with no findings._
 
 ## Next Steps
 
-Prioritized. Each `[Implement]` (localized) or `[Delegate]` (cross-cutting refactor, schema migration, load-test). Order: Must > Recommend > Question.
+Prioritized. Each `[Implement]` (localized) or `[Delegate]` (cross-cutting refactor, schema migration, load-test). Order: Must > Recommend > Question. Intent per finding: High Impact -> [Must]; Medium/Low/Quick Win -> [Recommend]; needs measurement to confirm -> [Question].
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]

@@ -105,7 +105,7 @@ ractors = inputs.map { |chunk| Ractor.new(chunk) { |c| heavy_transform(c) } }
 results = ractors.map(&:take)
 ```
 
-Arguments must be shareable (frozen primitives, `Ractor::SharedObject`, or copied).
+Arguments must be shareable: frozen primitives, objects passed through `Ractor.make_shareable`, or values copied at send time.
 
 ### Connection Pool Discipline
 

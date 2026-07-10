@@ -42,7 +42,7 @@ Target code is in a Rails 7.2+ app and the host workflow needs Rails-specific li
 | `after_{create,update}_commit`    | Event-filtered `after_commit`      |                                            |
 | `before_destroy`                  | Before DELETE                      | `dependent: :delete_all` skips callbacks   |
 
-Business logic in `after_save` is implicit invocation - any save anywhere triggers it (including no-op re-saves; `saved_change_to_x?` guards prevent that, and dirty state resets before `after_commit` runs in some paths). Flag as a gotcha. A raise inside a pre-commit callback aborts the save and rolls back, surfacing from `save!`; a raise in `after_commit` propagates but the data is already committed. Pre-7.1, multiple `after_commit` on one model fire in *reverse* declaration order. A job enqueued from a pre-commit callback **outlives a rollback** - the Redis push isn't transactional, so rolled-back rows still produce jobs (ghost emails / `RecordNotFound` retries).
+Business logic in `after_save` is implicit invocation - any save anywhere triggers it (including no-op re-saves; `saved_change_to_x?` guards prevent that - but when one transaction saves the same record more than once, `after_commit` sees only the last save's `saved_changes`). Flag as a gotcha. A raise inside a pre-commit callback aborts the save and rolls back, surfacing from `save!`; a raise in `after_commit` propagates but the data is already committed. Pre-7.1, multiple `after_commit` on one model fire in *reverse* declaration order. A job enqueued from a pre-commit callback **outlives a rollback** - the Redis push isn't transactional, so rolled-back rows still produce jobs (ghost emails / `RecordNotFound` retries).
 
 ### Transactions
 
@@ -63,6 +63,8 @@ Filename matches constant: `app/services/orders/processor.rb` -> `Orders::Proces
 `include Mod` adds instance methods; `included { }` runs at include time; `extend ActiveSupport::Concern` enables `class_methods do`. Concerns shared across many classes create implicit coupling - surface the including class.
 
 ### ActiveJob / Sidekiq
+
+Mailers ride ActiveJob: `deliver_later` enqueues `ActionMailer::MailDeliveryJob` (params must serialize - GlobalID or primitives); `deliver_now` renders and sends inline in the calling thread.
 
 Two enqueue APIs with different arg semantics: `perform_later` (ActiveJob) serializes AR records via GlobalID and re-fetches on perform; `perform_async` (raw Sidekiq) takes only JSON-primitive args - pass IDs, the job re-fetches explicitly. Sidekiq's default 25 retries can mask transient bugs - see `rails-sidekiq-patterns`. Each Sidekiq thread holds one DB connection; never wrap `find_each` in `Model.transaction` - see `rails-connection-pool-sizing`, `rails-batch-processing-patterns`.
 

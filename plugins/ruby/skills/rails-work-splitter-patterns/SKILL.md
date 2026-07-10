@@ -162,11 +162,16 @@ class BackfillShardWorker
     end
     shard.update!(state: "done", completed_at: Time.current)
   rescue => e
-    shard.update!(state: "failed", retries: shard.retries + 1, last_error: e.message)
+    # back to "pending" keeps the shard claimable on retry (cursor makes the re-run resume);
+    # "failed" is terminal - only after the budget is spent
+    state = shard.retries + 1 < MAX_SHARD_RETRIES ? "pending" : "failed"
+    shard.update!(state: state, retries: shard.retries + 1, last_error: e.message)
     raise
   end
 end
 ```
+
+Alert on `state = 'failed'` rows - they are dead work needing a human.
 
 Observability: `SELECT state, COUNT(*) FROM backfill_shards GROUP BY state`. Throttle by varying worker count.
 

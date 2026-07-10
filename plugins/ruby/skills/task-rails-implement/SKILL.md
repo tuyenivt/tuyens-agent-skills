@@ -81,6 +81,8 @@ Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safet
 
 Use skill: `rails-activerecord-patterns`. Apply its rules: explicit `dependent:` on `has_many`/`has_one`, `enum` with integer mapping, chainable scopes, `counter_cache` where count queries appear, no `default_scope`.
 
+File uploads: use skill `rails-active-storage-patterns` *here* (attachment declarations, validations, direct-upload decision) - it also shapes the migration (Step 5) and form (Step 11); don't defer it to Step 12.
+
 ### Step 7 - Services
 
 Use skill: `rails-service-objects`. Use skill: `rails-transaction-patterns` for boundary discipline (`after_commit` dispatch, nested transactions). If Sidekiq needed: use skill `rails-sidekiq-patterns`. If a rake/backfill task is needed: use skill `rails-rake-task-patterns`.
@@ -128,7 +130,7 @@ Strong params; pagination on list endpoints; delegate business logic to services
 
 ### Step 10 - Serializers (API only)
 
-Skip for server-rendered. One serializer per resource; never `render json: @model`. Library: match the project convention (`alba`, `jsonapi-serializer`, `active_model_serializers`, `blueprinter`). New Rails 7.2+ default: `alba`.
+Skip for server-rendered. One serializer per resource; never `render json: @model`. Library: match the project convention (`alba`, `jsonapi-serializer`, `active_model_serializers`, `blueprinter`). No existing convention (Rails ships none): use `alba`.
 
 ### Step 11 - Views (server-rendered only)
 
@@ -140,7 +142,7 @@ Use skill: `rails-security-patterns` (Pundit policies per resource, `verify_auth
 
 Public/token endpoints (shared links): the token *is* the capability - generate with `has_secure_token` (unguessable), serve through a read-only serializer, and skip Pundit with an explicit `skip_after_action :verify_authorized` + stated rationale.
 
-- For file upload features: use skill `rails-active-storage-patterns`
+- File uploads: `rails-active-storage-patterns` was loaded at Step 6; apply its serving/security rules here
 - For ActionCable channels (custom channels, connection auth): use skill `rails-actioncable-patterns`
 
 ### Step 13 - Tests
@@ -179,6 +181,7 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presentin
 
 ## Tests
 [N] specs passing - [spec files and example counts]
+(If not executable in this environment: "[N] specs written, not executed" per Step 14.)
 
 ## Migrations
 [file name; tables, indexes, constraints]
@@ -199,7 +202,7 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presentin
 - [ ] Step 11: views in existing engine via `rails-view-templates` (or skipped for API)
 - [ ] Step 12: Pundit policies + `rescue_from` ladder; Active Storage / ActionCable patterns when applicable
 - [ ] Step 13: model + service + policy + request + job + component specs; factory traits
-- [ ] Step 14: `rspec` and `rubocop` pass
+- [ ] Step 14: `rspec` and `rubocop` pass (or reported "written, not executed" when the environment can't run them)
 
 ## Avoid
 

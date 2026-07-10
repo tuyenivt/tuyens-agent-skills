@@ -67,8 +67,8 @@ class ShipperClient
     Faraday.new(url: "https://api.shipper.com/v1/") do |f|
       f.request  :json
       f.request  :authorization, "Bearer", token
-      f.response :json, content_type: /\bjson$/
       f.response :raise_error
+      f.response :json, content_type: /\bjson$/
       f.response :logger, Rails.logger, headers: false, bodies: false
       f.options.open_timeout = 2
       f.options.timeout      = 5
@@ -121,10 +121,10 @@ Web request path: external timeout < remaining request budget; stay under 5s and
 
 ### Middleware Order
 
-Request middleware runs top-down, response bottom-up. Common breakages:
+Request middleware runs top-down, response bottom-up (last-registered response middleware runs first). Common breakages:
 
-- `:json` after body is already a string -> double-encodes.
-- `:raise_error` before `:json` response -> raised error has unparsed body.
+- Registering `:json` (response) before `:raise_error` -> `raise_error` runs first and the raised error carries an unparsed body. Register `:raise_error` above `:json`, as in the client above.
+- `:json` (request) skips `String` bodies - pass hashes; a pre-serialized string silently bypasses encoding and content-type.
 - `:logger` with `bodies: true` in production -> leaks tokens / PII.
 
 ### Retry Strategy

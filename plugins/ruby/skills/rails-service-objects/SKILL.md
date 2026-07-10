@@ -118,7 +118,7 @@ For mutating services on at-least-once paths (HTTP retry, Sidekiq retry, double-
 ```ruby
 class ChargeCustomer
   def call
-    return Result.success(replay(existing)) if (existing = Payment.find_by(idempotency_key: @key))
+    return Result.success(existing) if (existing = Payment.find_by(idempotency_key: @key))  # replay: same key -> same outcome
 
     payment = Payment.create!(cart_id: @cart.id, amount_cents: @cart.total_cents,
                               idempotency_key: @key, status: :pending)

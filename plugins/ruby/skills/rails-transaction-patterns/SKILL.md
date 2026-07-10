@@ -23,7 +23,7 @@ user-invocable: false
 - One transaction boundary per business operation; the boundary belongs in the service object, not the model.
 - No network calls inside `Model.transaction`. HTTP/S3/Redis/Stripe held under a row lock cascades into fleet-wide lock-wait timeouts on upstream slowdown.
 - No `.perform_async` inside a transaction - the worker can run before commit and see uncommitted state. Use `after_commit_everywhere` when the dispatch lives inside a caller's transaction.
-- Inner services that open `transaction` need `requires_new: true` if rescued by the caller - otherwise rescued exceptions leave the inner savepoint committed.
+- Inner services that open `transaction` need `requires_new: true` if rescued by the caller - a fused inner block has no savepoint, so the caller's rescue commits the inner writes along with the outer transaction.
 - `after_commit` for side effects (jobs, email, HTTP). `after_save` only for in-aggregate derived columns that must be visible inside the same transaction.
 - Default isolation is adapter-default (MySQL `REPEATABLE READ`, PG `READ COMMITTED`). Bump only with a documented reason (multi-row invariants, financial ledgers); cost is higher deadlock rate.
 - Retry on `ActiveRecord::Deadlocked` and `ActiveRecord::SerializationFailure` (PG) - both expected under contention. Cap at 3 retries with backoff.
@@ -121,6 +121,8 @@ When a service runs inside a caller's transaction, dispatching "after the local 
 
 ```ruby
 class ChargeService
+  include AfterCommitEverywhere
+
   def call
     ActiveRecord::Base.transaction do
       @order.update!(status: :paid)

@@ -85,9 +85,9 @@ Reconciler and the web ledger-write endpoint share one lock name namespaced by t
 class BalanceReconciler
   def self.call(tenant_id)
     ApplicationRecord.with_advisory_lock("reconcile:tenant:#{tenant_id}", timeout_seconds: 10) do
-      Account.where(tenant_id: tenant_id).in_batches(of: 200) do |slice_ids|
+      Account.where(tenant_id: tenant_id).in_batches(of: 200) do |batch|
         ApplicationRecord.transaction(isolation: :read_committed) do
-          Account.where(id: slice_ids.pluck(:id)).order(:id).lock("FOR UPDATE").each(&:recompute_balance!)
+          Account.where(id: batch.pluck(:id)).order(:id).lock("FOR UPDATE").each(&:recompute_balance!)
         end
       end
     end

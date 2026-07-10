@@ -28,6 +28,8 @@ Rails PR observability check; pre-release for new service or major feature; post
 
 `/task-rails-review-observability [<branch>|pr-<N>] [standard|deep]` - current branch vs base; fails fast on trunk. Subagent invocation with pre-read artifacts skips Steps 1-3.
 
+**Investigation mode** (no PR/diff: post-incident "diagnosis was slow" audit): skip Step 3. Scope = the paths involved in the incident (controllers, jobs, clients) plus their logging/tracing/tracker config; run Steps 4-10 against current code ("diffed" checks apply to every callsite in scope; Step 10 runs regardless of depth). Report `**Target:** <path>` in the Summary instead of checkpoint fields; skip `review-report-writer` checkpointing and write the report body directly.
+
 ## Workflow
 
 ### Step 1 - Load Behavioral Rules
@@ -145,7 +147,7 @@ _Omit empty sections._
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: Sidekiq] - [one-line action]
 
-`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Severity maps to intent: High -> [Must], Medium -> [Recommend], Low -> [Recommend] or [Question]. Order Must > Recommend > Question. Omit if no gaps; state "No observability gaps found" when clean.
+`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Severity maps to intent: High -> [Must], Medium/Low -> [Recommend]; needs author confirmation (unverifiable from the diff) -> [Question]. Order Must > Recommend > Question. Omit if no gaps; state "No observability gaps found" when clean.
 ```
 
 ## Self-Check

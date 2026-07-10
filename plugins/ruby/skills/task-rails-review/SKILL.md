@@ -118,6 +118,8 @@ The reconciliation table (when emitted) only covers findings whose scope was act
 
 Use skills: `review-pr-risk`, `review-blast-radius`. State **Risk Level** and **Blast Radius** before line-level findings.
 
+**Resolve scope now** (round 1): union of user flags and signals firing on the Step 3 diff; `core-only` suppresses signal escalation. Record firing signals in Summary. (Round 2+ precedence: Step 3.5d.)
+
 **Low-risk short-circuit:** Risk: Low + Blast Radius: Narrow + change does not touch auth, middleware, API contracts, shared concerns, `app/services/`, or `lib/` -> skip Steps 6-8, produce Step 5 only (with its atomic skills); Step 9 still follows its own scope rules; Step 10 still writes the report (Summary + Step 5 findings). Note `Low-risk short-circuit: Steps 6-8 skipped` in Summary. When `core-only` suppressed a firing escalation signal, record the suppressed signal in Summary and emit a `[Delegate]` Next Step naming the matching `/task-rails-review-*` command.
 
 ### Step 5 - Rails Correctness
@@ -244,6 +246,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 ## Summary
 
 **Assessment:** Approve | Request Changes | Discuss
+_(Request Changes = any [Must]; Discuss = no [Must] but open [Question]s gate the verdict; Approve = neither - [Recommend]s alone don't block.)_
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Ruby <version> / Rails <version>

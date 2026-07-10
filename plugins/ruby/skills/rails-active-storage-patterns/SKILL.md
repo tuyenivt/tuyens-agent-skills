@@ -125,6 +125,8 @@ class ProcessUploadJob
 end
 ```
 
+Non-image previews (PDF first page, video frame): `attachment.preview(resize_to_limit: [320, 320])` requires the system dependency (`poppler`/`mupdf` for PDF, `ffmpeg` for video) and only works when `attachment.previewable?`; guard rendering with `previewable?` and warm previews in the same background job as variants.
+
 ### Purge Semantics
 
 | Method                       | Behavior                                   | Use when                              |
@@ -158,6 +160,8 @@ LoanApplication.decided.where(decided_at: ..90.days.ago)
 7. Drop the old column and uploader once legacy read traffic is 0.
 
 Keep old data until new attachments are verified - plan the rollback. High-traffic public images: signed URLs rotate and bust CDN caches - use the proxy mode (`rails_storage_proxy_path`) behind a CDN, or a public bucket service, before flipping reads.
+
+Already on Active Storage and only changing services (disk -> S3, bucket move)? Skip the steps above: configure `ActiveStorage::Service::MirrorService` (primary + mirror in `storage.yml`), let writes hit both, backfill old blobs with `blob.mirror_later` (or a rake loop), then flip primary and drop the mirror. No model or dual-read changes needed.
 
 ## Output Format
 

@@ -139,14 +139,11 @@ For >100 enqueues at once, use `push_bulk`. Cross-process fan-out, sharding, and
 
 ### Graceful Shutdown
 
-Sidekiq sends `SIGTERM` on deploy, then `SIGKILL` after `timeout` seconds (default 25). Idempotent jobs are safe to re-enqueue (the server-side re-push bypasses client middleware, so uniqueness locks don't drop it). For long iterators, check `interrupted?`:
+Sidekiq sends `SIGTERM` on deploy, stops fetching, and at `timeout` seconds (default 25) raises `Sidekiq::Shutdown` into still-busy threads and re-pushes their jobs - no opt-in needed. (The server-side re-push bypasses client middleware, so uniqueness locks don't drop it.) The job's duty is making that re-run resume, not detecting the signal:
 
-```ruby
-Batch.find(id).items.find_each do |item|
-  raise Sidekiq::Shutdown if interrupted?
-  process(item)
-end
-```
+- Persist progress per chunk (state column / checkpoint) so the re-pushed job skips completed work
+- Never swallow `Sidekiq::Shutdown` in a broad `rescue` - let it propagate so the re-push happens
+- For cooperative checkpoint-and-interrupt on long iterators, use the `sidekiq-iteration` gem (`each_iteration`)
 
 ### Deploy-Time Versioning
 

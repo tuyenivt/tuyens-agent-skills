@@ -121,9 +121,9 @@ add_index :users, "((LOWER(email)))", name: "idx_users_email_lower"
 add_index :users, "(JSON_VALUE(metadata, '$.tier' RETURNING CHAR(50)))", name: "idx_users_tier"
 ```
 
-### Renaming columns (four steps)
+### Renaming columns (five-step copy)
 
-`RENAME COLUMN` is INSTANT (8.0.13+) but breaks rolling deploys (old code still reads/writes the old name) and every external reader. Use it only with a coordinated cutover; default to the four-step copy:
+`RENAME COLUMN` is INSTANT (8.0.13+) but breaks rolling deploys (old code still reads/writes the old name) and every external reader. Use it only with a coordinated cutover; default to the five-step copy:
 
 ```ruby
 add_column :orders, :amount, :decimal, precision: 10, scale: 2          # 1

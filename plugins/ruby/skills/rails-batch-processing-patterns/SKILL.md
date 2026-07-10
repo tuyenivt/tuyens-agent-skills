@@ -22,7 +22,7 @@ user-invocable: false
 - One transaction per chunk - never one over the whole run, never one per row
 - Idempotency at chunk granularity - retries skip completed chunks
 - No HTTP / Redis / S3 inside an open chunk transaction
-- `pluck(:id)` cursors when full AR objects aren't needed
+- `find_each` yields records (per-row Ruby work); `in_batches` yields relations (bulk SQL per chunk, or an explicit transaction around per-row work); `pluck(:id)` cursors when full AR objects aren't needed
 - Size chunks by row weight, not row count alone
 - Cap concurrency on memory-heavy queues (`concurrency: 25` x 200 MB jobs = 5 GB peak)
 - jemalloc or `MALLOC_ARENA_MAX=2` for any long-running batch process

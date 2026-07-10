@@ -122,6 +122,8 @@ Each step must be:
 3. **Reversible** - rollback is one revert
 4. **Tested** - existing RSpec passes; new specs added when extracting new units
 
+Order steps lowest-risk first. Step risk tiers (also the output's `Risk` values): **Low** = additive (new file, new spec, delegating method); **Medium** = call-site rewires; **High** = labeled behavior change or shared-surface edit (concern, engine, public API). The final step's end state must satisfy the stated goal - say so in the plan.
+
 High-smell items that are a whole plan by themselves (`default_scope` removal, polymorphic splits, moving a synchronous charge out of a transaction) get their own follow-up plan - list them under Out of Scope with the reason; don't bundle. ("Whole plan" = every caller must be audited and the semantics observably change - regardless of how `review-blast-radius` grades the step's reversibility.)
 
 **Transaction-boundary watch.** Extracting orchestration that runs inside `ActiveRecord::Base.transaction` - the extracted unit inherits transaction context. If it makes HTTP calls or enqueues Sidekiq, they now happen mid-transaction (regression). The same watch applies to HTTP/mailers written *inline* in a controller's transaction block, not just callback-located ones. State the transaction stance per step.

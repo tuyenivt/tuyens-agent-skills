@@ -229,8 +229,8 @@ Description: {desc string}
 Trigger: {manual | cron | deploy-hook | sidekiq-cron}
 Arguments: {positional args and ENV with defaults}
 Idempotency: {state-column | checkpoint | natural}
-Dry-run: {DRY_RUN=1 supported}
-Production gate: {CONFIRM=yes | none}
+Dry-run: {DRY_RUN=1 supported | n/a (read-only)}
+Production gate: {CONFIRM=yes | none (scheduled) | n/a (read-only)}
 Service delegated to: {ServiceClassName | "trivial wiring only"}
 Exit behavior: {raises on failure | abort on precondition fail}
 ```

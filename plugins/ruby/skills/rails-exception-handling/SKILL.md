@@ -57,7 +57,7 @@ class ApplicationController < ActionController::API
 end
 ```
 
-Rails matches the **last-declared** `rescue_from` whose class matches first - declare broad classes first, narrow last when they overlap. Every domain error in the taxonomy gets a ladder entry and an HTTP status; include `request_id` so users can quote it in reports. Malformed JSON (`ActionDispatch::Http::Parameters::ParseError`) raises before controllers - handle via `config.action_dispatch.rescue_responses` or middleware, not `rescue_from`.
+`rescue_from` handlers are searched bottom-up: the **last-declared** handler whose class matches wins. So declare broad classes at the top, narrow ones at the bottom. Every domain error in the taxonomy gets a ladder entry and an HTTP status; include `request_id` so users can quote it in reports. Malformed JSON (`ActionDispatch::Http::Parameters::ParseError`) raises before controllers - handle via `config.action_dispatch.rescue_responses` or middleware, not `rescue_from`.
 
 The 4xx handlers above intentionally do NOT report to Sentry - they are expected outcomes. The unexpected-bug path (500) is reported once by Rails/Sentry middleware *after* controllers, so don't `rescue_from StandardError` to render a friendly 500 - it hides bugs from the middleware unless you report-then-re-render yourself; prefer leaving it unrescued.
 

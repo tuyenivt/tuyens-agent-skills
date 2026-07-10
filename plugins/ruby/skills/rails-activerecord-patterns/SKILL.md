@@ -26,7 +26,7 @@ user-invocable: false
 - `enum` with explicit integer mapping - positional shorthand shifts when entries reorder.
 - Parameterized queries only - never string interpolation.
 - `find_each` / `in_batches` for large datasets - never `.all.each`.
-- On unloaded relations: `exists?` over `any?`. On loaded associations: `size`/`any?` are free; `exists?`/`count` re-query.
+- On unloaded relations, blockless `any?` and `exists?` both issue `SELECT 1 LIMIT 1`; `any? { }` with a block loads every row. On loaded associations: `size`/`any?` are free; `exists?`/`count` re-query.
 - `update!` over `update_attribute` (latter skips validations).
 - Pessimistic lock by PK only; keep the critical section short and free of network calls. Side-effect callbacks: see `rails-transaction-patterns`.
 

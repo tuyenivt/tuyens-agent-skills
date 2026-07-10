@@ -58,7 +58,7 @@ This is the *inverted* finding the review must still emit: nothing is redundant 
 
 #### Inclusion on an enum
 
-`Order.new(status: "invalid")` raises `ArgumentError` on assignment - the validation never runs.
+`Order.new(status: "invalid")` raises `ArgumentError` on assignment - the validation never runs. (With `enum ..., validate: true` (7.1+), assignment doesn't raise; the enum validates itself - the inclusion validation is still redundant, cite the enum's own validation instead.)
 
 ```ruby
 # Bad

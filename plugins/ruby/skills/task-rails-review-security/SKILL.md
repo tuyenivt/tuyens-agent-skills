@@ -67,7 +67,7 @@ Run only the detected flavor's bullets.
 - **Devise**: `:lockable`/`:trackable`/`:confirmable`/`:rememberable` per threat model; `password_length >= 8`; `paranoid: true` on forgot-password; custom controllers preserve `protect_from_forgery` + rate limit
 - **JWT**: signature pinned (no `alg: none`); HMAC secret from credentials; `exp`/`aud`/`iss` validated; refresh rotation or short access lifetime
 - **Session**: `cookie_store, secure: true, httponly: true, same_site: :lax|:strict`
-- **Password**: `has_secure_password` (bcrypt); never hand-rolled. Prefer Rails 7.2 `authenticate_by` (constant-time)
+- **Password**: `has_secure_password` (bcrypt); never hand-rolled. Prefer `authenticate_by` (Rails 7.1+, constant-time)
 - **Secrets**: no creds in code; `master.key`, `.env`, `config/credentials/*.key` gitignored
 
 ### Step 6 - Authorization
@@ -79,13 +79,13 @@ Run only the detected flavor's bullets.
 
 ### Step 7 - Input, Mass Assignment, View Escaping
 
-- [ ] **Strong params** explicit allowlist on every diffed `create`/`update`; no `permit!`/`to_unsafe_h`. Privilege-bearing keys (`:role`, `:admin`, `:owner_id`, `:user_id`, `:tenant_id`, `:account_id`, `:approved`, `:status`) require admin-only controller + separate policy, or get dropped from permit. Prefer `params.expect` (Rails 7.2)
+- [ ] **Strong params** explicit allowlist on every diffed `create`/`update`; no `permit!`/`to_unsafe_h`. Privilege-bearing keys (`:role`, `:admin`, `:owner_id`, `:user_id`, `:tenant_id`, `:account_id`, `:approved`, `:status`) require admin-only controller + separate policy, or get dropped from permit. Prefer `params.expect` (Rails 8.0+)
 - [ ] **`accepts_nested_attributes_for`** limited to expected children; `_destroy: true` only when parent policy authorizes child deletion
 - [ ] **File uploads** (`has_one_attached`/`direct_upload`/variants): magic-byte content-type, size limit, `Content-Disposition: attachment`, signed short-expiry URLs. Use skill `rails-active-storage-patterns`
 - [ ] **Path traversal**: `File.expand_path` + base-directory containment on user-controlled paths
 - [ ] **Shell**: no `system`/backticks/`Open3` with interpolated user input
 - [ ] **Views** (server-rendered): audit diffed `.erb`/`.haml`/`.slim` for `<%==`, `!=`, ` == `, `raw`, `.html_safe`. Use skill `rails-view-templates` when >1 template touched. Slim attributes: bare `class=user_input` evaluates Ruby - quote literals
-- [ ] **`sanitize`** requires explicit tag/attribute allowlist (bare `sanitize(html)` exploitable)
+- [ ] **`sanitize`** requires explicit tag/attribute allowlist - the default list is broader than most features need; the explicit allowlist is the trust boundary
 - [ ] **Turbo / ActionCable**: `turbo_stream.append("id", html: user_input)` is XSS - use `partial:`. `turbo_stream_from "scope_#{id}"` needs `subscribed` authz or `Turbo::StreamsChannel.signed_stream_name`. Use skill `rails-actioncable-patterns` for new channels
 - [ ] **Markdown/rich-text**: `Commonmarker`/`Redcarpet`/`Kramdown` output through `sanitize` with allowlist
 
@@ -146,7 +146,7 @@ _Omit empty severity sections. If all empty, state "No security issues found."_
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
 
-`[Implement]` = localized fix. `[Delegate]` = cross-cutting hardening / dependency upgrade / threat-model. Order Must > Recommend > Question. Omit if no issues.
+`[Implement]` = localized fix. `[Delegate]` = cross-cutting hardening / dependency upgrade / threat-model. Order Must > Recommend > Question. Intent per finding: Critical/High -> [Must]; Medium/Low -> [Recommend]; needs author confirmation (unverifiable from diff) -> [Question]. Omit if no issues.
 ```
 
 ## Self-Check

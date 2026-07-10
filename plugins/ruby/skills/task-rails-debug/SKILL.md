@@ -108,7 +108,7 @@ Before/after diff; minimal; addresses root cause. Never bypass strong params, Pu
 
 ```markdown
 ## Error Classification
-[Category]: [specific error type]
+[Category]: [specific error type, or "Silent value drop" / "Unexpected queries" for no-exception symptoms]
 
 ## Root Cause (confidence: HIGH | MEDIUM | LOW)
 [Why, referencing file:line]
@@ -131,7 +131,7 @@ Before/after diff; minimal; addresses root cause. Never bypass strong params, Pu
 - [ ] Step 1: behavioral-principles loaded
 - [ ] Step 2: stack confirmed
 - [ ] Step 3: full trace gathered; first app-code frame and data path located; unexpected-query symptoms consulted `rails-implicit-config-audit` before tracing; silent-drop cases walked the full boundary chain
-- [ ] Step 4: error classified; matching atomic skill consulted
+- [ ] Step 4: error classified; matching atomic skill consulted (when the classification maps to one)
 - [ ] Step 5: reproduction attempted; limitation stated if not feasible
 - [ ] Step 6: root cause references file:line; confidence stated
 - [ ] Step 7: minimal fix; strong params / Pundit / Zeitwerk preserved; prevention included

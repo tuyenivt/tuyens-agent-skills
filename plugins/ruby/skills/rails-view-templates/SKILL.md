@@ -46,16 +46,21 @@ Slim review grep: `\s== ` and `^\s*[a-z]+ ==`. Every match must come from a trus
 Bare attribute values evaluate Ruby; quote literals:
 
 ```slim
-div class=current_user.role     / evaluates Ruby
-div class="user-role"           / literal string
+/ bare value evaluates Ruby:
+div class=current_user.role
+/ quoted value is a literal string:
+div class="user-role"
 ```
+
+(Slim `/` comments are line-level only - a trailing `/ ...` on a tag line renders as content.)
 
 Indentation defines scope - a misaligned line silently changes branch:
 
 ```slim
 - if order.shipped?
   p = "Shipped on #{order.shipped_at}"
- p = "Tracking: #{order.tracking}"   / BUG - outside the if (1 space vs 2)
+ p = "Tracking: #{order.tracking}"
+/ BUG: the tracking line is indented 1 space, not 2 - it sits OUTSIDE the if
 ```
 
 Enforce with `slim-lint` and a fixed 2-space indent.
