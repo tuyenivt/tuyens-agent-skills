@@ -74,7 +74,7 @@ If detected stack matches, load the atomic. It injects stack-specific bootstrap 
 | Vue                  | `vue-onboard-map`     |
 | Angular              | `angular-onboard-map` |
 
-If no atomic matches the detected stack (e.g., Elixir), proceed with the generic workflow and note `no stack-specific onboarding atomic - generic guidance applied` under the Stack table.
+If no atomic matches the detected stack (e.g., Elixir), or the matched atomic does not resolve (stack plugin not installed), proceed with the generic workflow and note `no stack-specific onboarding atomic - generic guidance applied` under the Stack table.
 
 Also extract a **one-paragraph system summary**: what problem this system solves, who uses it, and 2-3 main capabilities. Source from `README.md`, repo context file, top-level package descriptions, or service manifest. If not declared, mark `unknown - repo does not declare purpose` rather than inferring from code.
 

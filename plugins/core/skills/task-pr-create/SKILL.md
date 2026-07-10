@@ -18,7 +18,7 @@ Turns a git diff into a reviewer-ready PR description: title, summary, risk, tes
 - When the diff is large and reviewers need a clear summary
 - When you want a consistent format without writing it by hand
 
-**Not for:** code-quality review (`task-code-review`), release planning (`task-release-plan`).
+**Not for:** code-quality review (`task-code-review`), release notes (`task-release-notes`).
 
 ## Inputs
 
@@ -54,7 +54,7 @@ Establish `(base_ref, head_ref)` before any diff is read. PR creation runs again
    1. `git symbolic-ref refs/remotes/origin/HEAD`
    2. `git rev-parse --verify origin/main`, then `origin/master`, then `origin/develop`
    3. `git rev-parse --verify main`, then `master`, then `develop`
-4. **Ask only if ambiguous:** if none resolve, ask the user. Do not pick silently.
+4. **Ask only if ambiguous:** if none resolve - or `origin/HEAD` is unset and more than one trunk candidate resolves (e.g., gitflow with both `main` and `develop`) - ask the user. Do not pick silently; the wrong base pulls unrelated commits into the diff.
 
 Record `base_ref` for Step 4.
 
@@ -71,7 +71,7 @@ Run or accept:
 3. `current_branch` from Step 2
 4. `git diff <base_ref>...HEAD --name-only`
 
-If the diff is empty, stop and tell the user.
+If the diff is empty, stop and tell the user. If `git status --porcelain` shows uncommitted changes, warn that they are excluded - the description covers committed work only.
 
 Extract from above:
 

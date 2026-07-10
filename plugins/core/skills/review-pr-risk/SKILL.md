@@ -59,7 +59,7 @@ Count triggered signals from the table, then apply top-down - first match wins. 
 
 ```
 Risk Level: Medium
-Signals: Cross-module change (order-service, payment-service), new async event flow.
+Signals: New async event flow (payment-events listener), dependency bump (kafka client).
 ```
 
 ### Bad

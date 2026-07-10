@@ -113,7 +113,9 @@ Intent:
 
 A finding matching patterns in multiple sections takes the highest intent (Must > Recommend > Question).
 
-Omit "No Violations Found" only when violations were listed. Never omit the section entirely - consuming skills use its presence to confirm the check ran.
+Stated intent (commit message, ADR) downgrades only the `Drift:` line, never the violation: an intentional layer violation is still [Must] - record the stated rationale in the finding.
+
+Emit exactly one of `### Violations` and `### No Violations Found` - consuming skills use the presence of one of them to confirm the check ran.
 
 ## Avoid
 

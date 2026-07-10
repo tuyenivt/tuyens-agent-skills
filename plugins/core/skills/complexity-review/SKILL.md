@@ -22,7 +22,8 @@ user-invocable: false
 - Flag at thresholds; do not enforce them as absolutes. Context can justify exceeding any threshold.
 - Report cognitive complexity alongside cyclomatic. Cyclomatic counts branches; cognitive captures reading difficulty.
 - Calibrate thresholds to the detected stack's norms (Ruby methods are shorter than Java).
-- When multiple signals fire on the same unit, fix the highest-severity signal first.
+- Triage units by severity; within one unit with multiple signals, recommend fixes in Refactor Priority order.
+- Ranged thresholds (e.g., 20-40 lines): pick the point in the range matching stack norms; use the upper bound when the stack is unknown.
 
 ## Patterns
 
@@ -78,8 +79,6 @@ After `stack-detect`, adjust thresholds to ecosystem norms and prefer the stack'
 
 {Include only when no issues were listed. State that complexity is within thresholds.}
 ```
-
-Omit "No Issues Found" when issues are listed.
 
 ## Avoid
 

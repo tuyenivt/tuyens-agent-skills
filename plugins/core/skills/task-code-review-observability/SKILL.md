@@ -25,7 +25,7 @@ Detects the project stack and delegates to the matching stack-specific observabi
 
 `/task-code-review-observability [<branch> | pr-<N>] [standard | deep] [--base <branch>]`
 
-When invoked as a subagent by `task-code-review`, the parent passes the precondition handle and read-once diff/log; forward to the dispatched stack workflow.
+When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return findings per Output Format, and skip Step 5 - the parent owns the report.
 
 ## Workflow
 
@@ -58,7 +58,7 @@ Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workf
 
 ### Step 4 - Generic Fallback (no dispatch match)
 
-Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once.
+Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full and include the SLO category below.
 
 Use skill: `ops-observability`. This is the primary source of findings - it covers structured logging, RED metrics, distributed tracing, correlation propagation, and SLO design. The list below names the categories the fallback must explicitly cover; rely on `ops-observability` for the patterns.
 
@@ -71,13 +71,13 @@ Use skill: `ops-observability`. This is the primary source of findings - it cove
 | Frontend observability    | frontend         | Error tracking with source maps, global handlers, Core Web Vitals, no PII             |
 | SLO and alerting          | deep depth only  | SLI per critical service, SLO target + window, burn-rate alerts on symptoms not causes |
 
-Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field. Flag services with no SLO as **Recommend** at deep depth. Every finding states what becomes invisible without the missing signal.
+Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field. Flag services with no SLO as **Recommend** at deep depth. Every finding states what becomes invisible without the missing signal. Next Steps map severity to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`; `[Question]` only when the fix depends on the author's answer.
 
 If the diff touches no instrumentable code (docs, tests, comments only), skip the category review and report `Overall: Adequate` with the note "diff contains no instrumentable surface" - still write the report in Step 5.
 
 ### Step 5 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-observability` and `stack` set to the detected identifier from `stack-detect` (`unknown` only when detection failed).
+Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-observability` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +obs`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-observability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.
 
 ## Output Format
 
@@ -107,7 +107,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
 [Same structure]
 
-_Omit sections with no findings._
+_Omit sections with no findings. If all are omitted, state "No observability gaps found." and omit Next Steps._
 
 ## Next Steps
 
@@ -121,13 +121,14 @@ _Omit sections with no findings._
 - [ ] Step 2: `stack-detect` ran
 - [ ] Step 3: if matched, stack workflow ran with arguments forwarded; Steps 4-5 skipped (unless the workflow did not resolve)
 - [ ] Step 4: if no match, every applicable category in the table covered; every finding states what becomes invisible; docs/tests-only diff reported as Adequate
-- [ ] Step 5: report written via `review-report-writer` (fallback path only)
+- [ ] Step 5: report written via `review-report-writer` with all required inputs (standalone fallback only; subagent runs return findings to the parent)
 
 ## Avoid
 
 - Running both Step 3 dispatch and Step 4 fallback
+- Writing a report when invoked as a subagent - the parent owns it
 - "Missing log" findings without stating what becomes invisible
 - Recommending more logging without considering volume cost and alert noise
 - Suggesting metrics with high-cardinality labels
 - Treating the fallback as equivalent to a stack workflow
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting labels outside `[Must]` / `[Recommend]` / `[Question]`

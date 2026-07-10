@@ -92,7 +92,7 @@ Changed the Order API. Should be fine for everyone.
 
 | Component Changed | Direct Consumers | Transitive Consumers | Contract Type | Coupling | Impact |
 | ----------------- | ---------------- | -------------------- | ------------- | -------- | ------ |
-| {name} | {list or "none"} | {list or "none"} | {API / event / library / DB view} | {compile-time / runtime / event} | {breaking / additive / behavioral / none} |
+| {name} | {list or "none"} | {list or "none"} | {API / event / library / DB view} | {compile-time / runtime / event} | {breaking / additive / behavioral (incl. performance) / none} |
 
 When impact differs across consumers, split into one row per consumer group so classification stays per consumer.
 

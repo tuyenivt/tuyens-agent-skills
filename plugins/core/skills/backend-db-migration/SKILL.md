@@ -110,8 +110,8 @@ ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE USING INDEX idx_users
 
 **Non-additive** (rename, type change, drop):
 
-1. Deploy code that reads/writes both schemas (expand)
-2. Deploy migration adding the new structure
+1. Deploy migration adding the new structure (additive, safe)
+2. Deploy code that reads the old schema and writes both (expand)
 3. Run backfill
 4. Deploy code that uses only the new schema
 5. Deploy migration dropping the old (contract)

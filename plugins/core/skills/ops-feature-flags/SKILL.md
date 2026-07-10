@@ -143,6 +143,17 @@ Use this template when designing or reviewing a flag.
 - [ ] Changelog entry added
 ```
 
+When reviewing existing flags rather than designing one, output findings instead:
+
+```
+## Flag Review Findings
+
+- [Severity: High | Medium | Low] {flag name} - {violation}
+  - Fix: {rename | cleanup | split | assign owner | add kill switch}
+```
+
+Severity: High = auth/security bypass or un-rollback-able data writes; Medium = stale at 100%, multi-behavior flag, missing owner or kill switch; Low = naming, missing cleanup target.
+
 ## Avoid
 
 - Flags without a cleanup plan (accumulate indefinitely).

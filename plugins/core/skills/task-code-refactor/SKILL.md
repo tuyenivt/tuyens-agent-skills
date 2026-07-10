@@ -29,6 +29,8 @@ Detects stack and delegates to the matching refactor workflow. Stack workflows n
 | Test coverage status  | Recommended | Whether tests exist and pass                             |
 | Public surface        | Recommended | Whether the target is used across module/team boundaries |
 
+If a required input is missing, ask for it before proceeding. Determine missing recommended inputs from the codebase (run the tests, grep for callers) rather than assuming.
+
 ## Workflow
 
 ### Step 1 - Behavioral Principles
@@ -83,7 +85,7 @@ If the matched workflow is not installed: run Step 4 and recommend installing th
 **Test coverage gate:**
 
 - Tests exist, pass, and exercise the behavior being refactored: proceed to the refactoring sequence.
-- Tests exist but fail: stop. Fix or quarantine the failures first - never refactor on red.
+- Tests exist but fail: stop. Report the failing tests and emit no plan - fix or quarantine first; never refactor on red.
 - Tests absent or not exercising the target behavior: do **not** propose refactor steps. Output Smells Found plus a Test First plan (omit Refactoring Sequence) - characterization tests pinning current behavior, prioritized by risk. Resume only after those tests pass.
 
 **Safe step protocol:** tests pass -> commit -> apply ONE refactoring -> tests pass -> commit -> repeat. Each step independently committable.

@@ -69,7 +69,7 @@ On match: delegate, passing the feature description and any Inputs gathered. Sto
 
 Runs when the stack is unknown, unsupported by any table row, or the matched plugin is not installed. The fallback adapts to the detected `Stack Type`. Phases are: GATHER -> DESIGN -> IMPLEMENT -> VALIDATE.
 
-**GATHER** - confirm before proceeding:
+**GATHER** - resolve from the feature description and the codebase; ask the user only for items that remain unknown and would change the design (fullstack: cover both lists):
 
 - *Backend / unknown:* feature name and operations; entity relationships and validation; external dependencies; auth per endpoint (public vs protected); async/job needs.
 - *Frontend:* feature behavior and affected pages/routes; component hierarchy and data needs; state scope (local/shared/global/URL); API endpoints to consume; form inputs and validation; accessibility requirements.
@@ -79,10 +79,10 @@ Runs when the stack is unknown, unsupported by any table row, or the matched plu
 - *Backend:* schema changes (entities, fields, indexes for FK and filter columns); service / business logic boundaries and transactions; API contract (method, URI, request/response shapes, status codes); error model.
 - *Frontend:* component tree with responsibilities; routing changes (pages, layouts, guards); state strategy (local, store, URL); data-fetching strategy (hooks, server components, caching); form handling (validation library, submission flow).
 
-**IMPLEMENT** in order:
+**IMPLEMENT** in order. Load the atomic skill named at each applicable step; Use skill: `backend-coding-standards` throughout backend work:
 
-- *Backend:* (1) data layer - migration with indexes; never modify columns destructively. (2) business logic - constructor injection; no logic in controllers. (3) API layer - never expose data-layer entities directly; map to DTOs. (4) auth - explicit per endpoint, no implicit defaults. (5) background jobs if applicable. (6) tests - unit (logic), integration (DB), API (routing, serialization, auth).
-- *Frontend:* (1) routing - new routes, layouts, navigation. (2) components - single responsibility. (3) state - local first, lift or store only when sharing requires it. (4) data fetching - loading, error, caching, retry. (5) forms - validation, submission, errors. (6) accessibility - semantic HTML, ARIA, keyboard, focus. (7) tests - component, integration, E2E for critical flows.
+- *Backend:* (1) data layer - migration with indexes; never modify columns destructively; Use skill: `backend-db-migration`. (2) business logic - constructor injection; no logic in controllers. (3) API layer - never expose data-layer entities directly; map to DTOs; Use skill: `backend-api-guidelines`. (4) auth - explicit per endpoint, no implicit defaults. (5) background jobs if applicable; Use skill: `backend-idempotency` for retried or externally-triggered work. (6) tests - unit (logic), integration (DB), API (routing, serialization, auth).
+- *Frontend:* (1) routing - new routes, layouts, navigation. (2) components - single responsibility. (3) state - local first, lift or store only when sharing requires it; Use skill: `frontend-state-management`. (4) data fetching - loading, error, caching, retry; Use skill: `frontend-api-integration`. (5) forms - validation, submission, errors; Use skill: `frontend-form-handling`. (6) accessibility - semantic HTML, ARIA, keyboard, focus; Use skill: `frontend-accessibility`. (7) tests - component, integration, E2E for critical flows; Use skill: `frontend-testing-patterns`.
 
 **VALIDATE:**
 

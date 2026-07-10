@@ -42,7 +42,7 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect`.
 
-If the detected stack has an atomic below, load it; it injects stack-specific signals into Flow Context, Non-Obvious Behavior, Key Invariants, and Change Impact (e.g., Spring stereotype, Rails filter chain, React stale closures). If the stack is unknown or has no atomic, produce a universal explanation from the steps below - framework magic still belongs in the output, sourced from general knowledge.
+If the detected stack has an atomic below, load it; it injects stack-specific signals into Flow Context, Non-Obvious Behavior, Key Invariants, and Change Impact (e.g., Spring stereotype, Rails filter chain, React stale closures). If the stack is unknown, has no atomic, or the atomic does not resolve (plugin not installed), produce a universal explanation from the steps below - framework magic still belongs in the output, sourced from general knowledge.
 
 | Stack                | Atomic                  |
 | -------------------- | ----------------------- |

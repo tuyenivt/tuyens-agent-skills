@@ -48,7 +48,7 @@ If a diff exists, use `review-pr-risk` instead; use both when both apply.
 ### Classification Rules
 
 1. Identify triggered domains with evidence.
-2. Mark each as primary (direct, high-confidence) or secondary (indirect, lower-confidence, or assumed).
+2. Mark each as primary (direct, high-confidence) or secondary (indirect, lower-confidence, or assumed). A domain's default severity may be downgraded one step, only with the justification cited in the domain's evidence (e.g., additive column, low-traffic table); never silently.
 3. Determine the base level from the first matching row:
 
 | Condition (first match wins)                      | Overall Level |

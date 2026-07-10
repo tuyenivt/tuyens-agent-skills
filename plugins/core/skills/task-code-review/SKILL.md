@@ -59,7 +59,7 @@ If a row matches but the target skill does not resolve (stack plugin not install
 
 Runs when no Step 3 row matched the detected stack, or the matched workflow is unavailable.
 
-Use skill: `review-precondition-check` with the user's argument (default: current branch). On failure, surface the message verbatim and stop. On success, capture `base_sha`/`head_sha` via `git rev-parse <base_ref>` / `git rev-parse <head_ref>`, then read once: `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`.
+Use skill: `review-precondition-check` with the user's target argument and any `--base` override (default: current branch). On failure, surface the message verbatim and stop. On success, capture `base_sha`/`head_sha` via `git rev-parse <base_ref>` / `git rev-parse <head_ref>`, then read once: `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`.
 
 **Mode and round** (from the handle's `prior_checkpoint`):
 
@@ -70,7 +70,11 @@ Use skill: `review-precondition-check` with the user's argument (default: curren
 | `git merge-base --is-ancestor <prior_head_sha> <head_sha>` fails, OR prior `base_sha`/`base_ref` differs | `mode: full`, `round: prior + 1` |
 | Otherwise                                                                | `mode: incremental`, `round: prior + 1`; re-read diff/log scoped to `<prior_head_sha>...<head_ref>` |
 
-**Phase A - Risk Snapshot.** Use skill: `review-pr-risk`. Use skill: `review-blast-radius`. State Risk Level (Low/Medium/High/Critical) and Blast Radius (Narrow/Moderate/Wide) before any line-level finding. If both are Low/Narrow and the diff touches no architecture-sensitive files (auth, middleware, API contracts, shared libs), produce Phase B findings only and skip C-E.
+**Incremental reconciliation.** When `mode: incremental`, Use skill: `review-prior-findings-reconcile` with the prior report body, the incremental diff, and `git diff --name-status <prior_head_sha>...<head_ref>`; its table goes under `## Prior Round Reconciliation` in the report. Full-mode rounds skip it (fresh pass).
+
+**Depth.** `standard` (default): review diff hunks plus immediate context. `deep`: skip the Phase A fast-path and read each touched file in full.
+
+**Phase A - Risk Snapshot.** Use skill: `review-pr-risk`. Use skill: `review-blast-radius`. State Risk Level (Low/Medium/High/Critical) and Blast Radius (Narrow/Moderate/Wide/Critical) before any line-level finding. If both are Low/Narrow and the diff touches no architecture-sensitive files (auth, middleware, API contracts, shared libs), produce Phase B findings only and skip C-E.
 
 **Phase B - Correctness and Safety.** Logical correctness, error handling, edge cases, transaction boundaries, unsafe shared-state mutation. Use skill: `ops-resiliency` for fault tolerance. Use skill: `backend-api-guidelines` when API contracts change. Use skill: `architecture-concurrency` when concurrency is present. Use skill: `ops-backward-compatibility` for migrations or contract changes. **Raise an explicit named finding when logic was added or modified without tests** ([Recommend] minimum; [Must] for critical paths).
 
@@ -80,11 +84,11 @@ Use skill: `review-precondition-check` with the user's argument (default: curren
 
 **Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
-**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `full` was passed, spawn the matching `task-code-review-*` skill as a subagent with the read-once diff/log and the detected stack handle. Run in parallel; merge findings by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations.
+**Extra scopes.** If `+perf`, `+sec`, or `+obs` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all three) with the read-once diff/log and the detected stack handle. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations.
 
 ### Step 5 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review` and every required input: `branch` (current branch from the handle), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 4), `mode`/`round` (Step 4; plus `prior_head_sha` when round > 1), `scope` (enum value - `core-only` when no scope flag was passed), `depth` (`standard` when no depth flag), `stack` (the stack-detect identifier, e.g. `elixir-phoenix`; `unknown` only when detection failed).
+Use skill: `review-report-writer` with `report_type: review` and every required input: `report_body` (the assembled report per Output Format), `branch` (current branch from the handle), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 4), `mode`/`round` (Step 4; plus `prior_head_sha` when round > 1), `scope` (enum value - `core-only` when no scope flag was passed), `depth` (`standard` when no depth flag), `stack` (kebab-case `<language>-<framework>` from the stack-detect output, e.g. `elixir-phoenix`; drop a segment reported unknown; `unknown` only when detection failed entirely).
 
 ## Feedback Labels
 
@@ -105,10 +109,15 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide
+**Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** <identifier or unknown> (generic fallback applied)
 **Scope:** Core | +Sec | +Perf | +Obs | Full
 **Depth:** standard | deep
+**Mode:** full | incremental (round <N>)
+
+## Prior Round Reconciliation
+
+<table from `review-prior-findings-reconcile` - incremental rounds only; omit section otherwise>
 
 ## High-Impact Findings
 
@@ -158,7 +167,7 @@ _Omit sections with no findings._
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran
 - [ ] Step 3: if matched and available, stack workflow ran with all flags forwarded, Steps 4-5 skipped; if matched but unavailable, missing plugin named and fallback ran
-- [ ] Step 4: if no dispatch, SHAs captured; mode/round decided from `prior_checkpoint`; Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel; findings ordered Must > Recommend > Question
+- [ ] Step 4: if no dispatch, SHAs captured; mode/round decided from `prior_checkpoint`; prior findings reconciled on incremental rounds; Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel and merged without writing their own reports; findings ordered Must > Recommend > Question
 - [ ] Step 5: report written via `review-report-writer` with all required inputs (fallback path only)
 
 ## Avoid
@@ -170,4 +179,4 @@ _Omit sections with no findings._
 - Stylistic nits without a project standard
 - Blocking on personal preference over correctness, risk, or maintainability
 - Treating the fallback as equivalent to a stack workflow
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting labels outside `[Must]` / `[Recommend]` / `[Question]` (see Feedback Labels)

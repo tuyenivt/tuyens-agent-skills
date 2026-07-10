@@ -64,7 +64,7 @@ Each step declares: forward action, compensating action, idempotency key.
 Step ordering:
 
 - Place compensatable steps first; non-compensatable steps (email, push notification) last
-- Place the most failure-prone step early to minimize compensation scope
+- Within the compensatable prefix, place the most failure-prone step earliest to minimize compensation scope (compensatable-first wins if the two rules conflict)
 - Identify the **pivot transaction** - the step after which the saga commits to forward-only completion. Steps before the pivot are reversible; steps after must succeed or be retried indefinitely.
 - Example: reserve inventory (compensatable) -> charge payment (pivot) -> send confirmation (forward-only)
 

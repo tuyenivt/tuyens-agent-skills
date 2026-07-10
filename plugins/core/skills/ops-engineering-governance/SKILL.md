@@ -62,7 +62,9 @@ Prefer higher-tier enforcement. If only manual is feasible, pair it with a plan 
 | Failure class prevented | Category of failure this guards against                  |
 | Priority                | immediate / next sprint / quarterly                      |
 
-Categorize each guardrail as **new** (no rule covers this class), **strengthen** (existing rule too weak), **automate** (manual rule needs CI enforcement), or **broaden** (rule exists but missed the affected area). All categories go in the output's New Guardrails table; prefix non-new rules with the category, e.g. `[automate] Enforce the N+1 review rule via a CI query-count gate`.
+Categorize each guardrail as **new** (no rule covers this class), **strengthen** (existing rule too weak), **automate** (manual rule needs CI enforcement), **broaden** (rule exists but missed the affected area), or **retire** (obsolete rule to remove - state its replacement or why it is no longer needed). All categories go in the output's New Guardrails table; prefix non-new rules with the category, e.g. `[automate] Enforce the N+1 review rule via a CI query-count gate`.
+
+Priority assignment: **immediate** - the failure class can recur now with comparable or larger blast radius; **next sprint** - recurrence partially mitigated or blast radius reduced; **quarterly** - hygiene or low blast radius.
 
 ### Process Improvement Structure
 

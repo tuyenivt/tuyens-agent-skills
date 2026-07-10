@@ -19,7 +19,7 @@ user-invocable: false
 
 Non-negotiable. Apply in addition to stack-specific or workflow-specific rules.
 
-1. **Think before coding.** State assumptions explicitly before acting. If multiple interpretations exist, present them. If something is unclear, name it and ask.
+1. **Think before coding.** State assumptions explicitly before acting. If multiple interpretations exist, present them. If something is unclear, name it - then apply Proportionality to decide between a stated default and asking.
 2. **Simplicity first.** Write the minimum code that solves the problem. No speculative abstractions, no configurability for one caller. If 200 lines could be 50, rewrite.
 3. **Surgical changes.** Touch only what the request requires. Don't reformat untouched code, rename adjacent variables, or fix unrelated style. Remove imports/symbols your change orphans; leave pre-existing dead code alone unless asked.
 4. **Surface confusion.** When inputs contradict, a referenced symbol is missing, or requirements conflict, name the inconsistency. Do not silently pick a side.
@@ -41,7 +41,7 @@ The Rules are the contract; patterns below show the failure mode and the fix. Ap
 
 Bad: User asks "add user data export"; agent writes a JSON dump of all users to a local file, picking scope, format, and fields silently.
 
-Good: Agent lists the ambiguous decisions (scope, format, fields), proposes the simplest default, and asks for confirmation.
+Good: Agent lists the ambiguous decisions (scope, format, fields), proposes the simplest default, and asks for confirmation - asking is justified here because user data leaving the system is high blast radius.
 
 ### Rule 2 - No premature abstraction
 

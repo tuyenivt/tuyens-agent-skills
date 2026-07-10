@@ -85,7 +85,7 @@ Provide a "Skip to main content" link as the first focusable element.
 
 ### Color and Status
 
-- Text contrast: 4.5:1 normal, 3:1 large (18px+ or 14px+ bold) (1.4.3)
+- Text contrast: 4.5:1 normal, 3:1 large - large means 18pt/24px+, or 14pt/18.66px+ bold (1.4.3)
 - UI component contrast: 3:1 against adjacent colors (1.4.11)
 - Never use color alone for state - pair with text/icon (1.4.1)
 

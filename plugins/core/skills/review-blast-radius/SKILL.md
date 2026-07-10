@@ -67,8 +67,6 @@ Mitigations may reduce the effective radius:
 - Backup/PITR: Irreversible becomes Conditional
 - Soft delete: Recoverable until purge job runs
 
-When a mitigation materially changes the level, report both states (see template below).
-
 ### Good
 
 ```
@@ -105,6 +103,8 @@ Blast Radius: Critical (unmitigated) -> Wide (with feature flag off)
 Reversibility: Conditional (PITR available for 7 days)
 Mitigation: Gate behind feature flag; verify PITR backup before proceeding
 ```
+
+In the two-state form, callers gate on the mitigated (second) value only when the `Mitigation:` line names a safeguard already in place; if it prescribes an action not yet taken, gate on the unmitigated (first) value.
 
 Read-only changes are Data: Narrow. Use "N/A" only when a dimension genuinely has no path to impact (e.g., Data: N/A for a docs-only or pure copy change). Always produce all five lines.
 

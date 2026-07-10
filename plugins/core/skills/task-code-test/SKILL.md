@@ -54,7 +54,7 @@ Forward the user's invocation. The dispatched workflow owns the output. **If mat
 
 ### Step 4 - Generic Fallback (no dispatch match)
 
-**Pyramid.** Unit (many) > Integration (some) > E2E (few). Unit covers pure logic, validation, branch-heavy domain code, isolated error handling. Integration covers DB queries against a real schema, HTTP endpoints end-to-end, external service clients (stubs or contract tests), auth filters. E2E covers only critical business flows (checkout, login, data export) - keep this layer small.
+**Pyramid.** Unit (many) > Integration (some) > E2E (few). Unit covers pure logic, validation, branch-heavy domain code, isolated error handling. Integration covers DB queries against a real schema, HTTP endpoints end-to-end, external service clients (stubs or contract tests), auth filters. E2E covers only critical business flows (checkout, login, data export) - keep this layer small. For `Stack Type: frontend` or `fullstack` targets, Use skill: `frontend-testing-patterns`.
 
 **Prioritization when coverage is low** (do not chase a coverage number):
 
@@ -71,7 +71,7 @@ For test scaffolds, use the project's existing test framework if detectable, els
 
 ## Output Format
 
-When Step 3 dispatched: the stack workflow owns the output. When fallback ran, produce the section matching the user's ask:
+When Step 3 dispatched: the stack workflow owns the output. When fallback ran, produce the section matching the user's ask. For scaffolding asks, output the test files themselves plus a line `**Assumed framework:** <language> / <test framework>`.
 
 ```markdown
 ## Test Coverage Assessment

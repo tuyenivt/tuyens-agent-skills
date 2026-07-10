@@ -24,7 +24,7 @@ Detects the project stack and delegates to the matching stack-specific perf revi
 
 `/task-code-review-perf [<branch> | pr-<N>] [standard | deep] [--base <branch>]`
 
-When invoked as a subagent by `task-code-review`, the parent passes the precondition handle and read-once diff/log; forward to the dispatched stack workflow.
+When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return findings per Output Format, and skip Step 5 - the parent owns the report.
 
 ## Workflow
 
@@ -57,7 +57,7 @@ Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workf
 
 ### Step 4 - Generic Fallback (no dispatch)
 
-Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once.
+Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full.
 
 Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field, then cover the applicable categories:
 
@@ -73,11 +73,11 @@ Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `
 
 **Observability cross-check.** RED metrics on critical paths, correlation IDs propagated, latency histograms. Use skill: `ops-observability`.
 
-Every finding states estimated impact (e.g., "N+1 adds ~200ms per request at 1K rows"), not just "this is slow". Separate quick wins from structural changes.
+Every finding states estimated impact (e.g., "N+1 adds ~200ms per request at 1K rows"), not just "this is slow". Separate quick wins from structural changes. Next Steps map impact to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`; `[Question]` only when the fix depends on the author's answer.
 
 ### Step 5 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-perf`. Assemble every checkpoint field the writer requires: `scope: +perf`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.
+Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-perf` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +perf`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.
 
 ## Output Format
 
@@ -121,13 +121,14 @@ _Omit sections with no findings. If all are omitted, state "No performance issue
 - [ ] Step 2: `stack-detect` ran
 - [ ] Step 3: if matched and installed, stack workflow ran with arguments forwarded; Steps 4-5 skipped
 - [ ] Step 4: if no dispatch, every applicable category (DB / concurrency / caching / I/O / frontend / observability) covered; every finding states estimated impact; quick wins separated from structural changes
-- [ ] Step 5: report written via `review-report-writer` with all checkpoint fields assembled (fallback path only)
+- [ ] Step 5: report written via `review-report-writer` with all required inputs (standalone fallback only; subagent runs return findings to the parent)
 
 ## Avoid
 
 - Running both Step 3 dispatch and Step 4 fallback
+- Writing a report when invoked as a subagent - the parent owns it
 - Performance findings without estimated impact
 - Premature optimization on cold paths
 - Recommending caching without addressing invalidation
 - Treating the fallback as equivalent to a stack workflow - install the matching stack plugin when one exists
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting labels outside `[Must]` / `[Recommend]` / `[Question]`

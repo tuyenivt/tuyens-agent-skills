@@ -57,6 +57,7 @@ Refinements (apply in this priority):
    - `vue` only -> Vue (Vite/custom)
    - `@angular/core` -> Angular
 3. **`tsconfig.json` alongside `package.json`** -> Language: TypeScript.
+   **Lockfile** (sets Build tool for JS/TS): `package-lock.json` -> npm, `yarn.lock` -> yarn, `pnpm-lock.yaml` -> pnpm, `bun.lock`/`bun.lockb` -> bun.
 4. **ORM markers** (set ORM field):
    - `prisma/schema.prisma` -> Prisma
    - `drizzle.config.ts` -> Drizzle
@@ -103,7 +104,7 @@ Fullstack triggers:
 - Nuxt with `server/`.
 - Monorepo containing both `package.json` (with React/Vue/Angular) and a backend marker (`build.gradle`, `go.mod`, etc.).
 
-For fullstack, set `Language` and `Framework` to the primary stack and describe the secondary in `Additional` (e.g., `Frontend: TypeScript (React)`).
+For fullstack from two stacks (monorepo), set `Language` and `Framework` to the primary stack and describe the secondary in `Additional` (e.g., `Frontend: TypeScript (React)`). For fullstack from a single meta-framework (Next.js, Nuxt), keep the meta-framework as `Framework`; there is no secondary entry.
 
 ## Output Format
 

@@ -66,7 +66,7 @@ For partial failures, estimate the affected percentage from metrics. For cascadi
 ```
 Failure Type: Resource exhaustion, External dependency failure
 Scope: Partial 15% + Cascading
-Layer: Platform (connection pool exhausted) triggered by Integration (payment gateway timeout)
+Layer: Platform (connection pool exhausted; triggered from Integration by payment gateway timeout)
 Evidence: HikariCP active 40/40, payment-service p99 12s (baseline 200ms)
 ```
 

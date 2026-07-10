@@ -120,7 +120,7 @@ If the workflow forwarded an explicit base override (see above), resolve and use
 Otherwise, auto-detect in order:
 
 1. `git symbolic-ref refs/remotes/origin/HEAD` (typically `refs/remotes/origin/main`); record `base_source: origin-head`.
-2. If unset, try `main`, `master`, `develop` via `git rev-parse --verify`; record `base_source: trunk-fallback`.
+2. If unset, check `main`, `master`, `develop`, `trunk` via `git rev-parse --verify`. Exactly one resolves: use it; record `base_source: trunk-fallback`. Two or more resolve: ask the user which is the base; record `base_source: user-prompted`.
 3. If none resolve, ask the user which branch is the base; record `base_source: user-prompted`.
 
 Record `base_ref` as a name, not a SHA - the consuming workflow uses the name directly in `git diff <base>...<head>`.

@@ -106,7 +106,7 @@ Alert on:
 
 - **Error rate** - SLO burn rate over multi-window (reduces false positives), not individual errors
 - **Latency** - sustained p99 breach (e.g., > 500ms for 5 min)
-- **Saturation** - resource utilization approaching limits (pool > 80%, disk > 90%)
+- **Saturation** - resources that hard-fail requests when exhausted (connection pool > 80%, disk > 90%, FD limit). CPU/memory degrade gradually and page poorly - they are the "causes" the symptom rule excludes.
 
 ### Stack Adaptation
 

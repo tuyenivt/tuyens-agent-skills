@@ -21,7 +21,7 @@ user-invocable: false
 
 - Index foreign keys, JOIN columns, and frequent WHERE/ORDER BY predicates.
 - Align indexes with actual query patterns - inspect EXPLAIN, not intuition. If EXPLAIN is unavailable, recommend from schema and query shape and mark each finding `(unverified - confirm with EXPLAIN)`.
-- Composite indexes: equality columns first, range columns last.
+- Composite indexes: equality columns first, range and ORDER BY columns last (matching the sort direction).
 - Functions on indexed columns disable the index - rewrite the query or add an expression index.
 - Avoid single-column indexes on low-cardinality columns (a few distinct values - optimizer prefers scan). The same column is fine as the leading equality column of a composite or as a partial-index predicate.
 - Every index taxes writes - on write-heavy tables, recommending no index is a valid outcome (state it with the trade-off).
@@ -76,7 +76,7 @@ Includes non-key columns in the leaf, enabling index-only scans without table lo
 CREATE INDEX idx_users_status_covering ON users(status) INCLUDE (email, name);
 ```
 
-Use for high-frequency read queries where the heap lookup is the bottleneck. `INCLUDE` is supported on PostgreSQL 11+, SQL Server 2005+, and MySQL 8.0.13+. On older engines, add the columns to the key instead.
+Use for high-frequency read queries where the heap lookup is the bottleneck. `INCLUDE` is supported on PostgreSQL 11+ and SQL Server 2005+. MySQL has no `INCLUDE` - append the columns to the key instead (works on any engine).
 
 ### Partial index (WHERE on index)
 
@@ -90,7 +90,7 @@ CREATE INDEX idx_orders_pending ON orders(created_at) WHERE status = 'pending';
 CREATE INDEX idx_users_active ON users(email) WHERE deleted_at IS NULL;
 ```
 
-The query's WHERE must match or be a subset of the index's WHERE. Supported on PostgreSQL and SQLite; MySQL offers prefix indexes as a partial alternative. When both a composite and a partial index fit, prefer the composite unless the filtered subset is small and the predicate value is stable.
+The query's WHERE must match or be a subset of the index's WHERE. Supported on PostgreSQL and SQLite; MySQL has no partial indexes - use a composite with the predicate column leading instead. When both a composite and a partial index fit, prefer the composite unless the filtered subset is small and the predicate value is stable.
 
 ### Write-heavy and append-only tables
 

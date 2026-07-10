@@ -21,7 +21,7 @@ user-invocable: false
 
 - Repeated calls with the same idempotency key must return the same result without re-executing side effects.
 - Idempotency state lives in the database (not memory, not cache alone).
-- The idempotency check and the business operation run in a single transaction.
+- Database-local side effects: the idempotency check and the business operation run in a single transaction. External side effects (gateway, email): commit `processing` first - see Record schema and lifecycle.
 - Use database-level uniqueness for atomicity (`INSERT ... ON CONFLICT`, `INSERT IGNORE`, or advisory locks). Never check-then-act.
 - Set a TTL on stored idempotency records (typically 24-48h) to bound growth.
 - Prefer natural business keys when one exists - they prevent duplicates across client sessions. Client-generated UUIDs are the fallback.
@@ -121,9 +121,9 @@ Consuming workflows parse this structure.
 
 - **High**: POST with financial or irreversible side effects lacking idempotency protection
 - **Medium**: Event consumer without dedup, or check outside the transaction boundary
-- **Low**: Natural business key available but not used as the idempotency key
+- **Low**: Natural business key available but not used as the idempotency key; missing TTL on idempotency records
 
-Severity follows impact: escalate a consumer gap to High when the duplicated side effect is financial or irreversible.
+Severity follows impact: escalate any gap to High when the duplicated side effect is financial or irreversible.
 
 Omit "No Gaps Found" if gaps were listed.
 

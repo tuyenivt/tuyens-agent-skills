@@ -21,7 +21,7 @@ user-invocable: false
 
 - Apply the detected language's naming convention (camelCase, snake_case, PascalCase, kebab-case). Do not mix styles within a codebase.
 - Short names in small scopes; descriptive names in larger scopes.
-- One responsibility per file/class/module. Functions/methods over 50-80 lines must be decomposed.
+- One responsibility per file/class/module. Functions/methods over 50 lines must be decomposed (up to 80 for verbose languages - calibrate to stack norms).
 - Files live in directories matching their architectural role (no service classes in `controllers/`).
 - Presentation layer stays thin - business logic belongs in the service or domain layer.
 - Responses use DTOs / serializers / response structs, never data-layer entities.

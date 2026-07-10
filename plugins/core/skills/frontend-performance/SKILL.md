@@ -140,6 +140,7 @@ Consuming workflow skills depend on this structure.
 - Never invent numbers: when a value cannot be measured or estimated from the input (static diff, scoped component review), write `Unknown - not measured` and set Status to `Unknown`.
 - Issues Found = defects in the reviewed code (each with a fix). Recommendations = proactive improvements beyond fixing defects. Do not duplicate an item across both.
 - Emit `No Issues Found` only when `Issues Found` is empty; the two are mutually exclusive.
+- Severity and Impact share one anchor: High = directly degrades a Core Web Vital on a primary route (LCP blocker, CLS source, long task on interaction path); Medium = bundle or render waste with no direct vitals breach; Low = polish.
 
 ```
 ## Frontend Performance Assessment
