@@ -1,6 +1,6 @@
 ---
 name: task-vue-review-security
-description: Vue / Nuxt security review: v-html XSS, CSP, Nitro endpoint auth, Pinia hydration leaks, env-var exposure, CSRF, open redirect, OWASP.
+description: Vue / Nuxt security review - v-html XSS, CSP, Nitro endpoint auth, Pinia hydration leaks, env-var exposure, CSRF, open redirect, OWASP.
 agent: vue-security-engineer
 metadata:
   category: frontend
@@ -65,6 +65,8 @@ Record `Framework: Nuxt 3 <version>` or `Vite + Vue Router <version>`. Subsequen
 ### Step 3 - Resolve the Diff Under Review
 
 Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` **once**; reuse for all subsequent steps. Surface fail-fast messages verbatim and stop. Never run state-changing git from this workflow. Skip entirely if parent provided pre-read artifacts.
+
+**Audit mode.** For diff-less invocations (pre-deployment hardening pass, periodic CSP / validation drift sweep), skip diff resolution: scope is the Step 4 security surface for the named routes or the whole app, and "changed" gates read as "in scope". State `Mode: audit` in the Summary; OWASP verdicts read `yes` / `no signal in scope`.
 
 ### Step 4 - Read the Security Surface
 
@@ -182,6 +184,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write the
 **Stack Detected:** Vue <version> / TypeScript <version>
 **Framework:** Nuxt 3 <version> | Vite + Vue Router <version>
 **Auth:** nuxt-auth-utils | @sidebase/nuxt-auth | Lucia | iron-session | Custom | None (Vite + backend)
+**Mode:** diff | audit
 **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
 
 [2-3 sentence assessment naming Vue-specific risks: `NUXT_PUBLIC_*` leak, missing Nitro validation, ORM rows in Pinia SSR payload, missing CSP, `v-html` on user input.]
@@ -221,7 +224,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write the
 
 ## Next Steps
 
-Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat-model exercise). Order: Must > Recommend > Question.
+Prioritized action list. Each item tagged `[Implement]` (localized fix - apply directly) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat-model exercise). Intent from severity per the rubric's own terms: Critical / High -> `[Must]`, Medium / Low -> `[Recommend]`. Order: Must > Recommend > Question.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope] - [one-line action]
@@ -232,7 +235,7 @@ _Omit this section if no security issues found._
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Steps 2-3: Vue stack + framework recorded; diff/log read once (or parent handle accepted); no state-changing git
+- [ ] Steps 2-3: Vue stack + framework recorded; diff/log read once (or parent handle accepted, or audit mode declared); no state-changing git
 - [ ] Step 4: security surface read; prior revision consulted when guards/middleware were removed
 - [ ] Step 5: one OWASP verdict per category (`yes` / `no signal in diff`); not duplicated as findings
 - [ ] Steps 6-7: auth library, middleware widening, password/JWT/cookie flags, `requireUserSession` + object-level ownership, Pinia/`useState` SSR ORM leak, CSRF audited

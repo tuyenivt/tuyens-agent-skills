@@ -1,6 +1,6 @@
 ---
 name: task-vue-refactor
-description: Plan a Vue/Nuxt refactor: god components, prop drilling, watcher overuse, fat composables, untyped props, a11y. Phased, gated.
+description: Plan a Vue/Nuxt refactor - god components, prop drilling, watcher overuse, fat composables, untyped props, a11y. Phased, gated.
 agent: vue-tech-lead
 metadata:
   category: frontend
@@ -11,7 +11,7 @@ user-invocable: true
 
 # Vue Refactor
 
-Produce a step-by-step refactor plan for a Vue target (component, composable, page/layout, Pinia store, Nitro endpoint, plugin). Each step is independently committable with `vue-tsc --noEmit` + Vitest gates.
+Produce a step-by-step refactor plan for a Vue target (component, composable, page/layout, Pinia store, Nitro endpoint, plugin). Each step is independently committable with typecheck + Vitest gates. Typecheck command: `nuxi typecheck` on Nuxt, `vue-tsc --noEmit` on Vite.
 
 Stack-specific delegate of `task-code-refactor` for Vue.
 
@@ -177,7 +177,7 @@ Vue signals: design-system primitive used cross-feature, root layout / global pl
 
 ### Step 7 - Propose the Sequence
 
-Each step must be: independently committable (`vue-tsc --noEmit` + Vitest pass), behaviorally invariant (unless labeled `coupled-fix`), reversible in one revert, tested.
+Each step must be: independently committable (typecheck + Vitest pass), behaviorally invariant (unless labeled `coupled-fix`), reversible in one revert, tested.
 
 **Primary recipe.** Pick one recipe matching the user's goal as the spine. Fold supporting recipes as additive sub-steps where dependencies require. Never concatenate. State `Primary recipe:` in the output. If the spine exceeds ~8 steps, split into two PRs.
 
@@ -272,7 +272,7 @@ This is `coupled-fix` (refresh, deep links, back button now preserve state - UX 
 
 - [ ] Goal achieved at end of sequence
 - [ ] Each step reviewable in < 30 min
-- [ ] `vue-tsc --noEmit` + Vitest between every step
+- [ ] Typecheck + Vitest between every step
 - [ ] Low-risk first (additions, extractions) before high-risk (deletions, prop removals, reactivity conversions)
 - [ ] Rollback is one revert per step
 - [ ] No "while we're here" cleanup bundled
@@ -347,7 +347,7 @@ _Other smells in the target file; listed for hand-off, not action. Omit if none.
 
 - [ ] Goal achieved at end of sequence
 - [ ] Each step independently committable
-- [ ] `vue-tsc --noEmit` + Vitest between every step
+- [ ] Typecheck + Vitest between every step
 - [ ] No bundled unrelated cleanup
 - [ ] One revert per step
 - [ ] No silent SSR <-> client boundary changes; descendants audited (Nuxt)

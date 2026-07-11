@@ -80,6 +80,8 @@ Heuristics: `nuxt.config.*` or `nuxt` in deps -> Nuxt 3; `vite.config.*` + `vue`
 
 Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once; reuse. Skip entirely if parent passed the handle.
 
+**Audit mode.** For diff-less invocations (slow-page investigation, quarterly vitals / bundle sweep), skip diff resolution: scope is the named route's page / layout / components / composables / stores plus the config files below, and "changed" gates read as "in scope". State `Mode: audit` in the Summary.
+
 Open the files that govern rendering, bundle, and data fetching so impact estimates ground in real code:
 
 - **Nuxt 3:** changed `pages/`, `layouts/`, `components/`, `app.vue`, `composables/`, `server/api/`, `stores/`; `nuxt.config.*` (`routeRules`, `image`, `experimental`, `nitro`, `vite`); Suspense / `<LazyXxx />` boundaries
@@ -112,14 +114,13 @@ const orders = reactive(await $fetch('/api/orders')) // 5K rows, all proxied
   <OrderRow v-for="o in orders" :key="o.id" :item="o" :config="{ dense: true }" />
 </template>
 
-<!-- GOOD: shallowRef, stable config, $fetch swapped to useFetch -->
+<!-- GOOD: shallow data (deep: false), stable config, $fetch swapped to useFetch -->
 <script setup lang="ts">
-const { data: orders } = await useFetch('/api/orders', { key: 'orders' })
-const rows = shallowRef(orders.value ?? [])
+const { data: orders } = await useFetch('/api/orders', { key: 'orders', deep: false })
 const ROW_CONFIG = { dense: true }
 </script>
 <template>
-  <OrderRow v-for="o in rows" :key="o.id" :item="o" :config="ROW_CONFIG" />
+  <OrderRow v-for="o in orders ?? []" :key="o.id" :item="o" :config="ROW_CONFIG" />
 </template>
 ```
 
@@ -210,6 +211,7 @@ Then use skill: `review-report-writer` with `report_type: review-perf`. Write th
 **Data Layer:** `useFetch` / `useAsyncData` | TanStack Query Vue | mixed
 **Styling:** Tailwind / UnoCSS | scoped CSS / CSS Modules | CSS-in-JS
 **Scope:** Frontend (Vue)
+**Mode:** diff | audit
 **Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
 
 ## Findings
@@ -237,7 +239,7 @@ _Omit empty sections._
 
 ## Next Steps
 
-Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / build config / load test). Order: Must > Recommend > Question.
+Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / build config / load test). Intent from severity: High -> `[Must]`, Medium / Low -> `[Recommend]`. Order: Must > Recommend > Question.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: build] - [one-line action]
@@ -248,7 +250,7 @@ _Omit if no actionable findings._
 
 ## Self-Check
 
-- [ ] Steps 1-3: behavioral principles loaded; Vue stack + Framework/Data Layer/Styling recorded; diff/log read once; perf surface opened
+- [ ] Steps 1-3: behavioral principles loaded; Vue stack + Framework/Data Layer/Styling recorded; diff/log read once (or audit mode declared); perf surface opened
 - [ ] Step 4: reactivity hotspots audited (deep `reactive`, watcher cascades, de-reactivity, `v-for` keys, virtualization, `v-memo`)
 - [ ] Step 5: bundle deltas sized; tree-shake-hostile and full UI-library imports flagged; heavy libs gated by `<LazyXxx />` / `defineAsyncComponent`
 - [ ] Step 6: `useFetch` key/transform/`getCachedData`/mutation invalidation audited; `$fetch` in `<script setup>` for initial data flagged

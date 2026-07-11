@@ -9,6 +9,8 @@ metadata:
 user-invocable: true
 ---
 
+# Implement - Vue Feature Workflow
+
 ## When to Use
 
 Building a new Vue feature spanning components, state, data fetching, routing, and tests. Not for single-component edits, bug fixes (use `task-vue-debug`), or refactors without new behavior.
@@ -17,11 +19,11 @@ Building a new Vue feature spanning components, state, data fetching, routing, a
 
 **Step 1 - Behavioral principles.** Use skill: `behavioral-principles`.
 
-**Step 2 - Detect stack.** Use skill: `stack-detect`. Confirm Vue 3 + (Nuxt 3 | Vite + Vue Router); identify styling, state lib (Pinia), test framework, and any monolith backend (Rails/Django/Laravel). Halt and ask if mismatched. Vite branch: skip Nuxt server routes and auto-imports, use Vue Router and client fetching.
+**Step 2 - Detect stack.** Use skill: `stack-detect`. Confirm Vue 3 + (Nuxt 3 | Vite + Vue Router); identify styling, state lib (Pinia), data layer (`useFetch` / TanStack Query / plain fetch), test framework, and any monolith backend (Rails/Django/Laravel). Halt and ask if mismatched. Vite branch: skip Nuxt server routes and auto-imports, use Vue Router and client fetching.
 
-**Step 3 - Gather.** Ask: feature name, user stories, components, data sources, interactions, routing, form inputs, a11y constraints. UI-only feature: skip data and form steps. Existing components: read and compose, do not duplicate.
+**Step 3 - Gather.** Collect from the request: feature name, user stories, components, data sources, interactions, routing, form inputs, a11y constraints. Ask once, only for gaps that change the design. UI-only feature: skip data and form steps. Existing components: read and compose, do not duplicate.
 
-**Step 4 - Design.** Use skill: `vue-component-patterns` + `vue-routing-patterns`. If monolith detected: Use skill: `vue-monolith-integration` to choose mount strategy (Inertia | islands | widget). Propose component tree (page vs reusable), file layout, routes. Request approval before code:
+**Step 4 - Design.** Use skill: `vue-component-patterns`; add `vue-routing-patterns` when the feature adds or changes routes. If monolith detected: Use skill: `vue-monolith-integration` to choose mount strategy (Inertia | islands | widget) - its mount-strategy layout replaces the pages/server layout below. Propose component tree (page vs reusable), file layout, routes. Request approval before code:
 
 ```
 pages/<feature>/index.vue                          # Nuxt route (or src/views/ for Vite)

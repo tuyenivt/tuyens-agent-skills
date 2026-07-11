@@ -24,19 +24,20 @@ user-invocable: false
 - One mount strategy per page; mixing Inertia and islands on the same route is undefined
 - Layout owner is single-source: either the server template or a Vue persistent layout, never both
 - Inertia.js handles CSRF, history, and partial reloads - do not reimplement
+- Islands/widgets that call backend endpoints must send the monolith's CSRF token (Rails: `csrf-token` meta tag; Django: `csrftoken` cookie -> `X-CSRFToken` header; Laravel: `XSRF-TOKEN` cookie)
 
 ## Patterns
 
 ### Strategy Selection
 
-| Strategy   | Use When                                  | Backend Fit         |
-| ---------- | ----------------------------------------- | ------------------- |
-| Inertia.js | Replacing server views with Vue pages     | Rails, Laravel      |
-| Islands    | Interactive sections in server pages      | Django, Rails, Laravel |
-| Widget     | Self-contained components in legacy pages | Any                 |
-| Full SPA   | Entire frontend is Vue, backend is API    | Any (API mode)      |
+| Strategy   | Use When                                                            | Backend Fit         |
+| ---------- | ------------------------------------------------------------------- | ------------------- |
+| Inertia.js | Replacing server views with Vue pages                               | Rails, Laravel      |
+| Islands    | Page-specific interactive section; one entry, one mount per page    | Django, Rails, Laravel |
+| Widget     | Reusable component mounted on many pages via data attributes        | Any                 |
+| Full SPA   | Entire frontend is Vue, backend is API                              | Any (API mode)      |
 
-Inertia.js has no first-party Django adapter; prefer islands there.
+Inertia.js has no first-party Django adapter; prefer islands there. Unknown or other backend (e.g. Spring, .NET MVC): use Widget or Full SPA; Inertia only if a maintained community adapter exists.
 
 ### Inertia.js (Rails)
 
@@ -178,7 +179,7 @@ For islands and widgets the server template owns the layout; Vue controls only m
 ```
 ## Monolith Integration Design
 
-**Backend:** {Rails | Django | Laravel}
+**Backend:** {Rails | Django | Laravel | other (name it)}
 **Mount strategy:** {Inertia.js | Islands | Widget | Full SPA}
 **Asset pipeline:** Vite ({vite-plugin-ruby | laravel-vite-plugin | django-vite})
 

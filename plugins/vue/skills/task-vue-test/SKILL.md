@@ -1,6 +1,6 @@
 ---
 name: task-vue-test
-description: Vue / Nuxt test plan and scaffolding: Vitest, Vue Test Utils, @nuxt/test-utils, MSW, Playwright E2E, composable and SFC tests.
+description: Vue / Nuxt test plan and scaffolding - Vitest, Vue Test Utils, @nuxt/test-utils, MSW, Playwright E2E, composable and SFC tests.
 agent: vue-test-engineer
 metadata:
   category: frontend
@@ -34,6 +34,8 @@ Use skill: `stack-detect`. If invoked as a delegate of `task-code-test` with Vue
 
 Record for the output: `Framework: Nuxt 3 | Vite + Vue Router`, `Vue: <version>`, `Runner: Vitest` (flag Jest as legacy; recommend migration), `Helper: @vue/test-utils | @testing-library/vue`, `E2E: Playwright | Cypress | none`. Subsequent steps branch on these signals.
 
+If the project runs Jest and migration is declined, produce scaffolds in Jest idiom (`jest.mock`, `jest.fn`, Jest config) so they run as-is; list Vitest migration under Test infrastructure prerequisites as a recommendation, not a blocker. Pyramid, boundaries, and prioritization are runner-independent.
+
 ### Step 3 - Read Code Under Test and Existing Tests
 
 Ground output in real project conventions before producing assessment, strategy, or scaffolds.
@@ -62,15 +64,16 @@ If no existing tests exist, state so and propose conventions explicitly in the o
 
 ### Step 5 - Apply Vue Test Patterns
 
-Use skill: `vue-testing-patterns` for canonical patterns: `withSetup` and probe-component composable testing, `renderWithProviders` helper, MSW lifecycle, Nitro direct-`$fetch` vs `useFetch`-mock flavors, Pinia store testing, TanStack Query setup, Vue Router mocking, `mountSuspended` (Nuxt), Sentry mock, Playwright `storageState`.
+Use skill: `vue-testing-patterns` for canonical patterns: `withSetup` host-component composable testing, `renderWithProviders` + `createTestingPinia`, real-router mounting (`createMemoryHistory`), MSW lifecycle, `mountSuspended` (Nuxt), Nitro endpoint testing via the `@nuxt/test-utils/e2e` `$fetch` harness, Playwright E2E.
 
 Selection rules (this workflow decides; the atomic skill provides the pattern):
 
-- Composable with reactivity only → `withSetup`. Composable depending on `inject` / router / Pinia → probe component
+- Composable → `withSetup`; when it depends on `inject` / router / Pinia, register those plugins or provides on the host component
 - Component test → user-centric queries (`getByRole` / `getByLabel`); `getByTestId` only as last resort
 - Pinia state/getter/action test → no component mount; `setActivePinia(createPinia())` in `beforeEach`
-- Nitro endpoint with both server logic and UI caller → both flavors (direct `$fetch` for the endpoint, `useFetch` mock for the component)
+- Nitro endpoint with both server logic and UI caller → cover both sides: e2e-harness `$fetch` for the endpoint, `mountSuspended` + MSW for the component
 - Page-level integration test → MSW for network; real router (Vite: `createMemoryHistory`; Nuxt: `mountSuspended`)
+- TanStack Query → fresh `QueryClient` per test with `retry: false`; Playwright auth seeded via `storageState`
 - TypeScript strict in tests; no `as any` in mocks
 
 ### Step 6 - Define Test Boundaries
@@ -188,7 +191,7 @@ Audit ongoing-maintenance items distinct from Step 9's first-time prerequisites:
 - [...]
 ```
 
-**Test Scaffolds:** ready-to-run Vitest files matching project conventions. Each must include:
+**Test Scaffolds:** ready-to-run test files in the project's runner idiom (Vitest; Jest only per the Step 2 carve-out), matching project conventions. Each must include:
 
 - Correct test type (unit / composable / component / integration / Nitro / E2E)
 - Factories for test data
@@ -222,7 +225,7 @@ Audit ongoing-maintenance items distinct from Step 9's first-time prerequisites:
 - [ ] Step 2 - stack confirmed; framework, runner, helper, Vue version recorded
 - [ ] Step 3 - target modules and a representative sample of existing tests + setup files read
 - [ ] Step 4 - test pyramid mapped to Vue idioms
-- [ ] Step 5 - `vue-testing-patterns` consulted; composable strategy explicit (`withSetup` vs probe); user-centric queries used; no `wrapper.vm.<internal>` assertions
+- [ ] Step 5 - `vue-testing-patterns` consulted; composable strategy explicit (`withSetup`; plugins/provides on the host when context-bound); user-centric queries used; no `wrapper.vm.<internal>` assertions
 - [ ] Step 6 - boundaries defined; no duplicated assertions across layers; wizard coverage includes back-navigation + cross-step + submit
 - [ ] Step 7 - factories (not raw literals); minimal data per test
 - [ ] Step 8 - risk-based prioritization applied when coverage <50% (P1 auth/money/Nitro, P2 forms, P3 empty/error, P4 high-churn, P5 plumbing)

@@ -41,6 +41,8 @@ Use skill: `stack-detect`. Confirm Vue. Record framework: Nuxt 3 | Vite + Vue Ro
 
 Use skill: `review-precondition-check`. Read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip if a parent workflow passed the handle plus pre-read artifacts.
 
+**Audit mode.** When invoked as a whole-app audit (pre-release / post-incident / adoption request with no PR or feature branch), skip diff resolution: scope is the Step 4 framework file list plus everything it references, and the diff-touch gates in Steps 7-10 do not apply (same as greenfield). State `Mode: audit` in the Summary.
+
 ### Step 4 - Surface Map
 
 Read instrumentation wiring in the framework-appropriate files below, plus every changed file calling `Sentry.*`, `web-vitals` APIs, OTel APIs, or a logger. Produce one verdict per surface: `wired | partial | absent` with file:line evidence. A missing wire is the finding, not a precondition.
@@ -155,6 +157,7 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Writ
 **Stack:** Vue <version> / TypeScript <version>
 **Framework:** Nuxt 3 <version> | Vite + Vue Router <version>
 **RUM:** Datadog RUM | Vercel Analytics | Cloudflare Web Analytics | custom | absent
+**Mode:** diff | audit
 **Overall:** Adequate | Gaps Found [High/Medium/Low counts] | Greenfield - 3+ surfaces absent
 
 ## Surface Map
@@ -197,7 +200,7 @@ _Omit empty buckets. Group by Surface within a bucket when >2 findings share one
 
 ## Next Steps
 
-Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: Must > Recommend > Question.
+Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Intent from severity: High -> `[Must]`, Medium / Low -> `[Recommend]`. Order: Must > Recommend > Question.
 
 1. **[Implement]** [Must] file:line - [action]
 2. **[Delegate]** [Recommend] [scope: ops] - [action]
@@ -205,7 +208,7 @@ Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]`
 
 ## Self-Check
 
-- [ ] Steps 1-3: behavioral principles loaded; Vue stack + framework recorded; diff/log read once
+- [ ] Steps 1-3: behavioral principles loaded; Vue stack + framework recorded; diff/log read once (or audit mode declared, whole-app scope)
 - [ ] Step 4: surface map produced with 6 verdicts and evidence; grouping/greenfield rules applied
 - [ ] Steps 5-6: web-vitals v4+ with INP, real transport, route correlation; Sentry init with `app` arg, PII scrub, error-boundary tree with `captureException`, source maps uploaded but not public, Replay vs CSP audited
 - [ ] Step 7: OTel browser + traceparent propagation; Nitro plugin with shutdown + `BatchSpanProcessor` (skipped per gate)

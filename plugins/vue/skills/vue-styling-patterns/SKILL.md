@@ -1,6 +1,6 @@
 ---
 name: vue-styling-patterns
-description: Vue 3.5 styling review: scoped styles, CSS v-bind, Tailwind/UnoCSS, component libraries, design tokens, dark mode, responsive.
+description: "Vue 3.5 styling review: scoped styles, CSS v-bind, Tailwind/UnoCSS, component libraries, design tokens, dark mode, responsive."
 metadata:
   category: frontend
   tags: [vue, styling, scoped-styles, tailwind, dark-mode]
@@ -153,14 +153,14 @@ Consuming workflow skills parse this structure; preserve field names and enums.
 
 ### Findings
 
-| Area              | Status                                | Notes                              |
-| ----------------- | ------------------------------------- | ---------------------------------- |
-| Approach mixing   | {Consistent | Mixed (justified) | Mixed (issue)} | {boundary or conflict}    |
-| Scoped styles     | {OK | Leaking | Overusing :deep}      | {file:line}                        |
-| CSS v-bind usage  | {OK | Misused for static values}      | {file:line}                        |
-| Responsive        | {Mobile-first | Desktop-first}        | {breakpoints used}                 |
-| Dark mode         | {Working | Partial | Missing}         | {strategy gaps}                    |
-| Accessibility     | {OK | Contrast issue | Focus missing}| {component}                        |
+| Area              | Status                                              | Notes                    |
+| ----------------- | --------------------------------------------------- | ------------------------ |
+| Approach mixing   | {Consistent / Mixed (justified) / Mixed (issue)}    | {boundary or conflict}   |
+| Scoped styles     | {OK / Leaking / Overusing :deep}                    | {file:line}              |
+| CSS v-bind usage  | {OK / Misused for static values}                    | {file:line}              |
+| Responsive        | {Mobile-first / Desktop-first}                      | {breakpoints used}       |
+| Dark mode         | {Working / Partial / Missing}                       | {strategy gaps}          |
+| Accessibility     | {OK / Contrast issue / Focus missing}               | {component}              |
 
 ### Recommendations
 
@@ -172,6 +172,8 @@ Consuming workflow skills parse this structure; preserve field names and enums.
   - Problem: {what is wrong}
   - Fix: {concrete correction with file path}
 ```
+
+Design tasks (no code to review): fill the header fields and Recommendations; put `-` in Findings rows.
 
 ## Avoid
 

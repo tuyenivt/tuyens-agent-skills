@@ -1,6 +1,6 @@
 ---
 name: vue-nuxt-patterns
-description: Nuxt 3 patterns: auto-imports, Nitro server routes, hybrid rendering (SSG/ISR/SSR), useHead/useSeoMeta, server middleware, runtime config.
+description: "Nuxt 3 patterns: auto-imports, Nitro server routes, hybrid rendering (SSG/ISR/SSR), useHead/useSeoMeta, server middleware, runtime config."
 metadata:
   category: frontend
   tags: [nuxt, server-routes, nitro, seo, auto-imports, hybrid-rendering, middleware]
@@ -152,6 +152,8 @@ const config = useRuntimeConfig();
 // config.dbUrl            - server only; undefined on client
 ```
 
+Keep placeholders empty in `nuxt.config.ts`; real values come from env vars at runtime (`NUXT_DB_URL`, `NUXT_SECRET_KEY`, `NUXT_PUBLIC_API_BASE`). Never hardcode secrets in the config file.
+
 ### SSR-Safe Cookies and Header Forwarding
 
 ```vue
@@ -182,6 +184,8 @@ Consuming workflow skills depend on this structure.
 | /              | Prerender | -            | None         | Public    |
 | /products      | ISR       | 3600s        | Server route | Public    |
 | /dashboard     | SSR       | -            | Server route | Protected |
+
+Rendering values: `{Prerender | SWR | ISR | SSR | SPA}`.
 
 ### Server Routes
 

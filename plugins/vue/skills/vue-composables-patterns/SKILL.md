@@ -1,6 +1,6 @@
 ---
 name: vue-composables-patterns
-description: Vue 3.5 composables: extraction rules, ref vs reactive, watchEffect vs watch, lifecycle, cleanup, VueUse integration.
+description: "Vue 3.5 composables: extraction rules, ref vs reactive, watchEffect vs watch, lifecycle, cleanup, VueUse integration."
 metadata:
   category: frontend
   tags: [vue, composables, ref, reactive, watch, watchEffect, lifecycle, vueuse]
@@ -26,6 +26,7 @@ user-invocable: false
 - Accept reactive inputs as `MaybeRefOrGetter<T>`; read with `toValue()`.
 - `watchEffect` for auto-tracked effects; `watch` for explicit sources, old/new values, or lazy execution.
 - Release every subscription/listener/timer via `onUnmounted`, `onCleanup`, or `onWatcherCleanup` (3.5+).
+- Touch browser-only APIs (`window`, `WebSocket`, `IntersectionObserver`) inside `onMounted` or behind `import.meta.client` so the composable stays SSR-safe.
 - Use VueUse for utilities it already ships.
 
 ## Patterns
@@ -107,7 +108,8 @@ watchEffect((onCleanup) => {
   onCleanup(() => ctrl.abort());
 });
 
-// Vue 3.5+ onWatcherCleanup - same idea inside watch callbacks
+// Vue 3.5+ onWatcherCleanup - same idea inside watch callbacks.
+// Must run synchronously: call it before any await, or registration silently fails.
 watch(search, (q) => {
   const ctrl = new AbortController();
   fetchData(q, { signal: ctrl.signal });

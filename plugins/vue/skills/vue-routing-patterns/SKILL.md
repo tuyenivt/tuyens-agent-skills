@@ -45,6 +45,7 @@ Layout via `<slot />` in `layouts/<name>.vue`; page opts in with `definePageMeta
 
 ```ts
 // middleware/auth.ts  -> opt-in via definePageMeta({ middleware: 'auth' })
+// useUserSession is from nuxt-auth-utils; substitute the project's session composable
 export default defineNuxtRouteMiddleware(() => {
   const { loggedIn } = useUserSession();
   if (!loggedIn.value) return navigateTo("/login");
@@ -133,7 +134,8 @@ router.beforeEach((to) => {
     return { path: "/login", query: { redirect: to.fullPath } };
   }
   const roles = to.meta.roles as string[] | undefined;
-  if (roles && !roles.includes(auth.user.role)) return { path: "/forbidden" };
+  // optional chain: user may be null on roles-only routes without requiresAuth
+  if (roles && !roles.includes(auth.user?.role ?? "")) return { path: "/forbidden" };
 });
 ```
 

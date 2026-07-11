@@ -1,6 +1,6 @@
 ---
 name: vue-component-patterns
-description: Vue 3.5 SFC patterns: script setup, typed props/emits/slots, provide/inject, Suspense, Teleport, generics, defineModel, error boundaries.
+description: "Vue 3.5 SFC patterns: script setup, typed props/emits/slots, provide/inject, Suspense, Teleport, generics, defineModel, error boundaries."
 metadata:
   category: frontend
   tags: [vue, components, composition, script-setup, props, slots, provide-inject, teleport]
@@ -155,7 +155,7 @@ Consuming workflow skills depend on this structure.
 
 | Component | Props       | Emits        | Slots       | Pattern                              |
 | --------- | ----------- | ------------ | ----------- | ------------------------------------ |
-| {name}    | {key props} | {key events} | {slot names}| {Standard | Generic | Compound | Async} |
+| {name}    | {key props} | {key events} | {slot names}| {Standard / Generic / Compound / Async} |
 
 ### Issues Found
 
@@ -163,6 +163,8 @@ Consuming workflow skills depend on this structure.
   - Problem: {what is wrong}
   - Fix: {concrete correction}
 ```
+
+Design tasks: fill Component Specifications; write `None` under Issues Found if nothing to flag. Review tasks: fill Issues Found; spec only components whose contract changes.
 
 ## Avoid
 

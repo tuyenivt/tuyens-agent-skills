@@ -1,6 +1,6 @@
 ---
 name: vue-testing-patterns
-description: Vue 3.5 testing: Vitest, Vue Test Utils, composables, Pinia, @nuxt/test-utils, MSW network mocking, Playwright E2E.
+description: "Vue 3.5 testing: Vitest, Vue Test Utils, composables, Pinia, @nuxt/test-utils, MSW network mocking, Playwright E2E."
 metadata:
   category: frontend
   tags: [vue, testing, vitest, vue-test-utils, nuxt-test-utils, msw, playwright, composables]
@@ -23,7 +23,7 @@ user-invocable: false
 - Select by role, label, text, or `data-testid`; not by component internals.
 - Mock at the network boundary with MSW; do not `vi.mock` API modules.
 - Data-fetching components require tests for loading, success, error, and empty states.
-- Test composables through a wrapper component, not by inspecting returned refs in isolation.
+- Run composables inside a host component (`withSetup`) so lifecycle and provide/inject context exist; never call them bare in a test.
 - Tests must be independent: no shared mutable state, no order dependencies, reset MSW handlers per test.
 - Colocate: `ComponentName.test.ts` next to `ComponentName.vue`.
 
@@ -62,7 +62,7 @@ import { createTestingPinia } from "@pinia/testing";
 import { mount } from "@vue/test-utils";
 import { vi } from "vitest";
 
-export function mountWithPlugins(component: any, options: any = {}) {
+export function renderWithProviders(component: any, options: any = {}) {
   return mount(component, {
     global: {
       plugins: [createTestingPinia({ createSpy: vi.fn, initialState: options.initialState })],
@@ -73,13 +73,22 @@ export function mountWithPlugins(component: any, options: any = {}) {
 }
 
 it("calls store action on click", async () => {
-  const wrapper = mountWithPlugins(AddToCartButton, {
+  const wrapper = renderWithProviders(AddToCartButton, {
     props: { product: { id: "1", name: "Widget", price: 10 } },
   });
   const cart = useCartStore();
   await wrapper.get("button").trigger("click");
   expect(cart.addItem).toHaveBeenCalledWith(expect.objectContaining({ id: "1" }));
 });
+```
+
+For routed components, prefer a real router over mocking `useRoute`:
+
+```ts
+const router = createRouter({ history: createMemoryHistory(), routes });
+await router.push("/products/1");
+await router.isReady();
+mount(ProductPage, { global: { plugins: [router] } });
 ```
 
 ### MSW setup
@@ -105,6 +114,8 @@ afterAll(() => server.close());
 Override per scenario with `server.use(...)`; never reach into the module.
 
 ### Four-state data component tests
+
+Plain `mount` works for Vite components fetching over the network. Nuxt components using `useFetch`/`useAsyncData` need `mountSuspended` (see Nuxt section) - plain `mount` has no Nuxt context.
 
 ```ts
 import { flushPromises } from "@vue/test-utils";
@@ -216,9 +227,7 @@ test("user signs in and lands on dashboard", async ({ page }) => {
   - Problem: {what is wrong}
   - Fix: {concrete correction}
 
-### No Issues Found
-
-{State explicitly if testing is adequate; do not omit this section.}
+State "No issues found" explicitly under Issues Found when testing is adequate.
 ```
 
 ## Avoid

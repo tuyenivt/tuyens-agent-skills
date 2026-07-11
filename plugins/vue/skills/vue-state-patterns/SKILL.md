@@ -77,7 +77,7 @@ const { addItem } = cart;                         // actions
 
 ### Composable Store
 
-Module-level `ref()` leaks across requests in SSR. In Nuxt, use `useState(key, init)`:
+Module-level `ref()` leaks across requests in SSR. In Nuxt, use `useState(key, init)`; in a Vite SPA (no SSR) a module-level ref is a valid singleton:
 
 ```ts
 export function useAuth() {
@@ -148,7 +148,7 @@ Consuming workflow skills depend on this structure.
 
 | Store       | Domain   | Persisted | SSR Hydrated |
 | ----------- | -------- | --------- | ------------ |
-| {storeName} | {domain} | {Yes|No}  | {Yes|No}     |
+| {storeName} | {domain} | {Yes / No} | {Yes / No}  |
 
 ### Recommendations
 

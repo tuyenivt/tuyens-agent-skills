@@ -1,6 +1,6 @@
 ---
 name: task-vue-debug
-description: Debug Vue 3.5 / Nuxt 3 / Vite: reactivity, hydration mismatches, template/compile errors, Nuxt auto-imports, stale data, build failures.
+description: Debug Vue 3.5 / Nuxt 3 / Vite - reactivity, hydration mismatches, template/compile errors, Nuxt auto-imports, stale data, build failures.
 agent: vue-tech-lead
 metadata:
   category: frontend
@@ -36,11 +36,11 @@ Use skill: `stack-detect`. Confirm Vue major (3.4 / 3.5+), Nuxt vs Vite, state l
 Accept one of: error message, console output, build/test failure, "wrong result, no error" report. For partial input, ask once for the missing piece:
 
 - Error path: exact console text, file:line, repro steps, dev vs prod
-- No-error path: expected vs observed value, which boundary it crosses (SSR payload -> client store, `useFetch` cache, prop -> child, watcher source), frequency (every nav / intermittent / under load)
+- No-error path: expected vs observed value, which boundary it crosses (SSR payload -> client store, `useFetch` cache, prop -> child, watcher source, server module scope), frequency (every nav / intermittent / under load)
 
 ### STEP 4 - CLASSIFY
 
-Match one row; load the listed skill. Stop at the first match.
+Match one row; load the listed skill. Stop at the first match. If no row matches, do not force the nearest one - name the layer from the evidence, load that layer's skill (Component -> `vue-component-patterns`, Composable -> `vue-composables-patterns`, State -> `vue-state-patterns`, Data Fetching -> `vue-data-fetching`, Routing -> `vue-routing-patterns`, Nuxt/SSR -> `vue-nuxt-patterns`), and report Classification as `Off-table`.
 
 **Reactivity**
 
@@ -80,6 +80,7 @@ Match one row; load the listed skill. Stop at the first match.
 | Auto-import unresolved | File outside `components/`, `composables/`, `utils/` | `vue-nuxt-patterns` |
 | Middleware redirect loop | Unconditional redirect | `vue-routing-patterns` |
 | `readBody` accepts unknown fields | Replace with `readValidatedBody(event, Schema.parse)` | `vue-data-fetching` |
+| One user briefly sees another user's data (intermittent, SSR/prod) | Module-scope variable in a composable is shared across server requests; move to `useState` or Pinia | `vue-state-patterns` |
 
 **Stale data / wrong result, no error** - bug lives at a data boundary
 
@@ -91,12 +92,12 @@ Match one row; load the listed skill. Stop at the first match.
 
 **Build / type / test**
 
-| Symptom | Where to look |
-|---|---|
-| TS / Vite build error | First error in output; later ones cascade. Common: `.vue` path alias missing, CJS/ESM interop |
-| Type X not assignable to Y on prop/emit | Use skill: `vue-component-patterns` |
-| `wrapper.find()` empty / "Cannot access X before initialization" | Async render not awaited (`flushPromises`) or composable called outside `setup` - Use skill: `vue-testing-patterns` |
-| Performance / slow render / leak | Use skill: `frontend-performance` |
+| Symptom | Cause | Skill |
+|---|---|---|
+| TS / Vite build error | First error in output; later ones cascade. Common: `.vue` path alias missing, CJS/ESM interop | - |
+| Type X not assignable to Y on prop/emit | Prop/emit type contract mismatch | `vue-component-patterns` |
+| `wrapper.find()` empty / "Cannot access X before initialization" | Async render not awaited (`flushPromises`) or composable called outside `setup` | `vue-testing-patterns` |
+| Performance / slow render / leak | Render or memory hotspot | `frontend-performance` |
 
 ### STEP 5 - LOCATE
 
@@ -130,7 +131,7 @@ Skip if fix is trivial (typo, missing import).
 
 ```
 ## Classification
-[Reactivity | Hydration | Template | Nuxt | Stale data | Build | Test]: [specific row]
+[Reactivity | Hydration | Template | Nuxt | Stale data | Build | Test | Off-table]: [specific row, or evidence-based layer if Off-table]
 Layer: [Component | Composable | State | Data Fetching | Routing | Build]
 
 ## Root Cause (confidence: HIGH | MEDIUM | LOW)
@@ -150,7 +151,7 @@ If confidence is LOW, add `## Needs Clarification` listing the missing input.
 - [ ] STEP 1: behavioral-principles loaded
 - [ ] STEP 2: stack-detect loaded; Vue major, Nuxt vs Vite, state and data layers identified
 - [ ] STEP 3: full error or wrong-result spec captured; one clarifying question max if partial
-- [ ] STEP 4: classified into one row before reading code; correct atomic skill loaded
+- [ ] STEP 4: classified into one row (or explicit Off-table fallback) before reading code; correct atomic skill loaded
 - [ ] STEP 5: failing file located; layer named; for stale-data, boundaries instrumented
 - [ ] STEP 6: root cause cites file:line; confidence stated
 - [ ] STEP 7: before/after fix is minimal and targets root cause

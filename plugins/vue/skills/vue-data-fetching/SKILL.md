@@ -1,6 +1,6 @@
 ---
 name: vue-data-fetching
-description: Vue 3.5 data fetching: Nuxt useFetch/useAsyncData, TanStack Query Vue, mutations, cache invalidation, optimistic updates.
+description: "Vue 3.5 data fetching: Nuxt useFetch/useAsyncData, TanStack Query Vue, mutations, cache invalidation, optimistic updates."
 metadata:
   category: frontend
   tags: [vue, data-fetching, usefetch, useasyncdata, tanstack-query, suspense, caching]
@@ -43,7 +43,6 @@ user-invocable: false
 const page = ref(1);
 const { data: products, status, error, refresh } = await useFetch("/api/products", {
   query: { page },
-  watch: [page],
 });
 </script>
 
@@ -56,6 +55,8 @@ const { data: products, status, error, refresh } = await useFetch("/api/products
   </template>
 </template>
 ```
+
+Reactive `query`/`params` values (like `page` above) are watched automatically and refetch on change; pass `watch: [source]` only for sources not already in the request.
 
 `useLazyFetch` has the same shape but does not block navigation. Use it for below-the-fold or non-critical sections.
 
@@ -100,9 +101,10 @@ app.use(VueQueryPlugin, {
 Query:
 
 ```ts
+const userId = computed(() => props.userId);
 const { data: user, isLoading, error } = useQuery({
-  queryKey: ["user", () => props.userId],
-  queryFn: () => $fetch(`/api/users/${props.userId}`),
+  queryKey: ["user", userId],
+  queryFn: () => $fetch(`/api/users/${userId.value}`),
 });
 ```
 
@@ -186,13 +188,15 @@ const keys = {
 
 | Mutation       | Invalidates  | Optimistic Update |
 | -------------- | ------------ | ----------------- |
-| {mutationName} | {query keys} | {Yes | No}        |
+| {mutationName} | {query keys} | {Yes / No}        |
 
 ### Issues Found
 
 - [Severity: High | Medium | Low] {description}
   - Problem: {what is wrong}
   - Fix: {concrete correction}
+
+State "No issues found" explicitly when fetching code is correct.
 ```
 
 ## Avoid

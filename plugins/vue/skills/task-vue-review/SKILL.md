@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
-
 # Vue Code Review
 
 Staff-level Vue / Nuxt / Vite code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability subagents in parallel for extra scopes. Runs standalone with full PR/branch resolution.
@@ -262,12 +260,14 @@ For each extra scope, spawn an independent subagent **in parallel** with the mai
 
 **Failure isolation:** if a subagent fails or times out, continue with the rest. Note the missing scope in Summary.
 
+**No-subagent fallback:** if the environment cannot spawn subagents, run each delegate skill inline and sequentially with the same prompt contract, producing each scope's findings in its own Output Format, then continue to Step 6. Note in Summary: `subagents unavailable - scopes ran inline`.
+
 ### Step 6 - Synthesize (only if Step 5 ran)
 
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
 - **Deduplicate** cross-cutting findings (one entry citing all scopes that raised it)
-- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`. Map subagent scales: `Critical` -> `Must`, `High` -> `Recommend`, `Medium` / `Low` -> drop from the merged list (only `Must`, `Recommend`, `Question` are emitted)
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`. Map subagent scales: `Critical` -> `Must`; security `High` -> `Must` (its rubric defines High as merge-blocking); perf / obs `High` -> `Recommend`; `Medium` / `Low` -> drop from the merged list (only `Must`, `Recommend`, `Question` are emitted)
 - **Preserve `file:line` citations** from the originating subagent
 - **Order by intent**, not by scope
 - **Note missing scopes** in Summary as `Scope incomplete: <scope>`
@@ -312,7 +312,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide
+**Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Vue <version> / TypeScript <version>
 **Framework:** Nuxt 3 <version> | Vite + Vue Router <version>
 **Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
@@ -402,7 +402,7 @@ _Omit if no actionable findings._
 - [ ] Phase D: `complexity-review` applied to Vue AI smells (pattern inflation, redundant prop transforms, `watch` misuse, `as any`)
 - [ ] Phase E: naming, co-location, component length, conditional ladders, logging hygiene
 - [ ] Every finding: label + `file:line` + actionable fix; every Must cites system risk; missing tests named, not buried
-- [ ] Steps 5-6: extra scopes ran in parallel; findings merged intent-ordered; missing scope noted; Next Steps tagged `[Implement]`/`[Delegate]`
+- [ ] Steps 5-6: extra scopes ran in parallel (or inline fallback noted in Summary); findings merged intent-ordered; missing scope noted; Next Steps tagged `[Implement]`/`[Delegate]`
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
 - [ ] Step 7: report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
 
@@ -419,4 +419,4 @@ _Omit if no actionable findings._
 - Generic frontend conventions when a Vue idiom exists.
 - Vague feedback or blocking on personal preference.
 - Duplicating perf / security / observability depth - delegate to the subagents.
-- Sequential extra scopes that could parallelize; appending raw subagent reports instead of merging.
+- Sequential extra scopes when subagents are available; appending raw subagent reports instead of merging.

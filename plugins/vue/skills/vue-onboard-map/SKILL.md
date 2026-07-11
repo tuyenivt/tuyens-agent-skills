@@ -20,7 +20,7 @@ Workflow needs Vue-specific orientation: build framework, routing, state, data f
 - Detect build framework first - Nuxt 3 (`nuxt.config.*` + `nuxt` dep) vs Vite SPA (`vite.config.*` + `@vitejs/plugin-vue`). Routing, SSR, and auto-imports diverge.
 - Detect API style - `<script setup>` + Composition API is the modern default; Options API is legacy.
 - Detect state - Pinia (`pinia` dep, `stores/`); Vuex is legacy.
-- Detect package manager from lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`).
+- Detect package manager from lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` / `bun.lockb`).
 - Detect data fetching - Nuxt: `useFetch` / `useAsyncData` / `$fetch`; Vite SPA: TanStack Query Vue, axios, native fetch.
 
 ## Patterns
@@ -41,7 +41,7 @@ Workflow needs Vue-specific orientation: build framework, routing, state, data f
 
 1. Install: `<manager> install` (manager from lockfile; `engines.node` in `package.json`; Nuxt 3 needs Node 18+).
 2. Env: `cp .env.example .env`.
-3. Run: `npm run dev` - Nuxt defaults to `:3000` (SSR + HMR), Vite to `:5173`.
+3. Run: `<manager> run dev` - Nuxt defaults to `:3000` (SSR + HMR), Vite to `:5173`.
 4. Verify: open entry route; Nuxt shows `/_nuxt/` static assets.
 
 ### Key Files
@@ -93,7 +93,7 @@ Workflow needs Vue-specific orientation: build framework, routing, state, data f
 - **Data fetching** - `useFetch` missing `key` / `transform`, mutation invalidation gaps, `$fetch` in setup running twice on SSR: see `vue-data-fetching`.
 - **SSR boundary** - browser APIs in `<script setup>` top level, async setup without `<Suspense>`, `useState` vs `ref` for cross-request state, `.client.ts` / `.server.ts` plugin suffix: see `vue-nuxt-patterns`.
 - **Server -> client leaks** - full ORM rows in `__NUXT__` payload, `v-html` XSS, `NUXT_PUBLIC_*` / `VITE_*` secret leak, Nitro endpoint without Zod/auth: see `task-vue-review-security`.
-- **Nuxt 3.10+ syntax** - prefer `import.meta.server` / `import.meta.client` over legacy `process.server` / `process.client`.
+- **Nuxt context syntax** - prefer `import.meta.server` / `import.meta.client` over legacy `process.server` / `process.client`.
 
 ### First-PR Safe Zones
 
@@ -103,13 +103,13 @@ Riskier: `app.vue` / `App.vue` (every page); `plugins/` (startup); `nuxt.config.
 
 ## Output Format
 
-Inject into `task-onboard` sections:
+Inject into `task-onboard` output sections (names match its template):
 
-- **Stack and Tooling**: package manager, build framework (Nuxt vs Vite SPA), Vue version, TS + vue-tsc, state (Pinia/Vuex), styling, component library, data fetching.
-- **Local Bootstrap**: install command, env file, run command, default port.
-- **Architecture Map**: routing (file-based for Nuxt, config for Vite), components/composables/stores layout, plugins, server API for Nuxt.
-- **Conventions**: `<script setup>`, Pinia store style, styling, auto-imports (Nuxt), data fetching pattern.
-- **Risk Hotspots**: reactive destructuring, Pinia without `storeToRefs`, `v-for` keys, SSR-incompatible code, `useState` vs `ref` in Nuxt.
+- **Stack**: package manager, build framework (Nuxt vs Vite SPA), Vue version, TS + vue-tsc, state (Pinia/Vuex), styling, component library, data fetching.
+- **Local Quickstart**: install command, env file, run command, default port.
+- **Repository Structure / Architecture**: routing (file-based for Nuxt, config for Vite), components/composables/stores layout, plugins, server API for Nuxt.
+- **Key Patterns and Conventions**: `<script setup>`, Pinia store style, styling, auto-imports (Nuxt), data fetching pattern.
+- **Tech Debt and Risk Hotspots**: reactive destructuring, Pinia without `storeToRefs`, `v-for` keys, SSR-incompatible code, `useState` vs `ref` in Nuxt.
 - **First-PR Safe Zones**: scoped to observed structure.
 
 ## Avoid

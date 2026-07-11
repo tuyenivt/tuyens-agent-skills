@@ -40,6 +40,7 @@ Workflow needs Vue-specific signals on a `.vue` SFC, composable, Pinia store, or
 - Top-level bindings auto-exposed to template.
 - `defineProps`, `defineEmits`, `defineModel` (3.4+), `defineExpose`, `defineSlots` are compiler macros, not imports.
 - `defineProps<T>()` + `withDefaults(...)` for typed props with runtime defaults.
+- Top-level `await` makes the component async: plain Vue requires a `<Suspense>` boundary; Nuxt handles it in pages/layouts.
 
 ### Lifecycle (Composition API)
 
@@ -63,8 +64,8 @@ Workflow needs Vue-specific signals on a `.vue` SFC, composable, Pinia store, or
 - File routing: `pages/foo/[id].vue`; params via `useRoute().params.id`.
 - Layouts: `layouts/default.vue`; per-page override `definePageMeta({ layout: '...' })`.
 - Server: `server/api/*.ts`, `server/middleware/*.ts` run on Nitro.
-- Data: `useFetch(url)` SSR-aware (returns `{ data, error, pending, refresh }`); `useAsyncData(key, fn)` custom fetcher; `$fetch` low-level, manual SSR; `useState(key, init)` SSR-safe shared state.
-- Context: `import.meta.server` / `import.meta.client` (3.10+). Older `process.server`/`process.client` still works but is legacy.
+- Data: `useFetch(url)` SSR-aware (returns `{ data, status, error, refresh }`; `pending` is deprecated in favor of `status`); `useAsyncData(key, fn)` custom fetcher; `$fetch` low-level, manual SSR; `useState(key, init)` SSR-safe shared state.
+- Context: `import.meta.server` / `import.meta.client`. Older `process.server`/`process.client` still works but is legacy.
 - `<ClientOnly>` wrapper: renders children only on client; flag for SSR-incompatible components (charts, browser-API widgets).
 
 ### Pitfalls
@@ -88,10 +89,12 @@ Signals consumed by `task-code-explain`:
 - Nuxt: render context per block (server | client | universal), data-fetching composables
 - Pinia: stores used and reactivity-preservation method (`storeToRefs` | direct destructure | full store)
 
-**Non-Obvious Behavior:**
+**Non-Obvious Behavior** (report only behaviors present in the code; typical Vue signals):
 
 - Reactivity loss from destructure/replacement
 - `useFetch` SSR execution with payload rehydration on client
+- Top-level `await` making the component async (Suspense/Nuxt boundary)
+- Async watcher without `onCleanup` racing on rapid re-trigger
 - `<ClientOnly>` skipping SSR for child tree
 - `v-for` key choice (stable id vs index vs missing)
 - `defineModel` two-way binding vs `props` read-only
@@ -103,7 +106,7 @@ Signals consumed by `task-code-explain`:
 - `props` read-only
 - `useFetch` server payload must be serializable
 
-**Change Impact Preview:**
+**Change Impact Preview** (only for constructs actually in the code; typical Vue impacts):
 
 - `ref` <-> `reactive` swap: every consumer's access pattern changes
 - Drop `storeToRefs`: silent template reactivity loss
