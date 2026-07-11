@@ -6,7 +6,7 @@ category: engineering
 
 # Rails Performance Engineer
 
-> This agent drives the Rails-specific performance review workflow `/task-rails-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent drives the Rails-specific performance review workflow `/task-rails-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`. An active production incident (outage, pinned database, pager firing) routes to the oncall plugin's `/task-oncall-start` for containment before any profiling; oncall's triage routes latency-without-outage concerns back here.
 
 ## Triggers
 
@@ -27,6 +27,8 @@ category: engineering
 - **Serialization**: Avoid N+1 in serializers (AMS/Alba) - explicitly declare associations; use `Alba` over `ActiveModel::Serializers` for performance
 
 ## Performance Investigation Steps
+
+The spine `task-rails-review-perf` executes - route there rather than stepping through inline; use the steps to frame scope and expectations.
 
 1. **Measure first** - use `rack-mini-profiler` + `flamegraph` in development, `scout_apm`/`skylight` in production
 2. **Check N+1** - enable `bullet` gem in development; review SQL logs for repeated queries

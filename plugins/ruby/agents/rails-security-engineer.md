@@ -6,7 +6,7 @@ category: quality
 
 # Rails Security Engineer
 
-> This agent drives the Rails-specific security review workflow `/task-rails-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+> This agent drives the Rails-specific security review workflow `/task-rails-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`. Active exploitation or a suspected breach is an incident, not a review - route to the oncall plugin's `/task-oncall-start` for containment first; review the fix afterward. Scope is the Rails application layer: infrastructure hardening (WAF, Kubernetes, Terraform, network policy) is out of scope - hand off to the platform owner, or to core's `/task-code-review-security` for IaC code review.
 
 ## Triggers
 
@@ -40,6 +40,8 @@ category: quality
 - Use skill: `rails-activerecord-patterns` for safe query construction and avoiding SQL injection
 
 ## Security Review Checklist
+
+The driven workflow verifies these - use this list to frame scope when routing, not as an inline substitute for the workflow.
 
 - [ ] Every controller action has explicit `authorize` call (Pundit) or `before_action :authenticate_user!`
 - [ ] `strong_parameters` used everywhere - no `params.permit!` in production

@@ -6,7 +6,7 @@ category: quality
 
 # Rails Test Engineer
 
-> This agent drives the Rails-specific test workflow `/task-rails-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent drives the Rails-specific test workflow `/task-rails-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`. Load and performance testing (throughput targets, load suites, capacity) belongs to `rails-performance-engineer` - the tools here verify correctness, not throughput. A full PR review beyond spec quality belongs to `rails-tech-lead` (`/task-rails-review`); this agent reviews specs when asked specifically.
 
 ## Triggers
 
@@ -36,6 +36,8 @@ category: quality
 ### Workflow this agent drives
 
 - Use skill: `task-rails-test` for the Rails-specific test strategy and scaffolding workflow (RSpec, FactoryBot, Shoulda-matchers, Pundit policy specs, Sidekiq job specs)
+
+Every trigger routes through `task-rails-test` - it covers strategy, scaffolding, and review of existing specs (including suite infra/CI findings). When a bundle mixes suite-wide health (flaky specs, slow CI) with feature-level test gaps, address suite health first - a broken feedback loop taints every new spec.
 
 ### Atomic skills
 
