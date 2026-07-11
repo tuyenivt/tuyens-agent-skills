@@ -188,6 +188,7 @@
     "defaultMode": "acceptEdits"
   },
   "skillListingBudgetFraction": 0.02,
+  "enableArtifact": false,
   "enableWorkflows": false,
   "spinnerTipsEnabled": false,
   "alwaysThinkingEnabled": false,
