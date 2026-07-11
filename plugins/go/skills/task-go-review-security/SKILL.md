@@ -53,7 +53,7 @@ If either finding is exploitable alone, file separately at independent severitie
 | `/task-go-review-security <branch>` | `<branch>` vs base (3-dot) |
 | `/task-go-review-security pr-<N>` | PR head fetched into local branch (user runs fetch) |
 
-When invoked as subagent of `task-code-review-security`, parent passes handle + pre-read artifacts; Step 2 skipped.
+When invoked as subagent (of `task-code-review-security` or `task-go-review`), parent passes handle + pre-read artifacts; Step 2 is skipped and Step 8 returns findings instead of writing - the parent owns the report.
 
 ## Workflow
 
@@ -66,6 +66,8 @@ Detect: data access (GORM / sqlx / database/sql / mixed), JWT library (`golang-j
 ### Step 2 - Resolve Diff
 
 Use skill: `review-precondition-check`. Read diff + log once; reuse. Skip if subagent received handle.
+
+Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
 
 ### Step 3 - Read the Security Surface
 
@@ -166,7 +168,9 @@ Pattern bank in `go-security-patterns`. Diff-level checks:
 
 ### Step 8 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`. Write before ending; print confirmation.
+Standalone only - subagent runs return findings in the Output Format to the parent, which writes the single merged report.
+
+Use skill: `review-report-writer` with `report_type: review-security` and every required input: `report_body`, `branch` (from the handle), refs from the precondition handle, `base_sha`/`head_sha` from Step 2, `stack: go-gin`, `scope: +sec`, `depth: deep` (this workflow always runs full depth), and `mode: full`, `round: 1` - unless `review-security-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`. (The handle's `prior_checkpoint` is keyed to the general review report - do not use it here.) Write before ending; print confirmation.
 
 ## Rules
 
@@ -201,7 +205,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write bef
 - [ ] Password hashing config (bcrypt cost >= 10, argon2 preferred) when in diff
 - [ ] Sentry `BeforeSend` strips PII when in diff
 - [ ] `govulncheck ./...` clean - run separately
-- [ ] Report written via `review-report-writer`; confirmation printed
+- [ ] Report written via `review-report-writer` with all required checkpoint fields (standalone only; subagent runs return findings to the parent); confirmation printed
 
 ## Output Format
 
@@ -255,6 +259,7 @@ _Omit severity sections with no findings. If all omitted: "No security issues fo
 ## Next Steps
 
 Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
+Severity maps to intent: Critical / High -> [Must]; Medium / Low -> [Recommend]; [Question] only when the fix depends on the author's answer.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
@@ -265,6 +270,8 @@ _Omit if no issues found._
 ## Avoid
 
 - `git fetch` / `git checkout` from this workflow
+- Chaining `mode` / `round` off the general review's checkpoint instead of `review-security-<branch>.md`
+- Writing a report when invoked as a subagent - the parent owns it
 - Reporting without an attack scenario ("input not validated" vs "attacker submits `{\"role\":\"admin\"}` and gains admin via mass assignment")
 - Skipping OWASP categories - state "No issues found" per category
 - Generic advice when Go idiom applies ("apply auth at router-group level via `v1.Group(\"/orders\", auth.Required())`", not "add authorization check")

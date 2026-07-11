@@ -71,7 +71,8 @@ func (s *notificationService) NotifyPaymentConfirmed(ctx context.Context, p *Pay
         return s.emailSender.Send(ctx, p.UserEmail, "Payment confirmed")
     })
 
-    var optional sync.WaitGroup
+    var optional sync.WaitGroup // WaitGroup.Go requires Go 1.25+; earlier: Add(1)/defer Done()
+    defer optional.Wait()       // every return path waits - no fire-and-forget on required failure
     for _, sender := range optionalSenders(s, p) {
         optional.Go(func() {
             ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -85,7 +86,6 @@ func (s *notificationService) NotifyPaymentConfirmed(ctx context.Context, p *Pay
     if err := required.Wait(); err != nil {
         return fmt.Errorf("required notification: %w", err)
     }
-    optional.Wait()
     return nil
 }
 ```
@@ -169,20 +169,18 @@ var bufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 buf := bufPool.Get().(*bytes.Buffer); buf.Reset(); defer bufPool.Put(buf)
 ```
 
-### Bounded Concurrency (Semaphore)
+### Bounded Concurrency
 
 ```go
-sem := make(chan struct{}, maxConcurrency)
 g, ctx := errgroup.WithContext(ctx)
+g.SetLimit(maxConcurrency) // Go() blocks until a slot frees - at most n goroutines exist
 for _, item := range items {
-    g.Go(func() error {
-        sem <- struct{}{}
-        defer func() { <-sem }()
-        return process(ctx, item)
-    })
+    g.Go(func() error { return process(ctx, item) })
 }
 return g.Wait()
 ```
+
+Without errgroup, use a `chan struct{}` semaphore acquired *before* `go` - acquiring inside the goroutine spawns all N immediately and ignores ctx while blocked on the semaphore.
 
 ## Edge Cases
 
@@ -190,6 +188,12 @@ return g.Wait()
 - Send on closed channel panics; `v, ok := <-ch` detects close
 - WaitGroup: `Add` before `go`, never inside the goroutine; don't `Add` after `Wait` starts
 - `errgroup.WithContext` cancels all siblings on first error - use separate groups for required + optional
+
+## Leak Diagnosis (debugging)
+
+- `/debug/pprof/goroutine?debug=1` groups goroutines by stack; a count growing under one stack is the leak
+- Stack signature -> cause: `chan send` = receiver gone (guard sends with `select` on `ctx.Done()`); `chan receive` / `for range ch` = sender never closes; `sync.WaitGroup.Wait` = a worker never returns; `select` = no arm can ever fire
+- `goleak.VerifyNone(t)` in tests catches leaks at PR time; `runtime.NumGoroutine()` trend confirms in prod
 
 ## Output Format
 
@@ -204,6 +208,9 @@ return g.Wait()
 
 ### Synchronization
 | Shared State | Protection | Why |
+
+### Leak Diagnosis (debug engagements only)
+| Stack Signature | Count Trend | Root Cause | Fix |
 ```
 
 ## Avoid

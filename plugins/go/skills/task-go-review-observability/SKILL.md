@@ -33,7 +33,7 @@ Stack-specific delegate of `task-code-review-observability` for Go.
 | `standard` | All steps                                                |
 | `deep`     | All steps + SLI/SLO suggestions                          |
 
-Default: `standard`.
+Default: `standard`. Request deep by appending `deep` to the invocation (e.g. `/task-go-review-observability <branch> deep`). Deep's SLI/SLO suggestions are emitted under Recommendations in the report.
 
 ## Invocation
 
@@ -43,7 +43,7 @@ Default: `standard`.
 | `/task-go-review-observability <branch>` | `<branch>` vs base (3-dot) |
 | `/task-go-review-observability pr-<N>` | PR head fetched into local branch (user runs fetch) |
 
-When invoked as subagent, parent passes precondition handle + pre-read artifacts; Step 2 below is skipped.
+When invoked as subagent (e.g. by `task-go-review`), parent passes precondition handle + pre-read artifacts; Step 2 below is skipped and Step 12 returns findings instead of writing - the parent owns the report.
 
 ## Workflow
 
@@ -56,6 +56,8 @@ Detect data access (GORM / sqlx / database/sql / mixed) and messaging (Asynq / K
 ### Step 2 - Resolve Diff
 
 Use skill: `review-precondition-check`. Read diff + log once via `git diff` and `git log`; reuse. Skip if subagent received the handle.
+
+Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
 
 ### Step 3 - Read the Instrumentation Surface
 
@@ -148,7 +150,9 @@ Open files that configure observability so findings cite real lines:
 - [ ] **Gin error middleware calls `sentry.CaptureException(err)`** before transforming
 - [ ] **`sentry.Recover()` deferred at goroutine boundaries** outside request lifecycle (Gin recovery only covers request goroutines)
 
-### Step 11 - Health and SLIs (deep only)
+### Step 11 - Health and SLIs (deep only; exception below)
+
+The health-endpoint checks below run at **all depths** whenever the diff touches health/probe endpoints - a probe regression is a per-PR finding, not a deep-only audit item. The SLI/SLO items remain deep only.
 
 - [ ] Critical journeys have at least one SLI (request rate, success rate, p95 latency)
 - [ ] **Three distinct endpoints, not one `/health`** (single `/health` is a per-PR finding):
@@ -160,7 +164,9 @@ Open files that configure observability so findings cite real lines:
 
 ### Step 12 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-observability`. Write before ending; print confirmation.
+Standalone only - subagent runs return findings in the Output Format to the parent, which writes the single merged report.
+
+Use skill: `review-report-writer` with `report_type: review-observability` and every required input: `report_body`, `branch` (from the handle), refs from the precondition handle, `base_sha`/`head_sha` from Step 2, `stack: go-gin`, `scope: +obs`, `depth` as resolved from the Depth table, and `mode: full`, `round: 1` - unless `review-observability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`. (The handle's `prior_checkpoint` is keyed to the general review report - do not use it here.) Write before ending; print confirmation.
 
 ## Self-Check
 
@@ -179,7 +185,7 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Writ
 - [ ] Library-level scope respected; infra concerns deferred to ops
 - [ ] Depth honored: `standard` ran all; `deep` ran SLI
 - [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend > Question
-- [ ] Report written via `review-report-writer`; confirmation printed
+- [ ] Report written via `review-report-writer` with all required checkpoint fields (standalone only; subagent runs return findings to the parent); confirmation printed
 
 ## Output Format
 
@@ -232,6 +238,7 @@ _Omit empty sections. Within each impact bucket, group by surface when > 2 findi
 ## Next Steps
 
 Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
+Impact maps to intent: High -> [Must]; Medium / Low -> [Recommend]; [Question] when the fix depends on the author's answer (traffic, SLO targets, deployment topology).
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: ops] - [one-line action]
@@ -242,6 +249,8 @@ _Omit if no actionable findings._
 ## Avoid
 
 - `git fetch` / `git checkout` from this workflow
+- Chaining `mode` / `round` off the general review's checkpoint instead of `review-observability-<branch>.md`
+- Writing a report when invoked as a subagent - the parent owns it
 - Reporting gaps without naming the idiom ("add metrics" vs "register `acme_orders_placed_total` Counter at module level via `MustRegister`")
 - Generic advice when a Go SDK or auto-instrumentation exists
 - Reviewing infra (Datadog settings, Grafana panels, log forwarder, on-call) - not in source code

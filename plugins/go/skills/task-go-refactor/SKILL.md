@@ -15,6 +15,8 @@ user-invocable: true
 
 Safe, step-by-step refactor plan for a Go target (handler, service, repository, GORM model, Asynq processor, DTO). Identifies smells; proposes independently-committable steps with `go build` + `go test -race` gates between each.
 
+The deliverable is the plan. Execute it only when the user asks - then follow the step sequence with its gates, one commit per step ("Execution commitments" in the Self-Check bind that phase).
+
 ## When to Use
 
 - Go code-smell resolution
@@ -58,7 +60,7 @@ Refactoring without tests is a rewrite.
 |--------|------------|--------|
 | `Adequate` | Happy path + ≥ 2 boundary outcomes per public entry (validation, auth denial, external failure, not-found), tested against the production engine | Proceed |
 | `Thin` | Happy path + exactly 1 boundary outcome, or correct boundaries but missing engine match | Proceed; plan must include `Step 0 - Coverage prerequisite` |
-| `Inadequate` | No tests, happy-path-only, or tests run only against a different engine than production (SQLite for a Postgres app, in-process Asynq stub) - a green suite cannot certify the refactor | **Refuse Steps 1+.** Output Coverage Gate verdict + recommend `task-go-test` first |
+| `Inadequate` | No tests, happy-path-only, or tests run only against a different engine than production (SQLite for a Postgres app, in-process Asynq stub) - a green suite cannot certify the refactor | **Refuse the step sequence.** Output Coverage Gate verdict + recommend `task-go-test` first |
 
 **Race-detector check.** If the target uses goroutines / channels / `sync`, confirm `go test -race ./<package>/...` is in CI. If not, downgrade status by one tier. Skip when already `Inadequate`.
 
@@ -307,7 +309,7 @@ If step 3 finds an immovable caller, pause: keep the hook and defer, or split ac
 [If Thin: list missing boundary tests; Step 0 covers them.]
 [If Inadequate: state required coverage; recommend `task-go-test` first. **Stop here** - omit Blast Radius, Step Sequence, Verification. Smells Identified and Sibling Smells may appear as preview-only.]
 
-**Coverage prerequisite list shape (when `Thin` or `Inadequate`):** one row per public entry point: `entry-point | outcome | recommended layer`. Outcomes: validation failure, authorization denial, not-found / IDOR, external-collaborator failure. Layers: handler (`httptest` + `gin.New()`), service unit test, repository integration (Testcontainers), Asynq task test.
+**Coverage prerequisite list shape (when `Thin` or `Inadequate` from missing boundary tests):** one row per public entry point: `entry-point | outcome | recommended layer`. Outcomes: validation failure, authorization denial, not-found / IDOR, external-collaborator failure. Layers: handler (`httptest` + `gin.New()`), service unit test, repository integration (Testcontainers), Asynq task test. When the downgrade came from the race-detector check instead, the prerequisite is `go test -race ./<package>/...` in CI + clean locally - no table rows.
 
 ## Smells Identified
 
@@ -327,7 +329,7 @@ _Omit if no other smells in target._
 
 ### Step 0 - Coverage prerequisite _(skip if Adequate)_
 
-- **Change:** add boundary tests from Coverage Gate
+- **Change:** add boundary tests from Coverage Gate (or enable `-race` in CI when the downgrade came from the race-detector check)
 - **Risk:** Low
 - **Test gate:** new tests pass; suite green; `-race` clean if applicable
 - **Rollback:** revert added test files

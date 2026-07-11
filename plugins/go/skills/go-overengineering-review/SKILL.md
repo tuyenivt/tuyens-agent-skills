@@ -7,6 +7,8 @@ metadata:
 user-invocable: false
 ---
 
+# Go Overengineering Review
+
 > Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
@@ -158,6 +160,23 @@ if err := s.notifier.Notify(ctx, order); err != nil { return fmt.Errorf("notify:
 ```
 
 Justified when dispatched to a tracked async system (worker pool, Asynq, errgroup with retry).
+
+#### Pure pass-through layer
+
+A type whose every method only forwards to one dependency. `Redundant because:` the consumer can hold the dependency directly - the layer adds an indirect call and a parallel API to keep in sync.
+
+```go
+// Bad - middleman: all 5 methods look like this
+func (s *WarehouseService) GetByID(ctx context.Context, id int64) (*Item, error) {
+    return s.repo.GetByID(ctx, id)
+}
+```
+
+Justified when sibling methods on the same type carry real logic (API consistency), or the same PR introduces a cross-cutting concern (authz, tx boundary) into the layer.
+
+#### Generic type with one instantiation
+
+`Repo[T]` / `Service[T]` only ever instantiated once. `Redundant because:` single instantiation - inline the concrete type (bad/good pair in go-idioms).
 
 #### Speculative struct tags / config keys
 

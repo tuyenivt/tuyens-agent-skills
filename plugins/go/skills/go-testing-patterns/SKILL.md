@@ -48,7 +48,7 @@ func TestPaymentTransition(t *testing.T) {
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             t.Parallel()
-            err := NewPaymentService(mockRepo(tt.from)).Transition(context.Background(), "pay_123", tt.to)
+            err := NewPaymentService(mockRepo(tt.from)).Transition(t.Context(), "pay_123", tt.to)
             if tt.wantErr {
                 require.Error(t, err)
                 assert.ErrorIs(t, err, tt.errTarget)
@@ -135,8 +135,7 @@ func TestUserRepo_Integration(t *testing.T) {
     if testing.Short() { t.Skip() }
     ctx := context.Background()
 
-    pg, err := postgres.RunContainer(ctx,
-        testcontainers.WithImage("postgres:16-alpine"),
+    pg, err := postgres.Run(ctx, "postgres:16-alpine", // Run since v0.29; RunContainer+WithImage is deprecated
         postgres.WithDatabase("testdb"),
         postgres.WithUsername("test"),
         postgres.WithPassword("test"),
@@ -176,14 +175,21 @@ t.Run("duplicate returns existing", func(t *testing.T) {
 })
 ```
 
-### TestMain
+### TestMain (shared container)
+
+One container per test function costs minutes at suite scale. Share it per package; isolate tests with a per-test transaction rolled back in `t.Cleanup`, or TRUNCATE between tests.
 
 ```go
+var testDB *sqlx.DB // package-shared
+
 func TestMain(m *testing.M) {
     gin.SetMode(gin.TestMode)
-    pool, resource := setupTestDatabase()
+    ctx := context.Background()
+    pg, err := postgres.Run(ctx, "postgres:16-alpine")
+    if err != nil { log.Fatal(err) }
+    testDB = mustSetupDB(pg) // migrations run once
     code := m.Run()
-    pool.Purge(resource)
+    _ = testcontainers.TerminateContainer(pg)
     os.Exit(code)
 }
 ```
@@ -202,12 +208,11 @@ func BenchmarkHashPassword(b *testing.B) {
 ### Deterministic Concurrency (testing/synctest)
 
 ```go
-synctest.Run(func() {
+synctest.Test(t, func(t *testing.T) { // stable in Go 1.25; the pre-1.25 experiment's synctest.Run is gone
     calls := 0
     fn := Debounce(func() { calls++ }, 100*time.Millisecond)
     fn(); fn(); fn()
-    synctest.Wait()
-    time.Sleep(150 * time.Millisecond)
+    time.Sleep(150 * time.Millisecond) // virtual time inside the bubble - returns instantly
     synctest.Wait()
     assert.Equal(t, 1, calls)
 })
@@ -218,6 +223,7 @@ synctest.Run(func() {
 - testcontainers: use `MappedPort()` / `ConnectionString()`, never hardcode ports
 - `t.Cleanup` runs LIFO - register container teardown before DB close
 - `gin.SetMode(gin.TestMode)` in `TestMain` to suppress debug noise
+- `t.Context()` (Go 1.24+) over `context.Background()` in tests - but it is already cancelled when `t.Cleanup` funcs run, so container/DB teardown needs its own context
 
 ## Output Format
 

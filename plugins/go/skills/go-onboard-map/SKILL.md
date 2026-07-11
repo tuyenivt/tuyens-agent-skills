@@ -22,12 +22,14 @@ user-invocable: false
 - Identify framework: Gin / Echo / Chi / Fiber / gorilla / net/http
 - Identify DB: GORM / sqlx / pgx / database/sql + driver / ent / sqlc
 - Identify layout convention (drives where new code lands); when two fit, report the dominant one and note the secondary in parentheses
+- Grep `//go:build` tags: tagged files and tests are invisible to default builds - report required `-tags` (integration suites are commonly gated this way)
 
 ## Build Inventory
 
 | File              | What it tells you                                |
 | ----------------- | ------------------------------------------------ |
 | `go.mod`          | Module path, Go version, direct dependencies     |
+| `go.work`         | Multi-module monorepo; local module resolution   |
 | `go.sum`          | Dependency checksums                             |
 | `Makefile` / `Taskfile.yml` | Project commands                       |
 | `Dockerfile`      | Multi-stage build (builder -> distroless common) |
@@ -41,7 +43,7 @@ user-invocable: false
 3. Local services: `compose.yml`; env vars in `.env.example`
 4. Migrations: golang-migrate (`migrate up`), goose, `AutoMigrate` (footgun), or sqlc + golang-migrate
 5. Run: `go run ./cmd/<binary>` / `make run` / `air` for hot reload
-6. Verify: `/health` or `/healthz`
+6. Verify: `/health` or `/healthz`; if neither exists, first routed GET
 
 ## Package Layout
 
@@ -95,7 +97,7 @@ Generic safe zones (replace with concrete equivalents from the tree):
 - New handler in `internal/handler/`
 - New service method following existing constructor pattern
 - New `_test.go` colocated
-- New `migrations/<timestamp>_*.sql`
+- New `migrations/<version>_<desc>.up.sql` + `.down.sql` pair (golang-migrate format - see go-migration-safety)
 
 Riskier: `cmd/<binary>/main.go`, middleware (applies globally), pool config, goroutine / context patterns.
 
@@ -155,7 +157,7 @@ Inject into `task-onboard` as Markdown sections in this exact order and shape. F
 ### First-PR Safe Zones
 - New endpoint: add handler in `internal/payments/handler.go`, wire in `internal/server/router.go`
 - New Asynq task: add type + handler in `internal/payments/tasks.go`
-- New migration: `migrations/<timestamp>_<desc>.sql` (golang-migrate format)
+- New migration: `migrations/000042_<desc>.up.sql` + `.down.sql` (golang-migrate format)
 - Avoid for first PR: `cmd/*/main.go`, `internal/server/middleware/`, `internal/db/`
 ```
 

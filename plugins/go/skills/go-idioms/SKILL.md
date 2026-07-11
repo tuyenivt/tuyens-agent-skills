@@ -23,6 +23,9 @@ user-invocable: false
 - Functional options (`WithTimeout(d)`-style) for constructors with > 2 optional knobs; positional struct config for the rest
 - Generics where they collapse repetitive type-switched code; never to abstract a single concrete type
 - New type (`type UserID int64`) over `type` alias when the boundary matters (compile-time prevents passing `OrderID` where `UserID` is expected)
+- Receivers: pointer when a method mutates, the type holds a lock, or copying is costly; value for small immutable types. If any method needs a pointer, make them all pointer - except `Scan`, which `database/sql` forces to pointer regardless
+- Constructors return concrete types; consumers define the interfaces they need ("accept interfaces, return structs")
+- Never store `context.Context` in a struct field - contexts are call-scoped and structs outlive them; pass ctx as the first parameter
 - Embedding for forwarding (`io.Reader` into a wrapper), not for inheritance; if you wanted overrides, use composition + method dispatch
 - Implement `String()`, `MarshalJSON`, `UnmarshalJSON`, `Value`/`Scan` (`database/sql`) for types that cross boundaries (logs, JSON, DB)
 - `go:embed` for SQL migrations, templates, static assets - ship them in the binary
@@ -83,6 +86,7 @@ type User struct {
 - `json:"-"` to drop a field from JSON (passwords, internal IDs)
 - `json:",omitempty"` only when the zero value is semantically "absent" (often surprising for `int`)
 - `mapstructure:"..."` only when the field is read from `viper` / `envconfig`; do not use `mapstructure.Decode(req.Body, &domain)` (see `go-security-patterns`)
+- Tag key follows the consumer: Gin binds with `binding:`, the standalone validator reads `validate:` - the wrong key silently skips validation
 
 ### Functional options
 
@@ -244,6 +248,8 @@ type Token string
 func (t Token) LogValue() slog.Value { return slog.StringValue("[REDACTED]") }
 ```
 
+`slog` prefers `LogValue()`, but `fmt.Println`/`%v` still call `String()` - a secret type must redact in both, or implement only `LogValue` and no `String`.
+
 ### `go:embed`
 
 ```go
@@ -289,6 +295,8 @@ When invoked from a review workflow, emit one finding block per non-idiomatic sh
 - `defer f.Close()` inside `for` - wrap in an inner func
 - Embedding to "inherit" - Go has no virtual dispatch; use composition
 - `init()` doing real work - constructor injection is the Go answer
+- `context.Context` as a struct field - pass it per call
+- Constructors returning same-package interfaces - return the struct; interfaces belong to consumers
 - `interface{}` / `any` to silence a type error - find the actual type
 - Stringer hand-written when `go generate stringer -type=...` exists
 - `time.Sleep` for synchronization - channels or `testing/synctest`

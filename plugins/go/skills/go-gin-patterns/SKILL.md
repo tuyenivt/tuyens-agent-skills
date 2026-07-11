@@ -35,6 +35,7 @@ user-invocable: false
 ```go
 func NewRouter(cfg *Config, deps *Dependencies) *gin.Engine {
     r := gin.New()
+    r.SetTrustedProxies(cfg.TrustedProxies) // default trusts every proxy - ClientIP() is spoofable via X-Forwarded-For until set
     r.Use(middleware.Logger(), middleware.Recovery(), middleware.ErrorHandler())
 
     r.GET("/health", handlers.Health)
@@ -78,13 +79,15 @@ func CreateUser(svc UserService) gin.HandlerFunc {
     }
 }
 
-// Query params with defaults
+// Query params - `default` fills omitted fields BEFORE validation, so bare GET /users passes gte=1
 type ListUsersQuery struct {
-    Page     int    `form:"page"   binding:"gte=1"`
-    PageSize int    `form:"size"   binding:"gte=1,lte=100"`
+    Page     int    `form:"page,default=1"  binding:"gte=1"`
+    PageSize int    `form:"size,default=20" binding:"gte=1,lte=100"`
     Status   string `form:"status" binding:"omitempty,oneof=active inactive"`
 }
 ```
+
+Raw validator `err.Error()` names Go struct fields - acceptable internally; public APIs map it to a ValidationError (see go-error-handling).
 
 ### Response Envelope
 
@@ -151,6 +154,8 @@ func StripeWebhook(svc PaymentService) gin.HandlerFunc {
 }
 ```
 
+`webhook.ConstructEvent` is Stripe's SDK; generic providers verify with `hmac.New(sha256.New, secret)` + `hmac.Equal(expected, received)` - never `==` on MACs.
+
 ### Custom Middleware
 
 ```go
@@ -187,6 +192,8 @@ func PerClientRateLimit(rps int) gin.HandlerFunc {
     }
 }
 ```
+
+The `clients` map grows one entry per unique key forever - scanner traffic makes it a slow leak. Evict via a last-seen sweep or LRU. Anything keyed on `ClientIP()` also requires `SetTrustedProxies` (see Router Structure).
 
 ### Health and Readiness
 

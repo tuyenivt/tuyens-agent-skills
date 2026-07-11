@@ -70,6 +70,8 @@ if err != nil { return nil, err }
 if err != nil { return nil, fmt.Errorf("GetUser id=%d: %w", id, err) }
 ```
 
+Error strings: lowercase, no trailing punctuation. Wrap context names the operation (`"GetUser id=%d"`), never "failed to ..." - the chain already implies failure and the prefix stutters when every layer adds it.
+
 ### Layer Mapping
 
 Each layer wraps with its context; the handler maps to HTTP:
@@ -111,8 +113,11 @@ func (g *stripeGateway) Charge(ctx context.Context, req ChargeRequest) error {
             return fmt.Errorf("charge %s: %w", req.ID, ErrRetryable)
         }
     }
-    if ctx.Err() != nil {
-        return fmt.Errorf("charge %s: %w", req.ID, ErrGatewayTimeout)
+    if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+        return fmt.Errorf("charge %s: %w: %w", req.ID, ErrRetryable, ErrGatewayTimeout)
+    }
+    if ctx.Err() != nil { // Canceled: caller gave up - never retryable
+        return fmt.Errorf("charge %s: %w", req.ID, ctx.Err())
     }
     return fmt.Errorf("charge %s: %w", req.ID, err)
 }
@@ -126,6 +131,22 @@ return fmt.Errorf("%w: %w", ErrRetryable, cause)
 // caller: if errors.Is(err, ErrRetryable) { retry }
 ```
 
+### Aggregate Errors (`errors.Join`, Go 1.20+)
+
+Collect-all semantics (batch items, multi-field validation, parallel results):
+
+```go
+var errs []error
+for _, rec := range records {
+    if err := process(rec); err != nil {
+        errs = append(errs, fmt.Errorf("record %s: %w", rec.ID, err))
+    }
+}
+return errors.Join(errs...) // nil when errs is empty
+```
+
+`errors.Is`/`As` traverse the joined tree - callers still match individual sentinels inside.
+
 ### Gin Centralized Error Middleware
 
 ```go
@@ -135,21 +156,29 @@ func ErrorMiddleware() gin.HandlerFunc {
         if len(c.Errors) == 0 { return }
 
         err := c.Errors.Last().Err
-        slog.Error("unhandled error", "err", err)
+        if c.Writer.Written() { // handler already responded - a second write corrupts the response
+            slog.ErrorContext(c.Request.Context(), "error after response written", "err", err)
+            return
+        }
 
+        status, msg := http.StatusInternalServerError, "internal server error"
         var ve *ValidationError
         switch {
         case errors.As(err, &ve):
-            c.JSON(http.StatusBadRequest, gin.H{"error": ve.Error()})
+            status, msg = http.StatusBadRequest, ve.Error()
         case errors.Is(err, ErrNotFound):
-            c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+            status, msg = http.StatusNotFound, "not found"
         case errors.Is(err, ErrConflict):
-            c.JSON(http.StatusConflict, gin.H{"error": "conflict"})
+            status, msg = http.StatusConflict, "conflict"
         case errors.Is(err, ErrGatewayTimeout):
-            c.JSON(http.StatusServiceUnavailable, gin.H{"error": "service temporarily unavailable"})
-        default:
-            c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+            status, msg = http.StatusServiceUnavailable, "service temporarily unavailable"
         }
+        if status >= 500 { // expected conditions (4xx) are not error-level noise
+            slog.ErrorContext(c.Request.Context(), "request failed", "err", err)
+        } else {
+            slog.WarnContext(c.Request.Context(), "request rejected", "err", err)
+        }
+        c.JSON(status, gin.H{"error": msg})
     }
 }
 ```

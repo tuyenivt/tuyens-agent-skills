@@ -75,7 +75,8 @@ func HandleProcessOrder(repo OrderRepository, svc FulfillmentService) asynq.Hand
     return func(ctx context.Context, t *asynq.Task) error {
         var p tasks.ProcessOrderPayload
         if err := json.Unmarshal(t.Payload(), &p); err != nil {
-            return fmt.Errorf("unmarshal payload: %w", asynq.SkipRetry) // permanent
+            // carry the cause - bare SkipRetry leaves a blank dead-task log
+            return fmt.Errorf("unmarshal payload: %v: %w", err, asynq.SkipRetry) // permanent
         }
 
         order, err := repo.FindByID(ctx, p.OrderID)
@@ -134,6 +135,7 @@ client, err := kgo.NewClient(
     kgo.SeedBrokers(brokers...),
     kgo.ConsumerGroup(groupID),
     kgo.ConsumeTopics(topic),
+    kgo.DisableAutoCommit(), // default autocommits polled offsets every 5s - even for records still in the handler
 )
 if err != nil { return fmt.Errorf("kafka client: %w", err) }
 defer client.Close()
@@ -146,11 +148,12 @@ for {
     })
     fetches.EachRecord(func(r *kgo.Record) {
         if err := handler(r.Value); err != nil {
-            slog.Error("handle record", "topic", r.Topic, "err", err)
-            // decide: DLQ, skip, or stop
+            // resolve BEFORE the batch commit: DLQ-produce or stop.
+            // Committing a failed record's offset is a silent skip.
+            produceToDLQ(ctx, client, r, err)
         }
     })
-    client.CommitUncommittedOffsets(ctx) // commit after successful handler
+    client.CommitUncommittedOffsets(ctx) // every record in the batch handled or DLQ'd
 }
 ```
 
@@ -191,12 +194,15 @@ err := s.db.RunInTx(ctx, func(tx pgx.Tx) error {
     })
 })
 
-// Relay (separate goroutine; idempotent under double-delivery)
-events, _ := r.outboxRepo.FetchPending(ctx, 100)
+// Relay (separate goroutine/process; consumers stay idempotent under double-delivery).
+// ClaimPending uses FOR UPDATE SKIP LOCKED (see go-data-access) - bare SELECT double-publishes
+// every event once the relay runs more than one replica.
+events, _ := r.outboxRepo.ClaimPending(ctx, 100)
 for _, ev := range events {
-    if err := r.kafka.Produce(ev.EventType, ev.Payload); err != nil {
+    // ProduceSync: async Produce returns before broker ack - marking published on a nack loses the event
+    if err := r.kafka.ProduceSync(ctx, recordFor(ev)).FirstErr(); err != nil {
         slog.Error("kafka produce", "id", ev.ID, "err", err)
-        continue
+        continue // not marked - claim expiry returns it for retry
     }
     r.outboxRepo.MarkPublished(ctx, ev.ID)
 }

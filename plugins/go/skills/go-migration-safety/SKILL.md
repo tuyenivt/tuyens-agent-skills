@@ -25,7 +25,7 @@ user-invocable: false
 - Never mix DDL and DML in one file
 - Never write a destructive `down` (DROP COLUMN/TABLE with data) without backup or compensating migration
 - Zero-downtime DDL: add before delete; expand-contract, never in-place rename
-- `CREATE INDEX CONCURRENTLY` and `VALIDATE CONSTRAINT` cannot run in a transaction - add `-- migrate: no transaction` at the top
+- golang-migrate does **not** wrap migrations in transactions: `CREATE INDEX CONCURRENTLY` / `VALIDATE CONSTRAINT` just need their own file (no directive exists - `NO TRANSACTION` annotations belong to goose/dbmate). Conversely, multi-statement DDL that must be atomic needs explicit `BEGIN; ... COMMIT;` in the file - otherwise a mid-file failure leaves partial DDL plus a dirty version
 
 ## File Naming
 
@@ -55,17 +55,21 @@ PostgreSQL 11+: `ADD COLUMN ... NOT NULL DEFAULT 'value'` is instant for **new**
 -- Migration N: nullable column
 ALTER TABLE users ADD COLUMN phone VARCHAR(20);
 
--- Migration N+1: backfill in batches
-UPDATE users SET phone = '' WHERE phone IS NULL;
+-- Migration N+1: backfill in batches (see Large backfills - one UPDATE over a big table
+-- holds a long transaction and bloats WAL)
+UPDATE users SET phone = '' WHERE phone IS NULL AND id BETWEEN 1 AND 100000;
+-- ...repeat per batch (app-driven loop or repeated migration files)
 
--- Migration N+2: NOT VALID skips existing rows (instant)
--- migrate: no transaction
+-- Migration N+2 (own file): NOT VALID skips existing rows (instant)
 ALTER TABLE users ADD CONSTRAINT users_phone_not_null
     CHECK (phone IS NOT NULL) NOT VALID;
 
--- Migration N+3: VALIDATE uses ShareUpdateExclusiveLock (allows reads/writes)
--- migrate: no transaction
+-- Migration N+3 (own file): VALIDATE uses ShareUpdateExclusiveLock (allows reads/writes)
 ALTER TABLE users VALIDATE CONSTRAINT users_phone_not_null;
+
+-- Migration N+4 (PG12+): instant - the planner proves it from the validated CHECK
+ALTER TABLE users ALTER COLUMN phone SET NOT NULL;
+ALTER TABLE users DROP CONSTRAINT users_phone_not_null;
 ```
 
 ### CHECK Constraints (status / enum)
@@ -75,7 +79,7 @@ Same NOT VALID + VALIDATE pattern. To add a new status value, drop and re-create
 ### Indexes (always CONCURRENTLY in prod)
 
 ```sql
--- migrate: no transaction
+-- own file - golang-migrate runs it without a transaction, which CONCURRENTLY requires
 CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
 
 -- down
@@ -139,6 +143,7 @@ migrate up   # catches non-idempotent migrations
 ## Edge Cases
 
 - **Dirty state**: failed mid-migration leaves the version "dirty" - use `force <version>` to reset, fix, re-run
+- **Killed CONCURRENTLY**: a failed/cancelled `CREATE INDEX CONCURRENTLY` leaves an INVALID index (`pg_index.indisvalid = false`); re-running fails "already exists". `DROP INDEX CONCURRENTLY IF EXISTS` it first - a plain DROP takes AccessExclusiveLock
 - **Empty down**: when a migration is truly irreversible, write a down that errors with an explanation rather than leaving it blank
 - **Large backfills**: batch via `WHERE id BETWEEN ... AND ...` to avoid long-running transactions and WAL bloat
 - **Adding a CHECK value**: requires DROP + ADD + VALIDATE - plan for it when designing status columns

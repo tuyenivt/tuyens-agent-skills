@@ -123,12 +123,9 @@ Beyond hashing the password, the login handler is the credential-stuffing target
 if !rl.Allow(c.ClientIP(), req.Email) { c.AbortWithStatus(http.StatusTooManyRequests); return }
 
 // Always bcrypt - even when the user doesn't exist - so timing doesn't leak existence
-var hash []byte
-if u, err := repo.FindByEmail(ctx, req.Email); err == nil {
-    hash = u.PasswordHash
-} else {
-    hash = dummyBcryptHash // pre-computed at startup
-}
+u, err := repo.FindByEmail(ctx, req.Email)
+hash := dummyBcryptHash // pre-computed at startup
+if err == nil { hash = u.PasswordHash }
 if err := bcrypt.CompareHashAndPassword(hash, []byte(req.Password)); err != nil || u == nil {
     c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"}) // generic, no "user not found"
     return
@@ -265,7 +262,12 @@ db.NamedExecContext(ctx, "UPDATE users SET role=:role WHERE id=:id", args)
 target := filepath.Join(baseDir, c.Param("filename"))
 os.Open(target)
 
-// Good - clean + base-prefix check
+// Good (Go 1.24+) - os.Root makes escape impossible at the API level
+root, err := os.OpenRoot(baseDir)
+if err != nil { return err }
+f, err := root.Open(c.Param("filename")) // traversal or symlink escape -> error
+
+// Fallback (pre-1.24) - clean + base-prefix check
 cleaned := filepath.Clean(c.Param("filename"))
 target := filepath.Join(baseDir, cleaned)
 if !strings.HasPrefix(target, filepath.Clean(baseDir)+string(filepath.Separator)) {
@@ -360,17 +362,19 @@ When a user-controlled value flows into an outbound URL/host:
    - loopback: `127.0.0.0/8`, `::1`
    - RFC1918: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
    - link-local: `169.254.0.0/16`, `fe80::/10`
-4. Dial against the resolved IP (not re-resolved at connect time)
+4. Enforce the block **in the dialer**, on the actual connection address - a pre-flight `LookupIP` check is defeated by DNS rebinding (short TTL, alternating answers between check and dial). Pre-flight checks are for friendly error messages only.
 
 ```go
-ips, err := net.LookupIP(host)
-if err != nil { return ErrBadHost }
-for _, ip := range ips {
-    if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+dialer := &net.Dialer{Control: func(network, address string, _ syscall.RawConn) error {
+    host, _, _ := net.SplitHostPort(address) // address is the RESOLVED IP:port
+    ip := net.ParseIP(host)
+    if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
         ip.Equal(net.ParseIP("169.254.169.254")) {
         return ErrBlocked
     }
-}
+    return nil
+}}
+client := &http.Client{Transport: &http.Transport{DialContext: dialer.DialContext}}
 ```
 
 Cap response size with `http.MaxBytesReader` on the response body to defeat oversized-response DoS. Re-check on every redirect via a custom `CheckRedirect`.

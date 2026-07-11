@@ -36,7 +36,7 @@ Not for: single-file edits, bugfixes (`task-go-debug`), frontend.
 
 Use skill: `stack-detect`. Confirm Go/Gin and project layout.
 
-Ask before writing code, grouped so each cluster surfaces its own follow-ups:
+Ask before writing code, grouped so each cluster surfaces its own follow-ups. Skip clusters the feature does not touch (no External questions for a pure CRUD):
 
 **Domain**
 1. Feature description and primary use case
@@ -94,6 +94,8 @@ Concurrency: Use skill: `go-concurrency`.
 Background jobs: Use skill: `go-messaging-patterns`. Dispatch after `Transaction` returns nil.
 External APIs: wrap with `context.WithTimeout`; classify at the gateway; define interface for testability.
 
+External mutations (charge, refund, provision): never inside the tx closure. Commit an intent state (e.g. `executing`) first, then make the call - via a post-commit job when retries/backoff are needed, inline when the caller waits on the result. The outcome re-enters as a state transition (webhook, poll, or job completion moves `executing` -> `succeeded`/`failed`); a crash between commit and call is then visible and recoverable instead of silent.
+
 ### STEP 6 - HTTP LAYER
 
 Use skill: `go-gin-patterns`. Use skill: `go-security-patterns` for the request DTO (no privilege-bearing fields, mass-assignment guard), default-deny router group, and JWT middleware shape. `ShouldBindJSON`, response envelope, pagination. Map domain errors via centralized middleware:
@@ -107,6 +109,8 @@ Use skill: `go-gin-patterns`. Use skill: `go-security-patterns` for the request 
 | Gone (expired token, deleted resource) | 410 |
 | Invalid transition | 422 |
 | External timeout | 503 |
+| Provider rejected the operation (decline, invalid account) | 422 |
+| Provider malfunction (5xx, malformed response) | 502 |
 | Already-processed webhook event | 200 (return success so provider stops retrying) |
 
 The webhook "200 on duplicate" mapping is counterintuitive but correct: Stripe, GitHub, and similar providers retry on any non-2xx, so a duplicate-detection 409 produces a retry storm. Treat duplicate as a no-op success.
@@ -129,7 +133,8 @@ Run `go build ./...`, `go test -race ./...`, `go vet ./...`. Fix failures before
 - Webhook-only: skip CRUD; signature middleware + dedicated handler
 - State transitions: service validation + DB CHECK
 - Idempotency: unique key + `ON CONFLICT` + service guard
-- Bulk: `db.Transaction` + batch create + size limit
+- Bulk: batch writes + input size limit; one tx when all-or-nothing, tx per chunk when a partial import must be resumable
+- Worker-only (no HTTP): skip STEP 6; omit Endpoints from the output; test the job handler instead of httptest
 
 ## Output Format
 

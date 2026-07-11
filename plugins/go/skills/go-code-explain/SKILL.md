@@ -38,13 +38,16 @@ user-invocable: false
 | `sync.WaitGroup`          | `Add(1)` must precede `go fn()`, not inside the goroutine                               |
 | `sync.Mutex`              | Missing `Unlock` (use `defer`); copying a struct with a mutex is a `go vet` error       |
 | `sync/atomic`             | Mixing atomic and non-atomic on the same value is a race                                |
+| `errgroup.Group`          | `Wait()` returns first error; `WithContext` cancels siblings on first failure           |
+| `go func(){...}()` in loop | Pre-1.22 shares one loop variable (pass as arg); 1.22+ per-iteration - check the go.mod `go` directive |
 
 ### Context Propagation
 
 - `WithCancel`/`WithTimeout`/`WithDeadline` - call `cancel()` (usually via `defer`) or leak the context tree
 - `ctx.Done()` channel closes on cancel/deadline; use in `select` to abort
 - `ctx.Value(key)` - key should be a private type (`type ctxKey struct{}`) to avoid collisions
-- DB drivers, `http.Client`, Gin all support context. Passing `context.Background()` to a handler-spawned goroutine breaks request cancellation
+- DB drivers, `http.Client`, Gin all support context
+- Request ctx is cancelled when the handler returns. Work that must outlive the response needs `context.WithoutCancel(ctx)` (1.21+); `context.Background()` also detaches but drops request values/trace. Propagating the request ctx into a post-response goroutine cancels it immediately
 
 ### Defer
 
@@ -77,7 +80,7 @@ user-invocable: false
 - `c.ShouldBindJSON(&obj)` parses body using struct tags + `binding:"required"`
 - Middleware: `c.Next()` runs the next handler; omitting it stops the chain
 - `c.Request.Context()` is the request's context - propagate to DB and downstream
-- Goroutines spawned from a handler must use `c.Copy()` - the original is invalid after handler returns
+- Goroutines that read the gin context must use `c.Copy()` - the original is invalid after handler returns
 
 ### GORM Specifics
 
@@ -91,6 +94,7 @@ user-invocable: false
 
 - `db.Get(&user, "...")` single row; `db.Select(&users, "...")` slice
 - `db:"column"` tags map columns
+- `Get`/`GetContext` return `sql.ErrNoRows` on empty result - check with `errors.Is`
 - Use `?` / `$1` placeholders - concatenation is SQL injection
 - `defer tx.Rollback()` after `Begin` (no-op if committed)
 
@@ -116,6 +120,7 @@ Inject signals into `task-code-explain` sections:
 - Closing a channel from the wrong side
 - `defer` arg evaluation at defer time
 - Interface holding a typed nil != `nil`
+- Loop-variable capture in goroutines (pre-1.22 vs 1.22+)
 - GORM soft-delete auto-filter
 - Default `http.Client` no timeout
 - Gin context invalidation after handler return (need `c.Copy()`)

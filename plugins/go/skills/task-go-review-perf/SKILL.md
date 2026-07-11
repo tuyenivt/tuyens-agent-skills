@@ -29,7 +29,7 @@ Go-aware review naming GORM `Preload` / `Joins` / `Select`, sqlx `In` / `NamedEx
 | Depth | When | Runs |
 |-------|------|------|
 | `standard` | Default | All steps |
-| `deep` | Profiling-driven with pprof / OTel / benchmark data | All + capacity guidance + load plan |
+| `deep` | Profiling-driven with pprof / OTel / benchmark data | All + capacity guidance + load plan (emitted as a `### Capacity & Load Plan` subsection under Recommendations) |
 
 ## Invocation
 
@@ -39,7 +39,7 @@ Go-aware review naming GORM `Preload` / `Joins` / `Select`, sqlx `In` / `NamedEx
 | `/task-go-review-perf <branch>` | `<branch>` vs base (3-dot) |
 | `/task-go-review-perf pr-<N>` | PR head fetched into local branch `pr-<N>` |
 
-When invoked as subagent, Step 2 is skipped and pre-read diff is reused.
+When invoked as subagent (e.g. by `task-go-review`), Step 2 is skipped, the pre-read diff is reused, and Step 11 returns findings instead of writing - the parent owns the report.
 
 ## Workflow
 
@@ -50,6 +50,8 @@ Use skill: `stack-detect`. Accept pre-confirmed from parent. Record `Data Access
 ### Step 2 - Resolve Diff
 
 Use skill: `review-precondition-check`. Read diff + log once; reuse. Skip if subagent received handle.
+
+Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
 
 ### Step 3 - Read the Performance Surface
 
@@ -165,7 +167,9 @@ Beyond presence/absence -> `task-go-review-observability` owns it.
 
 ### Step 11 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-perf`. Write before ending; print confirmation.
+Standalone only - subagent runs return findings in the Output Format to the parent, which writes the single merged report.
+
+Use skill: `review-report-writer` with `report_type: review-perf` and every required input: `report_body`, `branch` (from the handle), refs from the precondition handle, `base_sha`/`head_sha` from Step 2, `stack: go-gin`, `scope: +perf`, `depth` as resolved from the Depth table, and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`. (The handle's `prior_checkpoint` is keyed to the general review report - do not use it here.) Write before ending; print confirmation.
 
 ## Self-Check
 
@@ -185,7 +189,7 @@ Use skill: `review-report-writer` with `report_type: review-perf`. Write before 
 - [ ] Findings ordered by impact; quick wins separated from structural
 - [ ] Depth honored: `standard` ran all; `deep` adds capacity + load plan
 - [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend > Question
-- [ ] Report written via `review-report-writer`; confirmation printed
+- [ ] Report written via `review-report-writer` with all required checkpoint fields (standalone only; subagent runs return findings to the parent); confirmation printed
 
 ## Output Format
 
@@ -220,6 +224,7 @@ _Omit empty sections._
 ## Next Steps
 
 Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
+Impact maps to intent: High -> [Must]; Medium / Low -> [Recommend]; [Question] when impact depends on data only the author has (row counts, traffic).
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]
@@ -230,6 +235,8 @@ _Omit if no actionable findings._
 ## Avoid
 
 - `git fetch` / `git checkout` from this workflow
+- Chaining `mode` / `round` off the general review's checkpoint instead of `review-perf-<branch>.md`
+- Writing a report when invoked as a subagent - the parent owns it
 - Reporting without naming the idiom ("this is slow" vs "N+1 from per-iteration `db.Find`")
 - Generic advice when a Go pattern applies (say "use `Preload`", not "use eager loading")
 - `go fn()` without bounding (`errgroup.SetLimit`) and cancellation

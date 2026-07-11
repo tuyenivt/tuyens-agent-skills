@@ -54,7 +54,7 @@ If no existing tests: say so and propose conventions explicitly rather than inve
 | E2E | `httptest.NewServer` + Testcontainers (Postgres + Redis) | Critical journeys only |
 | Contract | Pact / OpenAPI consumer-driven | API contract validation |
 
-**Many** unit, **some** handler / integration, **few** E2E. `go test -race ./...` on every CI run.
+**Many** unit, **some** handler / integration, **few** E2E - default band ~70% / ~25% / ~5%; adjust to risk profile, keep the shape. `go test -race ./...` on every CI run.
 
 ### Step 4 - Apply Go Test Patterns
 
@@ -134,6 +134,8 @@ Use skill: `go-testing-patterns` for canonical table-driven, fixtures, testconta
 
 If coverage < ~50%, run this **before** scaffolding - determines _which_ tests first.
 
+Measure, don't guess: `go test -coverprofile=cover.out ./...` when the suite runs locally; when it can't run (missing Docker, broken build), estimate from `*_test.go` density and label the number an estimate.
+
 | Priority | Targets |
 |----------|---------|
 | P1 - AuthN/Z | Handler test per protected endpoint asserting 401 anonymous + 403 wrong-role; JWT middleware tests (issuer, audience, signature, expiry); custom auth middleware unit tests |
@@ -208,6 +210,7 @@ If coverage < ~50%, run this **before** scaffolding - determines _which_ tests f
 - Asynq: idempotency + retry + max-retries when applicable
 - `t.Cleanup` for teardown
 - `go test -race`-safe (no races in the fixture)
+- **Verified before delivery:** `go build ./...` on everything; run the generated tests (`go test <packages>`); skip `-tags=integration` when Docker is unavailable and say so. Never deliver a scaffold that does not compile.
 
 **Strategy Doc:**
 
@@ -252,6 +255,7 @@ If coverage < ~50%, run this **before** scaffolding - determines _which_ tests f
 - [ ] Asynq: idempotency + retry; real-broker variant for non-trivial `MaxRetry` / `Timeout`
 - [ ] `t.Cleanup` (not `defer`)
 - [ ] Validator unit tests for non-trivial DTOs with custom tags
+- [ ] Scaffolds compiled and run before delivery; skipped integration subset named when Docker unavailable
 
 ## Avoid
 

@@ -166,11 +166,13 @@ Surface decision in Summary; if escalated, append `auto-escalated from Core; sig
 
 Output risk level + blast radius before any findings.
 
-**Low-risk short-circuit:** if Risk is Low, Blast Radius is Narrow, **and** change does not touch architecture-relevant files (auth middleware, JWT, router groups, shared interfaces, `cmd/api/main.go`, migrations), skip Phases C-D and produce a streamlined output with Phase B only.
+**Low-risk short-circuit:** if Risk is Low, Blast Radius is Narrow, **and** change does not touch architecture-relevant files (auth middleware, JWT, router groups, shared interfaces, `cmd/api/main.go`, migrations), skip Phases C-E. The streamlined report contains Summary, High-Impact Findings (Phase B), and Next Steps only; Step 7 still writes the checkpointed report.
 
 ### Step 4.5 - Re-evaluate Depth After Phase A
 
 If Blast Radius is Wide / Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
+
+**Depth precedence on round 2+:** user flag > this round's auto-promotion > inherit `prior_checkpoint.depth`. An incremental diff's blast radius is naturally narrower than the PR's, so auto-promotion cannot re-fire; inheriting prevents a silent deep -> standard demotion. Surface as `Depth: deep (inherited from round <prior.round>)`.
 
 ### Phase B - Go Correctness and Safety
 
@@ -311,7 +313,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide
+**Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Go <version> / Gin <version>
 **Data Access:** GORM | sqlx | database/sql | mixed
 **Messaging:** Asynq | Kafka | none

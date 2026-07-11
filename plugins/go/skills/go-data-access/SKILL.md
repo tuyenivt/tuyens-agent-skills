@@ -57,6 +57,8 @@ type paymentRepo struct{ db *gorm.DB }
 func NewPaymentRepository(db *gorm.DB) PaymentRepository { return &paymentRepo{db: db} }
 ```
 
+Map driver errors at the repo boundary: `errors.Is(err, gorm.ErrRecordNotFound)` (or `sql.ErrNoRows`) -> return a domain sentinel (`ErrPaymentNotFound`) so services never import gorm or database/sql.
+
 ### Model
 
 ```go
@@ -188,13 +190,17 @@ return db.Transaction(func(tx *gorm.DB) error {
 
 #### Locking
 
-Pessimistic row lock when concurrent writers contend on the same row (counters, balances, inventory):
+Pessimistic row lock when concurrent writers contend on the same row (counters, balances, inventory). `FOR UPDATE` holds only for the enclosing transaction - on bare `db` the lock releases after the SELECT and the `Save` runs unprotected:
 
 ```go
-db.Clauses(clause.Locking{Strength: "UPDATE"}).
-    Where("id = ?", id).First(&account)
-account.Balance += amount
-db.Save(&account)
+return db.Transaction(func(tx *gorm.DB) error {
+    if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+        Where("id = ?", id).First(&account).Error; err != nil {
+        return err
+    }
+    account.Balance += amount
+    return tx.Save(&account).Error
+})
 ```
 
 Optimistic locking when contention is rare and retry on conflict is acceptable:
@@ -268,8 +274,10 @@ sqlx equivalent:
 ```sql
 INSERT INTO payments (id, idempotency_key, amount, status)
 VALUES (:id, :idempotency_key, :amount, :status)
-ON CONFLICT (idempotency_key) DO NOTHING RETURNING *;
+ON CONFLICT (idempotency_key) DO NOTHING;
 ```
+
+`DO NOTHING RETURNING *` returns **no row** on conflict - to mirror the GORM fetch-existing path, re-select by `idempotency_key` when zero rows return (or use a no-op `DO UPDATE SET key = EXCLUDED.key ... RETURNING *`, which locks the row).
 
 Retryable endpoints (`POST /payments`) need a client-supplied idempotency key in the request, not a server-generated one.
 
@@ -291,7 +299,7 @@ db.Scopes(ActiveUsers, PaginatedBy(2, 20)).Find(&users)
 ```go
 func (r *paymentRepo) List(ctx context.Context, limit, offset int) ([]Payment, int64, error) {
     var (payments []Payment; total int64)
-    db := r.db.WithContext(ctx).Model(&Payment{})
+    db := r.db.WithContext(ctx).Model(&Payment{}).Session(&gorm.Session{}) // Session: safe reuse after Count (a finisher)
     if err := db.Count(&total).Error; err != nil {
         return nil, 0, fmt.Errorf("count: %w", err)
     }
@@ -355,6 +363,16 @@ _, err := r.db.NamedExecContext(ctx,
     items)
 ```
 
+### IN-Clause with Slices
+
+Placeholders don't expand slices. Use `sqlx.In` + `Rebind`:
+
+```go
+q, args, err := sqlx.In(`SELECT * FROM orders WHERE id IN (?)`, ids)
+if err != nil { return nil, fmt.Errorf("build query: %w", err) }
+err = r.db.SelectContext(ctx, &orders, r.db.Rebind(q), args...)
+```
+
 ### Dropping from GORM to sqlx
 
 sqlx queries bypass GORM's `deleted_at IS NULL` filter. When the table uses `gorm.Model`, add `WHERE deleted_at IS NULL` to raw SQL explicitly, or you will return soft-deleted rows.
@@ -366,7 +384,7 @@ Configure immediately after open:
 ```go
 sqlDB, _ := db.DB()
 sqlDB.SetMaxOpenConns(25)
-sqlDB.SetMaxIdleConns(10)                  // ~40% of max open
+sqlDB.SetMaxIdleConns(10)                  // starting point: ~40% of max open; tune by conn-churn vs memory
 sqlDB.SetConnMaxLifetime(5 * time.Minute)  // recycle for LB failover
 sqlDB.SetConnMaxIdleTime(1 * time.Minute)
 ```

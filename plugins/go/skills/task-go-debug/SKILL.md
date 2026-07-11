@@ -36,6 +36,8 @@ Before reading any code, lock the reproducer:
 
 If the reporter cannot reproduce, ask for it before classifying - speculative debugging burns hours.
 
+Gather STEP 0 and STEP 1 in the same exchange - the stack trace names the suspect dependencies, so one question round covers both.
+
 ### STEP 1 - INTAKE
 
 Ask for the full stack trace or error, source file, expected behavior. For a stack trace, identify the first application frame and read that file.
@@ -46,7 +48,7 @@ For partial input ("it doesn't work"): ask which command, expected vs actual, re
 
 `c.Request.Body` -> `c.ShouldBindJSON(&dto)` -> validator tags -> JSON tag mapping (no tag = `Field` only; lowercase `field` drops) -> service-layer mapping (`mapstructure.Decode`, manual copy) -> GORM column tag (`gorm:"column:..."`, `gorm:"-"`) -> `db.Select(...)` allowlist or `db.Omit(...)` -> DB column.
 
-Same shape for Asynq tasks: enqueue -> `json.Marshal` (unexported fields silently dropped) -> worker `json.Unmarshal` -> handler. Identify the lost-at boundary before reading code.
+Same shape for Asynq tasks: enqueue -> `json.Marshal` (unexported fields silently dropped) -> worker `json.Unmarshal` -> handler. Mirrored for response-side loss ("in the DB, missing from the API"): `db.Select(...)` allowlist -> struct scan -> response-DTO mapping -> `json:"-"` / `omitempty` dropping a legitimate zero value. Identify the lost-at boundary before reading code.
 
 ### STEP 2 - CLASSIFY
 
@@ -156,6 +158,8 @@ ROOT CAUSE: [HIGH/MEDIUM/LOW]
 
 Before/after, minimal, root-cause-targeted. Use skill: `go-error-handling` to preserve wrapping. When a sibling smell (e.g., DB errors collapsed into 404) sits on the same line as the root-cause fix, address it inline rather than leaving a known regression hazard.
 
+Re-run the STEP 0 reproducer against the fix (for load-shaped bugs, the captured load profile). An unverified fix is a hypothesis - report verification status either way.
+
 ### STEP 6 - PREVENTION
 
 Add a guard so this class cannot recur:
@@ -187,6 +191,7 @@ Add a guard so this class cannot recur:
 
 ## Fix
 [Before/after code]
+Verification: [reproducer re-run result | not verified - reason]
 
 ## Prevention
 [Test, vet, race detector, or config]
@@ -198,6 +203,7 @@ Add a guard so this class cannot recur:
 - [ ] Classified before reading code or proposing fix
 - [ ] Root cause cites file:line; confidence stated; multi-cause cascades enumerated
 - [ ] Before/after fix is minimal and root-cause-targeted; adjacent smells on the same lines addressed
+- [ ] Fix verified against the STEP 0 reproducer (or "not verified" stated with reason)
 - [ ] Error wrapping preserved (`%w`); no global state added
 - [ ] Prevention step included
 - [ ] For concurrency: `-race` referenced; cancellation path included; pprof goroutine snapshot for leaks
