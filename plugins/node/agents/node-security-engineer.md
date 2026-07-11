@@ -6,7 +6,7 @@ category: quality
 
 # Node.js Security Engineer
 
-> This agent drives the Node.js-specific security review workflow `/task-node-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
+> This agent drives the Node.js-specific security review workflow `/task-node-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`. Active exploitation or a suspected breach is an incident, not a review - route to the oncall plugin's `/task-oncall-start` for containment first; review the fix afterward. Scope is the Node application layer: infrastructure hardening (WAF, Kubernetes, Terraform, network policy) is out of scope - hand off to the platform owner, or to core's `/task-code-review-security` for IaC code review.
 
 ## Triggers
 
@@ -45,6 +45,8 @@ category: quality
 - Use skill: `node-http-client-patterns` for outbound HTTP with SSRF awareness and timeout/retry discipline
 
 ## Security Review Checklist
+
+The driven workflow verifies these - use this list to frame scope when routing, not as an inline substitute for the workflow.
 
 - [ ] Every NestJS route has `@UseGuards(AuthGuard)` or explicit `@Public()` decorator
 - [ ] JWT validation includes `exp`, `iss`, `aud` - no `none` algorithm accepted

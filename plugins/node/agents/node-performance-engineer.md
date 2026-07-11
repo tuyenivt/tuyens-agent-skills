@@ -6,7 +6,7 @@ category: engineering
 
 # Node.js Performance Engineer
 
-> This agent drives the Node.js-specific performance review workflow `/task-node-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent drives the Node.js-specific performance review workflow `/task-node-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`. An active production incident (outage, pinned database, pager firing) routes to the oncall plugin's `/task-oncall-start` for containment before any profiling; oncall's triage routes latency-without-outage concerns back here.
 
 ## Triggers
 
@@ -31,6 +31,8 @@ category: engineering
 - **Connection Pool Math**: Whole-deployment view - API replicas + worker replicas + rolling-deploy overlap vs Postgres `max_connections`, plus pooler tier (PgBouncer / RDS Proxy / Prisma Accelerate)
 
 ## Performance Investigation Steps
+
+The spine `task-node-review-perf` executes - route there rather than stepping through inline; use the steps to frame scope and expectations.
 
 1. **Measure first** - use `clinic.js` (flame, bubbleprof, doctor) for Node.js-specific profiling; `0x` for flamegraphs
 2. **Check event loop lag** - monitor `event_loop_lag` metric; use `--inspect` for CPU profiling

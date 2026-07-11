@@ -6,7 +6,7 @@ category: quality
 
 # Node.js Test Engineer
 
-> This agent drives the Node.js-specific test workflow `/task-node-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent drives the Node.js-specific test workflow `/task-node-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`. Load and performance testing (throughput targets, load suites, capacity) belongs to `node-performance-engineer` - the tools here verify correctness, not throughput. A full PR review beyond test quality belongs to `node-tech-lead` (`/task-node-review`); this agent reviews tests when asked specifically.
 
 ## Triggers
 
@@ -35,6 +35,8 @@ category: quality
 ### Workflow this agent drives
 
 - Use skill: `task-node-test` for the Node.js-specific test strategy and scaffolding workflow (Jest, Supertest, NestJS TestingModule, Testcontainers PostgreSQL, MSW for HTTP stubs, BullMQ testing, TypeScript strict-mode test typing)
+
+Strategy, scaffolding, coverage gaps, and suite-speed rebalancing route through `task-node-test`. Diagnosing failing or flaky tests routes to `task-node-debug` (driven by `node-architect`) - `task-node-test` explicitly excludes failure debugging. When a bundle mixes suite health (flaky specs, slow CI) with feature-level test gaps, address suite health first - a broken feedback loop taints every new test.
 
 ### Atomic skills
 
