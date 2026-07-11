@@ -72,7 +72,7 @@ Plus every changed file calling `Logger`/`logger.*`, registering a metric, defin
 ### Step 4 - Structured Logging (pino / winston)
 
 - [ ] **JSON output** in prod: `pino` (default) or `winston.format.json()`. No raw text
-- [ ] **Correlation fields** every line: `traceId`, `spanId`, `requestId`, `userId`, `tenantId`, business IDs. NestJS: `nestjs-pino` `genReqId`. Express: `cls-rtracer` / `als-rtracer` over `AsyncLocalStorage` feeding `pino-http`
+- [ ] **Correlation fields** every line: `traceId`, `spanId`, `requestId`, `userId`, `tenantId`, business IDs. NestJS: `nestjs-pino` `genReqId`. Express: `cls-rtracer` or an `AsyncLocalStorage`-based request-id middleware feeding `pino-http`
 - [ ] **OTel log correlation**: `@opentelemetry/instrumentation-pino` or `-winston` injects `trace_id` / `span_id`
 - [ ] **Redaction** of secrets: `pino` `redact: ['req.headers.authorization', 'req.headers.cookie', '*.password', '*.token']`; winston via custom format. Reinforced by `@Exclude()` / Zod schemas
 - [ ] **No entity logging**: `logger.log(user)` may trigger lazy queries and leak PII. Log specific fields by ID
@@ -89,9 +89,9 @@ Plus every changed file calling `Logger`/`logger.*`, registering a metric, defin
 - [ ] **Sampling explicit**: `ParentBasedSampler(TraceIdRatioBasedSampler(rate))` with `rate` per env; not default
 - [ ] **Auto-instrumentation**: `@opentelemetry/auto-instrumentations-node` or individual ones wired
 - [ ] **Framework**: NestJS `instrumentation-nestjs-core`; Express `instrumentation-express` + `-http`
-- [ ] **Database**: `instrumentation-prisma` (Prisma) or `instrumentation-pg` (TypeORM)
+- [ ] **Database**: `@prisma/instrumentation` (Prisma) or `instrumentation-pg` (TypeORM)
 - [ ] **HTTP client**: `instrumentation-http` covers `http`/`https`/`node-fetch`; add `instrumentation-undici` for undici
-- [ ] **BullMQ**: `instrumentation-bullmq` so job spans link back via traceparent through Redis
+- [ ] **BullMQ**: BullMQ OTel instrumentation (community, e.g. `@appsignal/opentelemetry-instrumentation-bullmq` - no official contrib package) so job spans link back via traceparent through Redis
 - [ ] **Redis / cache**: `instrumentation-ioredis` or `-redis-4`
 - [ ] **Custom spans** via `tracer.startActiveSpan(...)`; no double-instrumentation of a single Prisma query
 - [ ] **Resource attributes**: `service.name`, `service.version`, `deployment.environment` from build / env
@@ -169,7 +169,7 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Writ
 **Logging:** pino (JSON) | winston (JSON) | nestjs-pino | console (text) | absent
 **Metrics:** prom-client | OTel metrics (Prometheus exporter) | StatsD | absent
 **Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (Jaeger / Zipkin) | absent
-**BullMQ instrumentation:** @opentelemetry/instrumentation-bullmq | partial | absent | n/a
+**BullMQ instrumentation:** wired (community instrumentation-bullmq) | partial | absent | n/a
 **Error Tracker:** Sentry | Honeybadger | Rollbar | absent
 **Overall:** Adequate | Gaps Found - [count by impact] | Greenfield - no observability surface wired
 
@@ -210,7 +210,7 @@ _Omit empty sections. Group by surface within a bucket when 3+ share one; otherw
 
 ## Next Steps
 
-Prioritized action list. Each item `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: Must > Recommend > Question.
+Prioritized action list. Each item `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Map impact to intent: High -> `[Must]`; Medium / Low -> `[Recommend]`; `[Question]` only for genuine ambiguity. Order: Must > Recommend > Question.
 
 1. **[Implement]** [Must] file:line - [one-line action, e.g., "Bind `orderId` via `als.run({ orderId }, () => ...)` at `OrdersService.place` entry; clear in finally"]
 2. **[Delegate]** [Recommend] [scope: ops] - [one-line action, e.g., "Wire `/metrics` to org Prometheus scrape config"]

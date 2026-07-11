@@ -33,9 +33,9 @@ Not for: single-file edits (edit directly), bugfixes (`task-node-debug`), fronte
 
 ### STEP 1 - DETECT AND GATHER
 
-Use skill: `stack-detect`. Confirm Node.js/TypeScript and identify NestJS vs Express, Prisma vs TypeORM, test runner, layout.
+Use skill: `stack-detect`. Confirm Node.js/TypeScript and identify NestJS vs Express, Prisma vs TypeORM, package manager, test runner, layout.
 
-Ask the user before writing code:
+Gather before writing code - extract from the request first, then ask only for what is missing. Do not guess, and do not re-ask what the request already answers:
 
 1. Feature description and primary use case
 2. Entities, fields, relationships, constraints
@@ -45,8 +45,6 @@ Ask the user before writing code:
 6. Status transitions
 7. Idempotency requirements
 8. Webhook endpoints (signature validation, raw body)
-
-Ask targeted clarifying questions for any gap. Do not guess.
 
 ### STEP 2 - DESIGN (APPROVAL GATE)
 
@@ -79,9 +77,9 @@ Use skill: `node-typescript-patterns`. `@Injectable()` service (NestJS) or plain
 
 ### STEP 5 - API LAYER
 
-NestJS: Use skill: `node-nestjs-patterns`. Module + controller + guards + DTOs with `class-validator`. `@HttpCode(201)` POST, `204` DELETE. Paginated list with query params.
+NestJS: Use skill: `node-nestjs-patterns`. Module + controller + guards + DTOs with `class-validator`. POST defaults to 201; `@HttpCode(204)` on DELETE. Paginated list with query params.
 
-Express: Use skill: `node-express-patterns`. Router + controller + Zod middleware. Async handler wrapper on every route.
+Express: Use skill: `node-express-patterns`. Router + controller + Zod middleware. Express 4: async handler wrapper on every route (Express 5 forwards rejections natively).
 
 Map domain errors to HTTP via the global exception filter (NestJS) / terminal error middleware (Express). Canonical contract: Use skill: `node-exception-handling` (AppError hierarchy, retryable flag, ORM error translation, Sentry capture-once, BullMQ retry propagation).
 
@@ -104,7 +102,7 @@ Use skill: `node-testing-patterns`. Unit tests for services (mocked deps); E2E w
 
 ### STEP 7 - VALIDATE
 
-Run build + test + lint + typecheck (prefer `bun run build`, `bun test`, `bun run lint`). Fix failures before reporting done.
+Run build + test + lint + typecheck via the project's own scripts and package manager detected in STEP 1 (`npm run` / `pnpm` / `yarn` / `bun`). Do not swap test runners - a Jest suite runs under Jest, not `bun test`. Fix failures before reporting done.
 
 ## Edge Cases
 

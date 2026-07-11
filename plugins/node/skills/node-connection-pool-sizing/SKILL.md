@@ -65,16 +65,17 @@ BullMQ worker replicas       = 2        Each PrismaClient connection_limit = 10
 Migration container          = 1        connection_limit = 5
   -> 5 (only during deploys; otherwise 0)
 
-Rolling deploy overlap       = up to 6 extra API replicas briefly
-  -> 6 * 10 = 60 PEAK (if old+new fully overlap)
+Rolling deploy (worst case: old + new fully overlap - no surge cap, slow drain)
+  API     old 4 + new 4 = 8 * 10 = 80
+  Workers old 2 + new 2 = 4 * 10 = 40
 
-Steady state         40 + 20 + 5  = 65    (within 97, with 32 headroom)
-Deploy peak          60 + 60 + 20 = 140   >> 97 - BREACHES
+Steady state         40 + 20 + 5 = 65    (within 97, with 32 headroom)
+Deploy peak          80 + 40 + 5 = 125   >> 97 - BREACHES
 ```
 
 Fix options:
 
-1. Drop `connection_limit` to 5 per API process: peak `30 + 30 + 20 = 80`, within budget
+1. Drop `connection_limit` to 5 per process: peak `40 + 20 + 5 = 65`, within budget
 2. Pre-stop hook that closes the old `PrismaClient` before the new replicas come up - keeps the math at steady state during deploys
 3. Put a pooler (PgBouncer / RDS Proxy) in front; the app connects to the pooler, the pooler holds the DB connections (see below)
 
@@ -141,7 +142,7 @@ DATABASE_URL="postgresql://u:p@pgbouncer:6432/db?pgbouncer=true&connection_limit
 
 - `pgbouncer=true` disables Prisma's prepared statement caching - required for transaction mode (each statement may land on a different server connection)
 - `connection_limit=1` per process is fine - the pooler holds the real connections. The app's pool is now a thin queue
-- Caveats: `LISTEN/NOTIFY`, `SET LOCAL` across statements, advisory locks, and `pg_advisory_xact_lock` work only in session mode
+- Caveats: `LISTEN/NOTIFY`, session-level `SET`, and session-scoped advisory locks (`pg_advisory_lock`) need session mode. Transaction-scoped constructs - `SET LOCAL` and `pg_advisory_xact_lock` inside a transaction - are safe: a transaction stays on one server connection
 
 PgBouncer session mode: behaves like a normal Postgres - keep prepared statements on, size pools as in the equation above.
 

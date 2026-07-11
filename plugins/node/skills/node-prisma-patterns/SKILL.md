@@ -68,11 +68,12 @@ Use `@db.Decimal(19, 4)` for money; `Decimal` values are objects, not numbers.
 
 ```typescript
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit {
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
     super({ log: process.env.NODE_ENV === "development" ? ["query", "warn", "error"] : ["error"] });
   }
   async onModuleInit() { await this.$connect(); }
+  async onModuleDestroy() { await this.$disconnect(); } // drain pool on shutdown
 }
 ```
 
@@ -114,12 +115,12 @@ Fluent API (`order.items()`) fires one query per call - never use in loops.
 Cursor for APIs (stable under writes); offset for admin where page numbers matter.
 
 ```typescript
-// Cursor
+// Cursor - orderBy must end in a unique column or equal createdAt values skip/duplicate rows
 await this.prisma.order.findMany({
   take: 20,
   skip: cursor ? 1 : 0,
   cursor: cursor ? { id: cursor } : undefined,
-  orderBy: { createdAt: "desc" },
+  orderBy: [{ createdAt: "desc" }, { id: "desc" }],
   include: { items: true },
 });
 
@@ -172,7 +173,7 @@ See `node-migration-safety` for commands, deploy ordering, zero-downtime rules. 
 ## Avoid
 
 - `prisma db push` in production
-- Default relation loading - always specify `include`/`select`
+- Implicit full-row reads on wide/hot tables - be explicit with `select`; relations load only via explicit `include`
 - Fluent API in loops (N+1)
 - Raw queries for simple CRUD
 - Unset `connection_limit` in production

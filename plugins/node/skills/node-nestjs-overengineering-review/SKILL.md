@@ -28,19 +28,23 @@ user-invocable: false
 
 Stack: TS strict-null -> class-validator DTO -> ORM column -> DB. `ValidationPipe({ whitelist: true })` enforces the DTO at the controller boundary; DB is authoritative.
 
-#### `@IsNotEmpty()` / `@IsString()` on a non-optional string field
+#### `@IsNotEmpty()` stacked on a format-validated field
+
+TS types are erased - a field with no decorator is not validated at all. The redundancy is decorator-vs-decorator, never type-vs-decorator.
 
 ```ts
-// Bad - type + ValidationPipe already reject missing/undefined
+// Bad - @IsUUID() already rejects undefined and ""
 export class CreateOrderDto {
   @IsNotEmpty() @IsUUID() customerId!: string;
 }
 
-// Good - keep only constraints that go beyond the type
+// Good - the format decorator subsumes the presence check
 export class CreateOrderDto {
   @IsUUID() customerId!: string;
 }
 ```
+
+Not redundant: `@IsNotEmpty()` next to `@IsString()` alone - `@IsString()` accepts `""`.
 
 #### Manual presence check after a `@Body()` DTO
 
@@ -121,7 +125,7 @@ catch (e) { return { error: 'something went wrong' }; }
 try { return await this.service.fulfill(id); }
 catch (e) {
   if (e instanceof InsufficientStockError) throw new ConflictException(e.message);
-  if (e instanceof PaymentDeclinedError) throw new PaymentRequiredException(e.message);
+  if (e instanceof PaymentDeclinedError) throw new UnprocessableEntityException(e.message);
   throw e;
 }
 ```

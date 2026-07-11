@@ -98,9 +98,11 @@ export const QUEUES = {
   LOW: "bulk", // reports, analytics
 };
 await this.criticalQueue.add("charge-payment", { paymentId }, {
-  priority: 1, attempts: 5, backoff: { type: "exponential", delay: 1000 },
+  attempts: 5, backoff: { type: "exponential", delay: 1000 },
 });
 ```
+
+Separate queues (isolated workers) beat per-job `priority` within one queue - a backlog of low jobs cannot starve critical ones. Use per-job `priority` only when jobs must interleave in a single queue.
 
 ### Scheduled / Recurring
 

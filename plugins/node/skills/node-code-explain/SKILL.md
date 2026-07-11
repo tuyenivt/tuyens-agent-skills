@@ -21,7 +21,7 @@ Workflow needs Node-specific signals: event loop, NestJS DI/module graph, Expres
 - Identify event-loop main thread vs worker thread - blocking the loop stalls the process.
 - NestJS: identify provider scope and the module it lives in - DI is module-level.
 - Express: list middleware in order before the handler; each can short-circuit.
-- Unawaited Promises become unhandled rejections - crash in Node 15+.
+- A rejected Promise with no `await`/`.catch()` is an unhandled rejection - crashes Node 15+.
 
 ## Patterns
 
@@ -57,7 +57,7 @@ Circular deps: `forwardRef(() => Other)`. `@Global()` exports without re-import.
 ### Express Middleware
 
 - Order is the order of `app.use` / `router.use` calls.
-- Async middleware: `next(err)` propagates; modern Express auto-catches throws inside async.
+- Async middleware: `next(err)` propagates; Express 5 forwards async rejections to error middleware, Express 4 does not (needs wrapper).
 - `req` / `res` are mutated through the chain (e.g., `req.user` from auth).
 - Error middleware needs exactly 4 args; Express uses arity detection.
 
@@ -85,7 +85,7 @@ Circular deps: `forwardRef(() => Other)`. `@Global()` exports without re-import.
 
 ### Module System
 
-`"type": "module"` -> ESM (`import`/`export`, top-level `await`); else CJS (`require`). ESM can `import` CJS via default; CJS cannot `require` ESM synchronously. ESM has no `__dirname` - use `import.meta.url`.
+`"type": "module"` -> ESM (`import`/`export`, top-level `await`); else CJS (`require`). ESM can `import` CJS via default. CJS `require()` of ESM works only on Node >= 22.12 and only if the module has no top-level `await`; older Node throws `ERR_REQUIRE_ESM`. ESM has no `__dirname` - use `import.meta.url`.
 
 ### Streams
 

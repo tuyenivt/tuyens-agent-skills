@@ -1,6 +1,6 @@
 ---
 name: node-testing-patterns
-description: Jest testing patterns for NestJS / Express: unit mocks, Supertest e2e, TestingModule, Testcontainers PostgreSQL, transaction rollback.
+description: Jest testing patterns for NestJS / Express: unit mocks, Supertest e2e, TestingModule, Testcontainers PostgreSQL, per-test isolation.
 metadata:
   category: backend
   tags: [node, typescript, jest, testing, supertest, testcontainers]
@@ -117,9 +117,9 @@ beforeAll(async () => {
 
 afterAll(() => container.stop());
 
-// Per-test isolation via transaction rollback
-beforeEach(() => prisma.$executeRaw`BEGIN`);
-afterEach(() => prisma.$executeRaw`ROLLBACK`);
+// Per-test isolation: truncate mutated tables. Raw BEGIN/ROLLBACK does NOT isolate -
+// PrismaClient pools connections, so BEGIN and the next query may run on different connections.
+afterEach(() => prisma.$executeRawUnsafe(`TRUNCATE "Order", "OrderItem" RESTART IDENTITY CASCADE`));
 ```
 
 - Prisma: `prisma migrate deploy` on the container
@@ -182,11 +182,11 @@ await request(app).post("/webhooks/stripe").set("stripe-signature", "x").send(pa
 - `expect().resolves` / `expect().rejects` for async
 - `it.each` for table-driven cases
 - Snapshots only for serializer/response shapes, never business logic
-- Runner: prefer `bun test`, fall back to `npx jest`
+- Runner: `bun run test` (executes the Jest script). Plain `bun test` invokes Bun's own runner, not Jest - TestingModule/`jest-mock-extended` setups break
 
 ## Edge Cases
 
-- **Testcontainers on CI**: startup 10-30s; set `beforeAll` timeout >=60s. No Docker on CI -> shared DB with per-test transaction rollback.
+- **Testcontainers on CI**: startup 10-30s; set `beforeAll` timeout >=60s. No Docker on CI -> shared DB with per-test truncation and non-overlapping schemas per worker.
 - **Port conflicts**: pass the app instance to Supertest, or `app.listen(0)` for an OS-assigned port.
 - **Flaky tests**: usually shared rows or in-memory singletons; reset in `beforeEach`, not `beforeAll`.
 - **BullMQ**: mock the queue, assert on `queue.add()`; do not run real workers.

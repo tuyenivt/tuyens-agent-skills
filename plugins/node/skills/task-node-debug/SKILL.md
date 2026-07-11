@@ -53,7 +53,7 @@ Match the error, then load the listed atomic skill:
 | Prisma | `P2002` | Unique constraint violation; consider upsert or 409 | `node-prisma-patterns` |
 | Prisma | `P2025` | Record not found; `findUniqueOrThrow` vs `findUnique` | `node-prisma-patterns` |
 | Prisma | `P2003` | FK constraint; referenced record missing | `node-prisma-patterns` |
-| Prisma | Interactive tx timeout | Default 5s; set `timeout` in `$transaction` options | `node-prisma-patterns` |
+| Prisma | Interactive tx timeout | Usually I/O inside the tx (HTTP call, `queue.add`) riding an upstream's tail latency - move it post-commit; raise `timeout` (default 5s) only when the DB work itself is legitimately long | `node-transaction-patterns` |
 | TypeORM | `QueryFailedError` | Migration drift, column types | `node-typeorm-patterns` |
 | TypeORM | `EntityNotFoundError` | `findOneOrFail` with no match | `node-typeorm-patterns` |
 | TypeORM | QueryRunner leak | Missing `release()` in `finally` | `node-typeorm-patterns` |
@@ -61,7 +61,7 @@ Match the error, then load the listed atomic skill:
 | TS compile | `Cannot find module` | Wrong import path or missing install (`bun install`) | `node-typescript-patterns` |
 | TS compile | `TS2339` | Property not on type; check narrowing | `node-typescript-patterns` |
 | Runtime | `TypeError: Cannot read properties of undefined` | Null access; trace origin, optional chaining, async loading | - |
-| Runtime | `ERR_UNHANDLED_REJECTION` | Missing `await` / `.catch()`; Express needs async wrapper | `node-express-patterns` |
+| Runtime | `ERR_UNHANDLED_REJECTION` | Missing `await` / `.catch()`; Express 4 needs async wrapper | `node-express-patterns` |
 | NestJS | `UnauthorizedException` | Token missing/expired, guard misconfigured | `node-nestjs-patterns` |
 | NestJS | `BadRequestException` | DTO validation; check `class-validator` decorators | `node-nestjs-patterns` |
 | BullMQ | Job stuck failed | Retry/backoff config, inspect `failedReason` | `node-bullmq-patterns` |
@@ -74,6 +74,9 @@ Match the error, then load the listed atomic skill:
 | ESM | `ERR_MODULE_NOT_FOUND` | ESM relative import missing `.js` extension after TS compile; add the extension or set bundler resolver | `node-typescript-patterns` |
 | ESM | `__dirname is not defined` | ESM has no `__dirname`/`__filename`; use `fileURLToPath(import.meta.url)` | `node-typescript-patterns` |
 | ESM | Dual-package hazard | CJS + ESM build of the same package loaded twice; `instanceof` / singletons break - pin to one variant in `package.json` `exports` | `node-typescript-patterns` |
+| Jest | `A worker process has failed to exit gracefully` / suite hangs | Unclosed handle: DB pool, Redis, HTTP server; close in `afterAll`; diagnose with `--detectOpenHandles` | `node-testing-patterns` |
+| Jest | Test passes alone, fails in suite | Cross-test state: DB rows without per-test rollback, module-level mutable state, mocks without `restoreAllMocks` | `node-testing-patterns` |
+| Jest | `Cannot use import statement outside a module` | ESM/CJS transform mismatch: ts-jest / transform config vs `"type": "module"`; ESM-only dep needs `transformIgnorePatterns` exception | `node-typescript-patterns` |
 
 ### STEP 3 - LOCATE
 

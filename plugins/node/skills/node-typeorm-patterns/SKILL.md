@@ -39,7 +39,7 @@ export enum OrderStatus { PENDING = "PENDING", CONFIRMED = "CONFIRMED", CANCELLE
 export class Order {
   @PrimaryGeneratedColumn("uuid") id: string;
   @Column({ type: "enum", enum: OrderStatus, default: OrderStatus.PENDING }) status: OrderStatus;
-  @Column({ type: "decimal", precision: 19, scale: 4 }) total: number;
+  @Column({ type: "decimal", precision: 19, scale: 4 }) total: string; // pg returns numeric as string - see Edge Cases
 
   @ManyToOne(() => Customer, { nullable: false })
   @JoinColumn({ name: "customerId" })

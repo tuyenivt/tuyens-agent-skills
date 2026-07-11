@@ -202,7 +202,9 @@ async stripe(@Req() req: RawBodyRequest<Request>, @Headers('stripe-signature') s
     .update(req.rawBody!)                    // raw bytes, not parsed JSON
     .digest('hex');
   const got = parseStripeSig(sig).v1;
-  if (!timingSafeEqual(Buffer.from(expected), Buffer.from(got))) throw new UnauthorizedException();
+  const a = Buffer.from(expected), b = Buffer.from(got);
+  // timingSafeEqual throws on length mismatch - check first or a forged short sig becomes a 500
+  if (a.length !== b.length || !timingSafeEqual(a, b)) throw new UnauthorizedException();
   // ... handle
 }
 
@@ -273,10 +275,12 @@ await h(payload);
 // Bad
 res.redirect(req.query.next as string);
 
-// Good - relative path, no protocol-relative
-const next = String(req.query.next ?? '/');
-if (!next.startsWith('/') || next.startsWith('//')) res.redirect('/');
-else res.redirect(next);
+// Bad - startsWith('/') check: bypassed by backslash normalization, e.g. /\evil.com
+if (next.startsWith('/') && !next.startsWith('//')) res.redirect(next);
+
+// Good - resolve against own origin exactly like the browser will, then compare origins
+const target = new URL(String(req.query.next ?? '/'), env.APP_ORIGIN);
+res.redirect(target.origin === env.APP_ORIGIN ? target.pathname + target.search : '/');
 
 // Bad - shell injection
 exec(`convert ${userInput} out.png`);

@@ -61,7 +61,7 @@ await userRepo.save({ email });
 // Good - let the constraint raise; translate in error middleware
 try { return await userRepo.save({ email }); }
 catch (e) {
-  if (e instanceof QueryFailedError && (e.driverError as any).code === '23505') {
+  if (e instanceof QueryFailedError && (e.driverError as { code?: string }).code === '23505') {
     return res.status(409).json({ error: 'email taken' });
   }
   throw e;
@@ -100,8 +100,8 @@ catch (e) { res.status(500).json({ error: 'failed' }); }
 
 // Good - name the failures; rethrow the rest
 catch (e) {
-  if (e instanceof InsufficientStockError) throw new HttpError(409, e.message);
-  if (e instanceof PaymentDeclinedError)   throw new HttpError(402, e.message);
+  if (e instanceof InsufficientStockError) throw new AppError(409, e.message);
+  if (e instanceof PaymentDeclinedError)   throw new AppError(402, e.message);
   throw e;
 }
 ```
@@ -149,7 +149,7 @@ Justified when it encapsulates multi-table joins, swaps a non-TypeORM source, or
 // Bad - DomainError -> NotFoundError -> OrderNotFoundError; no `instanceof` branching
 class OrderNotFoundError extends NotFoundError {}
 // Good
-throw new HttpError(404, `order ${id} not found`);
+throw new AppError(404, `order ${id} not found`);
 ```
 
 Justified when middleware or callers branch on `instanceof` to produce different status codes / payloads.
@@ -204,5 +204,5 @@ For each category with no findings, state `No <category> findings.` so the workf
 - Recommending `findOneOrFail` -> `findOneBy` + null check - the `orThrow` variant is idiomatic
 - Flagging a Repository wrapper before checking for multi-table queries or non-TypeORM sources
 - Flagging custom errors before checking whether middleware branches on `instanceof`
-- Recommending removal of `asyncHandler` / `HttpError` - idiomatic for surfacing async errors
+- Recommending removal of `asyncHandler` / `AppError` - idiomatic for surfacing async errors
 - Confusing duplication with defense in depth when multiple write paths exist (HTTP + BullMQ + cron)

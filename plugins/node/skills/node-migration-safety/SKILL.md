@@ -52,7 +52,7 @@ Prisma has no built-in down migration: write each migration forward-only and bac
 
 ### Enum Management (PostgreSQL)
 
-Adding a value generates `ALTER TYPE "OrderStatus" ADD VALUE 'CANCELLED'` (same for Prisma and TypeORM). Safe and additive. Removal is **not supported** - to drop a value, create a new type, migrate the column, drop the old type.
+Adding a value generates `ALTER TYPE "OrderStatus" ADD VALUE 'CANCELLED'` (same for Prisma and TypeORM). Safe and additive, but PostgreSQL cannot use the new value in the same transaction that adds it - put any `UPDATE`/backfill using the value in a separate migration. Removal is **not supported** - to drop a value, create a new type, migrate the column, drop the old type.
 
 ### Index Strategy
 
@@ -62,7 +62,7 @@ Index foreign keys, frequently filtered columns (`status`, `createdAt`), unique 
 CREATE INDEX CONCURRENTLY idx_orders_customer_status ON "Order" ("customerId", "status");
 ```
 
-`CONCURRENTLY` must run outside a transaction - in Prisma, place in a standalone `migration.sql` with no other statements.
+`CONCURRENTLY` must run outside a transaction. Prisma: place in a standalone `migration.sql` with no other statements (Prisma does not wrap migrations in transactions). TypeORM wraps migrations in transactions by default - run the index migration with `migrationsTransactionMode: "none"`, isolated in its own deploy.
 
 ### Edge Cases
 

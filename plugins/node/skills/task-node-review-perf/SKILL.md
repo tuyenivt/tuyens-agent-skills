@@ -55,7 +55,7 @@ Use skill: `stack-detect`. Accept pre-confirmed stack from parent. Then:
 - `express` in deps without `@nestjs/*` -> **Express**
 - Both -> ask which surface this PR targets; do not guess
 
-Default ORM mapping: NestJS -> Prisma; Express -> TypeORM. Record `Framework` and `ORM` for the Summary.
+Detect ORM from evidence, never from framework: `@prisma/client` in deps / `prisma/schema.prisma` -> **Prisma**; `typeorm` in deps / `data-source.ts` -> **TypeORM**; both -> ask which surface this PR touches. Record `Framework` and `ORM` for the Summary.
 
 ### Step 2 - Resolve the Diff
 
@@ -102,7 +102,7 @@ Use skill: `node-migration-safety` for changes in `prisma/migrations/` or `src/m
 - [ ] No DDL on hot tables in a single migration (expand-then-contract)
 - [ ] Backfill via keyset pagination (`WHERE id > $1 ORDER BY id LIMIT N`), never `WHERE col IS NULL LIMIT N`
 - [ ] Data migrations isolated from DDL migrations
-- [ ] Enum changes safe: PostgreSQL `ALTER TYPE ... ADD VALUE` cannot run in a transaction
+- [ ] Enum changes safe: PostgreSQL `ALTER TYPE ... ADD VALUE` cannot be used in the same transaction that adds it (pre-PG12: cannot run in a transaction at all) - and ORM migrations run inside transactions
 
 **Reasoning rule.** When the diff _adds_ an index, treat that as evidence the column is hot - validate the index is needed (selectivity, shape), then assess safety. When the diff _adds a column_ also queried on, flag the missing index proactively.
 
@@ -198,7 +198,7 @@ _Omit sections with no findings._
 
 ## Next Steps
 
-Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
+Each item tagged `[Implement]` or `[Delegate]`. Map impact to intent: High -> `[Must]`; Medium / Low -> `[Recommend]`; `[Question]` only for genuine ambiguity. Order: Must > Recommend > Question.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]

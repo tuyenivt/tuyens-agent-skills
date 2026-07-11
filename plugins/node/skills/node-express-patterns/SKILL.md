@@ -20,7 +20,7 @@ user-invocable: false
 ## Rules
 
 - Middleware order: helmet -> cors -> webhook (raw) -> json -> auth -> validation -> handler -> errorHandler (last)
-- Wrap every async handler/middleware to forward rejections to `next`
+- Express 4: wrap every async handler/middleware to forward rejections to `next`. Express 5 does this natively - no wrapper
 - Error middleware must take exactly 4 parameters (Express detects by arity)
 - Never expose raw error details to clients in production
 - No business logic in route handlers - delegate to services
@@ -41,14 +41,17 @@ export default router;
 
 ### Async Handler
 
+Check the Express major version in `package.json` first. Express 5 forwards rejected promises to error middleware natively - no wrapper needed. Express 4 does not: an unwrapped rejection becomes an unhandled rejection and crashes the process.
+
 ```typescript
+// Express 4 only
 const asyncHandler =
   (fn: RequestHandler): RequestHandler =>
   (req, res, next) =>
     Promise.resolve(fn(req, res, next)).catch(next);
 ```
 
-Middleware returning promises must also be wrapped or chain `.catch(next)`.
+On Express 4, middleware returning promises must also be wrapped or chain `.catch(next)`.
 
 ### Validation with Zod
 
@@ -71,15 +74,17 @@ const validate = (schema: z.ZodSchema): RequestHandler => (req, _res, next) => {
 
 ### Error Handling
 
+Minimal wiring form below. The full domain hierarchy (`code`, `retryable`, subclasses, ORM translation) is owned by `node-exception-handling` - adopt its `AppError` once domain errors grow beyond status + message; keep the field name `status` so both stay compatible.
+
 ```typescript
 class AppError extends Error {
-  constructor(public readonly statusCode: number, message: string, public readonly isOperational = true) {
+  constructor(public readonly status: number, message: string, public readonly isOperational = true) {
     super(message);
   }
 }
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
-  if (err instanceof AppError) return void res.status(err.statusCode).json({ error: err.message });
+  if (err instanceof AppError) return void res.status(err.status).json({ error: err.message });
   console.error(err);
   res.status(500).json({ error: "Internal server error" });
 };
@@ -124,7 +129,15 @@ app.use("/api/v1/orders", ordersRouter);
 ### TypeScript
 
 - Typed handlers: `Request<Params, ResBody, ReqBody, Query>`
-- Extend for auth: `declare module 'express' { interface Request { user?: User } }`
+- Extend for auth via the global namespace (module augmentation of `'express'` fails silently - `Request` lives in `express-serve-static-core`):
+
+```typescript
+declare global {
+  namespace Express {
+    interface Request { user?: User }
+  }
+}
+```
 
 ### Security
 
@@ -171,7 +184,7 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
 
 ## Avoid
 
-- Unwrapped async handlers (rejections crash the process)
+- Unwrapped async handlers on Express 4 (rejections crash the process)
 - Business logic in route handlers
 - `any` for request types
 - `cors()` with no origin in production

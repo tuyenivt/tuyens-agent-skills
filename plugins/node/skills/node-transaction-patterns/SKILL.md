@@ -85,6 +85,7 @@ model OutboxMessage {
   eventType   String
   payload     Json
   createdAt   DateTime @default(now())
+  claimedAt   DateTime?
   processedAt DateTime?
   @@index([processedAt, createdAt])
 }
@@ -97,21 +98,23 @@ await prisma.$transaction(async (tx) => {
   });
 });
 
-// relay (BullMQ scheduler or interval) - claim atomically, dispatch outside any tx
+// relay (BullMQ scheduler or interval) - lease a batch, dispatch outside any tx, then mark done
 const claimed = await prisma.$queryRaw<OutboxRow[]>`
-  UPDATE "OutboxMessage" SET "processedAt" = NOW()
+  UPDATE "OutboxMessage" SET "claimedAt" = NOW()
   WHERE id IN (
-    SELECT id FROM "OutboxMessage" WHERE "processedAt" IS NULL
+    SELECT id FROM "OutboxMessage"
+    WHERE "processedAt" IS NULL AND ("claimedAt" IS NULL OR "claimedAt" < NOW() - INTERVAL '5 minutes')
     ORDER BY "createdAt" LIMIT 100 FOR UPDATE SKIP LOCKED
   )
   RETURNING *`;
 
 for (const m of claimed) {
-  await queue.add(m.eventType, m.payload, { jobId: m.id });     // jobId dedupes replay
+  await queue.add(m.eventType, m.payload, { jobId: m.id });     // jobId dedupes redelivery
+  await prisma.outboxMessage.update({ where: { id: m.id }, data: { processedAt: new Date() } });
 }
 ```
 
-The outbox row commits **atomically with the business write**, so rollback drops both. The `UPDATE ... RETURNING` with `FOR UPDATE SKIP LOCKED` in the inner SELECT claims a batch in one statement - multiple relay instances cooperate without contention, no I/O is held under a row lock. BullMQ's `jobId` plus idempotent downstream handlers tolerate the rare double-dispatch when a relay crashes after claim and before `queue.add`.
+The outbox row commits **atomically with the business write**, so rollback drops both. The claim is a **lease**, not a completion mark: `processedAt` is set only after a successful `queue.add`, so a relay crash mid-batch re-delivers the row once the lease expires, and BullMQ's `jobId` plus idempotent handlers dedupe the replay - that is what makes it at-least-once. Marking `processedAt` at claim time would silently drop messages on a crash between claim and dispatch (at-most-once). `FOR UPDATE SKIP LOCKED` lets multiple relay instances cooperate without contention, and no I/O runs under a row lock.
 
 ### Lock-Then-Write (Counters, Balances, State Machines)
 
@@ -142,15 +145,17 @@ Both work; lock-then-write is clearer when multiple fields update conditionally;
 ### Write Transaction Timeouts
 
 ```typescript
-// Prisma - $transaction options
-await prisma.$transaction(async (tx) => { /* ... */ }, {
+// Prisma - $transaction options + Postgres-side belt-and-braces
+// SET LOCAL is transaction-scoped: it must run INSIDE the tx (standalone it is a no-op,
+// and plain SET would leak to other queries sharing the pooled connection)
+await prisma.$transaction(async (tx) => {
+  await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '3s'`);
+  await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = '5s'`);
+  /* ... writes ... */
+}, {
   maxWait: 2_000,         // wait for a connection from the pool
   timeout: 5_000,         // total tx wall-clock
 });
-
-// Postgres-side - belt-and-braces, set per-session
-await prisma.$executeRawUnsafe(`SET LOCAL lock_timeout = '3s'`);
-await prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = '5s'`);
 ```
 
 Without `lock_timeout`, a transaction waiting on a row lock waits forever - the connection holds, the pool drains. Without `statement_timeout`, a single slow query holds locks for the entire session.

@@ -21,7 +21,7 @@ user-invocable: false
 - `strict: true` plus `noUncheckedIndexedAccess`, `noImplicitReturns`, `exactOptionalPropertyTypes`. Fix the code, never weaken the config.
 - No `any`. Use `unknown` + type guards; assertions (`as T`) bypass checking.
 - Domain IDs use branded types so `customerId` cannot flow into an `orderId` slot.
-- Prefer `const` objects + union types over `enum` (exception: Prisma-generated enums - use as-is).
+- Prefer `const` objects + union types over `enum` (exceptions: Prisma-generated enums and TypeORM `@Column({ type: "enum" })` definitions - use as-is).
 - `@ts-ignore` / `@ts-expect-error` only with a comment justifying it.
 
 ## Patterns
@@ -138,7 +138,7 @@ Install `@types/<pkg>`. If none exists, write a narrow `types/<pkg>.d.ts` with `
 
 - `any`, including via `as any` or untyped third-party modules
 - `as T` assertions in place of type guards
-- `enum` (except Prisma-generated)
+- `enum` (except Prisma-generated and TypeORM enum columns)
 - Loosening tsconfig to silence errors
 - `@ts-ignore` / `@ts-expect-error` without justification
 - Hand-rolled duplicates of Prisma-generated types

@@ -62,7 +62,7 @@ Refactoring without tests is a rewrite. Assign one of three statuses:
 |--------|------------|--------|
 | `Adequate` | Happy path + >= 2 boundary outcomes per public entry (validation, auth denial, external failure, not-found) | Proceed to Step 4 |
 | `Thin` | Happy path + exactly 1 boundary outcome | Proceed; plan must include non-optional `Step 0 - Coverage prerequisite` |
-| `Inadequate` | No tests, or happy-path-only | **Refuse Steps 1+.** Output the verdict + recommendation to run `task-node-test` first |
+| `Inadequate` | No tests, or happy-path-only | **Refuse to emit a step sequence.** Deliver: verdict, coverage-prerequisite list, referral to `task-node-test`; smells may be included preview-only (see Output Format) |
 
 **Happy-path-only is `Inadequate`, not `Thin`.** A single success-case test cannot verify the refactor preserves validation, authorization, or error behavior.
 

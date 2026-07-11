@@ -31,14 +31,14 @@ Workflow needs Node-specific orientation: package manager, framework, TS config,
 | `package-lock.json` | npm     | `npm install`, `npm run`, `npx`   |
 | `yarn.lock`         | Yarn    | `yarn install`, `yarn dlx`        |
 | `pnpm-lock.yaml`    | pnpm    | `pnpm install`, `pnpm dlx`        |
-| `bun.lockb`         | Bun     | `bun install`, `bun run`          |
+| `bun.lock` / `bun.lockb` | Bun | `bun install`, `bun run`          |
 
 ### Bootstrap
 
 1. Node version: `.nvmrc` / `engines.node` via `nvm` / `fnm` / `volta`.
 2. Install via detected manager.
 3. Local services: `compose.yml` for DB/Redis; env from `.env.example`.
-4. Migrations: Prisma `npx prisma migrate dev` | TypeORM `npm run typeorm:migration:run` | Sequelize `npx sequelize-cli db:migrate` | Drizzle `npx drizzle-kit migrate`.
+4. Migrations (substitute detected manager for `npm`/`npx`): Prisma `npx prisma migrate dev` | TypeORM `npm run typeorm:migration:run` | Sequelize `npx sequelize-cli db:migrate` | Drizzle `npx drizzle-kit migrate`.
 5. Run: NestJS `npm run start:dev` | Express `npm run dev` (often `tsx watch`) | Bun `bun run dev`.
 6. Verify: `/health` if implemented; `/api` Swagger if NestJS.
 

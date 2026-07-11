@@ -45,7 +45,7 @@ export class OrdersModule {}
 ### Controllers
 
 - `@Controller('api/v1/orders')`; HTTP verb decorators with `@Param/@Query/@Body`
-- `@HttpCode(201)` on POST, `@HttpCode(204)` on DELETE
+- POST defaults to 201; add `@HttpCode(204)` on DELETE and `@HttpCode(200)` on non-creating POST actions
 
 ```typescript
 @Controller("api/v1/orders")
@@ -53,7 +53,6 @@ export class OrderController {
   constructor(private readonly orders: OrderService) {}
 
   @Post()
-  @HttpCode(201)
   @UseGuards(JwtAuthGuard)
   create(@Body() dto: CreateOrderDto): Promise<OrderResponseDto> {
     return this.orders.create(dto);

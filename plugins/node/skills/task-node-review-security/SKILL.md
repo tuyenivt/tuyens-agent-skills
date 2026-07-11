@@ -81,6 +81,7 @@ Triage pass only. One verdict per category (`yes` / `no signal in diff`). Findin
 | Risk                          | Node-specific check                                                                                                                                       |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Broken Access Control         | Every endpoint declares authz: `@UseGuards(AuthGuard('jwt'), RolesGuard)` + `@Roles(...)` or route-level `requireAuth` + `requireRole`. Empty = finding.  |
+| Identification & Auth Failures | Hashing algorithm/cost, rate limit on auth routes, token lifetime/rotation, session cookie flags (depth in Step 5).                                      |
 | Injection                     | Prisma raw via tagged template `$queryRaw` parameterized; `$queryRawUnsafe(string)` not. TypeORM `repository.query(sql, params)` or QB `:name` params.    |
 | Cryptographic Failures        | `bcrypt` (cost >=10) or `argon2`. Never `md5`/`sha1` for auth. JWT signing key from env, not hardcoded.                                                   |
 | Security Misconfiguration     | `helmet()` applied; CORS origin allowlist (not `*` for credentialed); Swagger gated/disabled in prod.                                                     |
@@ -202,6 +203,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write the
 | Category                  | Verdict                 |
 | ------------------------- | ----------------------- |
 | Broken Access Control     | yes / no signal in diff |
+| Identification & Auth Failures | yes / no signal in diff |
 | Injection                 | yes / no signal in diff |
 | Cryptographic Failures    | ...                     |
 | Security Misconfiguration | ...                     |
@@ -232,7 +234,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write the
 
 ## Next Steps
 
-Tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat model). Order: Must > Recommend > Question.
+Tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat model). Map severity to intent: Critical / High -> `[Must]`; Medium / Low -> `[Recommend]`; `[Question]` only for genuine ambiguity. Order: Must > Recommend > Question.
 
 1. **[Implement]** [Must] file:line - [action]
 2. **[Delegate]** [Recommend] [scope: dependencies] - [action]

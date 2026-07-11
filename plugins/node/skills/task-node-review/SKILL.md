@@ -171,7 +171,7 @@ Surface the decision in Summary; if escalated, append `auto-escalated from Core;
 
 Output risk level and blast radius before any findings.
 
-**Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth strategies / guards, middleware, API contracts, shared base classes, `app.module.ts` / `app.ts`, migrations), skip Phases C-D and produce a streamlined output with Phase B only.
+**Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth strategies / guards, middleware, API contracts, shared base classes, `app.module.ts` / `app.ts`, migrations), skip Phases C-E and produce a streamlined report (Phase A snapshot + Phase B findings). Note the short-circuit in Summary.
 
 ### Step 4.5 - Re-evaluate Depth After Phase A
 
@@ -322,7 +322,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 
 **Assessment:** Approve | Request Changes | Discuss
 **Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide
+**Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Node.js <version> / TypeScript <version>
 **Framework:** NestJS <version> | Express <version> | mixed
 **ORM:** Prisma <version> | TypeORM <version>
@@ -409,9 +409,7 @@ _Omit if no actionable findings._
 - [ ] Scope auto-escalation evaluated and recorded; depth auto-promoted on Wide/Critical blast radius (Step 4, 4.5)
 - [ ] Risk + blast radius stated before any finding (Phase A)
 - [ ] Phase B: atomic skills applied; test-coverage gap raised as named finding; event-loop, validation strict, authz / IDOR, response-DTO hygiene, Idempotency-Key, race safety, migration safety all checked
-- [ ] Phase C: layering, DI, settings, listener / middleware, multi-tenant
-- [ ] Phase D: `complexity-review` + framework-matching necessity skill applied
-- [ ] Phase E: naming, magic numbers, function length, logging hygiene
+- [ ] Phases C-E ran (C: layering, DI, settings, listener / middleware, multi-tenant; D: `complexity-review` + framework-matching necessity skill; E: naming, magic numbers, function length, logging hygiene) - or low-risk short-circuit invoked and noted in Summary
 - [ ] Every Must cites system risk; every finding has label + `file:line` + actionable Node fix
 - [ ] Extra scopes ran in parallel; subagent findings merged intent-ordered (no raw reports); missing scope noted as `Scope incomplete: <scope>`
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix

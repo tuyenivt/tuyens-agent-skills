@@ -146,7 +146,7 @@ try {
 try {
   return await this.repo.save(entity);
 } catch (e) {
-  if (e instanceof QueryFailedError && (e.driverError as any).code === '23505') {
+  if (e instanceof QueryFailedError && (e.driverError as { code?: string }).code === '23505') {
     throw new ConflictError('unique violation', e);
   }
   throw e;

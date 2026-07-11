@@ -8,7 +8,7 @@ Claude Code plugin for Node.js/TypeScript development.
 - **Bun** - preferred for install, build, test, and scripts (faster than npm/yarn); Node.js remains the production runtime
 - **NestJS** (primary) + **Express** (secondary)
 - **Prisma** (NestJS) + **TypeORM** (Express)
-- **Jest** + **Supertest** (run via `bun test` or `bun run test`)
+- **Jest** + **Supertest** (run via `bun run test` - plain `bun test` invokes Bun's own runner, not Jest)
 - **PostgreSQL**
 
 ## Framework Detection

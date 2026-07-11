@@ -64,9 +64,10 @@ async function callWithRetry(req: () => Promise<Response>): Promise<Response> {
     last = await req();
     if (last.ok || !RETRYABLE.has(last.status) || attempt === MAX_ATTEMPTS) return last;
 
-    const retryAfter = parseRetryAfter(last.headers.get('retry-after'));
-    const backoff = retryAfter ?? Math.min(BASE_MS * 2 ** (attempt - 1), 1_000);
-    const wait = backoff * (0.5 + Math.random() * 0.5);             // jitter
+    const retryAfter = parseRetryAfter(last.headers.get('retry-after'));   // ms
+    const backoff = Math.min(BASE_MS * 2 ** (attempt - 1), 1_000);
+    // jitter our own backoff only - never wait less than the server's Retry-After
+    const wait = retryAfter ?? backoff * (0.5 + Math.random() * 0.5);
     if (Date.now() - start + wait > MAX_TOTAL_MS) return last;      // budget blown
     await new Promise(r => setTimeout(r, wait));
   }
@@ -145,8 +146,10 @@ export class StripeClient {
         headers: { 'idempotency-key': idempotencyKey },
       }).json<Charge>());
     } catch (e) {
-      if (e instanceof HTTPError && e.response.statusCode === 402) {
-        throw new ValidationError('card declined', e);                // 4xx -> domain
+      if (e instanceof HTTPError) {
+        if (e.response.statusCode === 402) throw new ValidationError('card declined', e);
+        if (e.response.statusCode < 500)                              // 401/403/422: config or contract bug
+          throw new InvalidStateError(`stripe rejected: ${e.response.statusCode}`, e);  // non-retryable
       }
       throw new UpstreamError('stripe unreachable', e);               // 5xx/transport -> retry queue candidate
     }
