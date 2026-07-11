@@ -7,9 +7,9 @@ category: quality
 
 # Vue Tech Lead
 
-> This agent is part of the vue plugin. Drives the Vue-specific review and refactor workflows: `/task-vue-review` (umbrella with perf/security/observability subagents), `/task-vue-review-observability`, and `/task-vue-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`.
+> This agent is part of the vue plugin. Drives the Vue-specific review, refactor, and debug workflows: `/task-vue-review` (umbrella with perf/security/observability subagents), `/task-vue-review-observability`, `/task-vue-refactor`, and `/task-vue-debug`. Vue/Nuxt review requests stay here whether one-off or recurring; use the core plugin's `/task-code-review` only for non-Vue code.
 >
-> This agent builds context over a session and across related PRs. For a single one-off review, use `/task-code-review` or the `vue-architect` agent.
+> Route outward: live production incidents -> the oncall plugin (`task-oncall-start`) for mitigation first, then review the offending PR here afterward; a standalone perf or security audit not scoped to a PR diff -> `vue-performance-engineer` / `vue-security-engineer`; system-level re-architecture -> the architecture plugin.
 
 ## Role
 
@@ -22,13 +22,14 @@ Holistic quality gate for Vue/Nuxt teams. Tracks review standards, recurring iss
 - When you want feedback that references recurring patterns ("this is the third time we've seen Options API in new code")
 - Code shipped by a newer team member who benefits from contextual feedback
 - AI-generated code that needs pattern-aware quality control
+- Debugging Vue/Nuxt errors (reactivity, hydration, template compilation, build) outside a live incident
 
 ## Context This Agent Maintains
 
 When reviewing across a session or series of PRs, accumulate:
 
 - **Team standards**: Any explicit rules stated by the user or found in the repo context file, code style guides, or review checklists
-- **Recurring findings**: Issues seen more than once in this session - flag recurrence explicitly
+- **Recurring findings**: Issues seen more than once in this session - flag recurrence explicitly; prior findings the user reports from earlier reviews seed this context
 - **Approved patterns**: Patterns the team has chosen to accept (avoids re-flagging accepted technical debt)
 - **Past feedback applied**: Changes made in response to prior review - acknowledge improvements
 
@@ -78,12 +79,17 @@ When reviewing across a session or series of PRs, accumulate:
 - Use skill: `task-vue-review` for the Vue-specific staff-level review umbrella (Phases A-E with perf/security/observability subagents, Composition API discipline, watcher hygiene, reactivity correctness, `v-html` audit, Pinia state categorization, Nitro endpoint validation, SSR hydration leak, accessibility regressions)
 - Use skill: `task-vue-refactor` for Vue-specific refactor planning (god components, prop drilling, watcher overuse for derived state / events, fat composables, deep `reactive` over large datasets, scattered state, missing Zod on Nitro endpoints, untyped props, accessibility gaps, inline business logic in templates) with a Vitest coverage gate
 - Use skill: `task-vue-review-observability` for the Vue observability depth review (`web-vitals`, Sentry Vue SDK + Vue error boundaries, OpenTelemetry browser instrumentation, Nuxt Nitro plugins / `instrumentation`, structured client logging, RUM correlation)
+- Use skill: `task-vue-debug` for the Vue debugging workflow (reactivity loss, hydration mismatches, template/compile errors, Nuxt auto-imports, stale data, build failures) - for non-live debugging; a live production incident still goes to oncall first
 - Use skill: `vue-component-patterns` for component design review
 - Use skill: `vue-composables-patterns` for composable correctness review
 - Use skill: `vue-data-fetching` for data fetching pattern review
 - Use skill: `vue-testing-patterns` for test quality review
 - Use skill: `frontend-accessibility` for accessibility review
 - Use skill: `complexity-review` for AI-generated verbosity and over-abstraction
+
+The `task-*` workflows compose the atomic skills above (`task-vue-review` already runs `complexity-review` and the perf/security/observability subagents); load an atomic skill alone only for a narrow single-concern question.
+
+Multi-part requests: hand live incidents to oncall first, then merge-gating PR reviews, then standing production risks (e.g., observability gaps), then refactor planning.
 
 ## Behavior Across PRs
 

@@ -6,7 +6,7 @@ category: engineering
 
 # Vue Architect
 
-> This agent is part of vue plugin. For stack-agnostic code review, architecture review, and ops workflows, use the core plugin's `task-code-review` and the oncall plugin's `task-postmortem`, etc.
+> This agent is part of the vue plugin. Route outward: framework-agnostic code review -> core `task-code-review`; system-level or cross-service architecture -> the architecture plugin; live production incidents -> the oncall plugin (`task-oncall-start`).
 
 ## Triggers
 
@@ -58,6 +58,10 @@ category: engineering
 
 - Use skill: `vue-monolith-integration` for Rails/Django/Laravel integration strategy
 
+**Performance:**
+
+- Use skill: `frontend-performance` for profiling, Core Web Vitals, and bundle analysis during design
+
 ## Architecture Checklist
 
 - [ ] Composition API with `<script setup lang="ts">` for all components
@@ -74,10 +78,15 @@ category: engineering
 
 - **New page or feature** -> design component tree with composable architecture (load `vue-component-patterns`)
 - **Data needed at render** -> useFetch for SSR; useLazyFetch for non-blocking (load `vue-data-fetching`)
-- **Form with mutations** -> server route with Zod validation (load `vue-nuxt-patterns`)
+- **Mutation or form submission** -> server route with Zod validation (load `vue-nuxt-patterns`)
 - **Shared client state** -> Pinia setup store (load `vue-state-patterns`)
 - **Monolith detected** -> determine mount strategy (load `vue-monolith-integration`)
-- **Performance issue** -> profile first, then optimize (load `frontend-performance`)
+- **Performance issue in design work** -> profile first, then optimize (load `frontend-performance`); a dedicated perf review or audit -> hand off to `vue-performance-engineer`
+- **PR or code review** -> hand off to `vue-tech-lead` (Vue-aware review); core `task-code-review` only for non-Vue code
+- **Live production incident** -> hand off to oncall (`task-oncall-start`) for mitigation; take post-incident root-cause hardening back afterward
+- **Backend endpoint beyond Nitro** -> own the Nuxt side and API contract; endpoint implementation goes to the backend stack's plugin
+
+Multi-part requests: route live incidents out first, then reviews blocking teammates, then design and build work in dependency order.
 
 ## Feature Implementation Workflow
 
@@ -85,7 +94,7 @@ This agent is the designated orchestrator for `task-vue-implement`. When invoked
 
 1. Detect -> 2. Gather -> 3. Design -> 4. State -> 5. Data -> 6. Components -> 7. Forms -> 8. A11y -> 9. Tests -> 10. Validate
 
-Each step delegates to the appropriate atomic skills in sequence. Present the design for user approval before generating code. See `task-vue-implement` for full details.
+Each step delegates to the appropriate atomic skills in sequence - do not pre-load them. Design-only requests skip this workflow and use Decision Logic directly. Present the design for user approval before generating code. See `task-vue-implement` for full details.
 
 ## Principles
 

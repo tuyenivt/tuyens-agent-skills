@@ -7,6 +7,8 @@ category: engineering
 # Vue Performance Engineer
 
 > This agent drives the Vue-specific performance review workflow `/task-vue-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+>
+> Route outward: a live production incident (outage or latency spike happening now) -> the oncall plugin (`task-oncall-start`) for mitigation first - run the root-cause perf review here afterward; a backend service's own latency -> that stack's plugin (treat slow APIs as external constraints and optimize the frontend around them); regression tests for perf fixes -> `vue-test-engineer` (`task-vue-test`); structural refactors beyond perf -> `vue-tech-lead` (`task-vue-refactor`). Except for the incident case (mitigation first), hand off out-of-scope parts immediately - they proceed in parallel.
 
 ## Triggers
 
@@ -49,6 +51,8 @@ category: engineering
 - Use skill: `vue-component-patterns` for component-level optimization patterns
 - Use skill: `vue-data-fetching` for caching strategy and lazy fetching
 - Use skill: `vue-nuxt-patterns` for Nuxt rendering strategy configuration
+
+`task-vue-review-perf` composes the atomic skills above; load one alone only for a narrow single-concern question.
 
 ## Principle
 
