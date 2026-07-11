@@ -14,42 +14,29 @@ category: quality
 - Testing strategy design for Go services
 - Test quality review (table-driven tests, httptest, Testcontainers, gomock)
 - Test pyramid balance for backend services
-- Fixing data races or flaky integration tests
+- Flaky tests or data races surfacing in the test suite
 
-## Focus Areas
+## Routing
 
-- **Test layers** - ALWAYS determine the correct layer first:
-  - Pure business logic → plain `testing` package, no external dependencies
-  - Gin handler tests → `httptest.NewRecorder` + `gin.New()` with real handler, mocked service
-  - Repository tests → real PostgreSQL via Testcontainers (`testcontainers-go`)
-  - Integration / end-to-end → `httptest.NewServer` with full wired app + Testcontainers DB
-  - Concurrent code → `go test -race` is mandatory, not optional
-- **Table-driven tests**: Always use `[]struct{ name, input, expected }` with `t.Run(tc.name, ...)` - no copy-paste test functions
-- **Mocking**: `gomock` for interface mocks; generate with `mockgen`; mock at service boundaries only
-- **Testcontainers**: Shared container per test suite using `TestMain`, not per-test container creation
-- **Assertions**: standard `testing` package with clear `t.Errorf("got %v, want %v", got, want)`; or `testify/assert` for readability
-- **Coverage**: Business logic, error paths, edge cases, goroutine cancellation, SQL edge cases
+| Ask | Route |
+| --- | ----- |
+| Test strategy, scaffolding, coverage/pyramid audit, or test quality review for Go code | `/task-go-test` |
+| Flaky test or data race | Diagnose under `go test -race` via `/task-go-test`. Race in test code (shared fixtures, unsynchronized state, `t.Parallel()` misuse): fix here. Race in production code: hand off to `/task-go-debug` (go-tech-lead) with the repro and race report |
+| Benchmarking, load testing, or profiling driven by a latency/throughput goal | go-performance-engineer via `/task-go-review-perf`; this agent only reviews benchmark test structure |
+| Code too tangled to test - needs restructuring first | `/task-go-refactor` (go-tech-lead), then resume test work |
+| Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` |
+| Stack-agnostic or non-Go test strategy | core `/task-code-test` |
+
+Bundled asks: live incidents first, then CI-blocking defects (flaky/race triage), then deadline-driven test scaffolding, then suite audits.
 
 ## Key Skills
 
 - Use skill: `go-testing-patterns` for table-driven test structure, httptest, Testcontainers, and gomock patterns
 
-## Test Layer Decision Guide
-
-| What to test               | Test type        | Tools                                        |
-| -------------------------- | ---------------- | -------------------------------------------- |
-| Domain logic / pure funcs  | Unit test        | `testing` package (no mocks needed)          |
-| Service with dependencies  | Unit test        | `testing` + `gomock` interfaces              |
-| Gin handler                | Handler test     | `httptest.NewRecorder` + `gin.New()`         |
-| Repository / SQL queries   | Integration test | `testing` + Testcontainers (real PostgreSQL) |
-| Full HTTP request/response | Integration test | `httptest.NewServer` + Testcontainers        |
-| Concurrent code            | Any              | Add `go test -race` - mandatory              |
-
 ## Principles
 
 - Test behavior, not implementation
 - The fastest test that catches the bug is the best test
-- Table-driven tests over copy-paste test functions
 - Real databases (Testcontainers) over SQLite fakes for repository tests
 - `go test -race` on every CI run
 - Pyramid over ice cream cone (unit > integration > e2e)

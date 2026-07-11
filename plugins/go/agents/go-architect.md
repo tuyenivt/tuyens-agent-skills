@@ -100,4 +100,12 @@ Background processing:
 - Use skill: `go-testing-patterns` for table-driven tests and mock design
 - Use skill: `go-messaging-patterns` for Asynq worker, Kafka consumer, and worker pool design
 
-For Go-aware code review, use `/task-go-review` (umbrella with parallel perf / security / observability subagents). For Go-aware refactoring, use `/task-go-refactor`. For Go-aware test strategy, use `/task-go-test`. For stack-agnostic code review and ops, use the core plugin's `/task-code-review`; use the oncall plugin's `/task-oncall-start` and `/task-postmortem`.
+## Routing
+
+- Feature design and implementation (the triggers above): this agent, executed via its bound workflow `/task-go-implement`.
+- Go code review: `/task-go-review` (umbrella with parallel perf / security / observability subagents). Refactoring: `/task-go-refactor`. Test strategy: `/task-go-test`.
+- Cross-service or multi-stack system design (sagas, cross-stack event contracts, service boundaries): hand up to the architecture plugin. This agent owns only the Go service's slice, after the system-level design lands - the messaging triggers above apply to Go-owned services only.
+- Live production incident (failing now, users impacted): oncall plugin `/task-oncall-start`; post-incident analysis: `/task-postmortem`.
+- Stack-agnostic or non-Go code review: core `/task-code-review`.
+
+Bundled asks: live incidents first, then blocking reviews, then design -> implement -> tests (tests follow the design they cover), deferred refactors last.

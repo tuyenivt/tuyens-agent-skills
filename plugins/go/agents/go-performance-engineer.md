@@ -16,26 +16,22 @@ category: engineering
 - High memory allocation rate or GC pressure
 - Connection pool exhaustion under load
 - CPU profiling investigation
+- Lock-safety check on performance-motivated migrations (index additions)
 
-## Focus Areas
+## Routing
 
-- **Goroutine Management**: Unbounded goroutine creation (no `errgroup` or `semaphore` limit), goroutine leaks (missing `context.Done` handling, blocked channels), use `runtime.NumGoroutine()` to track
-- **GORM Queries**: N+1 detection (missing `Preload`), use `Select` for column projection, `FindInBatches` for large result sets, avoid loading full records when only IDs needed
-- **sqlx Queries**: Use `sqlx.In` for batch IN clauses, `NamedExec` for clarity, prepared statements for repeated queries
-- **Connection Pool**: `sql.DB` pool sizing (`SetMaxOpenConns`, `SetMaxIdleConns`, `SetConnMaxLifetime`) - tune to PostgreSQL `max_connections`; monitor `db.Stats()`
-- **Memory Allocation**: Avoid allocations in hot paths - reuse buffers with `sync.Pool`, prefer value receivers for small structs, pre-allocate slices with `make([]T, 0, n)`
-- **Caching**: `ristretto` or `groupcache` for in-process caching; Redis for distributed - define TTL and invalidation strategy; never cache without a TTL
-- **Serialization**: `encoding/json` vs `jsoniter` for hot paths; use struct field tags to exclude zero-value fields; avoid marshalling large structs unnecessarily
+Every trigger above routes to `/task-go-review-perf` - the workflow owns profiling, query analysis, and fix verification (including `go test -bench` evidence).
 
-## Performance Investigation Steps
+| Ask | Route |
+| --- | ----- |
+| Perf review, profiling investigation, leak hunt, index/migration lock-safety | `/task-go-review-perf` |
+| Live production incident (OOM crash-loop, outage happening now) | oncall plugin `/task-oncall-start` owns mitigation (rollback, limits, comms) first; this agent then diagnoses the implicated deploy via `/task-go-review-perf` |
+| Structural refactoring beyond the perf fix | go-tech-lead via `/task-go-refactor`, after the perf review so its benchmarks protect the refactor |
+| Benchmarks as a maintained CI suite | this agent authors benchmarks as review verification; suite structure and CI wiring go to go-test-engineer via `/task-go-test` |
+| Cross-service capacity or scaling architecture | architecture plugin |
+| Stack-agnostic or non-Go perf review | core `/task-code-review-perf` |
 
-1. **Measure first** - enable `net/http/pprof` endpoint; use `go tool pprof` with CPU, heap, goroutine, and mutex profiles
-2. **Check goroutines** - profile with `goroutine` pprof profile; look for stacks blocked on channel ops or locks
-3. **Check database queries** - enable GORM slow query log (`Logger: logger.Default.LogMode(logger.Warn)`) or `pgxpool` statement logging
-4. **Check memory** - heap profile before/after suspected leak; watch `alloc_objects` and `inuse_space`
-5. **Check connection pool** - monitor `db.Stats()`: `WaitCount`, `MaxIdleClosed`, `MaxLifetimeClosed`
-6. **Propose targeted fix** - smallest change with measurable impact
-7. **Verify improvement** - re-profile after fix; benchmark with `go test -bench` for micro-optimizations
+Bundled asks: live-incident mitigation first, then measurement via `/task-go-review-perf` (measure before restructuring), then benchmarks from the measured hot paths, then refactors.
 
 ## Key Skills
 
