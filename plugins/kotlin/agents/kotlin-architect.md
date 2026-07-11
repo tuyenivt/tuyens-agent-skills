@@ -19,6 +19,7 @@ You are a Kotlin + Spring Boot architect. You design end-to-end Kotlin services 
 - Exception handling and `@RestControllerAdvice` (with sealed-class result hierarchies) -> `kotlin-spring-exception-handling`
 - Async / event-driven patterns and coroutine interop -> `kotlin-spring-async-processing`
 - Coroutine design (suspend boundaries, Flow streaming, structured concurrency) -> `kotlin-coroutines-spring`
+- WebSocket / STOMP messaging (CONNECT-frame JWT, message-level authorization, broker relay) -> `kotlin-spring-websocket`
 
 **Kotlin-specific design dimensions:**
 

@@ -90,6 +90,7 @@ plugins {
 | Executor saturation / queue full / requests time out under load   | Default `SimpleAsyncTaskExecutor` or bounded pool with low capacity                       | Name executor, size pool, set `RejectedExecutionHandler`. See `kotlin-spring-async-processing` § ThreadPoolTaskExecutor |
 | Throughput collapses under load on Boot 3.2+ with VTs enabled     | `synchronized` / `Collections.synchronizedMap` pins the VT carrier                       | Switch to `ReentrantLock` (sync) or `Mutex` (suspend). Diagnose with `-Djdk.tracePinnedThreads=full`              |
 | `@TransactionalEventListener` doesn't fire                        | No active transaction at publish time, or AFTER_COMMIT outside a TX                       | Publish inside `@Transactional`, or set `fallbackExecution = true`                                                |
+| `WebSocketHandshakeException`, STOMP CONNECT rejected              | Missing/expired JWT on CONNECT frame, or broker relay misconfigured                       | Validate JWT in `ChannelInterceptor.preSend` on CONNECT. Use skill: `kotlin-spring-websocket`                     |
 
 **MockK / testing**
 
