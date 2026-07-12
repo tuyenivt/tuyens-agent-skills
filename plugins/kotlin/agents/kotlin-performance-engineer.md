@@ -28,17 +28,17 @@ category: engineering
 - **Response Optimization**: API responses via projection DTOs (interface or `data class`), pagination (`Pageable`, cursor pagination for large tables), eager loading only needed relationships
 - **Concurrency Safety**: No `synchronized` on shared instances under Virtual Threads (`spring.threads.virtual.enabled=true`) - use `ReentrantLock` or `kotlinx.coroutines.sync.Mutex`
 
-## Performance Investigation Steps
+## Scope Boundaries
 
-1. **Measure first** - profile with Spring Boot Actuator metrics, Hibernate statistics (`spring.jpa.properties.hibernate.generate_statistics=true` in non-prod), JFR, or async-profiler before optimizing
-2. **Check JPA queries** - enable `p6spy` or `datasource-proxy` in non-prod; surface N+1, slow queries, missing indexes
-3. **Check JPA entity identity** - `data class` JPA entity duplicates queries during `equals` / `hashCode` calls in collections; flag as both correctness and performance
-4. **Check HikariCP** - pool sizing, leak detection, `maxLifetime` vs DB-side timeouts
-5. **Check coroutine boundaries** - `runBlocking` in production paths; redundant `Dispatchers.IO` under VTs; `GlobalScope.launch` leaks; `Flow` without backpressure
-6. **Check cache hit rate** - verify cache is being used for repeated expensive reads; invalidation strategy explicit
-7. **Check messaging throughput** - `spring.kafka.listener.concurrency` not at default `1` for high-throughput topics; transactional outbox for atomic DB-write + publish
-8. **Propose targeted fix** - smallest change with measurable impact
-9. **Verify improvement** - re-profile after fix; track p95 latency not just average
+Diagnosis asks run through `/task-kotlin-review-perf` - the investigation procedure (measure-first, p6spy, Hikari checks, verify-the-fix) lives there, not here.
+
+| Ask | Route |
+| --- | ----- |
+| Live production incident (OOM crash-loop, outage happening now) | oncall plugin `/task-oncall-start` owns mitigation (rollback, limits, comms) first; this agent then diagnoses the implicated deploy via `/task-kotlin-review-perf` |
+| Gradle build performance | `kotlin-gradle-build-optimization` (kotlin-architect's domain) - this agent owns runtime performance only |
+| Cross-service capacity or scaling architecture (sharding, 10x traffic plans) | architecture plugin; this agent contributes measured baselines and per-service headroom as design input |
+
+Bundled asks: live incidents first, then post-stability diagnosis (`/task-kotlin-review-perf`), then build or design-input work.
 
 ## Performance Checklist
 
@@ -79,7 +79,7 @@ category: engineering
 
 **Build:**
 
-- Use skill: `kotlin-gradle-build-optimization` for kotlin-jpa / kotlin-spring plugin presence (proxy correctness affects perf), Gradle build cache, parallel execution
+- Use skill: `kotlin-gradle-build-optimization` for kotlin-jpa / kotlin-spring plugin presence (proxy correctness affects runtime perf); build-speed asks route per Scope Boundaries
 
 ## Principle
 

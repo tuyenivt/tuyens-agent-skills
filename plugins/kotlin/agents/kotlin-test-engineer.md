@@ -31,20 +31,14 @@ category: quality
 - **Testcontainers**: shared `companion object { @Container @JvmStatic val pg = ... }`; `@ServiceConnection` (Boot 3.1+) over `@DynamicPropertySource` when available
 - **Coverage**: Business logic, error paths, null safety edge cases, coroutine cancellation paths, sealed-class branches
 
-## Test Layer Decision Guide
+## Scope Boundaries
 
-| What to test                  | Test type            | Tools                                                    |
-| ----------------------------- | -------------------- | -------------------------------------------------------- |
-| Service logic                 | Unit test            | Plain JUnit / Kotest + MockK (no Spring context)         |
-| Mappers / extension functions | Unit test            | Plain JUnit / Kotest, no mocks needed                    |
-| Repository derived methods    | Slice test           | `@DataJpaTest` + Testcontainers via `@ServiceConnection` |
-| Controller routing/binding    | Slice test           | `@WebMvcTest` + MockMvc Kotlin DSL + `@MockkBean`        |
-| `suspend` service             | Unit test            | `runTest { coEvery { ... } }`                            |
-| `Flow` consumer               | Unit test            | Turbine `flow.test { ... }`                              |
-| Auth / security               | Slice test           | `@WebMvcTest` + `@WithMockUser` / `with(jwt())`          |
-| End-to-end auth flow          | Full-context test    | `@SpringBootTest` + Testcontainers + `WebTestClient`     |
-| `@KafkaListener` idempotency  | Full-context test    | `@SpringBootTest` + Testcontainers Kafka                 |
-| `@Scheduled` job              | Full-context test    | `@SpringBootTest` + Awaitility                           |
+| Ask | Route |
+| --- | ----- |
+| A specific failing or flaky test with an unexplained error (intermittent assertion, `JobCancellationException`, MockK "no answer found", Testcontainers startup failure) | `/task-kotlin-debug` - structural suite problems (slow suite, overbroad `@SpringBootTest`, wrong slice, H2-instead-of-Testcontainers) stay here via `/task-kotlin-test` |
+| Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` first; this agent writes the regression test after the fix is identified |
+
+Bundled asks: live incidents first, then failing-test triage (`/task-kotlin-debug`), then strategy and scaffolding work (`/task-kotlin-test`).
 
 ## Key Skills
 

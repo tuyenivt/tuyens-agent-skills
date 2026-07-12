@@ -30,24 +30,18 @@ category: quality
 - **File Upload**: Magic-byte validation (Apache Tika), size limits, sanitized paths, `Content-Disposition: attachment`
 - **Actuator / DevTools**: Minimal `management.endpoints.web.exposure.include` in prod; `spring-boot-devtools` is `developmentOnly`
 
-## Security Review Checklist
+## Scope Boundaries
 
-- [ ] Every route has explicit auth (`SecurityFilterChain` matcher or `@PreAuthorize`) or is intentionally public
-- [ ] `@PreAuthorize` covers ownership for resource-scoped operations
-- [ ] Bean Validation uses `@field:` site target on data class properties
-- [ ] No `data class` accepted as `@RequestBody` (use dedicated request DTOs)
-- [ ] No raw JPQL / native SQL string-template interpolation - use parameterized queries
-- [ ] CORS origins explicitly allowlisted - no `"*"` for credentialed endpoints
-- [ ] Secrets loaded via env / Vault - never hardcoded in `application.yml`
-- [ ] No sensitive data in logs (password, token, secret, PII)
-- [ ] File uploads validated by content type (Apache Tika), size limited, paths canonicalized
-- [ ] `APP_DEBUG`-equivalent (Spring Boot Whitelabel error page detail) gated in prod
-- [ ] HTTPS enforced; `Secure`, `HttpOnly`, `SameSite` flags on session cookies
-- [ ] `./gradlew dependencyCheckAnalyze` passes with no high/critical vulnerabilities
-- [ ] Rate limiting applied on auth routes (`/login`, `/oauth/token`)
-- [ ] `SecurityContextHolder` not used inside `suspend` functions - use `ReactiveSecurityContextHolder` or pass principal explicitly
-- [ ] `kotlin("plugin.spring")` configured so `@PreAuthorize` proxies are not blocked by final classes
-- [ ] `mockito-core` excluded from test runtime when using springmockk (avoid security tests passing on a different mock implementation than production paths)
+The review checklist itself lives in `task-kotlin-review-security` - do not audit ad hoc when the workflow fits.
+
+| Ask | Route |
+| --- | ----- |
+| Design a security control (rate limiting, webhook signature verification, tenant scoping) | This agent specifies the requirement from `kotlin-spring-security-patterns`; the build goes to kotlin-architect via `/task-kotlin-implement` |
+| Active attack or exploit in progress (happening now) | oncall plugin `/task-oncall-start` - containment before review; after `/task-postmortem`, this agent reviews the attacked surface via `/task-kotlin-review-security` |
+| Breach forensics beyond this codebase (credential-list origin, third-party compromise) | oncall plugin; this agent owns only the in-app leak hypothesis (secrets in source, logged credentials, injection exfiltration) |
+| Security-driven redesign (multi-tenant isolation, cross-service authz model) | architecture plugin; this agent contributes security requirements as design input |
+
+Bundled asks: active attacks first, then exploitable-now gaps, then audit-blocking reviews, then long-term redesign input.
 
 ## Key Skills
 
