@@ -14,7 +14,7 @@ user-invocable: false
 ## When to Use
 
 - Publishing / consuming events via Kafka or RabbitMQ
-- Replacing synchronous HTTP with async messaging
+- Replacing synchronous HTTP with async messaging - only when the caller does not need the result in-request; if it does, keep HTTP or use request-reply with a correlation ID (these patterns are fire-and-forget/event flows)
 - Guaranteed delivery that must survive a crash between DB commit and broker publish
 - In-process decoupling via Spring Application Events
 
@@ -25,7 +25,7 @@ user-invocable: false
 - DLT / DLQ configured for every listener; permanent failures excluded from retry.
 - Use the **transactional outbox** whenever a publish must atomically follow a DB commit. Never call `send()` inside `@Transactional` without it - rollback leaves phantom events.
 - Payloads are records / primitives. Never serialize JPA entities (lazy proxies, schema coupling).
-- Manual ack only after successful processing (`enable-auto-commit: false`, `ack-mode: manual_immediate`).
+- Ack only after successful processing. Kafka: `enable-auto-commit: false` + `ack-mode: manual_immediate`. RabbitMQ: container default (AUTO) acks on normal return and nacks on exception - correct as long as the listener lets failures throw; `acknowledge-mode: manual` only when acking mid-method.
 - Catch only retryable exceptions in listeners; let unknowns reach the retry / DLT machinery.
 - Propagate trace context across the broker (Micrometer Observation auto-instruments Spring Kafka / Rabbit when `ObservationRegistry` is on the classpath).
 
@@ -204,7 +204,7 @@ public void onOrderCreated(OrderCreatedEvent e) { auditService.record(e); }
 
 ### Webhook handlers
 
-External services (Stripe, GitHub) deliver via HTTP with at-least-once semantics: verify signature, dedupe by event ID, respond 200 fast.
+External services (Stripe, GitHub) deliver via HTTP with at-least-once semantics: verify signature, dedupe by event ID, respond 200 fast. Inline `process()` is for quick work only - anything approaching the provider's delivery timeout gets stored (outbox row or job record) inside the request, 200 returned, and processed async.
 
 ```java
 @PostMapping("/webhooks/stripe")
@@ -246,7 +246,7 @@ Broker: {Kafka | RabbitMQ | Spring Events}
 Topic/Queue: {name}
 Producer: {class}
 Consumer: {class}
-Delivery: {at-least-once | at-most-once | exactly-once via outbox}
+Delivery: {at-least-once | at-most-once | effectively-once - outbox + consumer dedup}
 Idempotency: {dedup key + storage}
 DLT/DLQ: {topic/queue name | not needed - reason}
 Retry: {attempts, backoff, excluded exceptions | claim-expiry policy for outbox relay}

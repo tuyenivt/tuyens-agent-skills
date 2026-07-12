@@ -50,7 +50,7 @@ Classify and load the relevant atomic skill if any. Common mappings:
 | Build / dependency conflict                    | `java-gradle-build-optimization` |
 | Plain `NullPointerException`, JSON binding, `MethodArgumentNotValidException`, `NoSuchBeanDefinitionException`, `BeanCurrentlyInCreationException`, `ConverterNotFoundException`, compilation, generic test failure | none (handle inline) |
 
-When there is no exception (behavior mismatch), route by symptom, not class: silent commit / "not rolling back" / lost update -> `spring-transaction`; data missing after save, stale read -> `spring-jpa-performance` or `spring-transaction`; missing post-commit side effect -> `spring-async-processing` / `spring-messaging-patterns`; wrong auth outcome -> `spring-security-patterns`.
+When there is no exception (behavior mismatch), route by symptom, not class: silent commit / "not rolling back" / lost update -> `spring-transaction`; data missing after save, stale read -> `spring-jpa-performance` or `spring-transaction`; missing post-commit side effect -> `spring-async-processing` (in-process: events, `@Async`, scheduling) or `spring-messaging-patterns` (broker hop: Kafka/RabbitMQ, outbox, consumer); wrong auth outcome -> `spring-security-patterns`.
 
 If a skill loaded, its Patterns drive Steps 5-6. Do not re-derive. This workflow's Output Format is the sole deliverable contract - do not also emit the loaded atomic's own output block.
 
@@ -60,6 +60,8 @@ If a skill loaded, its Patterns drive Steps 5-6. Do not re-derive. This workflow
 2. Open the file +/- 50 lines around the failing line.
 3. Trace the layers the request actually crosses: Filter / Interceptor -> `@ControllerAdvice` -> `@RestController` -> `@Service` (note `@Transactional` boundary) -> Mapper -> `@Repository` -> async / scheduled / messaging hop.
 4. Check `application.yml`, security / async / datasource config when symptoms point there (e.g. LIE with `open-in-view=false`, missing component scan, HikariCP exhaustion).
+
+Startup and build failures skip the request-layer trace: work from the failing bean or task to its defining source (constructor graph, `@Configuration` classes, build scripts).
 
 ### Step 5 - Root cause
 
@@ -71,7 +73,7 @@ State WHY, citing file and line. Name the violated pattern if any. Rate confiden
 
 ### Step 6 - Propose fix
 
-Show exact before -> after diff. Minimal fix, not redesign. If Step 3 loaded an atomic, draw the fix from its Patterns; when it has no Pattern for this exact bug class, derive the minimal fix from its Rules and say so. Tie-break for boundary bugs: when a regression moved work outside a tx/session boundary, prefer restoring the boundary (e.g., map to DTO inside the service) over widening data fetching (`@EntityGraph` / fetch join) - widen fetching only when the entity legitimately crosses the boundary. Explain why this fix addresses the cause, not the symptom.
+Show exact before -> after diff. Minimal fix, not redesign - where "minimal" means the smallest cause-level change, not the smallest diff: `@Lazy` to silence a circular-dependency startup failure leaves the cycle in place; extracting the shared dependency is the minimal fix. If Step 3 loaded an atomic, draw the fix from its Patterns; when it has no Pattern for this exact bug class, derive the minimal fix from its Rules and say so. Tie-break for boundary bugs: when a regression moved work outside a tx/session boundary, prefer restoring the boundary (e.g., map to DTO inside the service) over widening data fetching (`@EntityGraph` / fetch join) - widen fetching only when the entity legitimately crosses the boundary. Explain why this fix addresses the cause, not the symptom.
 
 ### Step 7 - Prevent recurrence
 
@@ -84,7 +86,7 @@ Suggest one regression test that would have caught this bug class; when the requ
 ```
 ## Bug Analysis
 - Error type: <exception or category>
-- Layer: <Controller | Service | Repository | Config | Build | Test>
+- Layer: <Controller | Service | Repository | Async/Messaging | Config | Build | Test>
 - Confidence: <HIGH | MEDIUM | LOW>
 - Loaded skill: <atomic-skill-name or none>
 

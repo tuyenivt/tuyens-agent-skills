@@ -129,6 +129,8 @@ If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `
 - `mode = incremental`: `Scope expanded round <N>: +<list> - new scopes reviewed in full; previously-reviewed scopes reviewed incrementally.`
 - `mode = full`: `Scope expanded round <N>: +<list>.` (the incremental clause does not apply)
 
+If the invocation *narrowed* scope (a round-2+ flag drops scopes), prior findings from dropped scopes are still reconciled - they are High-Impact rows - but get no fresh pass. Record: `Scope narrowed round <N>: -<list> - prior findings reconciled; no new <list> pass.`
+
 The reconciliation table (when emitted) only covers findings whose scope was active in the prior round.
 
 ### Step 4 - Evaluate Auto-Escalation
@@ -143,7 +145,7 @@ Scan files and diff against signal categories (above). Log `signal: <category> -
 - Use skill: `review-blast-radius`.
 - Output Risk and Blast Radius before findings.
 
-**Low-risk short-circuit:** Risk `Low` + Blast Radius `Narrow` + no architecture-relevant files touched (security config, filters, API contracts, shared base classes, aspects, `application.yml`, migrations) -> skip Phases C-D, deliver Phase B findings only.
+**Low-risk short-circuit:** Risk `Low` + Blast Radius `Narrow` + no architecture-relevant files touched (security config, filters, API contracts, shared base classes, aspects, `application.yml`, migrations) -> skip Phases C-E, deliver Phase B findings only.
 
 ### Phase B - Spring Correctness and Safety
 
@@ -230,6 +232,7 @@ Skip if Step 5 didn't run. Merge subagent findings into the single Output Format
 - **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`.
 - **Preserve `file:line` citations**; order by severity, not by scope.
 - **Merge Next Steps**: combine, preserve `[Implement]`/`[Delegate]`, dedupe, re-sort.
+- **Preserve deep-only sections** returned by subagents (e.g., perf's `Capacity and Load-Test Plan`) as their own section after Next Steps - they are not findings; the merge must not drop them.
 
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
 
@@ -258,7 +261,7 @@ The report writer owns label semantics (`[Must]` / `[Recommend]` / `[Question]` 
 ```markdown
 ## Summary
 
-**Assessment:** Approve | Request Changes | Discuss
+**Assessment:** Approve | Request Changes | Discuss _(fill rule: any `[Must]` -> Request Changes; no `[Must]` but a `[Question]` whose answer could block merge -> Discuss; otherwise Approve)_
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Java <version> / Spring Boot <version>
@@ -331,7 +334,7 @@ Omit empty sections.
 - [ ] Phase B - Spring idioms applied (transactions, JPA-in-API, authz coverage, exception advice, VT pinning, dual-write); migration safety where applicable; missing tests raised as named finding
 - [ ] Phase C - layering, anemic domain, constructor injection, configuration, boundaries, multi-tenant (skipped under the Phase A low-risk short-circuit)
 - [ ] Phase D - `complexity-review` + `spring-overengineering-review` invoked; remaining AI smells covered (skipped under the Phase A low-risk short-circuit)
-- [ ] Phase E - maintainability applied
+- [ ] Phase E - maintainability applied (skipped under the Phase A low-risk short-circuit)
 - [ ] Step 5 - subagents ran in parallel with pre-resolved handle (when scope > Core)
 - [ ] Step 6 - findings deduped, highest-severity wins, severity-ordered, raw subagent reports not appended; missing scopes noted
 - [ ] Step 6.5 - on incremental rounds, `review-prior-findings-reconcile` ran; reconciliation table inserted; `Still open` rows folded into Next Steps with `(open since round <N>)` suffix

@@ -66,6 +66,8 @@ Refactoring without coverage is a rewrite. "60% project coverage" is not the que
 
 **Output:** `Adequate` | `Thin (boundary tests missing)` | `Inadequate (coverage steps precede all refactor steps)`.
 
+Gate mechanics: the overall label is the worst target in scope, but each refactor step is gated only on its *own* target's coverage steps - adequately-covered targets proceed. Recipe-internal "pin behavior test" items *are* that target's Phase 0 steps; list them once, under Phase 0. Compile-verified mechanical swaps (constructor injection, `@Value` -> `@ConfigurationProperties`) need no new behavior tests - a green suite is their gate.
+
 ### Step 5 - Identify Spring Smells
 
 For any flagged smell, delegate diagnosis to the matching atomic skill rather than restating its rules. A delegate's Output Format block goes in the plan's `Appendix - Delegated Diagnoses`; the plan body cites it, never duplicates it:
@@ -150,6 +152,8 @@ Each step is:
 3. **Reversible** - one revert
 4. **Tested** - existing tests stay green; new tests added for new units
 
+**Batching.** Same-shape mechanical changes across many classes group into one step while the diff stays reviewable in under 30 minutes; behavior-adjacent extractions stay one target per step.
+
 **Transaction-boundary watch.** Extracting from a `@Transactional` method, the callee inherits the transaction via the proxy. If the extracted code does HTTP / Kafka / file writes, they now happen mid-transaction. State the transaction stance per step:
 
 - *inside caller's `@Transactional`* | *AFTER_COMMIT via `@TransactionalEventListener`* | *outbox* | *not transactional*
@@ -210,6 +214,11 @@ Each step is:
 [full `review-blast-radius` output block]
 
 ## Step Sequence
+
+### Phase 0 - [coverage step; only when the gate is Thin/Inadequate, one per under-covered target]
+
+- **Adds:** [test class + behaviors pinned]
+- **Gates:** [the refactor steps that depend on it]
 
 ### Step 1 - [Verb + Noun]
 

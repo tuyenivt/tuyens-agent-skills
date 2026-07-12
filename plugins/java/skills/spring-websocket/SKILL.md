@@ -16,6 +16,8 @@ user-invocable: false
 - Real-time bidirectional channels (chat, notifications, live status)
 - Server-pushed updates over STOMP / WebSocket
 
+Patterns here are STOMP-shaped. For raw `WebSocketHandler` endpoints (no STOMP), only the transport-limit, heartbeat, Virtual Thread, and reverse-proxy rules carry over - auth and routing are hand-rolled.
+
 ## Rules
 
 - Authenticate once at the STOMP `CONNECT` frame via `ChannelInterceptor`. Prefer CONNECT-frame JWT over handshake query params (query strings leak to proxy logs and browser history).
@@ -97,6 +99,8 @@ public void configureClientInboundChannel(ChannelRegistration registration) {
 ```
 
 Reusing the existing `JwtAuthenticationConverter` keeps role mapping consistent with the REST side. The `Principal` set here flows through `@MessageMapping` methods and powers `convertAndSendToUser`.
+
+Authenticate-once means the session outlives the token: a 15-minute JWT validated at CONNECT keeps the socket authorized indefinitely. Acceptable for short-lived UIs; for sensitive feeds, bound it - track token expiry from the CONNECT frame and disconnect the session (or require a re-auth frame) when it passes.
 
 ### Message-level authorization
 

@@ -46,7 +46,7 @@ Default: `standard`. Post-incident and pre-release-of-critical-service invocatio
 | `/task-spring-review-observability <branch>` | `<branch>` vs base (3-dot diff)                               |
 | `/task-spring-review-observability pr-<N>`   | PR head fetched into `pr-<N>` (user runs fetch first)         |
 
-**Whole-service audit** (post-incident or pre-release with no feature branch): when Step 3 fails fast on trunk, do not stop - skip the diff gate and run Steps 4-12 against the full instrumentation surface at `HEAD` (no diff scoping; findings cite current code). The report is always `mode: full`, `round: 1`.
+**Whole-service audit** (post-incident or pre-release with no feature branch): when Step 3 fails fast on trunk, do not stop - skip the diff gate and run Steps 4-12 against the full instrumentation surface at `HEAD` (no diff scoping; findings cite current code). The report is always `mode: full`; `round` via Step 12's lookup.
 
 When invoked as a subagent, the parent passes the precondition handle + pre-read diff and commit log; Step 3 is skipped.
 
@@ -71,7 +71,7 @@ Open the files that wire observability so findings cite real lines, even when th
 - `logback-spring.xml` (+ per-profile) - encoder type, MDC patterns, masking
 - `application.yml` (+ per-profile) - `management.*`, `logging.*`, `spring.kafka.listener.observation-enabled`, `management.tracing.*`
 - `build.gradle(.kts)` / `pom.xml` - `spring-boot-starter-actuator`, `micrometer-registry-prometheus`, `micrometer-tracing-bridge-otel`, error-tracker starters
-- Changed files using `MeterRegistry`, `Counter`, `Timer`, `@KafkaListener`, `@RabbitListener`, `@JmsListener`, `@Async`, `@Scheduled`, or `MDC`
+- Changed files (whole-service audit: all files) using `MeterRegistry`, `Counter`, `Timer`, `@KafkaListener`, `@RabbitListener`, `@JmsListener`, `@Async`, `@Scheduled`, or `MDC`
 
 ### Step 5 - Structured Logging
 
@@ -113,7 +113,7 @@ Open the files that wire observability so findings cite real lines, even when th
 - [ ] **Sampling explicit per env** - `management.tracing.sampling.probability` (e.g., `0.1` prod, `1.0` staging); never left at default
 - [ ] **`Observation` API** for custom spans (`Observation.start("process-order", registry)`) over manual span management
 - [ ] **`traceparent` propagation** - `RestClient` / `WebClient` / Feign auto-instrumented; manual `OkHttpClient` / `HttpClient` flagged for missing interceptor
-- [ ] **Cross-thread context** - `ContextSnapshot` / `TaskDecorator` propagates trace across `@Async` and Virtual Thread boundaries
+- [ ] **Cross-thread context** - `ContextSnapshot` / `TaskDecorator` propagates trace across `@Async` and Virtual Thread boundaries (a missing decorator is *one* finding - Step 9's `@Async` decoration row owns it; here only verify trace continuity)
 - [ ] **DB span enrichment** non-prod via `p6spy` / `datasource-proxy`
 - [ ] **Not over-granular** - no `Observation` around a method whose only work is a JDBC call already spanned
 
@@ -148,7 +148,7 @@ Open the files that wire observability so findings cite real lines, even when th
 
 **Subagent mode:** if invoked by `task-spring-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.
 
-Standalone: use skill: `review-report-writer` with `report_type: review-observability` and these inputs: `branch`, `base_ref`, `base_sha`/`head_sha` (`git rev-parse` the refs Step 3 resolved; whole-service audit: both = `HEAD`), `scope: +obs`, `depth` (Depth table), `stack = java-spring-boot`, and always `mode: full`, `round: 1` - this report type has no incremental machinery (`review-precondition-check` keys prior checkpoints to `review-<branch>.md`, not `review-observability-<branch>.md`, so prior-round lookup never applies). Write the file before ending; print confirmation.
+Standalone: use skill: `review-report-writer` with `report_type: review-observability` and these inputs: `branch`, `base_ref`, `base_sha`/`head_sha` (`git rev-parse` the refs Step 3 resolved; whole-service audit: both = `HEAD`), `scope: +obs`, `depth` (Depth table), `stack = java-spring-boot`, and always `mode: full` (this report type has no incremental analysis), with `round` via your own lookup of `review-observability-<branch>.md` (`review-precondition-check` keys prior checkpoints to `review-<branch>.md`, so its lookup never finds this report): exists with valid frontmatter -> increment its `round` and pass its `head_sha` as `prior_head_sha`; else `round: 1`. Write the file before ending; print confirmation.
 
 ## Output Format
 

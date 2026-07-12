@@ -29,6 +29,10 @@ user-invocable: false
 
 ## Patterns
 
+### Measure query counts
+
+`spring.jpa.properties.hibernate.generate_statistics: true` + `logging.level.org.hibernate.stat: DEBUG` gives per-transaction query counts; `logging.level.org.hibernate.SQL: DEBUG` shows the statements (dev only). The Output Format's `Query Count` comes from these, not from guessing.
+
 ### N+1: fetch join vs `@EntityGraph`
 
 ```java
@@ -134,6 +138,14 @@ List<Order> nextPage(@Param("lastId") Long lastId, Pageable p);
 
 2+ optional filters: compose `Specification`s; null Specifications are ignored. Don't write combinatorial repository methods.
 
+```java
+static Specification<Order> byRegion(String r) {
+    return r == null ? null : (root, q, cb) -> cb.equal(root.get("region"), r);
+}
+// repository extends JpaSpecificationExecutor<Order>
+repo.findAll(Specification.allOf(byRegion(region), byStatus(status), inDateRange(from, to)), pageable);
+```
+
 ### Bulk writes
 
 ```java
@@ -156,7 +168,7 @@ spring.jpa.properties.hibernate.order_inserts: true
 spring.jpa.properties.hibernate.order_updates: true
 ```
 
-Entities with `GenerationType.IDENTITY` disable insert batching; use `SEQUENCE` for batched inserts. PostgreSQL also needs `reWriteBatchedInserts=true` on the JDBC URL to collapse a batch into one multi-row INSERT. For very large jobs, chunk into multiple transactions and consider Hibernate `StatelessSession` (no persistence context, no dirty checking).
+Entities with `GenerationType.IDENTITY` disable insert batching; use `SEQUENCE` for batched inserts. Switching an existing entity to `SEQUENCE` is a schema migration, not an annotation swap: create the sequence (starting above `max(id)`) and align `allocationSize` with its increment. PostgreSQL also needs `reWriteBatchedInserts=true` on the JDBC URL to collapse a batch into one multi-row INSERT. For very large jobs, chunk into multiple transactions and consider Hibernate `StatelessSession` (no persistence context, no dirty checking).
 
 ### `@Modifying` queries
 

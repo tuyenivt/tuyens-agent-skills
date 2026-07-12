@@ -53,7 +53,7 @@ If no existing tests, state conventions explicitly in the strategy.
 | Contract     | Spring Cloud Contract / Pact                       | Consumer/provider API contracts                                        |
 | E2E          | `@SpringBootTest(RANDOM_PORT)` + REST Assured      | Critical journeys only (signup, checkout, payment)                     |
 
-Many unit, some slice, few full-context / E2E. `@SpringBootTest` is slow - reserve it. For the percentage fields below, default to 65/25/10 (unit/slice/full-context+E2E; contract tests tracked separately), shifting 5-10 points toward slice for repository/controller-heavy services. State it as a target, not a measured value.
+Many unit, some slice, few full-context / E2E. `@SpringBootTest` is slow - reserve it. For the percentage fields below, default to 65/25/10 (unit/slice/full-context+E2E; contract tests tracked separately), shifting 5-10 points toward slice for repository/controller-heavy services, or toward full-context for messaging/async-heavy ones (outbox, listeners, scheduled jobs live there). State it as a target, not a measured value.
 
 ### Step 5 - Apply Patterns
 
@@ -76,6 +76,7 @@ Use skill: `spring-test-integration` for canonical patterns - load once, referen
 | `@SpringBootTest`| Reserve for full context (auth flow, outbox, listeners, scheduled jobs). `@Transactional` rollback fails for `@Async` threads - drop it and clean via `@Sql(AFTER_TEST_METHOD)`. Use `@RecordApplicationEvents` for `BEFORE_COMMIT` vs `AFTER_COMMIT`. Avoid `@DirtiesContext`. |
 | HTTP stubs       | WireMock in `@SpringBootTest` (exercises real `RestClient` config); `@MockitoBean` in `@WebMvcTest`; Mockito on interface in plain unit. Mocking `RestClient` in integration bypasses the wiring under test. |
 | Idempotency      | Code accepting an idempotency key: invoke twice, assert single DB row + `verify(gateway, times(1))`.                                                                                            |
+| Method security  | Service-layer `@PreAuthorize` never fires in `@WebMvcTest` (service is mocked). Test in a minimal context - `@SpringBootTest(classes = {XxxService.class, SecurityConfig.class})` or `@ContextConfiguration` with `@EnableMethodSecurity` in scope - using `@WithMockUser` callers, positive and denied. |
 
 **No test needed:** Spring-provided behavior (`@Autowired`, route resolution), Lombok / MapStruct boilerplate, trivial pass-through delegation.
 
@@ -89,7 +90,7 @@ Use skill: `spring-test-integration` for canonical patterns - load once, referen
 
 ### Step 7 - Prioritize When Coverage Is Low
 
-When line coverage < ~50% (no coverage tooling: estimate from the test-class-to-class ratio and state the estimate), scaffold in this order - alphabetical scaffolding misses authz holes while plumbing gets covered.
+When line coverage < ~50% (no coverage tooling: estimate from the test-class-to-class ratio and state the estimate), scaffold in this order - alphabetical scaffolding misses authz holes while plumbing gets covered. P1 applies only when an authenticated surface exists; internal consumer/batch services start at P2 (state the skip).
 
 | Priority | Target                                                                                  |
 | -------- | --------------------------------------------------------------------------------------- |
@@ -137,6 +138,7 @@ Compound requests produce each matched deliverable (e.g. "test plan and scaffold
 - **Security:** [endpoints without authz; missing JWT flow]
 - **Full-context:** [transactional flows, listeners, jobs]
 - **Contract:** [provider/consumer]
+- **Misuse:** [wrong slice (`@SpringBootTest` where unit/slice suffices), H2 in `@DataJpaTest`, `@DirtiesContext`, context-cache forking; omit when none]
 
 **Recommended balance:** Unit {x}% / Slice {y}% / Full-context+E2E {z}% (Step 4 fill rule)
 ```

@@ -20,7 +20,7 @@ user-invocable: false
 
 - One `SecurityFilterChain` bean per `securityMatcher` path scope; order with `@Order`
 - STATELESS APIs: `csrf(AbstractHttpConfigurer::disable)` and `sessionCreationPolicy(STATELESS)` together
-- Stateful sessions: keep CSRF on; use `CookieCsrfTokenRepository.withHttpOnlyFalse()`
+- Stateful sessions: keep CSRF on. SPAs reading the token cookie use `CookieCsrfTokenRepository.withHttpOnlyFalse()` (see CSRF pattern); server-rendered forms keep the default session repository + hidden field
 - `@EnableMethodSecurity` on any `@Configuration`; method security uses `@PreAuthorize`/`@PostAuthorize` with SpEL
 - `hasRole("X")` matches authority `ROLE_X`. If JWT claims already carry `ROLE_*`, set `JwtGrantedAuthoritiesConverter` prefix to `""` to avoid `ROLE_ROLE_X`
 - CORS origins, JWT issuer URIs, allowed roles: externalize to properties; never wildcard `*` with credentials
@@ -106,6 +106,8 @@ JwtAuthenticationConverter jwtAuthenticationConverter() {
     return c;
 }
 ```
+
+Both beans are picked up by `.jwt(withDefaults())` automatically - no explicit DSL wiring. For top-level claims, the properties `spring.security.oauth2.resourceserver.jwt.authorities-claim-name` / `.authority-prefix` achieve the converter's effect with no code; nested claims still need the custom converter below.
 
 Nested claims (Keycloak's `realm_access.roles`) are NOT resolvable by `JwtGrantedAuthoritiesConverter` - it silently yields zero authorities and every `hasRole` fails. Use a custom converter:
 

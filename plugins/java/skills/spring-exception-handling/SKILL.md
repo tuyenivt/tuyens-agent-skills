@@ -44,7 +44,9 @@ user-invocable: false
 | `RetryableException` subtypes (transient upstream failure) | 503  |
 | Vendor-gateway wrapper (unclassified upstream failure, e.g. `PaymentGatewayException`) | 502 |
 
-Spring 6+: the advice extends `ResponseEntityExceptionHandler` (see Global handler) so framework exceptions keep their table statuses as `ProblemDetail`; `spring.mvc.problemdetails.enabled: true` additionally converts Boot's default rendering for errors that never reach the advice. Use both. One-off cases can throw `ErrorResponseException` directly.
+Spring 6+: the advice extends `ResponseEntityExceptionHandler` (see Global handler) so framework exceptions keep their table statuses as `ProblemDetail`; `spring.mvc.problemdetails.enabled: true` additionally converts Boot's default rendering for errors that never reach the advice (WebFlux: `spring.webflux.problemdetails.enabled`). Use both. One-off cases can throw `ErrorResponseException` directly.
+
+The 401/403 rows are special: exceptions thrown in the security filter chain (failed authentication, filter-level authorization) never reach the advice - wire `AuthenticationEntryPoint` / `AccessDeniedHandler` in the security config for those. Only method-security denials (`@PreAuthorize`) surface as `AccessDeniedException` to an `@ExceptionHandler`.
 
 ## Patterns
 
@@ -128,7 +130,7 @@ The `DomainException` handler covers every subclass via Spring's most-specific-t
 
 ### Wrapping vendor SDK errors
 
-Classify at the boundary; callers see domain types only.
+Classify at the boundary; callers see domain types only. Author the wrapper's message at the boundary - never pass the vendor exception's `getMessage()` through as the domain message (it becomes client-visible `ProblemDetail.detail`); keep the vendor exception as `cause` for logs.
 
 ```java
 @Component

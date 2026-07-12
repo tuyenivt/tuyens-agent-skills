@@ -20,7 +20,8 @@ user-invocable: false
 - Intent:
   - `[Recommend]` - default; cite the constraint and recommend the edit. Escalate to `[Must]` when measurable cost is present (extra SELECT, masked exception, forced two-file refactor, broken proxy semantics) - record cost in `Cost:` field
   - `[Question]` - plausible justification not visible in the diff; ask before recommending removal
-- Code matching multiple patterns (e.g., a blanket catch that also rethrows) gets one finding under the higher-intent pattern
+- Code matching multiple patterns (e.g., a blanket catch that also rethrows) gets one finding under the higher-intent pattern (`Must` > `Recommend` > `Question`)
+- Justification checks (unique index exists, sole write path, second impl, test seam) are repo searches, not diff guesses - search first; only a claim the search cannot resolve becomes `[Question]`
 - Skip when the diff shows justification (non-controller write path, second implementation, async consumer bypassing the DTO)
 
 ## Patterns
@@ -59,8 +60,10 @@ private String email;
 if (userRepository.existsByEmail(req.email())) throw new DuplicateEmailException();
 userRepository.save(new User(req));
 
-// Good - unique index "uk_users_email" is authoritative
-try { return userRepository.save(new User(req)); }
+// Good - unique index "uk_users_email" is authoritative. saveAndFlush, not save:
+// with SEQUENCE ids the INSERT defers to flush, so a catch around save() misses
+// the violation (it would surface at commit, outside the try)
+try { return userRepository.saveAndFlush(new User(req)); }
 catch (DataIntegrityViolationException e) { throw new DuplicateEmailException(e); }
 ```
 

@@ -45,7 +45,7 @@ user-invocable: false
 
 ### `@DataJpaTest` with `@ServiceConnection`
 
-`@ServiceConnection` (Boot 3.1+) auto-wires the container to Spring's datasource - no `@DynamicPropertySource` glue.
+`@ServiceConnection` (Boot 3.1+) auto-wires the container to Spring's datasource - no `@DynamicPropertySource` glue. The same annotation works on `KafkaContainer`, `RabbitMQContainer`, and Redis (`GenericContainer<>("redis:7")`) - every pattern below generalizes beyond Postgres.
 
 ```java
 @Testcontainers @DataJpaTest
@@ -92,8 +92,10 @@ class OrderDtoJsonTest {
 
     @Test
     void serializesAmount() throws Exception {
+        // BigDecimal serializes as a JSON number by default; assert StringValue only
+        // when the field declares @JsonFormat(shape = STRING) (money-as-string contract)
         assertThat(json.write(new OrderDto(1L, 1L, PAID, new BigDecimal("99.99"))))
-            .extractingJsonPathStringValue("$.totalAmount").isEqualTo("99.99");
+            .extractingJsonPathNumberValue("$.totalAmount").isEqualTo(99.99);
     }
 }
 ```

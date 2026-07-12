@@ -84,9 +84,9 @@ N+1, fetch strategy, projection depth: defer to `spring-jpa-performance`.
 ### Async, scheduled, events
 
 - **`@Async`**: proxy hop to a `TaskExecutor`; return `void`, `Future`, or `CompletableFuture`. Exceptions on `void` go to `AsyncUncaughtExceptionHandler` (default: logged). On `CompletableFuture`, exceptions only surface if the caller awaits. Subject to all proxy-bypass modes.
-- **`@Scheduled`**: default pool size 1 - long-running tasks block siblings. Combine with `@Async` to detach.
+- **`@Scheduled`**: platform-thread default scheduler is single-threaded - long-running tasks block siblings; with `spring.threads.virtual.enabled=true` each tick gets its own virtual thread (no blocking, but `fixedRate` can self-overlap). Combine with `@Async` to detach.
 - **`@EventListener`**: synchronous, runs on publisher's thread inside publisher's tx. A throwing listener rolls back the publisher.
-- **`@TransactionalEventListener`**: phases gate when the listener runs relative to commit. `AFTER_COMMIT` (most common) runs post-commit so listener failure does not roll back the publisher - and lazy access fails because the tx is closed.
+- **`@TransactionalEventListener`**: phases gate when the listener runs relative to commit. `AFTER_COMMIT` (most common) runs post-commit on the publisher's thread (unless also `@Async`), so listener failure does not roll back the publisher - and lazy access fails because the tx is closed.
 
 ### Spring Security
 
@@ -105,7 +105,7 @@ N+1, fetch strategy, projection depth: defer to `spring-jpa-performance`.
 
 ## Output Format
 
-Inject into the parent workflow's sections, reshaped to the parent's own labels (e.g., fold the scenario-form Change Impact items below into the parent's `Logic / Signature / Side effects / ...` labels) - never emit a parallel list alongside the parent's. If the user asked a direct question, open the parent's `What it does` with the one-sentence answer. Cite class/method, omit blocks with nothing to report.
+Inject into the parent workflow's sections, reshaped to the parent's own labels (e.g., fold the scenario-form Change Impact items below into the parent's `Logic / Signature / Side effects / ...` labels) - never emit a parallel list alongside the parent's. Standalone (no parent workflow): emit the four sections below directly. If the user asked a direct question, open with the one-sentence answer (in the parent's `What it does` when composed). Cite class/method, omit blocks with nothing to report.
 
 **Flow Context**
 - Stereotype + bean scope

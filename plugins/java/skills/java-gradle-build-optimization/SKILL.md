@@ -9,7 +9,7 @@ user-invocable: false
 
 # Gradle Build Optimization
 
-> Load `Use skill: stack-detect` first to determine the project stack. If the build tool is Maven, stop and use a Maven-focused skill.
+> Load `Use skill: stack-detect` first to determine the project stack. If the build tool is Maven and the task is not a Gradle migration, stop and use a Maven-focused skill.
 
 ## When to Use
 
@@ -24,13 +24,17 @@ user-invocable: false
 - Kotlin DSL (`.gradle.kts`) for new projects and active modernizations; keep Groovy only in maintenance-only legacy builds
 - All dependency and plugin versions in `gradle/libs.versions.toml`
 - Parallel + build cache + configuration cache on by default
-- Shared logic via convention plugins in `build-logic/`, never `allprojects {}` / `subprojects {}`
+- Shared logic via convention plugins in `build-logic/`, never `allprojects {}` / `subprojects {}`; single-module builds apply plugins directly and introduce `build-logic/` with the second module
 - Spring Boot plugin only on application modules (it disables `jar` and produces `bootJar`)
 - `implementation()` is the default; `api()` only when a type appears in the module's public API; `runtimeOnly` for deps never referenced at compile time (JDBC drivers, Flyway DB modules); `compileOnly` for compile-time-only (annotation processors, Lombok)
 - Toolchain declared with foojay resolver so CI auto-provisions the JDK
 - Commit `gradlew` / `gradle-wrapper.jar`; CI invokes only `./gradlew`
 
 ## Patterns
+
+### Migration mapping and order
+
+Maven mapping: `<dependencyManagement>` -> `platform(libs.spring.boot.bom)`; `<modules>` -> `include()` in `settings.gradle.kts`; profiles -> Gradle properties (`-Pfoo`) or separate CI task invocations; `mvnw` -> `gradlew`. Order for modernizing any existing multi-module build (Maven or Groovy DSL): version catalog first, then convention plugins (kills `allprojects`), then per-module DSL flip - each step ships independently.
 
 ### Version catalog
 
@@ -178,12 +182,16 @@ dependencies {
 // pins versions that may conflict with transitive requests.
 
 // Resolve a specific conflict (e.g. CVE-patched transitive) one of two ways:
-ext["jackson-bom.version"] = "2.18.2"   // override a Boot-managed BOM property (Spring's idiom)
+ext["jackson-bom.version"] = "2.18.2"   // BOM property override - ONLY works where the
+                                        // io.spring.dependency-management plugin is applied;
+                                        // silently a no-op under pure platform(). Prefer it there:
+                                        // it realigns the whole artifact family.
 dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind") {
-        version { strictly("2.18.2") }   // hard pin one dependency, fails the build if unsatisfiable
-    }
+        version { strictly("2.18.2") }   // works with platform(); pins one artifact,
+    }                                    // fails the build if unsatisfiable
 }
+// Multi-module: put the pin in the convention plugin so every module aligns.
 
 dependencyLocking { lockAllConfigurations() }
 // ./gradlew dependencies --write-locks  (commit gradle.lockfile)
@@ -278,6 +286,8 @@ Effort: {Trivial | Small | Medium | Large}
 Expected Impact: {clean delta | incremental delta | maintainability} - {quantify when estimable, e.g. "clean delta ~-25%"}
 Risk: {None | Plugin-incompat | Behavior-change}
 ```
+
+One block per optimization; a file may appear in several blocks (e.g. `gradle.properties` toggles). Priority: High = direct build-time win on its own; Medium = enabler or hygiene with indirect effect; Low = maintainability only. Base Expected Impact numbers on `--scan`/`--profile` data when available; otherwise append "(unmeasured estimate)".
 
 Aggregate: `Aggregate: estimated clean-build reduction (%); incremental/no-op reduction (%) when changed`.
 

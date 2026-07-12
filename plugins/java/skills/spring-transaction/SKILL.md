@@ -173,6 +173,10 @@ void handle(Long orderId) { Order o = orderRepository.findById(orderId).orElseTh
 
 Same rule applies to virtual-thread executors and `CompletableFuture` chains.
 
+### Concurrent-write anomalies
+
+Lost updates across requests or replicas are a locking concern, not a propagation one: optimistic `@Version` + retry or pessimistic locks - see `spring-jpa-performance`. Isolation-level escalation (`isolation = SERIALIZABLE`) is the last resort, not the default fix.
+
 ### Idempotent writes
 
 Unique constraint on the idempotency key is the authoritative barrier; the pre-check is an optimization, the catch handles the race.
@@ -183,7 +187,9 @@ PaymentResponse processPayment(PaymentRequest req) {
     return paymentRepository.findByIdempotencyKey(req.idempotencyKey())
         .map(PaymentResponse::from)
         .orElseGet(() -> {
-            try { return PaymentResponse.from(paymentRepository.save(Payment.from(req))); }
+            // saveAndFlush: with SEQUENCE ids a plain save() defers the INSERT to
+            // flush, so the violation would surface at commit - outside this try
+            try { return PaymentResponse.from(paymentRepository.saveAndFlush(Payment.from(req))); }
             catch (DataIntegrityViolationException e) {
                 return PaymentResponse.from(
                     paymentRepository.findByIdempotencyKey(req.idempotencyKey()).orElseThrow());

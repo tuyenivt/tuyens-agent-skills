@@ -34,6 +34,8 @@ Spring-aware security review naming `SecurityFilterChain`, OAuth2 Resource Serve
 
 When invoked as a subagent, the parent passes the precondition handle plus pre-read diff and commit log; Step 3 is skipped.
 
+**Depth:** `standard` (default) scopes Steps 4-9 to the diff. `deep` (user-passed or parent-promoted) additionally runs the audit-scope pass over the full security surface - audit-grade coverage on top of the diff review. The whole-service audit path is `deep` by nature.
+
 ## Workflow
 
 ### Step 1 - Load Behavioral Principles
@@ -57,6 +59,8 @@ Use skill: `review-precondition-check`. On approval, read `git diff <base>...<he
 - Modified tests - a green test obtained by disabling security or removing `@PreAuthorize` is a finding, not a fix
 
 When the diff removes a security annotation or relaxes a matcher, consult the prior revision via `git log -p` to confirm what was protected before.
+
+Audit mode / `deep`: the bullets read repo-wide - every `SecurityFilterChain`, every controller, the full test suite and config; skip the prior-revision check (no diff to compare).
 
 ### Step 5 - Apply Canonical Patterns
 
@@ -109,7 +113,7 @@ Use skill: `spring-security-patterns`.
 
 ### Step 9 - Spring-Specific OWASP Sweep
 
-Cover each category. State "No issues found" per category that is clean - never silently skip. Results land in the Output Format's `OWASP Sweep` section.
+Cover each category. State "No issues found" per category that is clean - never silently skip. Diff reviews scope every claim to the diff and the security surface it touches; service-wide claims belong to audit mode / `deep` only. Results land in the Output Format's `OWASP Sweep` section.
 
 | Risk                          | Spring-specific check                                                                                                                                |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -130,7 +134,7 @@ Plus Spring-specific: open redirect (`response.sendRedirect(userInput)` allowlis
 
 **Subagent mode:** if invoked by `task-spring-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.
 
-Standalone: use skill: `review-report-writer` with `report_type: review-security` and these inputs: `branch`, `base_ref`, `base_sha`/`head_sha` (`git rev-parse` the refs Step 3 resolved; whole-service audit: both = `HEAD`), `scope: +sec`, `depth: standard` (this workflow defines no `deep`), `stack = java-spring-boot`, and `mode`/`round` via your own lookup of `review-security-<branch>.md` (`review-precondition-check` keys prior checkpoints to `review-<branch>.md`, so its lookup never finds this report): exists with valid frontmatter -> increment its `round` and pass its `head_sha` as `prior_head_sha`; else `mode: full`, `round: 1`. Write to the report file before ending; print confirmation.
+Standalone: use skill: `review-report-writer` with `report_type: review-security` and these inputs: `branch`, `base_ref`, `base_sha`/`head_sha` (`git rev-parse` the refs Step 3 resolved; whole-service audit: both = `HEAD`), `scope: +sec`, `depth` as run (`standard` | `deep` - see Invocation; audits pass `deep`), `stack = java-spring-boot`, and `mode`/`round` via your own lookup of `review-security-<branch>.md` (`review-precondition-check` keys prior checkpoints to `review-<branch>.md`, so its lookup never finds this report): exists with valid frontmatter -> increment its `round` and pass its `head_sha` as `prior_head_sha`; else `mode: full`, `round: 1`. Write to the report file before ending; print confirmation.
 
 ## Self-Check
 

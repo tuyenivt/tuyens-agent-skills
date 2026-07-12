@@ -39,7 +39,7 @@ Ask and lock down before any design:
 6. API visibility (public / authenticated / role-restricted)
 7. Async dispatch points (events fired after commit)
 
-Edge inputs: feature name only -> ask for fields and operations. Existing entity referenced -> read it, skip migration if no schema change. Referenced entity missing -> ask before assuming.
+Edge inputs: feature name only -> ask for fields and operations. Existing entity referenced -> read it, skip migration if no schema change. Referenced entity missing -> ask before assuming. No interactive user and requirements incomplete -> proceed on stated defaults and flag every assumption in the deliverable; stop only when fields or operations cannot reasonably be inferred.
 
 ### Step 4 - Design (Approval Gate)
 
@@ -57,9 +57,9 @@ Generate code only after approval.
 
 Use skill: `spring-jpa-performance`, `spring-db-migration-safety`.
 
-Entity is a class (records cannot be JPA entities). Audit fields via `@MappedSuperclass` base + `AuditingEntityListener`. Validation constraints live on request DTOs (Step 8); the entity mirrors them as DB constraints (`@Column(nullable, unique, precision, scale)` matching the Flyway DDL exactly, CHECK), not duplicate Bean Validation annotations. LAZY on all associations. Status enums get a CHECK constraint; idempotency keys get a unique index. FK and frequently-filtered columns get indexes.
+Entity is a class (records cannot be JPA entities). Audit fields via `@MappedSuperclass` base + `AuditingEntityListener`. Validation constraints live on request DTOs (Step 8); the entity mirrors them as DB constraints (`@Column(nullable, unique, precision, scale)` matching the Flyway DDL exactly, CHECK), not duplicate Bean Validation annotations. LAZY on all associations. Status enums get a CHECK constraint; value invariants (non-negative balance, date ordering) get CHECKs too. Idempotency keys get a unique index - on the aggregate for idempotent creates; an idempotent operation verb (redeem, capture) instead gets a child operation record owning the key and storing the response fields replayed on duplicates. FK and frequently-filtered columns get indexes.
 
-Soft delete (when required): `deleted_at` column with repository-level filtering (or `@SQLDelete` + `@SQLRestriction`). A uniqueness rule that must allow re-creation after delete needs a partial unique index (`... WHERE deleted_at IS NULL`) - a plain unique constraint blocks the re-create.
+Soft delete (when required): `deleted_at` column with repository-level filtering (or `@SQLDelete` + `@SQLRestriction`). A uniqueness rule that must allow re-creation after delete needs a partial unique index (`... WHERE deleted_at IS NULL`) - a plain unique constraint blocks the re-create. MySQL has no partial indexes: add a stored generated column `active TINYINT AS (IF(deleted_at IS NULL, 1, NULL))` and include it in the unique index (NULLs never collide).
 
 ### Step 6 - Repository
 
@@ -71,7 +71,7 @@ Extend `JpaRepository<{Name}, Long>`. Derived methods for simple filters; `@Quer
 
 Use skill: `spring-transaction`, `spring-exception-handling`.
 
-`@Service @Transactional(readOnly = true) @RequiredArgsConstructor @Slf4j` (Lombok annotations only if the project already uses Lombok; otherwise explicit constructor + logger). Read-write `@Transactional` only on mutating methods. Entity-to-DTO via record static factory (`XxxResponse.from(entity)`); never return entities. Status transitions validated against an allowed-transitions map before persistence; invalid transitions throw a domain exception. Post-commit side effects via `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)`.
+`@Service @Transactional(readOnly = true) @RequiredArgsConstructor @Slf4j` (Lombok annotations only if the project already uses Lombok; otherwise explicit constructor + logger). Read-write `@Transactional` only on mutating methods. Entity-to-DTO via record static factory (`XxxResponse.from(entity)`); never return entities. Status transitions validated against an allowed-transitions map before persistence; invalid transitions throw a domain exception. Mutating verbs on contended state (balances, counters, stock) need `@Version` on the entity - map `OptimisticLockingFailureException` to 409 - or one atomic conditional `UPDATE ... WHERE` guard. Post-commit side effects via `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)`.
 
 ### Step 8 - Controller
 
@@ -79,7 +79,7 @@ Use skill: `spring-exception-handling`. When Step 3's visibility answer is anyth
 
 `@RestController @RequestMapping("/api/v1/{resources}") @RequiredArgsConstructor`. `@Valid @RequestBody` on writes. `Pageable` on list. `@RequestParam(required = false)` for filters. `201 CREATED` on POST, `204 NO_CONTENT` on DELETE, custom verbs as `POST /{id}/{verb}`. Request and Response DTOs are records. Sub-resources nest for creation/listing (`POST /api/v1/products/{id}/reviews`) with direct access by own id (`/api/v1/reviews/{id}`) - adjust the class-level mapping accordingly.
 
-Enforce Step 3's API visibility here: role-restricted endpoints get `@PreAuthorize` (or rules in the existing `SecurityFilterChain`) - a gathered visibility requirement that no step implements has silently evaporated.
+Enforce Step 3's API visibility here: role- or ownership-restricted endpoints get `@PreAuthorize` (ownership: compare the authenticated principal to the resource owner) or rules in the existing `SecurityFilterChain` - a gathered visibility requirement that no step implements has silently evaporated.
 
 ### Step 9 - Tests
 
@@ -135,7 +135,7 @@ Run `./gradlew compileJava compileTestJava` (Maven: `./mvnw compile test-compile
 - [ ] Step 4 - design approved by user before any code
 - [ ] Step 5 - entity + migration match (columns, constraints, indexes); CHECK constraints on status enums
 - [ ] Step 6 - repository uses `Page<>` on lists; idempotency lookup present when needed
-- [ ] Step 7 - `@Transactional(readOnly = true)` default; write boundaries only on mutations; DTO mapping via records; transition map enforced
+- [ ] Step 7 - `@Transactional(readOnly = true)` default; write boundaries only on mutations; DTO mapping via records; transition map enforced; contended mutations guarded (`@Version` or conditional update)
 - [ ] Step 8 - controller returns DTOs (never entities); correct status codes; `@Valid` on writes; Step 3's visibility enforced (`@PreAuthorize` / chain rules)
 - [ ] Step 9 - Testcontainers (no H2); `@MockitoBean`; applicable duplicate-POST semantics and invalid-transition covered
 - [ ] Step 10 - compilation passes; file list, endpoint table, test count reported

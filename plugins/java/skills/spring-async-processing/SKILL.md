@@ -58,7 +58,9 @@ class AsyncConfig implements AsyncConfigurer {
         return ex;
     }
 
-    // IO-bound when you want a dedicated executor (separate from the global VT one)
+    // Dedicated VT executor only when you need isolation (slow downstream must not
+    // starve other async work), per-executor metrics, or a TaskDecorator; otherwise
+    // unnamed @Async on the global VT executor is correct for IO-bound work
     @Bean("ioExecutor")
     Executor ioExecutor() { return Executors.newVirtualThreadPerTaskExecutor(); }
 
@@ -115,6 +117,8 @@ public void onOrderCreated(OrderCreatedEvent e) {
 }
 ```
 
+DB writes inside a non-`@Async` AFTER_COMMIT listener are silently lost - the listener runs in the already-committed transaction context, so joined writes never flush. Use `@Transactional(propagation = REQUIRES_NEW)`, or `@Async` (a new thread has no transaction to join).
+
 ### Retry transient failures
 
 ```java
@@ -145,7 +149,7 @@ public void reconcileInventory() { ... }
 public void reconcileInventory() { ... }
 ```
 
-- `fixedDelay` does not serialize across replicas - for cluster-wide single execution use ShedLock (`@SchedulerLock(name = "reconcileInventory", lockAtMostFor = "10m")`)
+- `fixedDelay` does not serialize across replicas - for cluster-wide single execution use ShedLock (`@SchedulerLock(name = "reconcileInventory", lockAtMostFor = "10m")`). ShedLock needs the provider dependency, a `LockProvider` bean, and `@EnableSchedulerLock` - the bare annotation is a silent no-op
 - Exceptions from a `@Scheduled` method go to the scheduler's `ErrorHandler` (default: log, schedule continues) - the tick's work is lost, so make jobs idempotent/resumable and alert from the `ErrorHandler` when a lost tick matters
 
 ### Context propagation across the async boundary

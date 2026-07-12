@@ -35,6 +35,8 @@ At `deep`, use profiling data (JFR / async-profiler / Micrometer) when available
 
 Invocation forms (`/task-spring-review-perf [<branch>|pr-<N>] [standard|deep] [--base <branch>]`) follow `task-code-review-perf`. When invoked as subagent, parent passes the pre-confirmed stack, the precondition handle, and pre-read diff and commit log; Steps 2-3 consume those instead of re-running.
 
+**Whole-service sweep** (quarterly N+1 / query-plan / pool-sizing pass with no feature branch): when Step 3 fails fast on trunk, do not stop - skip the diff gate and run Steps 4-9 repo-wide at `HEAD` (Step 4's categories read in full, not per changed file); findings cite current code; checkpoint `base_sha` = `head_sha` = `HEAD`.
+
 ## Workflow
 
 ### Step 1 - Load Behavioral Principles
@@ -128,9 +130,9 @@ Use skill: `spring-messaging-patterns`.
 
 ### Step 10 - Write Report
 
-**Subagent mode:** if invoked by `task-spring-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.
+**Subagent mode:** if invoked by `task-spring-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). At `deep`, include the Capacity and Load-Test Plan section with the returned findings - the parent preserves it as its own section. Skip the rest of this step.
 
-Standalone: use skill: `review-report-writer` with `report_type: review-perf`. Assemble every checkpoint field the writer requires: `scope: +perf`, `depth` as invoked, `stack` from Step 2 (kebab-case language-framework), `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Write to the report file, then print confirmation.
+Standalone: use skill: `review-report-writer` with `report_type: review-perf`. Assemble every checkpoint field the writer requires: `scope: +perf`, `depth` as invoked, `stack` from Step 2 (kebab-case language-framework), `base_sha` / `head_sha` via `git rev-parse` on the handle's refs (whole-service sweep: both = `HEAD`), and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Write to the report file, then print confirmation.
 
 ## Output Format
 

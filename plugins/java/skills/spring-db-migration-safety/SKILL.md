@@ -23,7 +23,7 @@ user-invocable: false
 - Destructive changes (NOT NULL, rename, drop) span multiple releases via expand-then-contract.
 - One concern per migration file: DDL and DML separate; one DDL statement per file.
 - Large-table DDL must be non-blocking - Postgres `CONCURRENTLY`, MySQL `ALGORITHM=INPLACE, LOCK=NONE`.
-- DDL on hot tables: `SET lock_timeout = '5s'` + retry - a blocked ALTER queues behind long transactions and blocks all traffic behind it.
+- DDL on hot tables: `SET lock_timeout = '5s'` - a blocked ALTER queues behind long transactions and blocks all traffic behind it. A timeout abort is safe to retry: re-run the migration once the blocker clears.
 - Batched backfills are jobs, not versioned migrations - Flyway runs at startup in one transaction, so a large DML file stalls the deploy.
 - `spring.jpa.hibernate.ddl-auto: validate` beyond local; never `update`.
 - Forward-only fixes: amending a merged migration breaks Flyway checksum validation. Ship a new `Vx__revert_*.sql`.
@@ -43,13 +43,16 @@ ALTER TABLE orders ADD COLUMN status VARCHAR(50);
 -- transaction, stalling the deploy). Run batched from a job/ops script:
 --   UPDATE orders SET status = 'PENDING' WHERE status IS NULL AND id BETWEEN :lo AND :hi;
 
--- V2__constrain_status.sql (release N+1, after backfill verified)
+-- V2__constrain_status.sql (release N+1, after backfill verified:
+-- SELECT count(*) ... WHERE status IS NULL returns 0)
 ALTER TABLE orders ALTER COLUMN status SET NOT NULL;
 ```
 
 Batching avoids long-held locks and WAL bloat.
 
 `SET NOT NULL` on an *existing* column scans the whole table under an ACCESS EXCLUSIVE lock. Postgres 12+ skips the scan if a validated equivalent CHECK already proves no nulls - add `CHECK (status IS NOT NULL) NOT VALID`, `VALIDATE CONSTRAINT` (lock-free), then `SET NOT NULL` (now instant), then drop the CHECK.
+
+MySQL (InnoDB): `MODIFY ... NOT NULL` runs `INPLACE` but rebuilds the table - concurrent DML keeps working, IO is heavy; schedule off-peak. The same three-step (nullable, backfill job, constrain) applies.
 
 ### Rename via expand-then-contract (three releases)
 
@@ -91,7 +94,7 @@ Flyway wraps each script in a transaction. `CREATE INDEX CONCURRENTLY` cannot ru
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 ```
 
-A failed `CREATE INDEX CONCURRENTLY` leaves an INVALID index behind (it is not rolled back - the script ran outside a transaction). `IF NOT EXISTS` will not replace it; `DROP INDEX CONCURRENTLY` first, then re-run.
+A failed `CREATE INDEX CONCURRENTLY` leaves an INVALID index behind (it is not rolled back - the script ran outside a transaction). `IF NOT EXISTS` will not replace it; `DROP INDEX CONCURRENTLY` first, then re-run. Liquibase equivalent of the opt-out: `runInTransaction="false"` on the changeset.
 
 MySQL equivalent (InnoDB):
 
@@ -154,7 +157,7 @@ spring:
 
 ## Output Format
 
-Open multi-release plans with one line mapping releases to steps (`Plan: N: V1 + backfill job; N+1: code switch; N+2: V2`), then one block per migration or job:
+Open multi-release plans with one line mapping releases to steps (`Plan: N: V1 + backfill job; N+1: code switch; N+2: V2`), then one block per migration or job. Reviews: emit blocks for the PR's migrations as written (unsafe fields surface the findings), then the corrected `Plan:` line.
 
 ```
 Migration: {filename | backfill job}

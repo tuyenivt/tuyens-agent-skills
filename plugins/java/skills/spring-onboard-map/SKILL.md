@@ -46,7 +46,7 @@ Workflow needs Spring-specific orientation: where code lives, how to run, what w
 3. Active profile from `spring.profiles.active` or `SPRING_PROFILES_ACTIVE`.
 4. Migrations: Flyway (`src/main/resources/db/migration/`) or Liquibase (`db/changelog/`) - run at startup.
 5. Run: `./mvnw spring-boot:run` or `./gradlew bootRun` (multi-module: qualify the runnable module, `./gradlew :app:bootRun`). Port `server.port` (default 8080).
-6. Verify `/actuator/health`; springdoc -> `/v3/api-docs`, `/swagger-ui.html`.
+6. Verify `/actuator/health` when the actuator starter is present (else hit a known route); springdoc -> `/v3/api-docs`, `/swagger-ui.html`.
 
 ### Key locations
 
@@ -103,18 +103,19 @@ Name and locate; defer depth to the owning atomic:
 
 ### Currency signals
 
+- Boot < 3 (`javax.*` baseline) is out of OSS support - surface as a migration signal regardless of which pre-3 patterns appear.
 - Java 21 + `spring.threads.virtual.enabled=true` -> Virtual Threads on controllers.
 - Slice tests (`@WebMvcTest`, `@DataJpaTest`, `@JsonTest`) over full-context `@SpringBootTest`.
 
 ## Output Format
 
-Inject into the parent workflow's onboarding output:
+Inject into the parent workflow's onboarding output; standalone (no parent workflow), emit the six sections below directly:
 
 **Stack and Tooling:** build system, Boot version, Java toolchain, key starters, persistence + migration tool, web stack (MVC / WebFlux), security state (configured / autoconfigured / absent - annotate hybrids, e.g. configured chain but no `UserDetailsService`, so HTTP Basic falls back to the generated user).
 
 **Local Bootstrap:** exact run command, required local services, profile inventory (every `application-<profile>.yml`, default active, override mechanism, precedence chain), default port, actuator base path.
 
-**Architecture Map:** component-scan root, any divergent `@EntityScan` / `@EnableJpaRepositories`, layer directories with `.java` file counts, `@Configuration` classes (what each wires), `@ConfigurationProperties` classes (key prefix), cross-cutting (`@RestControllerAdvice`, custom filters, AOP), route table (method + path -> controller method -> auth label from chain), non-HTTP entry points (`@Scheduled` / message listeners / event listeners -> trigger + handler).
+**Architecture Map:** component-scan root, any divergent `@EntityScan` / `@EnableJpaRepositories`, layer directories with `.java` file counts, `@Configuration` classes (what each wires), `@ConfigurationProperties` classes (key prefix), cross-cutting (`@RestControllerAdvice`, custom filters, AOP), route table (method + path -> controller method -> auth label from chain; above ~30 routes group by path prefix and expand only security-interesting rows), non-HTTP entry points (`@Scheduled` / message listeners / event listeners -> trigger + handler).
 
 **Conventions:** chosen value per axis from the list above.
 
