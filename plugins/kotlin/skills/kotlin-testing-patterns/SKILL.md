@@ -124,23 +124,11 @@ class OrderControllerTest {
 
 ### Testcontainers for persistence
 
-```kotlin
-@DataJpaTest
-@Testcontainers
-@AutoConfigureTestDatabase(replace = Replace.NONE)
-abstract class AbstractRepositoryTest {
-    companion object {
-        @Container @JvmStatic
-        val postgres = PostgreSQLContainer("postgres:16-alpine")
+Wiring (slices, `@ServiceConnection`, singleton base classes) is owned by `kotlin-spring-test-integration` - follow it there. The one MockK-adjacent fact that belongs here:
 
-        @DynamicPropertySource @JvmStatic
-        fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
-        }
-    }
-}
+```kotlin
+@Container @ServiceConnection @JvmStatic
+val postgres = PostgreSQLContainer("postgres:16-alpine")
 ```
 
 `@Container` on a `companion object` `@JvmStatic` property - otherwise the container is recreated per test class instance.
@@ -215,6 +203,8 @@ class OrderServiceSpec : FunSpec({
 - Container: {PostgreSQLContainer | none}
 - Shared base class: {yes | no}
 ```
+
+Reviewing existing tests: reuse the Coverage table with rows marked `{present | missing | wrong layer}`, and list violations as `{Avoid entry} - {test method} - {fix}` under MockK configuration.
 
 ## Avoid
 

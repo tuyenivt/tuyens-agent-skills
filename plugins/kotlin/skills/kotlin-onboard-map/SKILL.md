@@ -48,7 +48,7 @@ user-invocable: false
 3. Local services: `compose.yml` / `docker-compose.yml` or external connections in `application-*.yml`.
 4. Migrations: `src/main/resources/db/migration/` (Flyway) or `db/changelog/` (Liquibase). Both present = misconfiguration.
 5. Run: `./gradlew bootRun` (qualify with the module for multi-module). Port `server.port` (default 8080).
-6. Verify: actuator at `/actuator/health`; `./gradlew test`. With springdoc on classpath, `/swagger-ui.html` is the fastest API survey.
+6. Verify: actuator at `/actuator/health` when on the classpath, otherwise hit a known endpoint from the controllers; `./gradlew test`. With springdoc on classpath, `/swagger-ui.html` is the fastest API survey.
 
 ### Configuration axes
 
@@ -82,6 +82,8 @@ State the observed value for each axis. New engineers ask "which value wins" - t
 - **Layer-package** (older): `com.acme.controller`, `com.acme.service`, etc. Harder to follow end-to-end flows.
 
 ### Conventions
+
+Baselines to verify, not assert: report what the project actually does, flag divergence from these as onboarding context, and don't turn divergence into upgrade recommendations - the map orients, it doesn't prescribe. Same posture applies to Ecosystem currency below.
 
 - Constructor injection idiomatic: `class FooService(private val bar: BarService)`.
 - Data classes for DTOs; entities are regular classes (need `kotlin-jpa` plugin).

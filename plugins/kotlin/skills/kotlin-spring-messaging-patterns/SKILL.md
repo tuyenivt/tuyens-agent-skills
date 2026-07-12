@@ -20,7 +20,7 @@ user-invocable: false
 
 ## Rules
 
-- Consumers idempotent - any message can be redelivered. `markProcessed(key)` does a unique-PK insert and returns `true` when the key is new (proceed) / `false` when already seen (skip). Proceed iff `true` at every call site.
+- Consumers idempotent - any message can be redelivered. `markProcessed(key)` does a unique-PK insert and returns `true` when the key is new (proceed) / `false` when already seen (skip). Proceed iff `true` at every call site. Mark-first is safe only when mark + processing share one `@Transactional` (failure rolls back the mark); for non-DB side effects (HTTP, email), mark **after** success instead - a crash between mark and work otherwise loses the message permanently.
 - DLT / DLQ configured for every listener; permanent failures excluded from retry.
 - Use the **transactional outbox** whenever a publish must atomically follow a DB commit. Never call `send()` inside `@Transactional` without it - rollback leaves phantom events.
 - Payloads are `data class` / primitives with explicit Jackson use-site targets (`@field:JsonProperty`). Never serialize JPA entities (lazy proxies, schema coupling).
@@ -174,7 +174,7 @@ class OrderService(
             aggregateId = order.id.toString(),
             topic = "order.placed",
             eventType = "OrderPlaced",
-            payload = mapper.writeValueAsString(order),
+            payload = mapper.writeValueAsString(OrderPlacedEvent.from(order)),   // event DTO, never the entity (Rule 4)
         ))
         return order
     }
@@ -306,7 +306,7 @@ Broker: {Kafka | RabbitMQ | Spring Events}
 Topic/Queue: {name}
 Producer: {class}
 Consumer: {class}
-Delivery: {at-least-once | at-most-once | exactly-once via outbox}
+Delivery: {at-least-once | at-most-once | at-least-once + idempotent consumer (effectively-once)}
 Idempotency: {dedup key + storage}
 DLT/DLQ: {topic/queue name | not needed - reason}
 Retry: {attempts, backoff, excluded exceptions}

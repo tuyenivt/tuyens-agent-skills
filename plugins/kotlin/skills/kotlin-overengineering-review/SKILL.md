@@ -19,7 +19,7 @@ user-invocable: false
 - Every finding cites the constraint making the code redundant: FK, `nullable = false`, unique index, Kotlin non-null type, DTO Bean Validation, framework guarantee.
 - Intent:
   - **Default `[Recommend]`.** Cite the constraint, recommend the edit. Escalate to **`[Must]`** with measurable cost: extra SELECT on hot path, blanket catch masking real bugs, `!!` after `requireNotNull` (two checks where zero suffices), controller try/catch defeating `@RestControllerAdvice`, `data class` JPA annotation pattern fighting Hibernate. Cite cost in `Cost:`.
-  - **`[Question]`** when justification is plausible but not visible in the diff.
+  - **`[Question]`** when justification is plausible but not verifiable. Search the repo for the named justifications (second impl, `@Aspect`, config-key readers, non-controller write paths) before emitting a finding; reserve `[Question]` for what a search cannot settle (external consumers, planned work).
 - A redundancy with **visible** justification is not a finding. Classic exceptions:
   - Entity `@field:NotNull` when a non-controller write path (Kafka consumer, scheduled job) bypasses the DTO - defense in depth.
   - `lateinit` / `requireNotNull` on a platform type (`T!`) from a Java collaborator, or on a field set by `@PostConstruct`.
@@ -68,8 +68,8 @@ data class CreateOrderRequest(
 // Bad
 if (userRepository.existsByEmail(req.email)) throw DuplicateEmailException()
 
-// Good
-try { userRepository.save(User(req)) }
+// Good - saveAndFlush: JPA may defer the INSERT to commit, and a deferred INSERT escapes this catch
+try { userRepository.saveAndFlush(User(req)) }
 catch (e: DataIntegrityViolationException) { throw DuplicateEmailException(cause = e) }
 ```
 
@@ -114,6 +114,8 @@ try { service.fulfill(orderId) }
 catch (e: InsufficientStockException) { Result.failure(e.message) }
 catch (e: PaymentDeclinedException) { Result.failure(e.message) }
 ```
+
+`runCatching { ... }.getOrNull()` is the same smell in Kotlin dress - it swallows every `Throwable`, and in suspend code that includes `CancellationException`, breaking structured cancellation. Catch the specific exceptions, or at minimum rethrow `CancellationException` first.
 
 #### `Optional<T>` in pure Kotlin
 

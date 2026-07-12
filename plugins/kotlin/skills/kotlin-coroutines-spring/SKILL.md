@@ -107,7 +107,7 @@ suspend fun getDashboard(uid: Long): Dashboard = coroutineScope {
 
 ### `@Transactional` on `suspend`
 
-Works in Spring Boot 3.x. Keep the body on the inherited dispatcher - **no `withContext` inside the transactional body** (the new thread has no transaction attached, writes escape silently):
+Works in Spring Boot 3.x. Keep the body on the inherited dispatcher - **no `withContext` inside the transactional body** (the new thread has no transaction attached, writes escape silently). That failure mode is JPA/JDBC's thread-bound transactions; with R2DBC the transaction rides the coroutine context and survives dispatcher switches:
 
 ```kotlin
 @Transactional
@@ -148,9 +148,13 @@ class OrderEventPublisher(private val scope: CoroutineScope, private val notifie
 
 ### Timeout and retry
 
+`TimeoutCancellationException` extends `CancellationException`, so a guard that rethrows cancellation (mixed fan-out above) rethrows timeouts too. For optional / fallback paths use `withTimeoutOrNull` - no exception, the null selects the fallback:
+
 ```kotlin
 suspend fun fetchWithTimeout(id: String): Product =
-    withTimeout(3_000) { externalApi.fetchProduct(id) }
+    withTimeout(3_000) { externalApi.fetchProduct(id) }        // required path: propagate
+
+val recs = async { withTimeoutOrNull(2_000) { recService.get(uid) } ?: emptyList() }  // optional path
 
 suspend fun <T> retryWithBackoff(maxRetries: Int = 3, initialDelay: Long = 100, block: suspend () -> T): T {
     var delay = initialDelay
@@ -179,7 +183,7 @@ suspend fun processImage(bytes: ByteArray) = withContext(Dispatchers.Default) { 
 
 ### `@Scheduled` with coroutines
 
-`@Scheduled` methods cannot be `suspend`. Bridge via a scope bean:
+`@Scheduled` methods cannot be `suspend`. Bridge via a scope bean when overlap between runs is harmless; use `runBlocking` (allowed at this boundary) when `fixedDelay` must measure from completion - `launch` returns immediately, so runs can overlap:
 
 ```kotlin
 @Component

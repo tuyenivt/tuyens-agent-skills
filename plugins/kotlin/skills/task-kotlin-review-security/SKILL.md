@@ -31,6 +31,7 @@ Kotlin-aware security review for Spring Security 6.x Kotlin DSL `SecurityFilterC
 | `/task-kotlin-review-security`          | Current branch vs base                         |
 | `/task-kotlin-review-security <branch>` | `<branch>` vs base (3-dot)                     |
 | `/task-kotlin-review-security pr-<N>`   | PR head in `pr-<N>`                            |
+| `/task-kotlin-review-security sweep`    | Whole-surface sweep (periodic validation / method-security drift). Skips Step 3; Step 4 reads all controllers / `SecurityFilterChain`s / config, not just changed ones. Allowed on trunk - read-only. |
 
 When invoked as a subagent of `task-kotlin-review` or `task-code-review-security`, Step 3 skipped (parent passes the precondition handle).
 
@@ -46,7 +47,7 @@ Use skill: `stack-detect`. Accept pre-confirmed.
 
 ### Step 3 - Resolve diff
 
-Use skill: `review-precondition-check`. Read once. Skip if parent passed handle.
+Use skill: `review-precondition-check`. Read once. Skip if parent passed handle, or in `sweep` mode (no diff - Steps 4-7 apply to the whole security surface; findings still cite `file:line`).
 
 ### Step 4 - Read the security surface
 
@@ -167,10 +168,13 @@ Standalone: Use skill: `review-report-writer` with `report_type: review-security
 **Auth:** Spring Security Form Login | OAuth2 Resource Server (JWT) | OAuth2 Client | Custom | Hybrid
 **Authorization:** SecurityFilterChain matchers | @PreAuthorize / @PostAuthorize | Custom
 **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
+**OWASP Sweep:** [categories with findings: list] | remaining categories clean
 
 [2-3 sentence assessment, calling out Kotlin-specific risks: missing `@PreAuthorize`, `data class` JPA entity in `@RequestBody`, `SecurityContextHolder` inside `suspend`, exposed Actuator endpoints]
 
 ## Findings
+
+Severity -> intent label: Critical / High = `[Must]`, Medium = `[Recommend]`, Low = `[Recommend]` (or `[Question]` when the fix needs author input). Apply in Next Steps and when returning findings to a parent review.
 
 ### Critical
 - **Location:** [file:line]
@@ -196,7 +200,7 @@ _Omit empty severities. If all empty: "No security issues found."_
 
 - [ ] `behavioral-principles` loaded
 - [ ] Stack confirmed
-- [ ] `review-precondition-check` ran (or handle received)
+- [ ] `review-precondition-check` ran (or handle received, or `sweep` mode)
 - [ ] Diff and log read once; reused
 - [ ] For `pr-ref`, fetch command surfaced
 - [ ] When `head_matches_current` was false, user approval obtained
@@ -210,7 +214,7 @@ _Omit empty severities. If all empty: "No security issues found."_
 - [ ] CSRF, CORS, rate limiting, open redirect, SSTI, DevTools / H2 verified
 - [ ] Coroutine `SecurityContext` reviewed for `suspend` touching auth
 - [ ] Every finding includes attack scenario
-- [ ] If no findings: "No issues found" per category
+- [ ] OWASP Sweep line filled: categories with findings listed, rest declared clean
 - [ ] Next Steps ordered Must > Recommend > Question
 - [ ] Standalone: report written + confirmation printed. Subagent: findings returned inline, `review-report-writer` not called
 
@@ -218,7 +222,7 @@ _Omit empty severities. If all empty: "No security issues found."_
 
 - State-changing git
 - Reporting vulnerabilities without attack scenario
-- Skipping clean OWASP categories - state "No issues found"
+- Leaving OWASP categories unaccounted for - every category is either in the findings or covered by the OWASP Sweep clean declaration
 - Generic security advice when a Kotlin / Spring idiom applies
 - Suggesting `csrf { disable() }` to fix a failing form submission
 - Disabling `@EnableMethodSecurity` to silence a missing-`@PreAuthorize` warning

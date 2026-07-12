@@ -44,6 +44,8 @@ user-invocable: false
 | `HttpMediaTypeNotSupportedException`            | 415 Unsupported Media Type| Request `Content-Type` not accepted                   |
 | Unexpected `RuntimeException`                   | 500 Internal Server Error | System failure - log with stack trace                 |
 
+**401/403 reachability:** failures in the security filter chain (bad/missing JWT, missing scope) happen before `DispatcherServlet` and never reach `@RestControllerAdvice` - wire `AuthenticationEntryPoint` / `AccessDeniedHandler` to emit ProblemDetail (see `kotlin-spring-security-patterns`). Advice handlers catch only method-security denials (`@PreAuthorize` inside the MVC layer).
+
 ## Patterns
 
 ### Domain exception hierarchy
@@ -87,6 +89,8 @@ fun get(@PathVariable id: Long): ResponseEntity<*> = when (val r = service.findB
 ### `@RestControllerAdvice`
 
 Spring picks the most specific `@ExceptionHandler` by exception-type hierarchy - declaration order doesn't matter, but order most-specific to most-general for readability.
+
+Set `spring.mvc.problemdetails.enabled: true` so the built-in framework exceptions you don't hand-write handlers for (unknown-path 404, 405, 406, 415...) also render as ProblemDetail; the advice below stays standalone (no `ResponseEntityExceptionHandler` extension) and overrides only the built-ins that need custom properties.
 
 ```kotlin
 @RestControllerAdvice
@@ -163,8 +167,6 @@ class StripePaymentGateway(private val stripe: StripeClient) : PaymentGateway {
 ### Retryable vs permanent
 
 Mark transient failures with `HttpStatus.SERVICE_UNAVAILABLE` + a retryable error code; set `retryable=true` property on `ProblemDetail` so clients can backoff vs give up.
-
-Enable globally: `spring.mvc.problemdetails.enabled: true`.
 
 ### `RetryableException` sibling-abstract
 

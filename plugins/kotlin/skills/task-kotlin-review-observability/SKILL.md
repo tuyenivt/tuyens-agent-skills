@@ -41,6 +41,7 @@ Stack-specific delegate of `task-code-review-observability`.
 | `/task-kotlin-review-observability`          | Current branch vs base                         |
 | `/task-kotlin-review-observability <branch>` | `<branch>` vs base                             |
 | `/task-kotlin-review-observability pr-<N>`   | PR head in `pr-<N>`                            |
+| `/task-kotlin-review-observability sweep`    | Whole-surface review (post-incident / pre-release of an already-merged service). Skips Step 3; Step 4 reads the full instrumentation surface, not just changed files. Allowed on trunk - read-only. |
 
 When invoked as a subagent, Step 3 skipped.
 
@@ -56,7 +57,7 @@ Use skill: `stack-detect`. Accept pre-confirmed.
 
 ### Step 3 - Resolve diff
 
-Use skill: `review-precondition-check`. Read once. Skip if parent passed handle.
+Use skill: `review-precondition-check`. Read once. Skip if parent passed handle, or in `sweep` mode (no diff - Steps 4-11 apply to the whole instrumentation surface; findings still cite `file:line` or config key).
 
 ### Step 4 - Read the instrumentation surface
 
@@ -166,6 +167,8 @@ Standalone: Use skill: `review-report-writer` with `report_type: review-observab
 
 ## Findings
 
+Impact tier -> intent label: High = `[Must]`, Medium = `[Recommend]`, Low / Quick Win = `[Recommend]` (or `[Question]` when the fix needs author input). Checklist items with an inline label (e.g., string-template logs = `[Recommend]`) set a floor, not a cap - a High-impact instance still escalates to `[Must]`. Apply in Next Steps and when returning findings to a parent review.
+
 ### High Impact
 - **Location:** [file:line or config key]
 - **Issue:** [Kotlin/Spring/Micrometer/Logback idiom: missing MDCContext across `suspend`, Kotlin string-template log breaks parameterization, unbounded tag cardinality on `userId`, Actuator `*` exposure, `println` in prod, etc.]
@@ -180,6 +183,9 @@ _Omit empty sections._
 ## Recommendations
 [Structural improvements]
 
+## SLI / SLO Suggestions _(deep depth only; omit otherwise)_
+- **[Journey]:** SLI = [Micrometer expression, e.g., filtered `http.server.requests` success rate / p95], target = [SLO], probe = [readiness/synthetic]
+
 ## Next Steps
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: ops] - [one-line action]
@@ -190,7 +196,7 @@ _Omit empty sections._
 
 - [ ] `behavioral-principles` loaded
 - [ ] Stack confirmed (or accepted from parent)
-- [ ] `review-precondition-check` ran (or handle received)
+- [ ] `review-precondition-check` ran (or handle received, or `sweep` mode)
 - [ ] Diff and log read once; reused
 - [ ] When `head_matches_current` was false, user approval obtained
 - [ ] Instrumentation surfaces read directly

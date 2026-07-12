@@ -120,7 +120,7 @@ dependencies {
 ./gradlew build --profile     # local HTML at build/reports/profile/
 ```
 
-Read the scan's Performance tab first. Common findings: low cache hit rate (no remote cache), `compileKotlin` dominates (incremental off), test forks per class.
+Read the scan's Performance tab first. Common findings: low cache hit rate (no remote cache), `compileKotlin` dominates (incremental compilation off - look for `kotlin.incremental=false` in a properties file or compiler args that disable it), test forks per class.
 
 ### Build performance
 
@@ -172,9 +172,11 @@ plugins {
 dependencies { implementation(project(":domain")) }
 ```
 
-Library module (apply `kotlin.spring` / `kotlin.jpa` wherever the entities or Spring stereotypes actually live - a domain library holding `@Entity` needs `kotlin.jpa` here, not only on the app, or it fails with `No default constructor for entity`):
+Library module (apply `kotlin.spring` / `kotlin.jpa` wherever the entities or Spring stereotypes actually live - a domain library holding `@Entity` needs `kotlin.jpa` here, not only on the app, or it fails with `No default constructor for entity`). Versionless catalog entries resolve only where something supplies versions: the Spring Boot plugin does it on application modules; libraries must import the BOM themselves or resolution fails with `Could not find ...`:
 
 ```kotlin
+import org.springframework.boot.gradle.plugin.SpringBootPlugin
+
 plugins {
     id("kotlin-conventions")
     `java-library`
@@ -183,6 +185,7 @@ plugins {
 }
 // No Spring Boot plugin - libraries don't produce bootJar
 dependencies {
+    api(platform(SpringBootPlugin.BOM_COORDINATES))  // supplies versions for versionless catalog entries
     api(libs.spring.boot.starter.data.jpa)      // api() only when types leak into public API
     implementation(libs.kotlinx.coroutines.reactor)
 }
@@ -281,6 +284,13 @@ val integrationTest = tasks.register<Test>("integrationTest") {
     shouldRunAfter(tasks.test)
 }
 tasks.check { dependsOn(integrationTest) }
+
+// the auto-created configurations do NOT inherit test deps - wire them, then declare
+// integration-only deps against integrationTestImplementation
+configurations["integrationTestImplementation"].extendsFrom(configurations.testImplementation.get())
+configurations["integrationTestRuntimeOnly"].extendsFrom(configurations.testRuntimeOnly.get())
+
+dependencies { "integrationTestImplementation"(libs.testcontainers.postgresql) }
 ```
 
 Keeps slow Testcontainers tests off the inner loop.
@@ -322,7 +332,7 @@ detekt { buildUponDefaultConfig = true; config.setFrom("$rootDir/config/detekt/d
 ## Output Format
 
 ```
-Optimization: {version catalog | build cache | configuration cache | parallel | convention plugin | dependency scope | kotlin-spring/jpa plugin}
+Optimization: {version catalog | build cache local/remote | configuration cache | parallel | convention plugin | dependency scope | dependency locking | kotlin-spring/jpa plugin | JAR layering | CI pipeline | static analysis}
 File: {path}
 Change: {description}
 Impact: {build time | dependency management | maintainability | proxy correctness}

@@ -71,6 +71,7 @@ Propose and wait for approval:
 - Coroutine scope decisions (suspend vs blocking, Flow vs List)
 - Error model + validation
 - Kotlin enums for status / category
+- Idempotency strategy for unsafe endpoints: natural-key uniqueness (duplicate -> 409) or `Idempotency-Key` replay (duplicate -> same response)
 
 Generate code only after approval.
 
@@ -108,7 +109,7 @@ Use skill: `kotlin-spring-transaction` for transaction patterns.
 - Business exceptions from common base
 - `suspend` only when the path is coroutine-based
 - Post-commit side effects via `ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)` - never inside `@Transactional`
-- Status transitions validated against an `allowed-transitions: Map<Status, Set<Status>>` map before persistence; invalid transitions throw a domain exception
+- Status transitions validated against an `allowedTransitions: Map<Status, Set<Status>>` map before persistence; invalid transitions throw a domain exception
 
 ### STEP 7 - Controller + DTO
 
@@ -133,9 +134,11 @@ Use skill: `kotlin-spring-exception-handling`.
 | NotFound              | 404         |
 | ValidationFailed      | 400         |
 | Conflict / Duplicate  | 409         |
-| Unauthorized          | 403         |
+| Unauthenticated       | 401         |
+| Forbidden             | 403         |
 | BusinessRuleViolation | 422         |
 
+- 401/403 raised in the security filter chain never reach `@ControllerAdvice` - wire entry point / denied handler per `kotlin-spring-exception-handling`
 - Endpoint auth requirements explicit before finalizing
 
 ### STEP 9 - Tests
@@ -146,7 +149,7 @@ Use skill: `kotlin-testing-patterns`.
 - Repository: `@DataJpaTest` + Testcontainers
 - Controller: `@WebMvcTest` + `@MockkBean` + MockMvc Kotlin DSL
 
-Cover: happy path, not-found, validation errors, unique-constraint conflict (409), idempotent replay returns same response, invalid state transition (409 or 422), filter / search edge cases.
+Cover: happy path, not-found, validation errors, invalid state transition (409 or 422), filter / search edge cases, and duplicate create per the STEP 3 idempotency decision (409 conflict, or same-response replay when `Idempotency-Key` was chosen).
 
 ### STEP 10 - Validate
 
@@ -156,6 +159,8 @@ Cover: happy path, not-found, validation errors, unique-constraint conflict (409
 Verify: tests pass, no unsafe-cast warnings, detekt / ktlint clean (if configured).
 
 ## Output Format
+
+Omit checklist rows a mode skips (no-persistence drops Entity/Repository/Migration; extensions list only touched files). Same rule for Self-Check: mark skipped steps `N/A (mode)`.
 
 ```markdown
 ## Generated Files

@@ -21,7 +21,8 @@ user-invocable: false
 
 - Async only for non-critical side effects, never core transaction logic.
 - Async handlers idempotent. Exceptions handled explicitly - never swallowed.
-- Always name the executor (`@Async("name")`) and configure pool size / queue capacity. Default `SimpleAsyncTaskExecutor` creates a thread per call.
+- Always name the executor (`@Async("name")`) and configure pool size / queue capacity. Without Virtual Threads, the default `SimpleAsyncTaskExecutor` creates an unbounded platform thread per call; with `spring.threads.virtual.enabled=true` the default is VT-per-task and benign - naming still matters for routing CPU-bound work to a bounded pool.
+- `@Async` does not support `suspend` functions - the continuation parameter breaks the interceptor. Half-migrated services pick the scope-bean path instead.
 - `@TransactionalEventListener(AFTER_COMMIT)` over `@EventListener` when the event must fire only after commit.
 - `@Async` self-invocation is silently ignored - call through an injected bean.
 - Managed `CoroutineScope` bean over `GlobalScope` (see `kotlin-coroutines-spring`).
@@ -194,6 +195,10 @@ fun recover(ex: MailSendException, orderId: Long) {
 
 Requires `@EnableRetry` and `spring-retry`.
 
+### `@Scheduled` jobs
+
+`fixedDelay` measures from completion (no overlap on one instance); `fixedRate` from start (runs can pile up behind a slow tick). Neither dedupes across replicas - every instance fires. For multi-instance deployments, guard with ShedLock (`@SchedulerLock`) or a DB advisory lock, and keep the job idempotent regardless. Coroutine bridging for `@Scheduled` is in `kotlin-coroutines-spring`.
+
 ### Coroutine alternative
 
 When the surrounding code is suspend-based, use a managed scope bean instead of `@Async`. Pattern in `kotlin-coroutines-spring` § `CoroutineScope` bean.
@@ -208,7 +213,7 @@ When the surrounding code is suspend-based, use a managed scope bean instead of 
 
 ```
 Operation: {what runs async}
-Mechanism: {@Async | CoroutineScope.launch | coroutineScope + async/withTimeout | @TransactionalEventListener}
+Mechanism: {@Async | CoroutineScope.launch | coroutineScope + async/withTimeout | @TransactionalEventListener | @Scheduled}
 Executor: {bean name | dispatcher}
 Event Phase: {AFTER_COMMIT | AFTER_ROLLBACK | N/A}
 Error Handling: {AsyncUncaughtExceptionHandler | exceptionally | @Recover | CoroutineExceptionHandler}

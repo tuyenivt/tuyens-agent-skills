@@ -41,6 +41,7 @@ class WebSocketConfig(
         // Single instance: in-process broker
         registry.enableSimpleBroker("/topic", "/queue")
             .setHeartbeatValue(longArrayOf(10_000, 10_000))
+            .setTaskScheduler(ThreadPoolTaskScheduler().apply { initialize() })   // heartbeats REQUIRE a scheduler - without it startup fails
         // Multi-instance: swap the line above for the relay below
         // registry.enableStompBrokerRelay("/topic", "/queue")
         //     .setRelayHost("rabbitmq").setRelayPort(61613)
@@ -67,7 +68,6 @@ class WebSocketConfig(
 }
 ```
 
-`SimpleBrokerMessageHandler` heartbeats need a `TaskScheduler` - configure one if not already present.
 
 ### CONNECT-frame JWT auth
 
@@ -113,6 +113,13 @@ class WebSocketSecurityConfig {
 ```
 
 `simpSubscribeDestMatchers` guards SUBSCRIBE; `simpDestMatchers` guards SEND. Both are needed - a SEND-only rule lets attackers subscribe to other users' destinations.
+
+`@EnableWebSocketSecurity` also switches on CSRF protection for the CONNECT frame - stateless JWT clients send no CSRF token, so every connection fails with "Could not verify the provided CSRF token". For the CONNECT-frame-JWT posture this skill prescribes, disable it with a no-op interceptor bean:
+
+```kotlin
+@Bean("csrfChannelInterceptor")
+fun noOpCsrf(): ChannelInterceptor = object : ChannelInterceptor {}
+```
 
 ### Controller + per-user send
 

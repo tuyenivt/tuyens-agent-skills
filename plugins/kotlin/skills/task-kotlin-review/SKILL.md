@@ -35,6 +35,8 @@ The stack-specific delegate of `task-code-review` for Kotlin / Spring Boot. Runs
 
 Default: `standard`.
 
+`deep` extras, concretely: **historical patterns** = `git log --oneline -20 -- <file>` for each high-impact touched file; recurring fix/revert/hotfix commits on the same code are a systemic-risk signal cited in the finding's System Risk line. **Cross-PR** = other open PRs / recent unmerged branches touching the same files (`git branch -a --contains` on recent commits, or the forge's open-PR list when available); overlap is reported in Architecture Notes as a merge-conflict / double-migration risk. If neither source is available, state `Deep extras: no history/cross-PR data available` in the Summary.
+
 **Auto-promote to `deep`** if Phase A blast radius is Wide or Critical. Surface as `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
 
 ## Scope
@@ -168,7 +170,7 @@ Surface decision in Summary's `Scope:` field.
 
 Output risk level and blast radius before findings.
 
-**Low-risk short-circuit:** Risk Low + Blast Narrow + no architecture-relevant files (security config, filters, API contracts, shared base classes, `application.yml`, Flyway migrations, `build.gradle.kts` plugins) - skip Phases C-D and produce Phase B findings only.
+**Low-risk short-circuit:** Risk Low + Blast Narrow + no architecture-relevant files (security config, filters, API contracts, shared base classes, `application.yml`, Flyway migrations, `build.gradle.kts` plugins) - skip Phases C, D, and E; produce Phase B findings only.
 
 ### Phase B - Kotlin correctness and safety
 

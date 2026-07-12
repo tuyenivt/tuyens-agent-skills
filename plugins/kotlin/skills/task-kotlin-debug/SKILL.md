@@ -22,7 +22,7 @@ Not for production incidents (use `/task-oncall-start`) or new features (use `ta
 
 - **No stack trace**: ask for the exact error or describe the unexpected behavior, then search likely trigger points.
 - **Library-only frames**: configuration issue. Check `build.gradle.kts`, `application.yml`, `@Configuration` classes.
-- **Compilation error**: skip to FIX - the compiler message is the root cause. Type mismatches, smart-cast failures, missing overrides.
+- **Compilation error**: skip to Step 6 - the compiler message is the root cause. Type mismatches, smart-cast failures, missing overrides. Output: Classification = `Compilation`, Root Cause = the compiler message (HIGH).
 - **CI-only**: environment differences. JVM version, Gradle plugin versions, Testcontainers availability, profile config.
 - **Multiple errors**: focus on the first. Later errors are cascades.
 
@@ -40,8 +40,6 @@ Use skill: `stack-detect`. Ask for:
 - Source file where it originates
 - Expected behavior
 - Runtime / test / compile / startup
-
-Identify the first application-code frame (skip library frames) and read that file.
 
 ### Step 3 - Classify
 
@@ -86,7 +84,7 @@ plugins {
 | Error / symptom                                                   | Cause                                                                                    | Fix                                                                                                              |
 | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `@Async` method runs synchronously                                | Self-invocation bypasses proxy, or missing `@EnableAsync`                                | Extract to a separate bean; add `@EnableAsync`. Use skill: `kotlin-spring-async-processing`                       |
-| `@Scheduled` task never fires                                     | Missing `@EnableScheduling` or no `TaskScheduler` bean when also using `SimpleBrokerHandler` | Add `@EnableScheduling`; provide a `TaskScheduler` if WebSocket / heartbeats coexist                              |
+| `@Scheduled` task never fires                                     | Missing `@EnableScheduling` or no `TaskScheduler` bean when also using `SimpleBrokerMessageHandler` | Add `@EnableScheduling`; provide a `TaskScheduler` if WebSocket / heartbeats coexist                              |
 | Executor saturation / queue full / requests time out under load   | Default `SimpleAsyncTaskExecutor` or bounded pool with low capacity                       | Name executor, size pool, set `RejectedExecutionHandler`. See `kotlin-spring-async-processing` § ThreadPoolTaskExecutor |
 | Throughput collapses under load on Boot 3.2+ with VTs enabled     | `synchronized` / `Collections.synchronizedMap` pins the VT carrier                       | Switch to `ReentrantLock` (sync) or `Mutex` (suspend). Diagnose with `-Djdk.tracePinnedThreads=full`              |
 | `@TransactionalEventListener` doesn't fire                        | No active transaction at publish time, or AFTER_COMMIT outside a TX                       | Publish inside `@Transactional`, or set `fallbackExecution = true`                                                |
@@ -155,6 +153,8 @@ ignores the stub and reports "no answer found."
 
 Before/after, minimal, addressing root cause not symptom. Use skill: `kotlin-idioms` for idiom alignment.
 
+Verify: re-run the failing test / build / request that reproduced the error. If it can't be run here, state the exact command the user should run. A reproduced-then-passing check upgrades confidence to HIGH.
+
 ### Step 7 - Prevention
 
 Add one guard so the class of error cannot recur: a test, a Kotlin compiler check, a Gradle plugin config, a detekt rule, or a CI check.
@@ -171,6 +171,9 @@ Add one guard so the class of error cannot recur: a test, a Kotlin compiler chec
 ## Fix
 [Before/after code]
 
+## Verification
+[Command run and result, or exact command for the user]
+
 ## Prevention
 [Test, compiler check, config, or CI step]
 ```
@@ -181,6 +184,7 @@ Add one guard so the class of error cannot recur: a test, a Kotlin compiler chec
 - [ ] Error classified into a specific category before any fix
 - [ ] Root cause references specific file/line; confidence stated
 - [ ] Before/after fix; minimal; root cause not symptom
+- [ ] Fix verified by re-running the failing test/build, or exact command handed to the user
 - [ ] Kotlin idioms preserved (no new `!!`, no Java-style workarounds, no manual `open`)
 - [ ] Prevention step included
 - [ ] For coroutines: scope/context addressed; for kotlin-jpa: plugin checked; for MockK: `coEvery` / `coVerify`; for Jackson: `jackson-module-kotlin` verified

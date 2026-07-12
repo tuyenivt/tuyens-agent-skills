@@ -22,7 +22,7 @@ Not for coroutines (see `kotlin-coroutines-spring`) or testing (see `kotlin-test
 - `data class` for DTOs, value objects, `@ConfigurationProperties`. Regular `class` for JPA entities (canonical pattern in `kotlin-spring-jpa-performance`).
 - `!!` only as fail-fast assertion. Use `?:`, `?.`, `requireNotNull`, or `error()` otherwise.
 - `require` / `check` / `checkNotNull` over manual `if (x) throw`. `require` for arguments (`IllegalArgumentException`), `check` for invariants (`IllegalStateException`).
-- Kotlin stdlib (`map`, `filter`, `groupBy`, `sumOf`) over Java streams.
+- Kotlin stdlib (`map`, `filter`, `groupBy`, `sumOf`) over Java streams. Stdlib chains are eager (each step allocates a list) - for large inputs or long chains, wrap in `asSequence()...toList()` to keep the stream's laziness.
 - `@Jvm*` annotations only when Java callers or Spring reflection need them.
 - `kotlin("plugin.spring")` + `kotlin("plugin.jpa")` Gradle plugins. Without them: `No default constructor for entity` (JPA), `BeanNotOfRequiredTypeException` / `could not initialize proxy` (Spring AOP).
 - `val` over `var` except mutable framework fields (entity `status`, audit timestamps).
@@ -38,6 +38,9 @@ class OrderService(private val orderRepo: OrderRepository) {       // primary-co
 
     fun findOrder(id: Long): OrderResponse? =                      // T? not Optional<T>
         orderRepo.findByIdOrNull(id)?.toResponse()                 // Spring Data Kotlin ext
+
+    // derived queries: declare T? directly - Spring Data honors Kotlin nullability
+    // interface OrderRepository : JpaRepository<Order, Long> { fun findByRef(ref: String): Order? }
 
     fun create(req: CreateOrderRequest): OrderResponse {
         require(req.items.isNotEmpty()) { "items required" }       // require, not if/throw
@@ -198,7 +201,7 @@ data class OrderProperties(
 }
 ```
 
-`@Value("\${...}")` only for one-off values. Escape `$` in Kotlin: `\${prop.name}`.
+Register it - `@ConfigurationPropertiesScan` on the application class (or `@EnableConfigurationProperties(OrderProperties::class)`) - or the class silently binds nothing and defaults win. `@Value("\${...}")` only for one-off values. Escape `$` in Kotlin: `\${prop.name}`.
 
 ### Java interop annotations
 

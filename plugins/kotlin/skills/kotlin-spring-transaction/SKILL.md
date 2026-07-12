@@ -43,15 +43,22 @@ fun placeOrder(req: OrderRequest): Order {
     return orderRepo.save(order.copy(status = PAID))
 }
 
-// Good - split around the external call
-fun placeOrder(req: OrderRequest): Order {
-    val order = createPending(req)             // tx 1
-    val receipt = paymentGateway.charge(order) // no transaction
-    return markPaid(order.id, receipt)         // tx 2
+// Good - split around the external call; TX methods live in a SEPARATE bean
+// (same-class calls would self-invoke past the proxy - see next section)
+@Service
+class OrderProcessor(private val tx: OrderTxService, private val paymentGateway: PaymentGateway) {
+    fun placeOrder(req: OrderRequest): Order {
+        val order = tx.createPending(req)          // tx 1
+        val receipt = paymentGateway.charge(order) // no transaction
+        return tx.markPaid(order.id, receipt)      // tx 2
+    }
 }
 
-@Transactional internal fun createPending(req: OrderRequest): Order = orderRepo.save(Order.from(req))
-@Transactional internal fun markPaid(id: Long, receipt: Receipt): Order = ...
+@Service
+class OrderTxService(private val orderRepo: OrderRepository) {
+    @Transactional fun createPending(req: OrderRequest): Order = orderRepo.save(Order.from(req))
+    @Transactional fun markPaid(id: Long, receipt: Receipt): Order = ...
+}
 ```
 
 Ordering depends on whether a failed external call may leave a persisted row:
@@ -129,7 +136,9 @@ fun processPayment(req: PaymentRequest): PaymentResponse {
         ?.let { return PaymentResponse.from(it) }
 
     return try {
-        PaymentResponse.from(paymentRepository.save(Payment.from(req)))
+        // saveAndFlush: plain save() defers the INSERT to commit - the violation
+        // would surface after this block and the catch would never fire
+        PaymentResponse.from(paymentRepository.saveAndFlush(Payment.from(req)))
     } catch (e: DataIntegrityViolationException) {
         PaymentResponse.from(
             paymentRepository.findByIdempotencyKey(req.idempotencyKey)
@@ -152,7 +161,7 @@ Default is no timeout - risks connection pool exhaustion under contention.
 
 ### `@Transactional` on `suspend`
 
-Works in Spring Boot 3.x. The transaction binds to the entering coroutine context.
+Works in Spring Boot 3.x. With JPA/JDBC the transaction binds to the thread that enters the method (ThreadLocal resources) - which is why dispatcher switches break it; with R2DBC it rides the coroutine context and survives them (see `kotlin-coroutines-spring`).
 
 ```kotlin
 @Transactional

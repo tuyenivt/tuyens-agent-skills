@@ -19,7 +19,7 @@ user-invocable: false
 ## Rules
 
 - Identify `suspend` first - it changes error propagation, cancellation, and threading.
-- Identify scope owner (`coroutineScope`, application scope bean, `CoroutineScope(SupervisorJob())`) - the scope determines cancellation propagation.
+- Identify scope owner (`coroutineScope`, application scope bean, `CoroutineScope(SupervisorJob())`) - the scope determines cancellation propagation. Flag `GlobalScope` (unstructured - never cancelled) and component-owned scopes nothing cancels (`@PreDestroy` / `DisposableBean`) - their coroutines outlive bean shutdown.
 - Identify dispatcher (`IO` / `Default` / `Main` / custom) and any `withContext` switches.
 - Flag Kotlin `final`-by-default + Spring CGLIB: `@Service` / `@Component` need `open` (or `kotlin-spring` plugin) for `@Transactional` / `@Async` / `@Cacheable` to work.
 - Distinguish `?.` (safe call), `?:` (Elvis), `!!` (assert), `T!` (platform type from Java).
@@ -51,7 +51,7 @@ Proxied annotations and what they need to fire: `@Transactional`, `@Async`, `@Ca
 2. **`private` / `final` / `protected`** - CGLIB cannot override; the annotation is silently ignored. In Kotlin, every method is `final` by default - this is the dominant failure mode here.
 3. **Init-time call** (`@PostConstruct`, constructor, `@Bean` factory body calling the method on `this`) - the proxy isn't wired yet; the raw class runs.
 
-**The `kotlin-spring` plugin** opens `@Component` / `@Service` / `@Configuration` / `@RestController` / `@Repository` and `@Transactional` automatically. It does **not** open classes annotated with `@Retryable`, custom proxy annotations, or your own meta-annotations - those still need explicit `open class` / `open fun` or a custom `allopen` rule (`kotlin("plugin.allopen")`). Without it, `@Retryable` / `@Cacheable` / custom proxy annotations silently no-op.
+**The `kotlin-spring` plugin**: detect via `kotlin("plugin.spring")` in `build.gradle.kts` (or `all-open` config in Maven); if the build file is unavailable, report proxy viability as unverified. It opens `@Component` / `@Service` / `@Configuration` / `@RestController` / `@Repository` and `@Transactional` automatically. It does **not** open classes annotated with `@Retryable`, custom proxy annotations, or your own meta-annotations - those still need explicit `open class` / `open fun` or a custom `allopen` rule (`kotlin("plugin.allopen")`). Without it, `@Retryable` / `@Cacheable` / custom proxy annotations silently no-op.
 
 - `data class` cannot be opened - cannot host any of these annotations as a proxied bean.
 - `object` is not a Spring bean - compiled to a static holder. `@Autowired` doesn't inject it; annotations above are ignored. Use `@Component class`.
@@ -79,7 +79,7 @@ Proxied annotations and what they need to fire: `@Transactional`, `@Async`, `@Ca
 
 - Erased to the underlying type at bytecode level - zero allocation for type-safe IDs.
 - Equality is value-equality (two `UserId(1L)` are equal because they erase to the same `Long`).
-- Jackson does not unwrap by default - needs `KotlinModule` or `@JsonCreator`.
+- Jackson unwraps only via `jackson-module-kotlin` (Spring Boot auto-registers it when on the classpath) - flag when that dependency is absent, or fall back to `@JsonCreator`.
 - Boxing reappears as a generic param, nullable, or assigned to `Any`.
 
 ### Sealed hierarchies

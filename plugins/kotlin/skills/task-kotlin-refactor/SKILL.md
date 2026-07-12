@@ -64,13 +64,15 @@ Refactoring without tests is a rewrite with extra steps. Status:
 - **Thin**: happy path only; missing security / cancellation tests
 - **Inadequate**: < 50% line coverage, or no tests
 
-If Inadequate - **stop**. Recommend `task-kotlin-test` first. Do not proceed past Step 5.
+Gate behavior:
+
+- **Adequate**: proceed.
+- **Thin**: proceed, but every High-risk step must be preceded by a step adding the missing boundary tests for the code it touches; say so in the plan.
+- **Inadequate**: **stop after this step**. Skip Steps 5-8; output only the header + Coverage Gate section stating what coverage must exist first, and recommend `task-kotlin-test`.
 
 **Lint state:** `./gradlew detekt ktlintCheck` for baseline. Surface preparatory cleanup as Step 0 if new violations would land.
 
 ### Step 5 - Identify smells
-
-Skip entirely if Step 4 returned Inadequate.
 
 **Controllers**
 

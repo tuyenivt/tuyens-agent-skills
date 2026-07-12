@@ -56,7 +56,7 @@ If no existing tests, propose conventions explicitly rather than inventing silen
 | Contract            | Spring Cloud Contract / Pact                                                     | API consumer/provider contracts                                               |
 | E2E                 | `@SpringBootTest(RANDOM_PORT)` + WebTestClient / REST Assured                    | Critical user journeys only                                                    |
 
-Many unit, some slice, few full-context / E2E. Default balance when nothing else dictates: ~60-70% unit, ~20-30% slice, <10% full-context + E2E - use these to fill the Strategy Doc's `{x}%/{y}%/{z}%` fields, adjusting for the service's risk profile.
+Many unit, some slice, few full-context / E2E. Default balance when nothing else dictates: ~60-70% unit, ~20-30% slice, <10% full-context + E2E - use these to fill the Strategy Doc's `{x}%/{y}%/{z}%` fields (E2E counts into `{z}`), adjusting for the service's risk profile. Contract tests sit outside the percentage balance - list them as their own Strategy Doc line when the service has consumers/providers.
 
 ### Step 5 - Apply patterns
 
@@ -133,6 +133,8 @@ Don't mix MockK on `WebClient` inside `@SpringBootTest`; don't pull in WireMock 
 
 ### Step 8 - Prioritize (when coverage < 50%)
 
+Coverage source: JaCoCo / Kover report if wired; otherwise estimate as tested-public-methods / total-public-methods from Step 3 and label the number an estimate.
+
 Run before scaffolding.
 
 1. **Authorization / auth**: `@WebMvcTest` per protected endpoint asserting 401 / 403; OAuth2 / JWT validation; method-security `@PreAuthorize`; principal propagation in `suspend`
@@ -174,6 +176,8 @@ Run before scaffolding.
 - "Write tests for X" / "scaffold tests" → **Test Scaffolds**
 - "Test strategy" / "test plan" / coverage < 50% → **Strategy Doc** (optionally include Coverage Assessment)
 - Unclear → Strategy Doc
+
+The explicit ask wins over the coverage trigger: "write tests" at < 50% coverage produces Test Scaffolds plus a one-paragraph pointer to run the Strategy Doc, not a Strategy Doc.
 
 **Coverage Assessment:**
 

@@ -123,6 +123,8 @@ class ProjectPermissionEvaluator : PermissionEvaluator {
 }
 ```
 
+Unregistered, `hasPermission(...)` falls back to the default evaluator and these rules never run - register it on the single `MethodSecurityExpressionHandler` bean (shared with `RoleHierarchy`, below).
+
 ### CORS
 
 ```kotlin
@@ -174,6 +176,28 @@ class SpaCsrfTokenRequestHandler : CsrfTokenRequestAttributeHandler() {
 ```
 
 To force the cookie to be written on every response (no deferred loading), add a filter that calls `csrfToken.token` once, or set `requireCsrfProtectionMatcher` so the SPA's first GET materializes it.
+
+### ProblemDetail bodies for 401/403
+
+Filter-chain failures happen before `DispatcherServlet` - `@RestControllerAdvice` never sees them (`kotlin-spring-exception-handling` delegates this wiring here). Wire both handlers in the DSL:
+
+```kotlin
+exceptionHandling {
+    authenticationEntryPoint = problemEntryPoint    // 401 - bad/missing credentials
+    accessDeniedHandler = problemDeniedHandler      // 403 - authenticated, not authorized
+}
+
+@Component
+class ProblemEntryPoint(private val mapper: ObjectMapper) : AuthenticationEntryPoint {
+    override fun commence(req: HttpServletRequest, res: HttpServletResponse, ex: AuthenticationException) {
+        res.status = HttpStatus.UNAUTHORIZED.value()
+        res.contentType = MediaType.APPLICATION_PROBLEM_JSON_VALUE
+        mapper.writeValue(res.outputStream,
+            ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, "Authentication required"))
+    }
+}
+// AccessDeniedHandler: same shape - 403, "Access denied"
+```
 
 ### Security headers
 
@@ -229,8 +253,14 @@ fun roleHierarchy(): RoleHierarchy = RoleHierarchyImpl.fromHierarchy(
 )
 
 @Bean
-fun methodSecurityExpressionHandler(roleHierarchy: RoleHierarchy): MethodSecurityExpressionHandler =
-    DefaultMethodSecurityExpressionHandler().apply { setRoleHierarchy(roleHierarchy) }
+fun methodSecurityExpressionHandler(
+    roleHierarchy: RoleHierarchy,
+    permissionEvaluator: ProjectPermissionEvaluator,
+): MethodSecurityExpressionHandler =
+    DefaultMethodSecurityExpressionHandler().apply {
+        setRoleHierarchy(roleHierarchy)
+        setPermissionEvaluator(permissionEvaluator)     // one handler bean hosts both - a second bean would be dropped
+    }
 ```
 
 Now `@PreAuthorize("hasRole('USER')")` permits `ROLE_ADMIN` and `ROLE_MANAGER` too.
@@ -277,8 +307,11 @@ For `@Async` (non-coroutine), use `MODE_INHERITABLETHREADLOCAL` or `DelegatingSe
 
 ### MockMvc security tests
 
+`@WebMvcTest` alone tests Boot's default chain, not yours - without the `@Import`, route-rule assertions pass against the wrong config:
+
 ```kotlin
 @WebMvcTest(OrderController::class)
+@Import(SecurityConfig::class)
 class OrderControllerSecurityTest(@Autowired val mvc: MockMvc) {
 
     @Test

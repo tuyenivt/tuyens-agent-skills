@@ -77,12 +77,19 @@ class OrderControllerTest {
         mockMvc.get("/api/orders/1").andExpect { status { isOk() } }
     }
 
-    @Test fun `GET via suspend service`() = runTest {
+    @Test fun `GET via suspend service`() {          // MockMvc is blocking - no runTest wrapper
         coEvery { service.findByIdAsync(1L) } returns createOrderDto()
         mockMvc.get("/api/orders/1").andExpect { status { isOk() } }
         coVerify(exactly = 1) { service.findByIdAsync(1L) }
     }
 }
+```
+
+A `suspend` **controller** method runs through MVC async dispatch - the one-liner asserts the pre-dispatch response. Assert in two steps (or use `WebTestClient` for that endpoint):
+
+```kotlin
+val pending = mockMvc.get("/api/orders/summary").andExpect { request { asyncStarted() } }.andReturn()
+mockMvc.perform(asyncDispatch(pending)).andExpect(status().isOk)
 ```
 
 **Method security is a no-op in `@WebMvcTest` unless imported.** `@PreAuthorize` on a controller is enforced by the `@EnableMethodSecurity` advisor, which the slice does not load by default - so a non-admin silently passes and the test goes green without ever enforcing the rule. `@Import` the method-security config and always assert the negative case:
@@ -109,8 +116,8 @@ abstract class AbstractIntegrationTest {
         @Container @ServiceConnection @JvmStatic
         val postgres = PostgreSQLContainer("postgres:16-alpine").withReuse(true)
 
-        @Container @ServiceConnection @JvmStatic
-        val kafka = KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.0")).withReuse(true)
+        @Container @ServiceConnection @JvmStatic     // org.testcontainers.kafka.* - containers.KafkaContainer is deprecated since Testcontainers 1.20
+        val kafka = ConfluentKafkaContainer("confluentinc/cp-kafka:7.6.0").withReuse(true)
     }
 }
 ```

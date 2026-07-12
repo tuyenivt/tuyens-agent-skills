@@ -38,6 +38,7 @@ Kotlin-aware perf review for JPA / Hibernate, Spring Data, coroutines, Virtual T
 | `/task-kotlin-review-perf`          | Current branch vs base                        |
 | `/task-kotlin-review-perf <branch>` | `<branch>` vs base (3-dot diff)               |
 | `/task-kotlin-review-perf pr-<N>`   | PR head in `pr-<N>`                            |
+| `/task-kotlin-review-perf sweep`    | Whole-surface sweep (quarterly N+1 / pool-sizing). Skips Step 3; Step 4 reads all entities / repositories / config, not just changed ones. Allowed on trunk - read-only. |
 
 When invoked as a subagent of `task-kotlin-review` or `task-code-review-perf`, Step 2 skipped and parent's read-once artifacts reused.
 
@@ -53,7 +54,7 @@ Use skill: `stack-detect`. Accept pre-confirmed from parent.
 
 ### Step 3 - Resolve diff
 
-Use skill: `review-precondition-check`. Read diff + log once. Skip if parent passed handle.
+Use skill: `review-precondition-check`. Read diff + log once. Skip if parent passed handle, or in `sweep` mode (no diff - Steps 4-10 apply to the whole perf surface; findings still cite `file:line`).
 
 ### Step 4 - Read the perf surface
 
@@ -162,6 +163,8 @@ Standalone: Use skill: `review-report-writer` with `report_type: review-perf`. P
 
 ## Findings
 
+Impact tier -> intent label: High = `[Must]`, Medium = `[Recommend]`, Low / Quick Win = `[Recommend]` (or `[Question]` when the fix needs author input). Apply in Next Steps and when returning findings to a parent review.
+
 ### High Impact
 - **Location:** [file:line]
 - **Issue:** [Kotlin/Spring/JPA idiom name: N+1 via lazy association, missing index, mid-TX publish, `synchronized` on VT, redundant `Dispatchers.IO`, `data class` JPA, `GlobalScope.launch`, etc.]
@@ -176,6 +179,11 @@ _Omit empty sections._
 ## Recommendations
 [Structural improvements not tied to a specific finding]
 
+## Capacity & Load Plan _(deep depth only; omit otherwise)_
+- **Pool math:** [HikariCP `maximumPoolSize` vs expected concurrency, with the arithmetic]
+- **Target load:** [RPS / P99 target the changes must sustain]
+- **Load-test scenarios:** [endpoints + data shape + tool (Gatling / k6), one line each]
+
 ## Next Steps
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope] - [one-line action]
@@ -185,7 +193,7 @@ _Omit empty sections._
 ## Self-Check
 
 - [ ] Stack confirmed
-- [ ] `review-precondition-check` ran (or handle received)
+- [ ] `review-precondition-check` ran (or handle received, or `sweep` mode)
 - [ ] Diff and log read once; reused across steps
 - [ ] For `pr-ref`, user-run fetch surfaced and local ref existed
 - [ ] When `head_matches_current` was false, user approval obtained

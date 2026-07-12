@@ -70,6 +70,15 @@ Use fetch join for custom JPQL, `@EntityGraph` for derived methods. Don't combin
 
 Workarounds:
 - Two-query: page IDs first, then fetch full graph with `WHERE id IN (:ids)`
+
+  ```kotlin
+  @Query("SELECT u.id FROM User u WHERE u.status = :s")
+  fun findIdsByStatus(s: UserStatus, pageable: Pageable): Page<Long>
+
+  @Query("SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.orders WHERE u.id IN :ids ORDER BY u.id")
+  fun findWithOrders(ids: List<Long>): List<User>    // no Pageable here; re-apply ordering
+  ```
+
 - `@BatchSize` instead of fetch join
 - Page on the parent root and lazy-load (acceptable with small pages + batch fetch)
 
@@ -191,9 +200,10 @@ class Product(...)
 
 ```yaml
 spring.jpa.properties.hibernate.cache.use_second_level_cache: true
+spring.jpa.properties.hibernate.cache.region.factory_class: jcache
 ```
 
-Avoid on write-heavy entities - invalidation cost exceeds read benefit.
+The flag alone does nothing without a provider: add `hibernate-jcache` plus an implementation (EhCache / Caffeine) on the classpath, or startup fails / caching silently no-ops. Avoid on write-heavy entities - invalidation cost exceeds read benefit.
 
 ### Entity caveat - regular class, ID equality
 
@@ -204,7 +214,7 @@ Avoid on write-heavy entities - invalidation cost exceeds read benefit.
 // Good
 @Entity
 class Order(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) val id: Long = 0,
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) val id: Long = 0,   // IDENTITY fine for typical entities; bulk-insert paths need SEQUENCE (see Batch writes)
     val userId: Long,
     var status: OrderStatus = OrderStatus.PENDING,
     @Column(updatable = false) val createdAt: Instant = Instant.now(),

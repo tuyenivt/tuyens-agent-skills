@@ -103,6 +103,8 @@ DROP INDEX CONCURRENTLY IF EXISTS idx_orders_customer;
 
 ### Unique constraint via concurrent index
 
+Retrofitting uniqueness onto an existing column: check for duplicates first (`SELECT key FROM payments GROUP BY key HAVING count(*) > 1`) and dedup in a separate DML migration - a concurrent unique build over duplicates fails by construction, leaving the INVALID index described above.
+
 ```sql
 -- V1: add column
 ALTER TABLE payments ADD COLUMN idempotency_key VARCHAR(255);
@@ -151,7 +153,7 @@ Always include a rollback block for non-auto-reversible changes.
 
 ### Spring integration
 
-Validate in CI with `@SpringBootTest` + Testcontainers Postgres (see `kotlin-spring-test-integration`): inject `Flyway`, call `flyway.clean()` then assert `flyway.migrate().migrationsExecuted > 0`.
+Validate in CI with `@SpringBootTest` + Testcontainers Postgres (see `kotlin-spring-test-integration`): inject `Flyway`, call `flyway.clean()` then assert `flyway.migrate().migrationsExecuted > 0`. The recommended `clean-disabled: true` makes that call throw - override with `spring.flyway.clean-disabled: false` in the test profile only.
 
 Production: `spring.jpa.hibernate.ddl-auto: validate`. Use a smaller separate Hikari pool (`maximum-pool-size: 5`) for the migration profile to avoid starving the app pool on long DDL.
 
@@ -193,6 +195,8 @@ class Order(
 ```
 
 Remove the entity lifecycle hook in release N+1 when the old column is dropped.
+
+Lifecycle hooks only fire for writes through the JPA session - bulk JPQL, `@Modifying` queries, and native SQL bypass them and silently desync the columns. Audit those write paths and make each set both columns (or use a DB trigger for the window).
 
 ### Forward-only rollback strategy
 
