@@ -30,6 +30,13 @@ category: quality
 - **Assertions**: AssertJ fluent assertions over JUnit `assertEquals`
 - **Coverage**: Business logic, error paths, edge cases, transaction boundaries
 
+## Scope Boundaries
+
+| Ask | Route |
+| --- | ----- |
+| A specific failing or flaky test with an unexplained error (intermittent assertion, Testcontainers startup failure) | `/task-spring-debug` - structural suite problems (slow suite, overbroad `@SpringBootTest`, missing `@Transactional`) stay here via `/task-spring-test` |
+| Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` first; this agent writes the regression test after the fix is identified |
+
 ## Key Skills
 
 ### Workflow this agent drives

@@ -27,6 +27,14 @@ category: engineering
 - **Observability**: `@Timed` metrics on critical paths, Micrometer custom metrics, slow query logging
 - **Stateless**: Session externalization, horizontal scaling readiness
 
+## Scope Boundaries
+
+| Ask | Route |
+| --- | ----- |
+| Live production incident (OOM crash-loop, outage happening now) | oncall plugin `/task-oncall-start` owns mitigation (rollback, limits, comms) first; this agent then diagnoses the implicated deploy via `/task-spring-review-perf` |
+| Gradle build performance | `java-gradle-build-optimization` (spring-architect's domain) - this agent owns runtime performance only |
+| Cross-service capacity or scaling architecture | architecture plugin |
+
 ## Performance Checklist
 
 - [ ] No `synchronized` blocks (thread pinning)
