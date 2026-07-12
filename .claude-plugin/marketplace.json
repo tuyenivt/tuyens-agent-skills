@@ -51,7 +51,7 @@
     {
       "name": "oncall",
       "source": "./plugins/oncall",
-      "description": "Workflow and atomic skills for oncall work: triage, investigation, root cause analysis, and postmortem. Requires core plugin.",
+      "description": "Workflow and atomic skills for oncall work: triage, investigation, root cause analysis, and postmortem.",
       "version": "1.129.0",
       "author": {
         "name": "Tuyen",
@@ -71,7 +71,7 @@
     {
       "name": "codemap",
       "source": "./plugins/codemap",
-      "description": "Persistent codebase knowledge graph: build/sync .codemap/graph.json via pure-LLM extraction with parallel sub-agents. Ask the graph (task-codemap-ask), play guided walkthroughs (task-codemap-guide), deep-dive entities (task-codemap-explain). Opt-in auto-update hook on git commit/merge/rebase. Depends only on core.",
+      "description": "Persistent codebase knowledge graph: build/sync .codemap/graph.json via pure-LLM extraction with parallel sub-agents. Ask the graph (task-codemap-ask), play guided walkthroughs (task-codemap-guide), deep-dive entities (task-codemap-explain).",
       "version": "1.129.0",
       "author": {
         "name": "Tuyen",

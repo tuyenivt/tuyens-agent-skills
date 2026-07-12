@@ -12,7 +12,7 @@ user-invocable: true
 
 Produces and maintains `.codemap/graph.json` - a persistent, commit-friendly graph of every significant file, function, class, endpoint, and their relationships. Powers `task-codemap-ask`, `task-codemap-guide`, `task-codemap-explain`. Commit the graph and teammates skip the build.
 
-One command, two modes: first run -> full build; subsequent runs -> incremental sync via fingerprint diff. The optional auto-update hook re-invokes the workflow on `git commit | merge | rebase | cherry-pick` and on session-start drift.
+One command, two modes: first run -> full build; subsequent runs -> incremental sync via fingerprint diff. Re-run after commits, pulls, or merges to keep the graph current.
 
 ## When to Use
 
@@ -30,7 +30,6 @@ One command, two modes: first run -> full build; subsequent runs -> incremental 
 | `[path]` | Repo root (default `.`) or scope subdirectory. |
 | `--full` | Force full rebuild. Confirm with user before overwriting an existing graph. |
 | `--scope <dir>` | Limit to subdirectory. CLI flag wins over `.codemap/config.json#scope`; persisted to `config.json` each run. |
-| `--auto-update[=false]` | Toggle the post-commit + session-start hook in `config.json`. |
 | `--validate-only` | Validate existing graph without rebuilding. |
 | `--force` | Sync mode: bypass the "no changes" early exit; re-run analysis on all files in the change-set even if hashes match. |
 | `--rebuild-on <ratio>` | Override the 30% full-rebuild churn threshold. |
@@ -113,7 +112,6 @@ Apply splice semantics from `codemap-fingerprints`. Re-layer only new/rewritten 
 
 - Full build: handled by pipeline phase 9.
 - Sync: write spliced graph; update `meta.json`; promote `fingerprints-current.json` -> `fingerprints.json`; delete `intermediate/`.
-- If `--auto-update` set: write `autoUpdate` to `.codemap/config.json` and surface the portability caveat (Claude Code hooks only; Codex/Cursor/Copilot users run `/task-codemap` manually after pulls).
 
 **Report:** render the template that matches the mode.
 
@@ -147,7 +145,6 @@ Apply splice semantics from `codemap-fingerprints`. Re-layer only new/rewritten 
 
 ```
 .codemap/intermediate/
-.codemap/.last-synced-head
 ```
 
 ## Next
@@ -155,7 +152,7 @@ Apply splice semantics from `codemap-fingerprints`. Re-layer only new/rewritten 
 - `/task-codemap-guide --list`
 - `/task-codemap-ask "<question>"`
 - `/task-codemap-explain <path>`
-- Re-run `/task-codemap` after future commits (or enable `--auto-update`)
+- Re-run `/task-codemap` after future commits
 ```
 
 ### Sync report
@@ -215,7 +212,7 @@ Report written to `.codemap/validation.json`.
 - [ ] Step 4: stack detected, ignore initialized, scope resolved, pipeline ran (full path or sync escalation)
 - [ ] Step 5: change-set computed; decision matrix applied; analysis only on changed files (non-escalated sync path)
 - [ ] Step 6: validation ran (sync, escalation-skip, or validate-only); on error the prior `graph.json` was preserved; `validation.json` promoted when `--validate-only`
-- [ ] Step 7: persisted (unless `--validate-only`); auto-update config + caveat surfaced when flag set; correct report rendered
+- [ ] Step 7: persisted (unless `--validate-only`); correct report rendered
 
 ## Avoid
 

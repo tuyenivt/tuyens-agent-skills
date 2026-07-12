@@ -73,20 +73,15 @@ The `codemap` plugin owns a `task-codemap-*` workflow family that builds and con
   graph.json          # nodes + edges + layers (committed, source of truth)
   guides.json         # generated guided walkthroughs (committed)
   meta.json           # builtAt, gitCommitHash, version (committed)
-  config.json         # autoUpdate flag, scope (committed)
+  config.json         # scope (committed)
   fingerprints.json   # per-file structural hashes (committed)
   .codemapignore      # user-editable, defaults to .gitignore (committed)
-  .last-synced-head   # last HEAD the auto-update hook fired on (gitignore)
   intermediate/       # transient build outputs (gitignore)
 ```
 
 Schema is owned by the `codemap-schema` atomic - 12 node types, 14 edge types, 6 layer enum. Producer (`task-codemap`) and consumers (`task-codemap-ask`, `task-codemap-guide`, `task-codemap-explain`) all `Use skill: codemap-schema` for the contract. Build pipeline is pure-LLM extraction with sub-agent parallelism; skill-local Python helpers in `plugins/codemap/skills/task-codemap/` handle deterministic scan/batch/merge/fingerprint.
 
 `task-onboard` (in `core`, one-shot Markdown report, no graph dependency) remains the lightweight onboarding path. The codemap family does not duplicate it - orientation from the graph happens via `task-codemap-guide` (guided walkthroughs) and `task-codemap-ask` (ask anything).
-
-## Plugin Hooks
-
-Plugin folders may contain a `hooks/` directory with hook definitions that Claude Code auto-registers when the plugin is installed. Currently: `plugins/codemap/hooks/codemap-auto-update.json` plus `codemap-refresh-prompt.md`. Hooks are Claude-Code-only and must be opt-in (gated by a config flag in the consuming project, never always-on).
 
 ## Environment
 

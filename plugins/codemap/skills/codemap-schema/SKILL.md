@@ -172,7 +172,7 @@ Nodes with no clear layer (docs, generated code) omit the field.
 ### Config shape (`.codemap/config.json`)
 
 ```json
-{ "schemaVersion": 1, "autoUpdate": false, "scope": null }
+{ "schemaVersion": 1, "scope": null }
 ```
 
 `scope: null` means full repo; otherwise a relative subdirectory path.

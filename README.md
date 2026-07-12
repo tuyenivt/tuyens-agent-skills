@@ -317,7 +317,7 @@ Angular (plugin: angular)
 | [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, frontend, and review patterns                                                                                                            |
 | [architecture](plugins/architecture) | Stack-agnostic architecture, re-architecture, and delivery: unified system design (boundaries + API contracts + C4 diagrams), monolith decomposition, service consolidation, legacy modernization, DB migration, dependency upgrade, design-to-tasks breakdown (HLD/LLD -> task graph), task-breakdown review, and release notes with rollback risk register. Every design workflow doubles as a review workflow. |
 | [oncall](plugins/oncall)             | Incident response: triage, investigation, root cause analysis, and postmortem                                                                                                       |
-| [codemap](plugins/codemap)           | Persistent codebase knowledge graph at `.codemap/graph.json` plus workflows to ask the graph (`task-codemap-ask`), walk through it (`task-codemap-guide`), deep-dive entities (`task-codemap-explain`), and an opt-in auto-update hook. Pure-LLM, no tree-sitter. |
+| [codemap](plugins/codemap)           | Persistent codebase knowledge graph at `.codemap/graph.json` plus workflows to ask the graph (`task-codemap-ask`), walk through it (`task-codemap-guide`), and deep-dive entities (`task-codemap-explain`). Pure-LLM, no tree-sitter. |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         |
 | [kotlin](plugins/kotlin)             | Kotlin 2.0+ / Spring Boot 3.5+                                                                                                                 |
 | [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                                                                                                 |
@@ -335,7 +335,7 @@ Angular (plugin: angular)
 
 - `core` is required by all other plugins.
 - Each plugin folder has its own README with stack-specific usage and examples.
-- **Persistent codebase graph (`.codemap/`).** The opt-in `codemap` plugin ships a `task-codemap-*` family that builds and consumes a JSON knowledge graph of your project. Commit `.codemap/graph.json`, `guides.json`, `meta.json`, `config.json`, `fingerprints.json`, `.codemapignore` so teammates skip the build. Gitignore `.codemap/intermediate/` and `.codemap/.last-synced-head`. See `plugins/codemap/README.md` for the workflow family and the optional Claude-Code-only auto-update hook.
+- **Persistent codebase graph (`.codemap/`).** The opt-in `codemap` plugin ships a `task-codemap-*` family that builds and consumes a JSON knowledge graph of your project. Commit `.codemap/graph.json`, `guides.json`, `meta.json`, `config.json`, `fingerprints.json`, `.codemapignore` so teammates skip the build. Gitignore `.codemap/intermediate/`. See `plugins/codemap/README.md` for the workflow family.
 
 ## Optional: Claude Code Settings Template
 
