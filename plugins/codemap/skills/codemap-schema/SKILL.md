@@ -60,10 +60,10 @@ Single source of truth for `.codemap/graph.json` and its sibling artifacts. Ever
 
 | Field | Required for | Notes |
 | --- | --- | --- |
-| `id` | all | File-backed: `<type>:<path>:<name>` (e.g., `function:src/auth/login.ts:authenticate`). Abstract (`concept`, `service`, `table`, `schema`, `resource`, `endpoint`) have no path: `<type>:<name>` (e.g., `table:orders`, `endpoint:POST /orders`). Stable across rebuilds. |
+| `id` | all | File-backed: `<type>:<path>[:<name>]` - the name segment only for members (`function:src/auth/login.ts:authenticate`); `file`/`config`/`document` stop at the path (`file:src/auth/login.ts`). Abstract (`concept`, `service`, `table`, `schema`, `resource`, `endpoint`) have no path: `<type>:<name>` (e.g., `table:orders`, `endpoint:POST /orders`). Stable across rebuilds. |
 | `type` | all | One of the 12 node types. |
 | `name` | all | Symbol for code; basename for files; short label for abstract nodes. |
-| `filePath` | code, config, document | Repo-relative, forward slashes. Omit for `concept`/`service`/`schema`. |
+| `filePath` | code, config, document | Repo-relative, forward slashes. Also set on `endpoint` (where the route is declared) so consumers can navigate to it. Omit for the other abstract types (`concept`, `service`, `table`, `schema`, `resource`). |
 | `lineRange` | `function`, `class`, `endpoint` | `[start, end]`, 1-based, inclusive. Omit for `file`, `module`, and abstract types. |
 | `summary` | all | One English sentence. |
 | `tags` | all | 1-5 short kebab-case tags. |
@@ -93,7 +93,7 @@ Single source of truth for `.codemap/graph.json` and its sibling artifacts. Ever
 { "source": "<id>", "target": "<id>", "type": "calls", "weight": 0.7 }
 ```
 
-`weight` is optional `0.0-1.0` (defaults to `1.0`). `source` and `target` must reference existing nodes.
+`weight` is optional confidence `0.0-1.0` (defaults to `1.0`); producers set it below 1.0 only for inferred edges (e.g., a call resolved by name match rather than an explicit reference). `source` and `target` must reference existing nodes.
 
 ### Edge type enum (14)
 
@@ -109,7 +109,7 @@ Single source of truth for `.codemap/graph.json` and its sibling artifacts. Ever
 | `reads_from` | Source reads data target (table, schema, config) |
 | `writes_to` | Source writes data target |
 | `tested_by` | Source code/function is tested by target |
-| `documents` | Document target describes source |
+| `documents` | Document source describes target (`document` node -> the file/module it covers) |
 | `configures` | Config source configures target |
 | `routes_to` | Endpoint source routes to handler target |
 | `belongs_to` | Source is owned by container target (function -> file, file -> module; method -> class) |
@@ -119,6 +119,8 @@ Single source of truth for `.codemap/graph.json` and its sibling artifacts. Ever
 Resolve the recurring extraction decisions consistently:
 
 - **Route handler = two nodes.** Emit an `endpoint` (the route) and the `function` (the handler), linked by `routes_to`. Both may carry the same `lineRange`.
+- **Endpoint names use a fixed format** so IDs reproduce across rebuilds (Rule 1): HTTP `<VERB> <path>` (`POST /orders`), gRPC `<Service>/<Method>` (`OrderService/Create`), GraphQL `<resolver name>`, CLI `cli <command>` (`cli deploy`).
+- **Method names are class-qualified.** A method's name segment is `<Class>.<method>` (`function:src/user_repo.ts:UserRepository.find`) - bare names collide when two classes in one file share a method name. Free functions keep the bare name.
 - **File nodes are mandatory.** Every file with extracted members gets a `file` node; members `belongs_to` it. `imports` edges connect `file:<path>` IDs, never bare paths (bare-path endpoints dangle and are dropped at merge).
 - **DTOs/validation models** (Pydantic, Zod, DTO classes) are `schema` nodes, not `class`. They omit `layer`.
 - **`reads_from`/`writes_to`** target any data node: `table`, `schema`, `config`, or `resource` (queue/topic publish counts as `writes_to`).

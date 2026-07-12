@@ -14,7 +14,7 @@ user-invocable: false
 > Load `Use skill: codemap-validate` for the final integrity gate.
 > Load `Use skill: stack-detect` first - informs analysis prompts, layers, and guide selection.
 
-End-to-end build flow for `task-codemap`. Full path runs all 9 phases; sync mode runs phase 3 (analyze) on changed files and reuses merge/repair/validate on the spliced graph.
+End-to-end build flow for `task-codemap`. Full path runs all 9 phases; sync mode runs phase 3 (analyze) on changed files, then reuses merge, repair, layer assignment (new nodes only), and validate on the spliced graph - the sync sequence and splice semantics are owned by `codemap-fingerprints`.
 
 **Phase ownership:**
 
@@ -58,7 +58,7 @@ Pass `--scope` when the caller passed it (or when `.codemap/config.json#scope` i
 }
 ```
 
-`category`: `code` / `config` / `document` / `data` / `generated` / `test`.
+`category`: `code` / `config` / `document` / `generated` / `test`.
 
 ### Phase 2 - Batch
 
@@ -81,7 +81,7 @@ Groups files into ~25-file batches, prioritizing same-directory cohesion. Oversi
 
 Dispatch one `Agent` per batch, **at most 5 concurrent** (waves of 5 until done, per Rule 2). Each sub-agent receives the manifest + schema rules, reads each file, emits `{ nodes, edges }` to `.codemap/intermediate/batch-<index>.json`.
 
-Interpolate `{{stack}}` from the cached `stack-detect` output (e.g., `"Go 1.25 / Gin"`) and pair with stack-specific recognition hints from `codemap-layer-patterns`. The skeleton is calibrated - extend, do not freehand-rewrite.
+Interpolate `{{stack}}` from the cached `stack-detect` output (e.g., `"Go 1.25 / Gin"`) and append the matching stack block from `codemap-layer-patterns` "Stack-specific exceptions" as recognition hints (where the stack keeps routes, entrypoints, and data access). The skeleton is calibrated - extend, do not freehand-rewrite.
 
 **Sub-agent prompt skeleton:**
 
@@ -121,7 +121,7 @@ Edge extraction (cover the full enum where applicable):
 
 Per-node rules:
 - summary: one English sentence, intent not signature.
-- tags: 2-5 short kebab-case.
+- tags: 1-5 short kebab-case.
 - complexity: simple if <30 lines, moderate if 30-150, complex if >150 or deeply nested.
 - No fields beyond the schema.
 - Never invent imports/calls/tables to files or symbols that don't exist on disk.
@@ -137,7 +137,7 @@ Batch manifest: <files list>
 
 ### Phase 3 retry policy
 
-Budget: **3 attempts max per batch** (1 initial + 2 retries). For each expected `batch-<INDEX>.json`:
+Budget: **3 attempts max per batch** (1 initial + 2 retries). Check expected outputs as each wave completes; re-dispatch failures as part of the next wave (the 5-concurrent cap counts retries). For each expected `batch-<INDEX>.json`:
 
 1. Missing, empty, or unparseable JSON -> re-dispatch the same prompt.
 2. Still missing/empty/unparseable after attempt 3 -> write `batch-<INDEX>-error.json` with `{ "error": "<reason>", "index": <INDEX>, "files": [...] }` and continue (subject to the Rule 5 abort threshold).
@@ -169,7 +169,7 @@ Sanity net, not a generator. Two passes:
 
 LLM. Read `merged.json` + `stack-detect` + `codemap-layer-patterns`:
 
-1. For each node with `filePath`, walk segments deepest-first; first match -> `layer`.
+1. For each node with `filePath`, apply the `codemap-layer-patterns` precedence rules (stack-specific exceptions first, then deepest matching directory segment).
 2. Members inherit their file's layer via `belongs_to`.
 3. Abstract type defaults: `endpoint` -> `api`; `table`/`schema` -> `data`; `service`/`resource` -> `infra`; `config` -> `infra` (unless the file path matches an entry mapping in `codemap-layer-patterns`); `concept`/`document` -> omit `layer`.
 4. Emit `layers` summary:
@@ -198,14 +198,14 @@ LLM. Generate 3-5 dependency-ordered walkthroughs into `.codemap/guides.json`. S
 
 ### Phase 8 - Validate
 
-Load `codemap-validate`. All 15 errors + 8 warnings against `merged.json` + `guides.json`. Errors abort; warnings proceed.
+Load `codemap-validate`. All 15 errors + 9 warnings against `merged.json` + `guides.json`. Errors abort; warnings proceed.
 
 ### Phase 9 - Persist
 
 1. `merged.json` -> `.codemap/graph.json`.
 2. Write `.codemap/guides.json`, `.codemap/meta.json`.
 3. `python "${CLAUDE_PLUGIN_ROOT}/skills/task-codemap/fingerprint.py" --mode compute --scan .codemap/intermediate/scan.json --output .codemap/fingerprints.json`.
-4. Delete `.codemap/intermediate/` **only after** steps 1-3 all succeed - it is the sole recovery source if persist fails midway.
+4. Delete `.codemap/intermediate/` **only after** steps 1-3 all succeed - it is the sole recovery source if persist fails midway. On a midway failure, re-run Phase 9 from `intermediate/`; do not restart the pipeline.
 
 ## Output Format
 

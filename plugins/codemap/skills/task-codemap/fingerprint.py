@@ -104,20 +104,25 @@ def compare_mode(current_path: Path, previous_path: Path, output_path: Path):
     deleted_paths = prev_paths - cur_paths
     common_paths = cur_paths & prev_paths
 
-    # Detect renames: a deleted path's hash equals a new path's hash
+    # Detect renames: a deleted path's hash equals a new path's hash.
+    # Pair only when the hash is unique on both sides - ambiguous pairings
+    # (identical stubs/headers) fall back to delete + add per the skill contract.
     renamed = []
     used_added = set()
     used_deleted = set()
-    prev_hash_to_path = {prev_files[p]["contentHash"]: p for p in deleted_paths}
-    for new_path in list(added_paths):
-        new_hash = cur_files[new_path]["contentHash"]
-        if new_hash in prev_hash_to_path:
-            old_path = prev_hash_to_path[new_hash]
-            if old_path in used_deleted:
-                continue
-            renamed.append({"from": old_path, "to": new_path})
-            used_added.add(new_path)
-            used_deleted.add(old_path)
+    prev_hash_to_paths = {}
+    for p in deleted_paths:
+        prev_hash_to_paths.setdefault(prev_files[p]["contentHash"], []).append(p)
+    cur_hash_to_paths = {}
+    for p in added_paths:
+        cur_hash_to_paths.setdefault(cur_files[p]["contentHash"], []).append(p)
+    for content_hash, old_paths in prev_hash_to_paths.items():
+        new_paths = cur_hash_to_paths.get(content_hash, [])
+        if len(old_paths) == 1 and len(new_paths) == 1:
+            renamed.append({"from": old_paths[0], "to": new_paths[0]})
+            used_deleted.add(old_paths[0])
+            used_added.add(new_paths[0])
+    renamed.sort(key=lambda r: r["from"])
 
     added = sorted(added_paths - used_added)
     deleted = sorted(deleted_paths - used_deleted)

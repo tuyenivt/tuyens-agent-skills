@@ -23,7 +23,7 @@ Per-file structural fingerprint used by `task-codemap` sync mode to decide which
 1. **Hash content + path only.** No timestamps, no inode, no git blob SHA. Deterministic across machines and re-clones.
 2. **File-level granularity.** Sub-file change detection is out of scope - belongs in a future schema version, not producer-side improvisation.
 3. **Whitespace-insensitive.** Trim trailing whitespace per line and collapse blank-line runs before hashing - reformats don't trigger re-analysis.
-4. **Detect renames by hash.** During `fingerprint.py --mode compare`, a hash present in the previous set but missing in the current set, paired with a new path whose hash matches, is emitted as a rename rather than a delete + add. The refresh rewrites the path on existing nodes - both `filePath` and the path segment embedded in `id` (e.g., `function:src/old.ts:foo` -> `function:src/new.ts:foo`) - plus every edge endpoint that references those IDs. No re-analysis. If two files share a hash (empty stubs, identical headers), the pairing is ambiguous - fall back to delete + add for those.
+4. **Detect renames by hash.** During `fingerprint.py --mode compare`, a hash present in the previous set but missing in the current set, paired with a new path whose hash matches, is emitted as a rename rather than a delete + add. The refresh rewrites the path on existing nodes - both `filePath` and the path segment embedded in `id` (e.g., `function:src/old.ts:foo` -> `function:src/new.ts:foo`) - plus every edge endpoint that references those IDs. No re-analysis. If two files share a hash (empty stubs, identical headers), the pairing is ambiguous - fall back to delete + add for those. A rename that also edits content hashes differently and correctly surfaces as delete + add; hash-based detection only sees content-identical moves.
 5. **Schema-version gate.** `fingerprints.json#schemaVersion` mismatch forces full rebuild.
 
 ## Patterns
@@ -57,17 +57,20 @@ Per-file structural fingerprint used by `task-codemap` sync mode to decide which
 
 ```json
 {
+  "schemaVersionChanged": false,
   "added": ["src/auth/refresh_token.ts"],
   "modified": ["src/auth/login.ts"],
   "renamed": [
     { "from": "src/auth/old_login.ts", "to": "src/auth/login_v2.ts" }
   ],
   "deleted": ["src/auth/legacy_session.ts"],
-  "unchanged": 408
+  "unchanged": 408,
+  "churnRatio": 0.0073,
+  "recommendation": "incremental"
 }
 ```
 
-`unchanged` is a count, not a list.
+`unchanged` is a count, not a list. `recommendation` (`full` | `incremental`) is advisory, computed at the default 30% threshold - the consumer applies its own threshold (`--rebuild-on`). On `schemaVersionChanged: true`, all files land under `added` and the consumer must full-rebuild.
 
 ### Refresh decision matrix
 
@@ -81,12 +84,12 @@ Rows are **not** mutually exclusive - a real change-set mixes added/modified/del
 | `deleted` and/or `renamed` only (no `added`/`modified`) | Drop deleted nodes+edges; rewrite renamed paths/IDs; no analysis pass. |
 | Any `added`/`modified` (alone or mixed with deleted/renamed) | Incremental: re-analyze added+modified, splice, and within the splice also drop deleted and rewrite renamed. |
 
-**Churn** = changed files / total scanned files, where changed = added + modified + renamed + deleted. The 30% threshold avoids incremental becoming slower than rebuild.
+**Churn** = changed / total, where changed = added + modified + renamed + deleted, and total = current scanned files + deleted. The 30% threshold avoids incremental becoming slower than rebuild.
 
 ### Splice semantics (incremental refresh)
 
 1. Rewrite `renamed` nodes in place (Rule 4): update `filePath`, the path in `id`, and referring edge endpoints. These nodes are not dropped or re-analyzed.
-2. Drop nodes whose `filePath` is in `modified` or `deleted`.
+2. Drop nodes whose `filePath` is in `modified` or `deleted`. Abstract nodes (no `filePath` - `table`, `schema`, `service`, `resource`, `concept`) are never dropped by splice; if their defining code vanished they surface as orphans (validate W1) and are cleaned up by the next full rebuild. Do not invent deletion heuristics for them - they may still be referenced from unchanged files.
 3. Drop edges where either endpoint is a dropped node.
 4. Analyze `added` + `modified` -> new nodes/edges.
 5. Merge into the existing graph.

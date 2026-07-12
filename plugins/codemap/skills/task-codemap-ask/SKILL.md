@@ -41,22 +41,22 @@ Use skill: `codemap-schema` (shape). Use skill: `codemap-query` (traversal patte
 
 1. Missing `.codemap/graph.json` -> suggest `/task-codemap` and stop.
 2. Run the `codemap-query` freshness check; warn but proceed when stale.
-3. Load `graph.json` and `guides.json`.
+3. Load `graph.json`; load `guides.json` when present (only flow questions use it - absence is not an error).
 4. Sparse-graph guard: `nodes.length < 10` -> warn that the graph is sparse and may not cover the codebase; suggest checking `.codemap/config.json#scope` and `.codemap/.codemapignore`. Proceed.
 
 ### Step 3 - Classify the Question
 
 First, two guards:
 
-- **Compound question** ("which handlers write X **and** is any missing Y"): split into sub-questions, run each against the rows below, then compose one answer. The "1-3 sentence" lead still applies to the headline; per-item detail goes in Evidence.
-- **Out of scope** - the graph is structural (nodes/edges/layers), not a metrics store. Questions needing data the schema can't represent (test-coverage %, latency, runtime values, line counts) cannot be answered from the graph. Say so plainly and suggest the real tool (coverage report, profiler); do **not** synthesize a number from `tested_by` edges or similar. Never fabricate.
+- **Compound question** ("which handlers write X **and** is any missing Y"): split into sub-questions, run each against the rows below, then compose one answer. The "1-3 sentence" lead still applies to the headline; per-item detail goes in Evidence, grouped under one bold sub-header per sub-question.
+- **Out of scope** - the graph is structural (nodes/edges/layers), not a metrics store. Questions needing data the schema can't represent (test-coverage %, latency, runtime values, line counts) cannot be answered from the graph. Say so plainly and suggest the real tool (coverage report, profiler); do **not** synthesize a number from `tested_by` edges or similar. Never fabricate. Adjacent structural facts the graph does store may follow, labeled as structure, not the metric (e.g., "7 of 12 payment functions have no `tested_by` edge - not a coverage number"). Render as **Answer** + **Suggested next steps**, like the empty-graph variant.
 
 | Shape | Query plan |
 | --- | --- |
 | "What/where is X" | Resolve X; render summary, file:line, fan-in/out. |
 | "What calls X" / "What uses X" | Incoming `calls`/`uses`/`imports`. |
 | "What does X call/use" | Outgoing edges. |
-| "How does flow Y work" | Match Y in `guides.json`; else BFS from an entrypoint. |
+| "How does flow Y work" | Match Y in `guides.json`; else resolve Y's named entity and BFS from its entry/api node. |
 | "Which handlers/services touch table Y" | `codemap-query` "Handlers that touch table T" pattern. Filter to `writes_to` when the question says "write". |
 | "Where is Y configured" | `config` nodes via `configures` edge to Y, or filter `config` by tag/name. |
 | "What's the impact if I change X" | `codemap-query` "Impact of change" pattern. |

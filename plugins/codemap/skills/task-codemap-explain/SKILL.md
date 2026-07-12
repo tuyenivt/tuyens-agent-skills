@@ -48,7 +48,7 @@ Apply `codemap-query` resolution rules. Multiple matches -> list and ask. Zero m
 
 ### Step 4 - Detect Stack & Compose
 
-Use skill: `stack-detect`. Load the stack's `*-code-explain` atomic when present - it enriches sections 10-11, never replaces graph structure.
+Use skill: `stack-detect`. Load the stack's `*-code-explain` atomic when present - it enriches section 10 (Framework gotchas), never replaces graph structure.
 
 | Stack | Atomic |
 | --- | --- |
@@ -75,7 +75,7 @@ For the resolved node N, gather these slices via `codemap-query` patterns:
 | --- | --- |
 | Identity | `N.id`, `type`, `filePath`, `lineRange`, `summary`, `tags`, `complexity`, `layer` |
 | Containers / Members | `belongs_to` up / down |
-| Callers (top 10) | Incoming `calls`, ranked by edge weight then ascending node ID |
+| Callers (top 10) | Incoming `calls`, ranked per the `codemap-query` cap rule (weight, fan-in, ascending node ID) |
 | Callees (top 10) | Outgoing `calls`, same ranking |
 | File imports / importers | `imports` from / into `file:<N.filePath>` |
 | Data touchpoints | Outgoing `reads_from` / `writes_to` (tables, schemas, configs, resources) |
@@ -83,7 +83,12 @@ For the resolved node N, gather these slices via `codemap-query` patterns:
 | Related concepts | `concept` nodes reachable within 2 undirected hops |
 | Blast radius | `codemap-query` "Impact of change" pattern (reverse BFS depth 3 over `imports`/`calls`/`uses`/`routes_to`); count by layer |
 
-When N is a **file** node, Callers/Callees aggregate over its member functions/classes. When N is **abstract** (`concept`, `service`, `table`) with no `filePath`/`lineRange`, skip What-it-does/Inputs-outputs/source-read and render from edges + `summary`.
+Node-kind adjustments:
+
+- **Member (`function`/`class`)**: anchor blast radius at N unioned with its `file:` container - N alone misses `imports` (file-to-file edges); the file alone misses direct `calls`.
+- **File**: Callers/Callees aggregate over member functions/classes; What-it-does walks the members in order; Inputs and outputs -> `none`; Step 6 reads member `lineRange`s (file nodes carry none).
+- **Abstract** (`concept`, `service`, `table`, `schema`, `resource`) - no `filePath`/`lineRange`: skip What-it-does/Inputs-outputs/source-read; render from edges + `summary`.
+- **Data node** (`table`/`schema`/`config`/`resource`): Data touchpoints inverts to the **incoming** `reads_from`/`writes_to` set (who reads/writes N); blast radius seeds the reverse BFS with those readers/writers, then walks the standard edge set - the standard set alone never reaches a data node, silently yielding "no impact" for a hot table.
 
 Use skill: `architecture-guardrail` for layer-violation participation. Use skill: `complexity-review` for function/class complexity grading.
 
@@ -216,7 +221,7 @@ Stale variant of the freshness footer (use the canonical `codemap-query` format 
 - [ ] Step 2: graph loaded; freshness warning; fallback to `task-code-explain` when graph missing
 - [ ] Step 3: target resolved; ambiguous matches surfaced; zero-match fallback offered
 - [ ] Step 4: `stack-detect` ran; stack-specific atomic loaded when available; section 10 from general knowledge or `none` when no atomic
-- [ ] Step 5: graph context collected per the section list; file/abstract node kinds handled; blast radius via `codemap-query` impact pattern
+- [ ] Step 5: graph context collected per the section list; node-kind adjustments applied (member/file/abstract/data); blast radius via `codemap-query` impact pattern
 - [ ] Step 6: targeted reads to `lineRange`; total <= 3 files
 - [ ] Step 7: all populated sections rendered; empty sections marked `none`; freshness footer present
 - [ ] No invented callers, callees, or tests

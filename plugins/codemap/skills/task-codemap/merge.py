@@ -21,8 +21,16 @@ BATCH_FILE_PATTERN = re.compile(r"^batch-\d+(-part-\d+)?\.json$")
 ERROR_FILE_PATTERN = re.compile(r"^batch-\d+(-part-\d+)?-error\.json$")
 
 
+def numeric_sort_key(p: Path):
+    # batch-10.json must sort after batch-2.json (lexicographic order would not).
+    return [int(n) for n in re.findall(r"\d+", p.name)], p.name
+
+
 def load_batches(batches_dir: Path):
-    files = sorted(p for p in batches_dir.iterdir() if BATCH_FILE_PATTERN.match(p.name))
+    files = sorted(
+        (p for p in batches_dir.iterdir() if BATCH_FILE_PATTERN.match(p.name)),
+        key=numeric_sort_key,
+    )
     if not files:
         print(f"error: no batch-*.json files found in {batches_dir}", file=sys.stderr)
         sys.exit(1)
@@ -30,7 +38,10 @@ def load_batches(batches_dir: Path):
 
 
 def load_error_batches(batches_dir: Path):
-    return sorted(p for p in batches_dir.iterdir() if ERROR_FILE_PATTERN.match(p.name))
+    return sorted(
+        (p for p in batches_dir.iterdir() if ERROR_FILE_PATTERN.match(p.name)),
+        key=numeric_sort_key,
+    )
 
 
 def main():

@@ -37,7 +37,7 @@ Last step of every build or refresh. Confirms `graph.json` (and `guides.json` wh
 | 3 | Every node has `id`, `type`, `name`, `summary`, `tags` | Missing `summary` |
 | 4 | Every node `type` is in the 12-value enum | `type: "method"` |
 | 5 | Node IDs globally unique | Two nodes with `id: file:src/auth/login.ts` |
-| 6 | Node ID format matches `<type>:<path>[:<name>]` | `id: login` |
+| 6 | Node ID matches its type's format: file-backed `<type>:<path>[:<name>]`; abstract types (`concept`, `service`, `table`, `schema`, `resource`, `endpoint`) `<type>:<name>` | `id: login` |
 | 7 | Code nodes (`function`, `class`) reference an existing file node | `function:src/foo.ts:bar` exists but `file:src/foo.ts` does not |
 | 8 | Every edge `type` is in the 14-value enum | `type: "invokes"` |
 | 9 | Edge `source` and `target` reference existing nodes | Edge to a node not in `nodes` |
@@ -55,11 +55,12 @@ Last step of every build or refresh. Confirms `graph.json` (and `guides.json` wh
 | W1 | Orphan nodes (0 in, 0 out edges) | Standalone util with no callers/imports |
 | W2 | Self-edges (`source == target`) | Recursion not flagged |
 | W3 | Duplicate edges (`source, target, type`) | Same import twice |
-| W4 | >25% of nodes have no `layer` | Layout doesn't match patterns table |
+| W4 | >25% of nodes have no `layer` - exclude test files from the denominator (targets of `tested_by` edges, or paths matching test conventions), matching `codemap-layer-patterns` | Layout doesn't match patterns table |
 | W5 | A layer has 0 nodes (skip when `nodes` < 50 - small/partial graphs won't populate all 6 layers; use `stack.stackType` to skip benign cases: frontend-only -> `data` may be empty; library -> `entry`/`api` may be empty) | `data` empty in a fullstack |
 | W6 | Hub node with > 50 outgoing edges | God-module candidate |
 | W7 | 0 `document` nodes despite `README.md` at root | Docs not analyzed |
-| W8 | 0 `tested_by` edges when stack-detect found tests | Tests not linked |
+| W8 | 0 `tested_by` edges when the graph contains test files (paths matching test conventions) - self-contained, no stack-detect dependency, so it works in `--validate-only` | Tests not linked |
+| W9 | Code nodes (`function`, `class`) missing `complexity` | Repair backfill was skipped |
 
 ### Output shape
 
@@ -90,6 +91,8 @@ Written to `.codemap/intermediate/validation.json` during build. Promoted to `.c
 ```
 Validation: <E> errors, <W> warnings, <N> nodes, <M> edges, <L>% layer coverage
 ```
+
+Layer coverage = share of non-test nodes carrying `layer` (same denominator as W4).
 
 On errors, list them grouped by check number, most affected first.
 

@@ -63,7 +63,7 @@ Atomic skills are hidden from the slash menu (`user-invocable: false`) and compo
 | `codemap-schema`          | Canonical graph schema - 12 node types, 14 edge types, 6 layer enum, JSON shapes for `graph.json`, `guides.json`, `meta.json`, `config.json`. Loaded by every codemap workflow. |
 | `codemap-layer-patterns`  | Directory-to-layer mapping (entry/api/service/domain/data/infra) across 11 stacks - Spring, Rails, Django, FastAPI, Go, Rust, .NET, Laravel, React, Vue, Angular. Used at layer assignment.   |
 | `codemap-fingerprints`    | Per-file structural fingerprint contract for incremental sync - hash inputs, comparison rules, change-set shape, escalation thresholds.          |
-| `codemap-validate`        | Validates `graph.json` and `guides.json` - 15 error checks (schema, refs, uniqueness, stack block), 8 warning checks (orphans, hubs, layer coverage, test gaps). |
+| `codemap-validate`        | Validates `graph.json` and `guides.json` - 15 error checks (schema, refs, uniqueness, stack block), 9 warning checks (orphans, hubs, layer coverage, test gaps). |
 | `codemap-query`           | Read-only traversal patterns - neighbors, fan-in/out, layer filter, path finding, callers/callees, file scope. Used by every consumer workflow.    |
 | `codemap-build-pipeline`  | The 9 build phases: scan, batch, parallel sub-agent analyze, merge, repair, layer assign, guide generate, validate, persist. Pure-LLM extraction.    |
 

@@ -59,7 +59,7 @@ When `--full` would overwrite an existing graph, confirm with the user first.
 ### Step 4 - Full Build
 
 1. `Use skill: stack-detect`. Cache; reused by pipeline phases 3, 6, 7.
-2. If `.codemap/.codemapignore` missing, copy `.gitignore` + banner.
+2. If `.codemap/.codemapignore` missing, copy `.gitignore` plus a one-line banner comment: `# Seeded from .gitignore by task-codemap - edit freely.`
 3. Resolve scope: CLI `--scope` wins; otherwise `.codemap/config.json#scope`. Persist to `config.json` on completion.
 4. `Use skill: codemap-build-pipeline`. Tracks per-phase wall-clock.
 
@@ -85,14 +85,14 @@ Apply the refresh decision matrix from `codemap-fingerprints`:
 
 Churn = changed files / total scanned files, where changed = added + modified + renamed + deleted. The threshold defaults to 30%; `--rebuild-on <ratio>` overrides it.
 
-- **Escalation rows** (`schemaVersionChanged: true`, or churn >= threshold): switch to Step 4 and run a full rebuild. Escalation is an intended response to high churn, so do not re-prompt for overwrite confirmation (that gate is only for an explicit `--full`); instead surface a note that sync escalated, and Step 7 renders the **full build report** with the escalation note in its header.
+- **Escalation rows** (`schemaVersionChanged: true`, or churn >= threshold): switch to Step 4 and run a full rebuild. Escalation is an intended response to high churn, so do not re-prompt for overwrite confirmation (that gate is only for an explicit `--full`). The pipeline reuses `intermediate/scan.json` from 5a (same scope, same HEAD) instead of re-running Phase 1. Step 7 renders the **full build report** with the mode line `**Mode:** full build (escalated from sync at <N.N>% churn)`.
 - **No-op rows**: jump to Step 7. When HEAD drifted but no files changed, update `meta.json#gitCommitHash` before reporting.
 - **Splice-only rows** (`deleted` only, `renamed` only): apply splice semantics from `codemap-fingerprints`, skip 5c.
 - **Mixed rows** (any of `added`/`modified` combined with `deleted`/`renamed`, or `--force`): run 5c then 5d; the splice in 5d also drops `deleted` nodes and rewrites `renamed` paths/IDs per `codemap-fingerprints`.
 
 #### 5c. Analyze Changed Files
 
-`Use skill: stack-detect` (reuse cached). Build batches (group by directory, cap 25 files / 800 KB). Dispatch sub-agents per `codemap-build-pipeline` Phase 3.
+`Use skill: stack-detect` and cache the result (sync has no earlier detection to reuse; the cache serves 5d re-layering). Build batches inline from the change-set (batch.py takes a full scan, not a file list) (group by directory, cap 25 files / 800 KB). Dispatch sub-agents per `codemap-build-pipeline` Phase 3.
 
 #### 5d. Splice
 
@@ -103,7 +103,7 @@ Apply splice semantics from `codemap-fingerprints`. Re-layer only new/rewritten 
 `Use skill: codemap-validate`.
 
 - Full build: validation already ran inside pipeline phase 8. Skip.
-- Sync: validate the spliced graph. **On error, keep the prior `graph.json` intact** - do not overwrite.
+- Sync: validate the spliced graph. **On error, keep the prior `graph.json` intact** - do not overwrite - then escalate to a full rebuild (Step 4), per `codemap-fingerprints` splice semantics.
 - Validate-only: validate the existing `graph.json` (+ `guides.json` when present), promote the report to `.codemap/validation.json`, then go to Step 7 to render the validate-only report. No persistence of the graph.
 
 ### Step 7 - Persist & Report
@@ -111,9 +111,9 @@ Apply splice semantics from `codemap-fingerprints`. Re-layer only new/rewritten 
 **Persist** (skip if `--validate-only`):
 
 - Full build: handled by pipeline phase 9.
-- Sync: write spliced graph; update `meta.json`; promote `fingerprints-current.json` -> `fingerprints.json`; delete `intermediate/`.
+- Sync: write spliced graph; update `meta.json` (`builtAt`, `gitCommitHash`, `analyzedFiles`); promote `fingerprints-current.json` -> `fingerprints.json`; delete `intermediate/`.
 
-**Report:** render the template that matches the mode.
+**Report:** render the template that matches the mode. When a full build failed validation, nothing was persisted (including `config.json`, which is written only on completion): keep the Validation Summary with errors grouped by check and omit the Artifacts and Next sections.
 
 ## Output Format
 
@@ -211,7 +211,7 @@ Report written to `.codemap/validation.json`.
 - [ ] Step 3: mode decided; `--full` overwrite confirmed; `--validate-only` routed through Step 6
 - [ ] Step 4: stack detected, ignore initialized, scope resolved, pipeline ran (full path or sync escalation)
 - [ ] Step 5: change-set computed; decision matrix applied; analysis only on changed files (non-escalated sync path)
-- [ ] Step 6: validation ran (sync, escalation-skip, or validate-only); on error the prior `graph.json` was preserved; `validation.json` promoted when `--validate-only`
+- [ ] Step 6: validation ran (sync, escalation-skip, or validate-only); on sync error the prior `graph.json` was preserved and sync escalated to full rebuild; `validation.json` promoted when `--validate-only`
 - [ ] Step 7: persisted (unless `--validate-only`); correct report rendered
 
 ## Avoid

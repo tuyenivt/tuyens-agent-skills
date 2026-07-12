@@ -22,7 +22,7 @@ Any consumer workflow that reads `.codemap/graph.json`. Not for producers - that
 1. **Load once per workflow.** Read `graph.json` at workflow start; do not re-read between queries.
 2. **Edges are directed.** Incoming = scan all edges for `target == nodeId`; outgoing for `source`.
 3. **Resolve before traversing.** Map user-named entities to node IDs first, query in ID space, render back to file paths and line ranges.
-4. **Cap large results.** Queries returning >50 nodes get summarized top-N, ranked by edge `weight` then call-frequency; **break ties by ascending node ID** so the same 50 surface every run. Never dump the full set.
+4. **Cap large results.** Queries returning >50 nodes get summarized top-N (default N=10), ranked by edge `weight` then fan-in (incoming edge count - the graph stores no call frequencies); **break ties by ascending node ID** so the same nodes surface every run. Never dump the full set.
 5. **Don't fabricate.** Empty result -> say so. Never invent nodes the graph doesn't contain.
 6. **BFS uses a visited set.** Mark nodes on first visit; never re-expand. Graphs have cycles (mutual recursion, DI loops) - without dedup, traversal loops or double-counts.
 
@@ -56,7 +56,7 @@ Multiple matches -> list with type+path, ask user to pick. Zero matches -> sugge
 | Fan-in / fan-out for X | Count distinct edge sources/targets. |
 | Hub nodes | Top-K by fan-in + fan-out. |
 | Orphans | Fan-in 0 AND fan-out 0. |
-| Shortest path A -> B | BFS on undirected edge set, cap depth 6. One path, report length. |
+| Shortest path A -> B | BFS on undirected edge set, cap depth 6. Expand neighbors in ascending node-ID order and report the first path found - reproducible across runs. |
 | Files in current diff | `git diff --name-only` (and `git diff --name-only <base>...HEAD` for branch diffs). Map to `file:<path>` IDs. |
 | Impact of change to F | Reverse BFS from `file:F` over `imports`/`calls`/`uses`/`routes_to`. Cap depth 3. Group by layer. |
 
@@ -77,7 +77,7 @@ Run once per workflow before answering. Compare `.codemap/meta.json` against the
 
 | Stale trigger | |
 | --- | --- |
-| `meta.json#gitCommitHash != git rev-parse HEAD` and HEAD is >10 commits ahead | warn `stale`, proceed, append footer |
+| `meta.json#gitCommitHash != git rev-parse HEAD` and HEAD is >10 commits ahead (`git rev-list --count <hash>..HEAD`; if the hash is unreachable - rebase, shallow clone - treat as stale) | warn `stale`, proceed, append footer |
 | `meta.json#builtAt` older than 7 days | warn `stale`, proceed, append footer |
 
 Neither -> `in-sync`; proceed without warning.
@@ -93,7 +93,7 @@ Workflows reference this rule instead of re-defining it.
 
 ### Large-graph access (>5MB `graph.json`)
 
-When `graph.json` exceeds ~5 MB, skip the full-file Read; use targeted reads.
+Check the file size (`ls -l` / stat) before the first Read. When `graph.json` exceeds ~5 MB, skip the full-file Read; use targeted reads.
 
 - Find one node: `Grep "\"id\": \"<id>\"" .codemap/graph.json -A 5`.
 - One-off aggregations: `Bash python -c "import json; g=json.load(open('.codemap/graph.json')); ..."`.
