@@ -1,6 +1,6 @@
 {
   "name": "tuyens-agent-skills",
-  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, oncall, java, kotlin, python, ruby, node, go, dotnet, rust, php, react, vue, and angular.",
+  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, oncall, codemap, java, kotlin, python, ruby, node, go, dotnet, rust, php, react, vue, and angular.",
   "owner": {
     "name": "Tuyen",
     "contact": "github.com/tuyenivt"
@@ -65,6 +65,24 @@
         "root-cause",
         "postmortem",
         "ops",
+        "stack-agnostic"
+      ]
+    },
+    {
+      "name": "codemap",
+      "source": "./plugins/codemap",
+      "description": "Persistent codebase knowledge graph: build/sync .codemap/graph.json via pure-LLM extraction with parallel sub-agents. Ask the graph (task-codemap-ask), play guided walkthroughs (task-codemap-guide), deep-dive entities (task-codemap-explain). Opt-in auto-update hook on git commit/merge/rebase. Depends only on core.",
+      "version": "1.129.0",
+      "author": {
+        "name": "Tuyen",
+        "url": "https://github.com/tuyenivt"
+      },
+      "tags": [
+        "codemap",
+        "knowledge-graph",
+        "codebase-graph",
+        "onboarding",
+        "architecture",
         "stack-agnostic"
       ]
     },
