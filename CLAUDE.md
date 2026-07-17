@@ -11,21 +11,14 @@ A **Claude Code plugin marketplace repository** - agent skills and agents for Cl
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-  codemap/       # Persistent codebase knowledge graph (any stack, opt-in)
   architecture/  # Stack-agnostic architecture design, re-architecture, task breakdown, and release notes
   oncall/        # Incident response workflows
   java/          # Java 21+ / Spring Boot 3.5+
-  dotnet/        # .NET 8 LTS / ASP.NET Core Web API, Clean Architecture
   kotlin/        # Kotlin 2.0+ / Spring Boot 3.5+
   python/        # Python 3.11+ / FastAPI (primary), Django (secondary)
   ruby/          # Ruby 3.4+ / Ruby on Rails 7.2+
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
   go/            # Go 1.25+ / Gin / GORM+sqlx
-  rust/          # Rust 1.94+ / Axum / sqlx
-  php/           # PHP 8.5 / Laravel 12+
-  react/         # React 18+ (React 19 hooks) / TypeScript / Next.js 15 App Router (primary), Vite 5+ (secondary)
-  vue/           # Vue 3.5+ / TypeScript / Nuxt 3 (primary), Vite (secondary)
-  angular/       # Angular 21+ / TypeScript / Angular CLI
 ```
 
 Each plugin folder has a `README.md`. Each skill lives in its own directory as `SKILL.md`. Agent files are plain Markdown in `plugins/<stack>/agents/`.
@@ -63,25 +56,6 @@ A skill belongs in `core` when **all** hold:
 4. It does not encode a single plugin's domain identity (ADRs and release plans are architecture's; postmortems are oncall's).
 
 Workflow skills stay in their domain plugin. Skills are resolved by name, not path, so moving a skill is a directory rename - `Use skill: <name>` references continue to work.
-
-## Codemap (persistent codebase graph, opt-in plugin)
-
-The `codemap` plugin owns a `task-codemap-*` workflow family that builds and consumes a persistent knowledge graph of the consuming project. It is opt-in - no other plugin depends on it. Requires `core` (for `behavioral-principles` and `stack-detect`). All artifacts live under `.codemap/`:
-
-```
-.codemap/
-  graph.json          # nodes + edges + layers (committed, source of truth)
-  guides.json         # generated guided walkthroughs (committed)
-  meta.json           # builtAt, gitCommitHash, version (committed)
-  config.json         # scope (committed)
-  fingerprints.json   # per-file structural hashes (committed)
-  .codemapignore      # user-editable, defaults to .gitignore (committed)
-  intermediate/       # transient build outputs (gitignore)
-```
-
-Schema is owned by the `codemap-schema` atomic - 12 node types, 14 edge types, 6 layer enum. Producer (`task-codemap`) and consumers (`task-codemap-ask`, `task-codemap-guide`, `task-codemap-explain`) all `Use skill: codemap-schema` for the contract. Build pipeline is pure-LLM extraction with sub-agent parallelism; skill-local Python helpers in `plugins/codemap/skills/task-codemap/` handle deterministic scan/batch/merge/fingerprint.
-
-`task-onboard` (in `core`, one-shot Markdown report, no graph dependency) remains the lightweight onboarding path. The codemap family does not duplicate it - orientation from the graph happens via `task-codemap-guide` (guided walkthroughs) and `task-codemap-ask` (ask anything).
 
 ## Environment
 

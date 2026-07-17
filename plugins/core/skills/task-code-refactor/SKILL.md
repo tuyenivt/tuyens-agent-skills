@@ -10,7 +10,7 @@ user-invocable: true
 
 # Code Refactor (Router)
 
-Detects stack and delegates to the matching refactor workflow. Stack workflows name framework-specific smells (Rails fat controllers, Spring business logic in controller, React prop drilling, etc.) and apply framework-aware recipes. Falls back to a generic protocol for unknown stacks.
+Detects stack and delegates to the matching refactor workflow. Stack workflows name framework-specific smells (Rails fat controllers, Spring business logic in controller, Node callback nesting, etc.) and apply framework-aware recipes. Falls back to a generic protocol for unknown stacks.
 
 ## When to Use
 
@@ -51,12 +51,6 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-refactor`   |
 | Node.js / TypeScript | `task-node-refactor`    |
 | Go / Gin             | `task-go-refactor`      |
-| Rust / Axum          | `task-rust-refactor`    |
-| .NET / ASP.NET Core  | `task-dotnet-refactor`  |
-| PHP / Laravel        | `task-laravel-refactor` |
-| React                | `task-react-refactor`   |
-| Vue                  | `task-vue-refactor`     |
-| Angular              | `task-angular-refactor` |
 
 On match: delegate, forwarding the Inputs table values (target scope, goal, coverage status, public surface). Stop; skip Step 4.
 

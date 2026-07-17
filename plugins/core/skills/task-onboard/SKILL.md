@@ -67,12 +67,6 @@ If detected stack matches, load the atomic. It injects stack-specific bootstrap 
 | Ruby / Rails         | `rails-onboard-map`   |
 | Node.js / TypeScript | `node-onboard-map`    |
 | Go / Gin             | `go-onboard-map`      |
-| Rust / Axum          | `rust-onboard-map`    |
-| .NET / ASP.NET Core  | `dotnet-onboard-map`  |
-| PHP / Laravel        | `laravel-onboard-map` |
-| React                | `react-onboard-map`   |
-| Vue                  | `vue-onboard-map`     |
-| Angular              | `angular-onboard-map` |
 
 If no atomic matches the detected stack (e.g., Elixir), or the matched atomic does not resolve (stack plugin not installed), proceed with the generic workflow and note `no stack-specific onboarding atomic - generic guidance applied` under the Stack table.
 

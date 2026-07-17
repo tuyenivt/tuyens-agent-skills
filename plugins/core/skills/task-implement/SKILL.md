@@ -39,29 +39,18 @@ Use skill: `stack-detect`.
 
 ### Step 3 - Delegate to Stack Workflow
 
-**Backend:**
-
 | Detected stack              | Delegate to              |
 | --------------------------- | ------------------------ |
 | Java / Spring Boot          | `task-spring-implement`  |
 | Kotlin / Spring Boot        | `task-kotlin-implement`  |
-| .NET / ASP.NET Core         | `task-dotnet-implement`  |
 | Python / FastAPI or Django  | `task-python-implement`  |
 | Ruby / Rails                | `task-rails-implement`   |
 | Node.js / NestJS or Express | `task-node-implement`    |
 | Go / Gin                    | `task-go-implement`      |
-| Rust / Axum                 | `task-rust-implement`    |
-| PHP / Laravel               | `task-laravel-implement` |
 
-**Frontend:**
+A detected frontend stack (React, Vue, Angular) has no dedicated workflow - run Step 4, whose IMPLEMENT phase covers the frontend layers.
 
-| Detected stack         | Delegate to              |
-| ---------------------- | ------------------------ |
-| React / Next.js / Vite | `task-react-implement`   |
-| Vue / Nuxt / Vite      | `task-vue-implement`     |
-| Angular                | `task-angular-implement` |
-
-**Fullstack (`Stack Type: fullstack`):** decide which side the feature belongs to from the user's description. If it spans both, delegate backend first for the API contract, then frontend; if parallel work is required, fix the API contract up front and mock data on the frontend until the backend lands. Include an integration test from UI action to DB persistence. Ask the user when the split is ambiguous.
+**Fullstack (`Stack Type: fullstack`):** decide which side the feature belongs to from the user's description. Delegate the backend side to the table workflow first for the API contract; build the frontend side via the Step 4 frontend path. If parallel work is required, fix the API contract up front and mock data on the frontend until the backend lands. Include an integration test from UI action to DB persistence. Ask the user when the split is ambiguous.
 
 On match: delegate, passing the feature description and any Inputs gathered. Stop; skip Step 4. If the matched workflow's plugin is not installed (skill does not resolve), say so and run Step 4 instead.
 
@@ -82,7 +71,7 @@ Runs when the stack is unknown, unsupported by any table row, or the matched plu
 **IMPLEMENT** in order. Load the atomic skill named at each applicable step; Use skill: `backend-coding-standards` throughout backend work:
 
 - *Backend:* (1) data layer - migration with indexes; never modify columns destructively; Use skill: `backend-db-migration`. (2) business logic - constructor injection; no logic in controllers. (3) API layer - never expose data-layer entities directly; map to DTOs; Use skill: `backend-api-guidelines`. (4) auth - explicit per endpoint, no implicit defaults. (5) background jobs if applicable; Use skill: `backend-idempotency` for retried or externally-triggered work. (6) tests - unit (logic), integration (DB), API (routing, serialization, auth).
-- *Frontend:* (1) routing - new routes, layouts, navigation. (2) components - single responsibility. (3) state - local first, lift or store only when sharing requires it; Use skill: `frontend-state-management`. (4) data fetching - loading, error, caching, retry; Use skill: `frontend-api-integration`. (5) forms - validation, submission, errors; Use skill: `frontend-form-handling`. (6) accessibility - semantic HTML, ARIA, keyboard, focus; Use skill: `frontend-accessibility`. (7) tests - component, integration, E2E for critical flows; Use skill: `frontend-testing-patterns`.
+- *Frontend:* (1) routing - new routes, layouts, navigation. (2) components - single responsibility. (3) state - local first, lift or store only when sharing requires it. (4) data fetching - loading, error, caching, retry. (5) forms - validation, submission, errors. (6) accessibility - semantic HTML, ARIA, keyboard, focus. (7) tests - component, integration, E2E for critical flows.
 
 **VALIDATE:**
 

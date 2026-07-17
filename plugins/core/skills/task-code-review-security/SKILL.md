@@ -48,14 +48,8 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review-security`   |
 | Node.js / TypeScript | `task-node-review-security`    |
 | Go / Gin             | `task-go-review-security`      |
-| Rust / Axum          | `task-rust-review-security`    |
-| .NET / ASP.NET Core  | `task-dotnet-review-security`  |
-| PHP / Laravel        | `task-laravel-review-security` |
-| React                | `task-react-review-security`   |
-| Vue                  | `task-vue-review-security`     |
-| Angular              | `task-angular-review-security` |
 
-A row matches only when the detected framework matches it (PHP / Symfony does not match PHP / Laravel - use the fallback). Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow does not resolve (stack plugin not installed), state that and run Steps 4-5 instead.
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow does not resolve (stack plugin not installed), state that and run Steps 4-5 instead.
 
 ### Step 4 - Generic Fallback (no dispatch)
 

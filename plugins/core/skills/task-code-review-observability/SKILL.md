@@ -47,12 +47,6 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review-observability`   |
 | Node.js / TypeScript | `task-node-review-observability`    |
 | Go / Gin             | `task-go-review-observability`      |
-| Rust / Axum          | `task-rust-review-observability`    |
-| .NET / ASP.NET Core  | `task-dotnet-review-observability`  |
-| PHP / Laravel        | `task-laravel-review-observability` |
-| React                | `task-react-review-observability`   |
-| Vue                  | `task-vue-review-observability`     |
-| Angular              | `task-angular-review-observability` |
 
 Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5 as fallback.
 

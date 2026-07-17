@@ -43,18 +43,12 @@ Use skill: `stack-detect` to identify language, framework, and `Stack Type`.
 | Ruby / Rails         | `task-rails-test`   |
 | Node.js / TypeScript | `task-node-test`    |
 | Go / Gin             | `task-go-test`      |
-| Rust / Axum          | `task-rust-test`    |
-| .NET / ASP.NET Core  | `task-dotnet-test`  |
-| PHP / Laravel        | `task-laravel-test` |
-| React                | `task-react-test`   |
-| Vue                  | `task-vue-test`     |
-| Angular              | `task-angular-test` |
 
 Forward the user's invocation. The dispatched workflow owns the output. **If matched and available, stop. Skip Step 4.** If the matched workflow is unavailable (plugin not installed), name the plugin that provides it, then run Step 4 using the detected stack's idioms.
 
 ### Step 4 - Generic Fallback (no dispatch match)
 
-**Pyramid.** Unit (many) > Integration (some) > E2E (few). Unit covers pure logic, validation, branch-heavy domain code, isolated error handling. Integration covers DB queries against a real schema, HTTP endpoints end-to-end, external service clients (stubs or contract tests), auth filters. E2E covers only critical business flows (checkout, login, data export) - keep this layer small. For `Stack Type: frontend` or `fullstack` targets, Use skill: `frontend-testing-patterns`.
+**Pyramid.** Unit (many) > Integration (some) > E2E (few). Unit covers pure logic, validation, branch-heavy domain code, isolated error handling. Integration covers DB queries against a real schema, HTTP endpoints end-to-end, external service clients (stubs or contract tests), auth filters. E2E covers only critical business flows (checkout, login, data export) - keep this layer small. For `Stack Type: frontend` or `fullstack` targets, add component, integration, and E2E coverage (Testing Library, Playwright/Cypress, MSW for API mocking).
 
 **Prioritization when coverage is low** (do not chase a coverage number):
 

@@ -46,12 +46,6 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review-perf`   |
 | Node.js / TypeScript | `task-node-review-perf`    |
 | Go / Gin             | `task-go-review-perf`      |
-| Rust / Axum          | `task-rust-review-perf`    |
-| .NET / ASP.NET Core  | `task-dotnet-review-perf`  |
-| PHP / Laravel        | `task-laravel-review-perf` |
-| React                | `task-react-review-perf`   |
-| Vue                  | `task-vue-review-perf`     |
-| Angular              | `task-angular-review-perf` |
 
 Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow is unavailable (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5.
 
@@ -69,7 +63,7 @@ Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `
 
 **Memory and I/O.** Streaming for large payloads, timeouts and circuit breakers on external calls, reused HTTP clients.
 
-**Frontend (frontend / fullstack).** Unnecessary re-renders / change-detection cycles, heavy computation in render path, virtualization for long lists (>100), client-side caching, image optimization, lazy loading, route-level code splitting. Use skill: `frontend-performance`.
+**Frontend (frontend / fullstack).** Unnecessary re-renders / change-detection cycles, heavy computation in render path, virtualization for long lists (>100), client-side caching, image optimization, lazy loading, route-level code splitting.
 
 **Observability cross-check.** RED metrics on critical paths, correlation IDs propagated, latency histograms. Use skill: `ops-observability`.
 

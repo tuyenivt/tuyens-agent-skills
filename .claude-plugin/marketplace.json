@@ -1,6 +1,6 @@
 {
   "name": "tuyens-agent-skills",
-  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, oncall, codemap, java, kotlin, python, ruby, node, go, dotnet, rust, php, react, vue, and angular.",
+  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, oncall, java, kotlin, python, ruby, node, and go.",
   "owner": {
     "name": "Tuyen",
     "contact": "github.com/tuyenivt"
@@ -65,24 +65,6 @@
         "root-cause",
         "postmortem",
         "ops",
-        "stack-agnostic"
-      ]
-    },
-    {
-      "name": "codemap",
-      "source": "./plugins/codemap",
-      "description": "Persistent codebase knowledge graph: build/sync .codemap/graph.json via pure-LLM extraction with parallel sub-agents. Ask the graph (task-codemap-ask), play guided walkthroughs (task-codemap-guide), deep-dive entities (task-codemap-explain).",
-      "version": "1.131.0",
-      "author": {
-        "name": "Tuyen",
-        "url": "https://github.com/tuyenivt"
-      },
-      "tags": [
-        "codemap",
-        "knowledge-graph",
-        "codebase-graph",
-        "onboarding",
-        "architecture",
         "stack-agnostic"
       ]
     },
@@ -175,119 +157,6 @@
         "url": "https://github.com/tuyenivt"
       },
       "tags": ["go", "gin", "gorm", "sqlx", "golang-migrate"]
-    },
-    {
-      "name": "dotnet",
-      "source": "./plugins/dotnet",
-      "description": "Skills and agents for .NET 8 LTS / ASP.NET Core Web API development with Clean Architecture.",
-      "version": "1.131.0",
-      "author": {
-        "name": "Tuyen",
-        "url": "https://github.com/tuyenivt"
-      },
-      "tags": [
-        "dotnet",
-        "csharp",
-        "aspnet-core",
-        "ef-core",
-        "clean-architecture",
-        "masstransit",
-        "xunit",
-        "testcontainers"
-      ]
-    },
-    {
-      "name": "rust",
-      "source": "./plugins/rust",
-      "description": "Skills and agents for Rust 1.94+ / Axum / sqlx development.",
-      "version": "1.131.0",
-      "author": {
-        "name": "Tuyen",
-        "url": "https://github.com/tuyenivt"
-      },
-      "tags": ["rust", "tokio", "axum", "actix-web", "sqlx", "postgresql"]
-    },
-    {
-      "name": "react",
-      "source": "./plugins/react",
-      "description": "Skills and agents for React 19+ / TypeScript / Next.js development.",
-      "version": "1.131.0",
-      "author": {
-        "name": "Tuyen",
-        "url": "https://github.com/tuyenivt"
-      },
-      "tags": [
-        "react",
-        "typescript",
-        "nextjs",
-        "vite",
-        "tailwind",
-        "tanstack-query",
-        "zustand",
-        "vitest",
-        "playwright"
-      ]
-    },
-    {
-      "name": "vue",
-      "source": "./plugins/vue",
-      "description": "Skills and agents for Vue 3.5+ / TypeScript / Nuxt 3 development.",
-      "version": "1.131.0",
-      "author": {
-        "name": "Tuyen",
-        "url": "https://github.com/tuyenivt"
-      },
-      "tags": [
-        "vue",
-        "typescript",
-        "nuxt",
-        "vite",
-        "tailwind",
-        "pinia",
-        "composables",
-        "vitest",
-        "playwright"
-      ]
-    },
-    {
-      "name": "angular",
-      "source": "./plugins/angular",
-      "description": "Skills and agents for Angular 21+ / TypeScript / Angular CLI development.",
-      "version": "1.131.0",
-      "author": {
-        "name": "Tuyen",
-        "url": "https://github.com/tuyenivt"
-      },
-      "tags": [
-        "angular",
-        "typescript",
-        "signals",
-        "rxjs",
-        "angular-material",
-        "tailwind",
-        "ngrx",
-        "vitest",
-        "playwright"
-      ]
-    },
-    {
-      "name": "php",
-      "source": "./plugins/php",
-      "description": "Skills and agents for PHP 8.5 / Laravel 12+ development.",
-      "version": "1.131.0",
-      "author": {
-        "name": "Tuyen",
-        "url": "https://github.com/tuyenivt"
-      },
-      "tags": [
-        "php",
-        "laravel",
-        "eloquent",
-        "mysql",
-        "pest",
-        "redis",
-        "sanctum"
-      ]
     }
   ]
 }

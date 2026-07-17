@@ -43,12 +43,6 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-debug`   |
 | Node.js / TypeScript | `task-node-debug`    |
 | Go / Gin             | `task-go-debug`      |
-| Rust / Axum          | `task-rust-debug`    |
-| .NET / ASP.NET Core  | `task-dotnet-debug`  |
-| PHP / Laravel        | `task-laravel-debug` |
-| React                | `task-react-debug`   |
-| Vue                  | `task-vue-debug`     |
-| Angular              | `task-angular-debug` |
 
 On match: delegate, forwarding the original error report and the `stack-detect` result. Stop; skip Step 4.
 
