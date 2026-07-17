@@ -1,6 +1,6 @@
 ---
 name: task-kotlin-review
-description: Kotlin / Spring Boot code review: null safety, coroutines, !! abuse, @Transactional, JPA; spawns perf/security/observability subagents.
+description: Kotlin / Spring Boot code review: null safety, coroutines, !! abuse, @Transactional, JPA; spawns perf/security/observability/reliability subagents.
 agent: kotlin-tech-lead
 metadata:
   category: backend
@@ -13,7 +13,7 @@ user-invocable: true
 
 ## Purpose
 
-Staff-level review with Kotlin-aware checks: null safety / `!!` discipline, `data class` vs JPA, plugin presence, coroutine structured concurrency, `@Transactional` boundaries, Virtual Thread pinning, `@MockkBean` vs `@MockBean`. Coordinates perf / security / observability subagents in parallel.
+Staff-level review with Kotlin-aware checks: null safety / `!!` discipline, `data class` vs JPA, plugin presence, coroutine structured concurrency, `@Transactional` boundaries, Virtual Thread pinning, `@MockkBean` vs `@MockBean`. Coordinates perf / security / observability / reliability subagents in parallel.
 
 The stack-specific delegate of `task-code-review` for Kotlin / Spring Boot. Runs standalone with full PR/branch resolution.
 
@@ -24,7 +24,7 @@ The stack-specific delegate of `task-code-review` for Kotlin / Spring Boot. Runs
 - Architecture drift detection
 - Pre-merge risk assessment
 
-**Not for:** pre-implementation design (`task-kotlin-implement`), incident triage (`/task-oncall-start`), single-error debug (`task-kotlin-debug`), new-system architecture (`task-design-architecture`), or single-scope reviews (delegate directly to the perf / security / observability workflow).
+**Not for:** pre-implementation design (`task-kotlin-implement`), incident triage (`/task-oncall-start`), single-error debug (`task-kotlin-debug`), new-system architecture (`task-design-architecture`), or single-scope reviews (delegate directly to the perf / security / observability / reliability workflow).
 
 ## Depth Levels
 
@@ -47,7 +47,8 @@ Default: `standard`.
 | + Perf          | Core + parallel `task-kotlin-review-perf`                |
 | + Sec           | Core + parallel `task-kotlin-review-security`            |
 | + Obs           | Core + parallel `task-kotlin-review-observability`       |
-| Full            | Core + all three subagents in parallel                   |
+| + Rel           | Core + parallel `task-kotlin-review-reliability`         |
+| Full            | Core + all four subagents in parallel                    |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
@@ -56,6 +57,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 - **Security**: file uploads, `SecurityFilterChain` / `@PreAuthorize` changes, `@RequestBody` data class changes, raw JPQL / native SQL, secrets in `application.yml`, `@KafkaListener` consuming user input
 - **Perf**: new Flyway / Liquibase migration, new `@Query` / `@EntityGraph`, new `Pageable` endpoints, loops over collections hitting DB or HTTP, new `@Cacheable`, new `Flow<T>` streaming
 - **Observability**: new `@Service` / `@Component`, new external client (`WebClient` / `RestClient`), new `@Async` / `@Scheduled` / `CoroutineScope.launch`, logging or actuator config change, new Micrometer registrations, new `@TransactionalEventListener`
+- **Reliability**: new external client (`WebClient` / `RestClient`) without `withTimeout` / circuit breaker, new `resilience4j.*` / `@Retry` config, `repo.save(...)` + `kafka.send(...)` in one `@Transactional`, new `@KafkaListener` / `@RabbitListener`, new `CoroutineScope.launch` / `@Async` on an unbounded dispatcher / queue, new idempotency / outbox flow
 - Two or more categories present - promote to **Full**
 
 ## Invocation
@@ -279,8 +281,9 @@ Skip if `core-only`. For each selected scope, spawn one independent subagent in 
 | +Perf | `task-kotlin-review-perf`          | `kotlin-performance-engineer`   |
 | +Sec  | `task-kotlin-review-security`      | `kotlin-security-engineer`      |
 | +Obs  | `task-kotlin-review-observability` | `kotlin-observability-engineer` |
+| +Rel  | `task-kotlin-review-reliability`   | `kotlin-reliability-engineer`   |
 
-`Full` = 3 subagents.
+`Full` = 4 subagents.
 
 Each subagent prompt includes: resolved review target (`base_ref`, `head_ref`) + pre-read diff + log, depth, pre-confirmed stack, instruction to use its own Output Format, and an explicit instruction to **return findings inline and not call `review-report-writer`** (this workflow owns the single report - see each subagent's Step 8/11/12 carve-out).
 
@@ -293,6 +296,7 @@ If a subagent fails: continue with remaining results. Note `Scope incomplete: <s
 - Preserve `file:line`
 - Order by intent, not scope
 - Merge Next Steps into one prioritized list
+- Preserve deep-only sections returned by subagents (e.g., reliability's `Failure-Mode and Blast-Radius Map`) as their own section after Next Steps - they are not findings; the merge must not drop them
 
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
 
@@ -325,7 +329,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Kotlin <version> / Spring Boot <version>
-**Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(if auto-escalated, append `auto-escalated from Core; signals: <list>`)_
 **Depth:** standard | deep _(if auto-promoted, append `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
@@ -384,7 +388,7 @@ Use skill: `review-report-writer` with `report_type: review` and these checkpoin
 
 - `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
 - `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4), `depth` (resolved/auto-promoted in Phase A), `stack = kotlin-spring-boot`
+- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted in Phase A), `stack = kotlin-spring-boot`
 
 Print the confirmation line.
 

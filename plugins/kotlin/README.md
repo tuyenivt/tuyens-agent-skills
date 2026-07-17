@@ -13,7 +13,7 @@ A Claude Code plugin for Kotlin + Spring Boot.
 
 ## Plugin contents
 
-### Agents (6)
+### Agents (7)
 
 | Agent                         | Description                                                                                                                                                                          |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -23,6 +23,7 @@ A Claude Code plugin for Kotlin + Spring Boot.
 | `kotlin-security-engineer`    | Spring Security 6.x with Kotlin DSL, OWASP for Kotlin/JVM, coroutine SecurityContext propagation.                                                                                    |
 | `kotlin-performance-engineer` | JVM/Spring/JPA performance with coroutine-aware profiling, dispatcher selection vs Virtual Threads, GC tuning.                                                                       |
 | `kotlin-observability-engineer` | Structured Logback logging, MDC + coroutine context correlation, Micrometer metrics, Spring Boot Actuator, OpenTelemetry tracing, async/messaging instrumentation, Sentry wiring.  |
+| `kotlin-reliability-engineer` | Coroutine deadlines and cancellation, Resilience4j-kotlin circuit breakers / retries / bulkheads, bounded dispatchers, idempotency, transactional outbox, graceful degradation.      |
 
 ### Atomic skills (16)
 
@@ -45,15 +46,16 @@ A Claude Code plugin for Kotlin + Spring Boot.
 | `kotlin-onboard-map`               | Gradle Kotlin DSL layout, `kotlin-spring`/`kotlin-allopen`/`kotlin-jpa` plugin checks, coroutines runtime, application.yml profiles - injected into `task-onboard`                        |
 | `kotlin-overengineering-review`    | Necessity review: Bean Validation duplicating JPA / DB / Kotlin non-null types, defensive `?.let` / `requireNotNull` / `!!` on guarantees, `Optional<T>` in pure-Kotlin code, single-impl `@Service` interfaces / `BaseService` / speculative config / `Result<T>` / single-variant sealed classes. Composed into `task-kotlin-review` Phase D. |
 
-### Workflow skills (8)
+### Workflow skills (9)
 
 | Skill                              | Agent                          | Description                                                                                                                                                                                |
 | ---------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `task-kotlin-implement`            | `kotlin-engineer`              | End-to-end Kotlin + Spring Boot feature implementation (stack detect, requirements, design approval, code, migration, tests, validation) with Kotlin idioms throughout                    |
 | `task-kotlin-debug`                | `kotlin-engineer`              | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin, Jackson serialization, Spring startup) with classification tables                                                |
-| `task-kotlin-review`               | `kotlin-tech-lead`             | Kotlin/Spring Boot staff-level code review umbrella (Phases A-E + scope auto-escalation). Spawns Kotlin perf / security / observability subagents in parallel                              |
+| `task-kotlin-review`               | `kotlin-tech-lead`             | Kotlin/Spring Boot staff-level code review umbrella (Phases A-E + scope auto-escalation). Spawns Kotlin perf / security / observability / reliability subagents in parallel                |
 | `task-kotlin-review-perf`          | `kotlin-performance-engineer`  | Kotlin/Spring Boot perf review for JPA N+1, fetch strategies, coroutine dispatcher / Virtual Thread interop, HikariCP sizing, Flow backpressure, caching                                   |
 | `task-kotlin-review-security`      | `kotlin-security-engineer`     | Kotlin/Spring Boot security review for Spring Security 6.x Kotlin DSL, OAuth2/JWT, method security, mass assignment via data class DTOs, coroutine SecurityContext propagation, OWASP    |
 | `task-kotlin-review-observability` | `kotlin-observability-engineer` | Kotlin/Spring Boot observability review for Micrometer, Actuator, structured logging, MDC + coroutine context correlation, OTel tracing, async/messaging instrumentation, error tracker   |
+| `task-kotlin-review-reliability`   | `kotlin-reliability-engineer`  | Kotlin/Spring Boot reliability review for coroutine deadlines, Resilience4j-kotlin breakers/retries, bulkheads, idempotency, transactional outbox, backpressure, recoverability            |
 | `task-kotlin-test`                 | `kotlin-test-engineer`         | Kotlin/Spring Boot test strategy and scaffolding using JUnit 5 / Kotest, MockK + springmockk, Spring test slices, Testcontainers, runTest, Turbine, Spring Security Test                  |
 | `task-kotlin-refactor`             | `kotlin-tech-lead`             | Kotlin/Spring Boot refactor planning for fat controllers, anemic domain, `!!` abuse, GlobalScope leakage, blocking-in-suspend, lateinit overuse, data class JPA, missing kotlin plugins   |

@@ -1,6 +1,6 @@
 ---
 name: task-rails-review
-description: Rails code review - Zeitwerk, callbacks, fat controllers, AR-in-API, services, scopes; spawns perf/security/observability subagents.
+description: Rails code review - Zeitwerk, callbacks, fat controllers, AR-in-API, services, scopes; spawns perf/security/observability/reliability subagents.
 agent: rails-tech-lead
 metadata:
   category: backend
@@ -11,7 +11,7 @@ user-invocable: true
 
 # Rails Code Review
 
-Rails-aware staff-level review. Runs correctness, architecture, and maintainability through a Rails lens; spawns perf/security/observability subagents in parallel when scope warrants. Stack-specific delegate of `task-code-review`.
+Rails-aware staff-level review. Runs correctness, architecture, and maintainability through a Rails lens; spawns perf/security/observability/reliability subagents in parallel when scope warrants. Stack-specific delegate of `task-code-review`.
 
 ## When to Use
 
@@ -19,7 +19,7 @@ Pre-merge Rails PR review, post-AI quality gate, architecture-drift detection. N
 
 ## Depth and Scope
 
-Depth (`standard` (default) | `deep`) and scope (`Core` | `+Perf` | `+Sec` | `+Obs` | `Full`) mirror `task-code-review`. Pass `core-only` to suppress auto-escalation.
+Depth (`standard` (default) | `deep`) and scope (`Core` | `+Perf` | `+Sec` | `+Obs` | `+Rel` | `Full`) mirror `task-code-review`. Pass `core-only` to suppress auto-escalation.
 
 **Auto-promote depth to `deep`** after Step 4 when Blast Radius is Wide/Critical. Record in Summary.
 
@@ -28,11 +28,12 @@ Depth (`standard` (default) | `deep`) and scope (`Core` | `+Perf` | `+Sec` | `+O
 - **+Sec**: file upload (Active Storage/Shrine/CarrierWave), Devise/Pundit/CanCanCan config, `params.permit` changes, raw SQL, secrets, Sidekiq taking user input
 - **+Perf**: `db/migrate/`, `add_index`, new `.where`/`.order`/scopes, new payload endpoints, loops hitting DB or HTTP
 - **+Obs**: new service, external dependency, ActiveJob/Sidekiq class, log/notifications config
+- **+Rel**: new Faraday/`Net::HTTP` client without timeout, `stoplight`/`retriable` config, Sidekiq job without an idempotency guard, external call or `.perform_async` inside a transaction, unbounded `.all.each`, missing `after_commit` dispatch
 - Two or more categories -> **Full**
 
 ## Invocation
 
-`/task-rails-review [<branch>|pr-<N>] [--base <branch>] [+sec|+perf|+obs|--full] [deep|core-only]`
+`/task-rails-review [<branch>|pr-<N>] [--base <branch>] [+sec|+perf|+obs|+rel|--full] [deep|core-only]`
 
 Defaults to current branch vs base; fails fast on trunk. Use `pr-<N>` for a local fetched ref. The workflow never modifies the working tree.
 
@@ -198,8 +199,9 @@ Skip if `core-only`. For each selected scope, spawn one independent subagent in 
 | +Perf | `task-rails-review-perf`          | `rails-performance-engineer`   |
 | +Sec  | `task-rails-review-security`      | `rails-security-engineer`      |
 | +Obs  | `task-rails-review-observability` | `rails-observability-engineer` |
+| +Rel  | `task-rails-review-reliability`   | `rails-reliability-engineer`   |
 
-`Full` = 3 subagents.
+`Full` = 4 subagents.
 
 **Subagent prompt contract:** resolved `base_ref`/`head_ref` + pre-read diff and commit log; depth level; pre-confirmed stack; return findings in its own skill's Output Format.
 
@@ -229,12 +231,13 @@ Merge subagent findings:
 - **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`
 - Preserve `file:line` citations; order by intent, not scope
 - Merge Next Steps into one prioritized list; preserve `[Implement]`/`[Delegate]` tags
+- Preserve deep-only sections returned by subagents (e.g., reliability's `Failure-Mode and Blast-Radius Map`) as their own section after Next Steps - they are not findings; the merge must not drop them
 
 Use skill: `review-report-writer` with `report_type: review` and these checkpoint fields:
 
 - `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
 - `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4; frontmatter uses the writer's enum - `Core` maps to `core-only`), `depth` (resolved/auto-promoted), `stack = ruby-rails`
+- `scope` (resolved in Step 4; frontmatter uses the writer's enum - `Core` maps to `core-only`, `+Rel` to `+rel`), `depth` (resolved/auto-promoted), `stack = ruby-rails`
 
 Print confirmation line.
 
@@ -258,7 +261,7 @@ _(Request Changes = any [Must]; Discuss = no [Must] but open [Question]s gate th
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Ruby <version> / Rails <version>
-**Scope:** Core | +Sec | +Perf | +Obs | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
+**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
 **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
@@ -332,7 +335,7 @@ _Omit empty sections. Omit Next Steps entirely if no actionable findings._
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
 - Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
-- Duplicating perf / security / observability depth here - dedicated subagents own it
+- Duplicating perf / security / observability / reliability depth here - dedicated subagents own it
 - Reviewing without reading the full diff and log first
 - Applying generic backend conventions where a Rails idiom exists
 - Nitpicking style

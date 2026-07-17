@@ -16,11 +16,11 @@ Detects the project stack and delegates to the matching stack-specific review wo
 
 - PR review, pre-merge risk assessment, post-AI-generation quality gate.
 
-**Not for:** New-system architecture, security-only audits (`task-code-review-security`), perf-only (`task-code-review-perf`), observability-only (`task-code-review-observability`).
+**Not for:** New-system architecture, security-only audits (`task-code-review-security`), perf-only (`task-code-review-perf`), observability-only (`task-code-review-observability`), reliability-only (`task-code-review-reliability`).
 
 ## Invocation
 
-`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | full | core-only] [standard | deep] [--base <branch>]`
+`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | +rel | full | core-only] [standard | deep] [--base <branch>]`
 
 All flags are forwarded to the dispatched stack workflow.
 
@@ -78,7 +78,7 @@ Use skill: `review-precondition-check` with the user's target argument and any `
 
 **Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
-**Extra scopes.** If `+perf`, `+sec`, or `+obs` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all three) with the read-once diff/log and the detected stack handle. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations.
+**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `+rel` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all four) with the read-once diff/log and the detected stack handle. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations.
 
 ### Step 5 - Write Report
 
@@ -105,7 +105,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** <identifier or unknown> (generic fallback applied)
-**Scope:** Core | +Sec | +Perf | +Obs | Full
+**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full
 **Depth:** standard | deep
 **Mode:** full | incremental (round <N>)
 

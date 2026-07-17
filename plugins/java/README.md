@@ -32,6 +32,7 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 | `task-spring-test`                 | `java-test-engineer`        | Spring-specific test strategy and scaffolding: JUnit 5, Spring slices (`@WebMvcTest`, `@DataJpaTest`, `@JsonTest`), Testcontainers (PostgreSQL via `@ServiceConnection`), Mockito strict stubbing, Spring Security Test. Delegate of `task-code-test` when stack is Spring Boot.                                                                                                                                                                                                       |
 | `task-spring-review`               | `java-tech-lead`            | Spring-specific staff-level code review umbrella: Phases A-E (risk, correctness, architecture, AI quality, maintainability) with Spring idioms (layer boundaries, fat controllers, JPA-in-API, `@Transactional` self-invocation, anemic domain, `@Autowired` field injection, Virtual Thread pinning). Spawns Spring perf/security/observability subagents for extra scopes. Delegate of `task-code-review` when stack is Spring Boot. Runs standalone with full PR/branch resolution. |
 | `task-spring-review-observability` | `java-observability-engineer` | Spring-specific observability review: Logback + Logstash JSON, MDC correlation, Spring Boot Actuator exposure, Micrometer metrics with bounded tag cardinality, Micrometer Tracing (Boot 3+) / OTel, Kafka / RabbitMQ listener observation, error-tracker Boot starters. Delegate of `task-code-review-observability` when stack is Spring Boot.                                                                                                                                       |
+| `task-spring-review-reliability`   | `java-reliability-engineer`   | Spring-specific reliability review: timeouts on `RestClient` / `WebClient`, Resilience4j circuit breakers / retries / bulkheads, idempotency keys, transactional outbox vs in-tx dual write, bounded HikariCP / `@Async` executors, DLT, graceful degradation, recoverability under partial failure. Delegate of `task-code-review-reliability` when stack is Spring Boot. |
 | `task-spring-refactor`             | `java-tech-lead`            | Spring-specific refactor planning: fat controllers, anemic domain, service god-objects, `@Transactional` self-invocation, single-implementation interface bloat, `@Autowired` field injection, JPA `@PostUpdate` callback abuse. Test-coverage gate + step-by-step independently committable plan. Delegate of `task-code-refactor` when stack is Spring Boot.                                                                                                                         |
 
 ## Atomic Skills (Reusable Patterns)
@@ -64,6 +65,7 @@ Atomic skills provide focused, reusable Java/Spring Boot patterns. These are hid
 | `java-security-engineer`    | Spring Security 6.x, OWASP for Java                                                         |
 | `java-performance-engineer` | JVM/Spring/JPA performance, GC tuning                                                       |
 | `java-observability-engineer` | Logback JSON, MDC, Actuator, Micrometer metrics + Micrometer Tracing/OTel, error-tracker wiring |
+| `java-reliability-engineer`   | Timeouts, Resilience4j breakers/retries/bulkheads, idempotency, transactional outbox, bounded pools, graceful degradation |
 
 ## Usage Examples
 
@@ -93,3 +95,4 @@ The following workflows are provided by `core` (install separately):
 - `/task-code-test` - Test strategy
 - `/task-code-refactor` - Refactoring plan
 - `/task-code-review-perf` - Performance review
+- `/task-code-review-reliability` - Reliability review

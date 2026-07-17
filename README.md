@@ -115,6 +115,7 @@ I want to...
   check for security issues               -> /task-code-review-security
   check for performance issues            -> /task-code-review-perf
   check for observability gaps            -> /task-code-review-observability
+  check for reliability gaps              -> /task-code-review-reliability
   assess a version upgrade                -> /task-dependency-upgrade [architecture]
   draft release notes from a diff         -> /task-release-notes [architecture]
 ```
@@ -129,6 +130,7 @@ Java / Spring Boot (plugin: java)
   performance review                   -> /task-spring-review-perf
   security review                      -> /task-spring-review-security
   observability review                 -> /task-spring-review-observability
+  reliability review                   -> /task-spring-review-reliability
   test strategy / scaffolds            -> /task-spring-test
   refactor plan                        -> /task-spring-refactor
 
@@ -139,6 +141,7 @@ Kotlin / Spring Boot (plugin: kotlin)
   performance review                   -> /task-kotlin-review-perf
   security review                      -> /task-kotlin-review-security
   observability review                 -> /task-kotlin-review-observability
+  reliability review                   -> /task-kotlin-review-reliability
   test strategy / scaffolds            -> /task-kotlin-test
   refactor plan                        -> /task-kotlin-refactor
 
@@ -149,6 +152,7 @@ Python / FastAPI / Django (plugin: python)
   performance review                   -> /task-python-review-perf
   security review                      -> /task-python-review-security
   observability review                 -> /task-python-review-observability
+  reliability review                   -> /task-python-review-reliability
   test strategy / scaffolds            -> /task-python-test
   refactor plan                        -> /task-python-refactor
 
@@ -159,6 +163,7 @@ Ruby on Rails (plugin: ruby)
   performance review                   -> /task-rails-review-perf
   security review                      -> /task-rails-review-security
   observability review                 -> /task-rails-review-observability
+  reliability review                   -> /task-rails-review-reliability
   test strategy / scaffolds            -> /task-rails-test
   refactor plan                        -> /task-rails-refactor
 
@@ -169,6 +174,7 @@ Node.js / TypeScript / NestJS (plugin: node)
   performance review                   -> /task-node-review-perf
   security review                      -> /task-node-review-security
   observability review                 -> /task-node-review-observability
+  reliability review                   -> /task-node-review-reliability
   test strategy / scaffolds            -> /task-node-test
   refactor plan                        -> /task-node-refactor
 
@@ -179,13 +185,14 @@ Go / Gin (plugin: go)
   performance review                   -> /task-go-review-perf
   security review                      -> /task-go-review-security
   observability review                 -> /task-go-review-observability
+  reliability review                   -> /task-go-review-reliability
   test strategy / scaffolds            -> /task-go-test
   refactor plan                        -> /task-go-refactor
 ```
 
 **Common decision points:**
 
-- "Universal entry points vs stack-specific" - most `task-code-*` skills (`debug`, `refactor`, `review`, `review-perf`, `review-security`, `review-observability`, `test`) are **thin routers**: they auto-detect your stack and dispatch to `/task-<stack>-<verb>`. Use the universal entry point if unsure; for installed language plugins, calling the stack-specific skill directly skips the routing layer. `/task-code-explain` and `/task-onboard` are **composing workflows**: they remain direct entry points and weave a stack-specific atomic into a single output. `/task-implement` is a router (delegates to `/task-<stack>-implement`).
+- "Universal entry points vs stack-specific" - most `task-code-*` skills (`debug`, `refactor`, `review`, `review-perf`, `review-security`, `review-observability`, `review-reliability`, `test`) are **thin routers**: they auto-detect your stack and dispatch to `/task-<stack>-<verb>`. Use the universal entry point if unsure; for installed language plugins, calling the stack-specific skill directly skips the routing layer. `/task-code-explain` and `/task-onboard` are **composing workflows**: they remain direct entry points and weave a stack-specific atomic into a single output. `/task-implement` is a router (delegates to `/task-<stack>-implement`).
 - "Review code" vs "Review a design" - `/task-code-review` (and stack-specific reviews) target source code and PRs, and also handle pre-merge risk analysis of a change. Architecture workflows (`/task-design-architecture`, `/task-db-migration`, `/task-dependency-upgrade`, `/task-decompose-monolith`, `/task-consolidate-services`, `/task-modernize-legacy`, `/task-breakdown-design`) each double as a review workflow for the corresponding artifact - paste an existing artifact instead of authoring requirements.
 - "Debug" vs "Explain" - if something is broken, use `/task-code-debug`. If it works but you don't understand it, use `/task-code-explain`.
 - "Design-to-tasks breakdown" vs "Architecture" - `/task-breakdown-design` turns an approved design into a phased, dependency-ordered task graph with effort sizing (or, in review mode, critiques a breakdown someone else authored). Architecture produces the design proposal itself (boundaries, failure modes). Run architecture first, then break the resulting design into tasks.

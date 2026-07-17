@@ -19,6 +19,7 @@ Claude Code plugin for Go/Gin development.
 | `go-security-engineer`    | OWASP Top 10 for Go, JWT/Gin auth middleware review, input validation, govulncheck dependency scanning.                                               |
 | `go-performance-engineer` | Goroutine leak detection, GORM/sqlx query tuning, pprof profiling, memory allocation analysis, connection pool sizing.                                |
 | `go-observability-engineer` | Structured logging (slog JSON), OpenTelemetry SDK + auto-instrumentation, prometheus/client_golang metrics, context correlation, pprof, graceful shutdown, Sentry SDK wiring. |
+| `go-reliability-engineer` | Context deadlines, sony/gobreaker + cenkalti/backoff retries, errgroup/semaphore bounding, idempotency + transactional outbox, goroutine-leak & channel-backpressure control, graceful shutdown. |
 | `go-test-engineer`        | Table-driven test strategies, httptest, Testcontainers, gomock, and `go test -race` discipline for Go/Gin services.                                   |
 
 ## Workflow Skills
@@ -31,6 +32,7 @@ Claude Code plugin for Go/Gin development.
 | `task-go-review-perf`            | `go-performance-engineer` | Performance review for GORM / sqlx N+1, goroutine leaks, missing context, mutex contention, allocation hotspots, connection pool, Asynq throughput, migration safety.|
 | `task-go-review-security`        | `go-security-engineer`    | Security review for Gin JWT middleware, ShouldBindJSON validation, SQL injection, mass assignment, command injection, path traversal, govulncheck, OWASP Go lens.    |
 | `task-go-review-observability`   | `go-observability-engineer` | Observability review for slog, OpenTelemetry Go SDK, prometheus/client_golang, pprof endpoints, Asynq queue events, graceful shutdown, Sentry SDK.                   |
+| `task-go-review-reliability`     | `go-reliability-engineer` | Reliability review for context timeouts/deadlines, sony/gobreaker + cenkalti/backoff retries, errgroup fan-out, goroutine leaks, channel backpressure, database/sql pool bounds, idempotency/outbox, graceful shutdown. |
 | `task-go-test`                   | `go-test-engineer`        | Test strategy and scaffolding using table-driven tests, httptest, Testcontainers PostgreSQL, gomock, Asynq test patterns, and `go test -race` discipline.            |
 | `task-go-refactor`               | `go-tech-lead`            | Refactor planning for fat handlers, anemic services, goroutine leaks, GORM hook abuse, mass assignment, mutable state - with `go test -race` coverage gate.          |
 

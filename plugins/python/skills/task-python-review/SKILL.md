@@ -1,6 +1,6 @@
 ---
 name: task-python-review
-description: "Python / FastAPI / Django code review: async pitfalls, blocking I/O, ORM leaks, Pydantic v2, auth; spawns perf/security/observability subagents."
+description: "Python / FastAPI / Django code review: async pitfalls, blocking I/O, ORM leaks, Pydantic v2, auth; spawns perf/security/obs/reliability subagents."
 agent: python-tech-lead
 metadata:
   category: backend
@@ -13,7 +13,7 @@ user-invocable: true
 
 # Python Code Review
 
-Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability subagents in parallel for extra scopes. Runs standalone with full PR/branch resolution.
+Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability / reliability subagents in parallel for extra scopes. Runs standalone with full PR/branch resolution.
 
 ## When to Use
 
@@ -27,7 +27,7 @@ Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, 
 - Production incident (`/task-oncall-start`)
 - Single-error debug (`task-python-debug`)
 - New-system architecture (`task-design-architecture`)
-- Single-scope reviews - delegate to `task-python-review-perf` / `-security` / `-observability`
+- Single-scope reviews - delegate to `task-python-review-perf` / `-security` / `-observability` / `-reliability`
 
 ## Depth Levels
 
@@ -46,7 +46,8 @@ Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, 
 | + Perf | Core + `task-python-review-perf` subagent |
 | + Sec | Core + `task-python-review-security` subagent |
 | + Obs | Core + `task-python-review-observability` subagent |
-| Full | Core + all three subagents in parallel |
+| + Rel | Core + `task-python-review-reliability` subagent |
+| Full | Core + all four subagents in parallel |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
@@ -55,6 +56,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 - **+Sec:** file uploads (`UploadFile`, `request.FILES`), auth dependencies (`Depends(get_current_user)`, `OAuth2PasswordBearer`), DRF `permission_classes` / `authentication_classes` changes, Pydantic / DRF schema changes, raw SQL via `text(...)` / `cursor.execute(...)`, secrets in `settings.py` / `.env`, Celery tasks consuming user-supplied input
 - **+Perf:** new Alembic / Django migration, new ORM query (`select(...)` / `.filter(...)`), new `selectinload` / `prefetch_related`, new pagination, new endpoints with payloads, loops calling DB or HTTP, new `@cache` / `@lru_cache` / Redis read paths
 - **+Obs:** new service module, new external client (`httpx.AsyncClient`, `requests.Session`), new Celery task or `@shared_task`, logging config change (`LOGGING` dict / `structlog`), new Prometheus metric, new `@app.on_event` / lifespan handler, new Django signal
+- **+Rel:** new `httpx` / external client without an explicit `Timeout`, new `tenacity` / retry config, new Celery task without `acks_late` / an idempotency guard, `BackgroundTasks` for a critical side effect (payment, email), unbounded `asyncio.gather`, `save` + publish dual write or `.delay()` inside a transaction
 - **2+ categories → Full**
 
 ## Invocation
@@ -261,8 +263,9 @@ If scope is **Core only**, skip. For each selected scope, spawn one independent 
 | + Perf | `task-python-review-perf`          | `python-performance-engineer`   |
 | + Sec  | `task-python-review-security`      | `python-security-engineer`      |
 | + Obs  | `task-python-review-observability` | `python-observability-engineer` |
+| + Rel  | `task-python-review-reliability`   | `python-reliability-engineer`   |
 
-`Full` = 3 subagents.
+`Full` = 4 subagents.
 
 **Subagent prompt contract** - each must include:
 
@@ -283,6 +286,7 @@ Merge subagent findings into the single Output Format below. Do not append raw s
 - **Order by intent**, not by scope
 - **Note missing scopes** in Summary as `Scope incomplete: <scope>`
 - **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by intent
+- **Preserve deep-only sections** returned by subagents (e.g., reliability's `Failure-Mode and Blast-Radius Map`) as their own section after Next Steps - they are not findings; the merge must not drop them
 
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
 
@@ -302,7 +306,7 @@ Use skill: `review-report-writer` with `report_type: review` and these checkpoin
 
 - `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
 - `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4), `depth` (resolved/auto-promoted), `stack = python-<framework>` (e.g., `python-fastapi`, `python-django`)
+- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Perf` -> `+perf`, `+Sec` -> `+sec`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = python-<framework>` (e.g., `python-fastapi`, `python-django`)
 
 Write before ending; print the confirmation line.
 
@@ -326,7 +330,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Python <version>
 **Framework:** FastAPI <version> | Django <version> | mixed
-**Scope:** Core | +Sec | +Perf | +Obs | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
 **Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
@@ -399,7 +403,7 @@ _Omit if no actionable findings._
 - Apply Python conventions, not generic backend conventions
 - Provide actionable feedback with Python code examples
 - Default Core; auto-escalate; honor `core-only`
-- Delegate perf / security / observability depth to subagents
+- Delegate perf / security / observability / reliability depth to subagents
 
 ## Self-Check
 
@@ -433,7 +437,7 @@ _Omit if no actionable findings._
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
 - Generic backend conventions when a Python idiom exists ("extract to a service module", not "extract to a helper class")
 - Vague feedback ("this could be better"); blocking on personal preference
-- Duplicating perf / security / observability depth here when the dedicated subagent owns them
+- Duplicating perf / security / observability / reliability depth here when the dedicated subagent owns them
 - Sequential extra scopes that could parallelize
 - Appending raw subagent reports instead of merging
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
