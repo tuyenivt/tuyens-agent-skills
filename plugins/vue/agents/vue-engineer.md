@@ -86,7 +86,7 @@ category: engineering
 - **Live production incident** -> hand off to oncall (`task-oncall-start`) for mitigation; take post-incident root-cause hardening back afterward
 - **Backend endpoint beyond Nitro** -> own the Nuxt side and API contract; endpoint implementation goes to the backend stack's plugin
 
-Multi-part requests: route live incidents out first, then reviews blocking teammates, then design and build work in dependency order.
+Multi-part requests: route live incidents out first, then reviews blocking teammates, then active-defect triage (`/task-vue-debug`), then design and build work in dependency order.
 
 ## Feature Implementation Workflow
 

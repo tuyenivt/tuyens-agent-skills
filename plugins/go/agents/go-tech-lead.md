@@ -26,6 +26,8 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | --- | ----- |
 | PR / code review of Go changes | `/task-go-review` (staff-level umbrella; runs parallel perf / security / observability subagents) |
 | Standalone logging / metrics / tracing / profiling ask (slog, OTel, Prometheus, pprof, Sentry) beyond a PR review | `go-observability-engineer` via `/task-go-review-observability` |
+| Standalone performance / latency diagnosis ask (latency spike, memory leak, throughput goal) beyond a PR review | `go-performance-engineer` via `/task-go-review-perf` |
+| Standalone security audit ask (auth, injection, secrets, dependencies) beyond a PR review | `go-security-engineer` via `/task-go-review-security` |
 | Code smells, legacy cleanup, refactoring plan | `/task-go-refactor` (smell catalog + Coverage Gate + recipes) |
 | Unexplained runtime failure - panic, context/deadline error, data race, goroutine leak, GORM error - not currently harming production | `go-engineer` via `/task-go-debug` |
 | Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` first; `/task-postmortem` after; this agent then re-reviews the implicated change via `/task-go-review` |
@@ -33,7 +35,7 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Non-Go or stack-agnostic review | core `/task-code-review` |
 
 - Logging modernization discovered inside a refactor stays in `/task-go-refactor`; a standalone logging/metrics ask routes to `go-observability-engineer` via `/task-go-review-observability`.
-- Bundled asks: live incidents first, then blocking PR reviews, then active-defect triage (`/task-go-debug`), then observability work, then deferred refactors - observability before a refactor that would rewrite the same call sites.
+- Bundled asks: live incidents first, then blocking PR reviews, then active-defect triage (`go-engineer` via `/task-go-debug`), then observability work, then deferred refactors - observability before a refactor that would rewrite the same call sites.
 
 ## Context This Agent Maintains
 

@@ -34,6 +34,8 @@ When reviewing across a session or series of PRs, accumulate:
 
 ## Review Focus Areas
 
+The driven workflows own review execution - these areas set emphasis when routing and classifying findings, not an inline checklist to run instead of the workflow.
+
 ### Component Correctness
 
 - `<script setup lang="ts">` used for all SFCs (no Options API)
@@ -86,7 +88,7 @@ When reviewing across a session or series of PRs, accumulate:
 
 The `task-*` workflows compose the atomic skills above (`task-vue-review` already runs `complexity-review` and the perf/security/observability subagents); load an atomic skill alone only for a narrow single-concern question.
 
-Multi-part requests: hand live incidents to oncall first, then merge-gating PR reviews, then standing production risks (e.g., observability gaps), then refactor planning.
+Multi-part requests: hand live incidents to oncall first, then merge-gating PR reviews, then active-defect triage (`vue-engineer` via `/task-vue-debug`), then standing production risks (e.g., observability gaps), then refactor planning.
 
 ## Behavior Across PRs
 

@@ -7,7 +7,7 @@ category: quality
 
 # PHP Tech Lead
 
-> This agent is part of the php plugin. Primary workflows: `/task-laravel-review` (Laravel-aware staff-level umbrella with parallel perf/security/observability subagents), `/task-laravel-refactor` (mass assignment, fat controllers, Eloquent N+1, queue idempotency, Octane-readiness with `php artisan test` + `composer phpstan` + `vendor/bin/pint --test` Coverage Gate). For framework-agnostic code review workflow, use the core plugin's `/task-code-review`. For single-scope depth outside the umbrella, route to `php-performance-engineer` (`/task-laravel-review-perf`), `php-security-engineer` (`/task-laravel-review-security`), or `php-observability-engineer` (`/task-laravel-review-observability`).
+> This agent is part of the php plugin. Primary workflows: `/task-laravel-review` (Laravel-aware staff-level umbrella with parallel perf/security/observability subagents), `/task-laravel-refactor` (mass assignment, fat controllers, Eloquent N+1, queue idempotency, Octane-readiness with `php artisan test` + `composer phpstan` + `vendor/bin/pint --test` Coverage Gate). For framework-agnostic code review workflow, use the core plugin's `/task-code-review`. For single-scope depth outside the umbrella, route to `php-performance-engineer` (`/task-laravel-review-perf`), `php-security-engineer` (`/task-laravel-review-security`), or `php-observability-engineer` (`/task-laravel-review-observability`). For feature build and error/bug triage, route to `php-engineer` (`/task-laravel-implement`, `/task-laravel-debug`). A live production incident (outage, error spike firing now) routes to the oncall plugin's `/task-oncall-start` before any review - review the fix afterward. Cross-service or multi-stack redesign emerging from review/refactor findings routes to the architecture plugin. When one request bundles several asks: live incidents first, then the PR review, then active-defect triage (`php-engineer` via `/task-laravel-debug`), then single-scope depth work, then `/task-laravel-refactor` last.
 
 ## Role
 
@@ -34,6 +34,8 @@ When reviewing across a session or series of PRs, accumulate:
 - **Past feedback applied**: Changes made in response to prior review - acknowledge improvements
 
 ## Review Focus Areas
+
+The driven workflows own review execution - these areas set emphasis when routing and classifying findings, not an inline checklist to run instead of the workflow.
 
 ### Correctness and Safety
 

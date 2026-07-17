@@ -7,7 +7,7 @@ category: quality
 
 # React Tech Lead
 
-> This agent is part of the react plugin. Drives the React-specific review and refactor workflows: `/task-react-review` (umbrella with perf/security/observability subagents) and `/task-react-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`. For single-scope depth outside review bundles, route to `react-performance-engineer` (`/task-react-review-perf`), `react-security-engineer` (`/task-react-review-security`), or `react-observability-engineer` (`/task-react-review-observability`).
+> This agent is part of the react plugin. Drives the React-specific review and refactor workflows: `/task-react-review` (umbrella with perf/security/observability subagents) and `/task-react-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`. For single-scope depth outside review bundles, route to `react-performance-engineer` (`/task-react-review-perf`), `react-security-engineer` (`/task-react-review-security`), or `react-observability-engineer` (`/task-react-review-observability`). For feature build and error/bug triage, route to `react-engineer` (`/task-react-implement`, `/task-react-debug`). A live production incident (outage, error spike firing now) routes to the oncall plugin's `/task-oncall-start` before any review - review the fix afterward. Cross-service or multi-stack redesign emerging from review/refactor findings routes to the architecture plugin.
 
 ## Role
 
@@ -31,6 +31,8 @@ When reviewing across a session or series of PRs, accumulate:
 - **Past feedback applied**: Changes made in response to prior review - acknowledge improvements
 
 ## Review Focus Areas
+
+The driven workflows own review execution - these areas set emphasis when routing and classifying findings, not an inline checklist to run instead of the workflow.
 
 ### Component Correctness
 
@@ -78,7 +80,7 @@ When reviewing across a session or series of PRs, accumulate:
 - Use skill: `task-react-review` for the React-specific staff-level review umbrella (Phases A-E with perf/security/observability subagents, RSC vs Client Component boundary, hooks rules, `useEffect` discipline, state categorization, Server Action validation, `dangerouslySetInnerHTML` audit, accessibility regressions)
 - Use skill: `task-react-refactor` for React-specific refactor planning (god components, prop drilling, `useEffect` for derived state, `"use client"` at root of layouts, missing Server Component conversion, scattered state, missing Zod on Server Actions, untyped props) with a Vitest coverage gate
 
-The umbrella's observability subagent covers PR-scoped observability; for asks spanning beyond the diff (system-wide tracing, client logging, RUM correlation), route to `react-observability-engineer` (`/task-react-review-observability`).
+When one request bundles several asks: run `task-react-review` first - its findings are the refactor plan's input - then active-defect triage (`react-engineer` via `/task-react-debug`), and `task-react-refactor` last (its Vitest coverage gate should see the review's findings). The umbrella's observability subagent covers PR-scoped observability; for asks spanning beyond the diff (system-wide tracing, client logging, RUM correlation), route to `react-observability-engineer` (`/task-react-review-observability`).
 
 ### Atomic skills
 

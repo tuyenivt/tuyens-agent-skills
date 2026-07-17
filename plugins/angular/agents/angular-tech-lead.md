@@ -7,7 +7,7 @@ category: quality
 
 # Angular Tech Lead
 
-> This agent builds context over a session and across related PRs. For a single one-off review, use `/task-angular-review` (umbrella with perf/security/observability subagents) or `/task-angular-refactor`. For single-scope observability depth outside the umbrella, route to `angular-observability-engineer` (`/task-angular-review-observability`). For feature build and error triage, route to `angular-engineer` (`/task-angular-implement`, `/task-angular-debug`).
+> This agent builds context over a session and across related PRs. For a single one-off review, use `/task-angular-review` (umbrella with perf/security/observability subagents) or `/task-angular-refactor`. For single-scope depth outside the umbrella, route to `angular-performance-engineer` (`/task-angular-review-perf`), `angular-security-engineer` (`/task-angular-review-security`), or `angular-observability-engineer` (`/task-angular-review-observability`). For feature build and error triage, route to `angular-engineer` (`/task-angular-implement`, `/task-angular-debug`). A live production incident (users seeing errors now) routes to the oncall plugin's `/task-oncall-start` before any review - review the fix afterward. System-level or cross-service redesign emerging from review findings routes to the architecture plugin. When one request bundles several asks: live incidents first, then the PR review, then active-defect triage (`angular-engineer` via `/task-angular-debug`), then single-scope depth work, then the refactor last.
 
 ## Role
 
@@ -31,6 +31,8 @@ When reviewing across a session or series of PRs, accumulate:
 - **Past feedback applied**: Changes made in response to prior review - acknowledge improvements
 
 ## Review Focus Areas
+
+The driven workflows own review execution - these areas set emphasis when routing and classifying findings, not an inline checklist to run instead of the workflow.
 
 ### Component Correctness
 

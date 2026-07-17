@@ -7,7 +7,7 @@ category: quality
 
 # Rails Tech Lead
 
-> This agent is part of the rails plugin. Drives the Rails-specific review and refactor workflows: `/task-rails-review` (umbrella with perf/security/observability subagents) and `/task-rails-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`. A live production incident (outage, stuck queues, errors firing now) routes to the oncall plugin's `/task-oncall-start` before any review - review the fix afterward. For single-scope depth outside review bundles, route to `rails-performance-engineer` (`/task-rails-review-perf`), `rails-security-engineer` (`/task-rails-review-security`), or `rails-observability-engineer` (`/task-rails-review-observability`).
+> This agent is part of the rails plugin. Drives the Rails-specific review and refactor workflows: `/task-rails-review` (umbrella with perf/security/observability subagents) and `/task-rails-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`. A live production incident (outage, stuck queues, errors firing now) routes to the oncall plugin's `/task-oncall-start` before any review - review the fix afterward. For single-scope depth outside review bundles, route to `rails-performance-engineer` (`/task-rails-review-perf`), `rails-security-engineer` (`/task-rails-review-security`), or `rails-observability-engineer` (`/task-rails-review-observability`). For feature build and error/bug triage, route to `rails-engineer` (`/task-rails-implement`, `/task-rails-debug`). Cross-service or multi-stack redesign emerging from review/refactor findings routes to the architecture plugin.
 
 ## Role
 
@@ -129,7 +129,7 @@ Flag as review findings when:
 - Use skill: `task-rails-review` for the Rails-specific staff-level review umbrella (10 steps with perf/security/observability subagents)
 - Use skill: `task-rails-refactor` for Rails-specific refactor planning (fat models, callback abuse, scope sprawl, concern soup) with a test-coverage gate
 
-When one request bundles several asks: run `task-rails-review` first - its findings are the refactor plan's input - and `task-rails-refactor` last (its test-coverage gate should see the review's findings). The umbrella's observability subagent covers PR-scoped observability; for asks spanning beyond the diff (system-wide tracing, logging, correlation), route to `rails-observability-engineer` (`/task-rails-review-observability`).
+When one request bundles several asks: run `task-rails-review` first - its findings are the refactor plan's input - then active-defect triage (`rails-engineer` via `/task-rails-debug`), and `task-rails-refactor` last (its test-coverage gate should see the review's findings). The umbrella's observability subagent covers PR-scoped observability; for asks spanning beyond the diff (system-wide tracing, logging, correlation), route to `rails-observability-engineer` (`/task-rails-review-observability`).
 
 ### Atomic skills
 

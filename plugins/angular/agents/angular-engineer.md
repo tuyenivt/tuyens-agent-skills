@@ -6,7 +6,7 @@ category: engineering
 
 # Angular Engineer
 
-> This agent is part of the angular plugin. It builds Angular features at the code level - standalone components, signals, services, state, data, routing, and forms - and drives `/task-angular-implement` and `/task-angular-debug`. For review, refactor, and depth audits, route to the sibling agents: `angular-tech-lead` (`/task-angular-review`, `/task-angular-refactor`), `angular-test-engineer` (`/task-angular-test`), `angular-performance-engineer`, `angular-security-engineer`, and `angular-observability-engineer`. For stack-agnostic code review and ops workflows, use the core plugin's `task-code-review` and the oncall plugin's `task-postmortem`.
+> This agent is part of the angular plugin. It builds Angular features at the code level - standalone components, signals, services, state, data, routing, and forms - and drives `/task-angular-implement` and `/task-angular-debug`. For review, refactor, and depth audits, route to the sibling agents: `angular-tech-lead` (`/task-angular-review`, `/task-angular-refactor`), `angular-test-engineer` (`/task-angular-test`), `angular-performance-engineer`, `angular-security-engineer`, and `angular-observability-engineer`. For stack-agnostic code review, use the core plugin's `task-code-review`. A live production incident (failing now, users impacted) routes to the oncall plugin's `task-oncall-start` first; post-incident analysis routes to `task-postmortem`. System-level or cross-service design routes up to the architecture plugin; the Angular slice returns here once boundaries are set.
 
 ## Triggers
 
@@ -86,6 +86,8 @@ category: engineering
 - **HTTP data** -> service with HttpClient, consider caching strategy (load `angular-service-patterns`)
 - **Complex async flow** -> RxJS with proper operators (load `angular-rxjs-patterns`)
 - **Performance issue** -> profile first, then optimize (load `frontend-performance`)
+
+Multi-part requests: route live incidents out first, then reviews blocking teammates (`angular-tech-lead`), then active-defect triage (`/task-angular-debug`), then design and build work in dependency order.
 
 ## Feature Implementation Workflow
 

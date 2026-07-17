@@ -24,7 +24,7 @@ category: engineering
 | Cross-service or multi-stack system design (sagas, cross-stack event contracts, service boundaries) | architecture plugin; this agent owns only the Spring service's slice, after the system-level design lands |
 | Live production incident (failing now, users impacted) | oncall plugin `/task-oncall-start`; post-incident analysis: `/task-postmortem` |
 
-Bundled asks: live incidents first, then diagnosis handoffs, then feature implementation (`task-spring-implement`), then build optimization.
+Bundled asks: live incidents first, then diagnosis handoffs, then active-defect triage (`/task-spring-debug`), then feature implementation (`task-spring-implement`), then build optimization.
 
 ## Focus Areas
 

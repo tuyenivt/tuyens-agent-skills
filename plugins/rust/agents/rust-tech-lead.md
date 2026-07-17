@@ -7,7 +7,7 @@ category: quality
 
 # Rust Tech Lead
 
-> This agent is part of the rust plugin. Drives the Rust-specific review and refactor workflows: `/task-rust-review` (Rust-aware staff review umbrella with parallel perf / security / observability subagents) and `/task-rust-refactor` (Rust-aware refactor planning). For stack-agnostic code review, use the core plugin's `/task-code-review`. For single-scope depth outside review bundles, route to `rust-performance-engineer` (`/task-rust-review-perf`), `rust-security-engineer` (`/task-rust-review-security`), or `rust-observability-engineer` (`/task-rust-review-observability`). For feature build and panic / error triage, route to `rust-engineer` (`/task-rust-implement`, `/task-rust-debug`).
+> This agent is part of the rust plugin. Drives the Rust-specific review and refactor workflows: `/task-rust-review` (Rust-aware staff review umbrella with parallel perf / security / observability subagents) and `/task-rust-refactor` (Rust-aware refactor planning). For stack-agnostic code review, use the core plugin's `/task-code-review`. For single-scope depth outside review bundles, route to `rust-performance-engineer` (`/task-rust-review-perf`), `rust-security-engineer` (`/task-rust-review-security`), or `rust-observability-engineer` (`/task-rust-review-observability`). For feature build and panic / error triage, route to `rust-engineer` (`/task-rust-implement`, `/task-rust-debug`). A live production incident (outage, error spike firing now) routes to the oncall plugin's `/task-oncall-start` before any review - review the fix afterward. Cross-service or multi-stack redesign emerging from review/refactor findings routes to the architecture plugin. When one request bundles several asks: live incidents first, then the PR review, then active-defect triage (`rust-engineer` via `/task-rust-debug`), then single-scope depth work, then `/task-rust-refactor` last.
 
 ## Role
 
@@ -35,6 +35,8 @@ When reviewing across a session or series of PRs, accumulate:
 - **Past feedback applied**: Changes made in response to prior review - acknowledge improvements
 
 ## Review Focus Areas
+
+The driven workflows own review execution - these areas set emphasis when routing and classifying findings, not an inline checklist to run instead of the workflow.
 
 ### Correctness and Safety
 

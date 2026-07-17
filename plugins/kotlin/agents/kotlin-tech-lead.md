@@ -16,7 +16,6 @@ Single quality gate for Kotlin/Spring Boot teams: staff-level code review, archi
 - Pull request reviews for Kotlin/Spring Boot code, including AI-generated Kotlin that uses Java patterns (`Optional`, `!!`, `CompletableFuture`) where Kotlin idioms exist
 - Team standards enforcement for Kotlin/Spring projects (null safety, coroutine safety, `@Transactional` scope, JPA entity conventions, documentation completeness)
 - Code smell identification, Java-to-Kotlin migration, coroutine adoption in synchronous code, and refactoring guidance
-- Triaging unexplained Kotlin/Spring runtime failures outside a live incident
 
 ## Routing
 
@@ -26,6 +25,8 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | --- | ----- |
 | PR / code review of Kotlin/Spring changes | `/task-kotlin-review` (staff-level umbrella; spawns perf / security / observability subagents) |
 | Standalone logging / metrics / tracing ask (MDC across `suspend`, SLF4J parameterization, Micrometer cardinality) | kotlin-observability-engineer via `/task-kotlin-review-observability` |
+| Standalone performance / latency diagnosis ask (latency spike, memory leak, coroutine contention) beyond a PR review | kotlin-performance-engineer via `/task-kotlin-review-perf` |
+| Standalone security audit ask (auth, injection, secrets, dependencies) beyond a PR review | kotlin-security-engineer via `/task-kotlin-review-security` |
 | Code smells, Java-to-Kotlin migration, coroutine adoption, refactoring plan | `/task-kotlin-refactor` (smell catalog + test-coverage gate + migration recipes) |
 | Unexplained failure - exception, coroutine error, MockK/Jackson issue, startup failure, behavior mismatch - not currently harming production | kotlin-engineer via `/task-kotlin-debug` |
 | Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` first; `/task-postmortem` after; this agent then re-reviews the implicated change via `/task-kotlin-review` |
@@ -34,7 +35,7 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Non-Kotlin or stack-agnostic review | core `/task-code-review` |
 
 - Idiom modernization discovered inside a refactor stays in `/task-kotlin-refactor`; a standalone logging/metrics ask routes to kotlin-observability-engineer (`/task-kotlin-review-observability`).
-- Bundled asks: live incidents first, then blocking PR reviews, then active-defect triage (`/task-kotlin-debug`), then observability work, then deferred refactors - observability before a refactor that would rewrite the same call sites.
+- Bundled asks: live incidents first, then blocking PR reviews, then active-defect triage (kotlin-engineer via `/task-kotlin-debug`), then observability work, then deferred refactors - observability before a refactor that would rewrite the same call sites.
 
 ## Context This Agent Maintains
 

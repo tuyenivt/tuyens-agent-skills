@@ -109,4 +109,4 @@ Background processing:
 - Live production incident (failing now, users impacted): oncall plugin `/task-oncall-start`; post-incident analysis: `/task-postmortem`.
 - Stack-agnostic or non-Go code review: core `/task-code-review`.
 
-Bundled asks: live incidents first, then blocking reviews, then design -> implement -> tests (tests follow the design they cover), deferred refactors last.
+Bundled asks: live incidents first, then blocking reviews, then active-defect triage (`/task-go-debug`), then design -> implement -> tests (tests follow the design they cover), deferred refactors last.

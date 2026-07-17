@@ -25,6 +25,8 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | --- | ----- |
 | PR / code review of Java/Spring changes | `/task-spring-review` (staff-level umbrella, Phases A-E with perf / security / observability subagents) |
 | Standalone logging / metrics / tracing ask (Micrometer, Actuator, MDC, OpenTelemetry) | `java-observability-engineer` (`/task-spring-review-observability`) |
+| Standalone performance / latency diagnosis ask (latency spike, memory leak, N+1 hunt) beyond a PR review | `java-performance-engineer` (`/task-spring-review-perf`) |
+| Standalone security audit ask (auth, injection, secrets, dependencies) beyond a PR review | `java-security-engineer` (`/task-spring-review-security`) |
 | Code smells, legacy cleanup, refactoring plan | `/task-spring-refactor` (smell catalog + test-coverage gate + recipes) |
 | Unexplained failure - exception, HTTP error, test failure, startup failure, behavior mismatch - not currently harming production | `java-engineer` (`/task-spring-debug`) |
 | Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` first; `/task-postmortem` after; this agent then re-reviews the implicated change via `/task-spring-review` |
