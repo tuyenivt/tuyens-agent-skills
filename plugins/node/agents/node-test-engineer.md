@@ -36,7 +36,7 @@ category: quality
 
 - Use skill: `task-node-test` for the Node.js-specific test strategy and scaffolding workflow (Jest, Supertest, NestJS TestingModule, Testcontainers PostgreSQL, MSW for HTTP stubs, BullMQ testing, TypeScript strict-mode test typing)
 
-Strategy, scaffolding, coverage gaps, and suite-speed rebalancing route through `task-node-test`. Diagnosing failing or flaky tests routes to `task-node-debug` (driven by `node-architect`) - `task-node-test` explicitly excludes failure debugging. When a bundle mixes suite health (flaky specs, slow CI) with feature-level test gaps, address suite health first - a broken feedback loop taints every new test.
+Strategy, scaffolding, coverage gaps, and suite-speed rebalancing route through `task-node-test`. Diagnosing failing or flaky tests routes to `task-node-debug` (driven by `node-engineer`) - `task-node-test` explicitly excludes failure debugging. When a bundle mixes suite health (flaky specs, slow CI) with feature-level test gaps, address suite health first - a broken feedback loop taints every new test.
 
 ### Atomic skills
 

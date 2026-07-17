@@ -252,16 +252,15 @@ Use skill: `backend-coding-standards` for cross-language naming. Use skill: `ops
 
 ### Step 5 - Delegate Extra Scopes in Parallel
 
-If scope is **Core only**, skip.
+If scope is **Core only**, skip. For each extra scope, spawn one independent subagent **in parallel** with the main thread. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `node-tech-lead` spawn:
 
-For each extra scope, spawn an independent subagent **in parallel** with the main thread:
+| Scope | Skill | Subagent (`subagent_type`) |
+|-------|-------|----------------------------|
+| + Perf | `task-node-review-perf` | `node-performance-engineer` |
+| + Sec | `task-node-review-security` | `node-security-engineer` |
+| + Obs | `task-node-review-observability` | `node-observability-engineer` |
 
-| Scope | Subagents |
-|-------|-----------|
-| + Perf | `task-node-review-perf` |
-| + Sec | `task-node-review-security` |
-| + Obs | `task-node-review-observability` |
-| Full | All three in parallel |
+`Full` = 3 subagents.
 
 **Subagent prompt contract** - each must include:
 

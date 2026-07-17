@@ -248,9 +248,15 @@ Use skill: `backend-coding-standards` for cross-language naming. Use skill: `ops
 
 ### Step 5 - Delegate Extra Scopes in Parallel
 
-If scope is **Core only**, skip.
+Skip if scope is **Core only**. For each selected scope, spawn one independent subagent **in parallel** with the main thread. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `go-tech-lead` spawn:
 
-For each extra scope, spawn an independent subagent **in parallel** with the main thread.
+| Scope | Skill                          | Subagent (`subagent_type`)  |
+| ----- | ------------------------------ | --------------------------- |
+| +Perf | `task-go-review-perf`          | `go-performance-engineer`   |
+| +Sec  | `task-go-review-security`      | `go-security-engineer`      |
+| +Obs  | `task-go-review-observability` | `go-observability-engineer` |
+
+`Full` = 3 subagents.
 
 **Subagent prompt contract:**
 

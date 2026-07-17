@@ -1,7 +1,7 @@
 ---
 name: task-angular-review-observability
 description: Angular observability review - web-vitals, Sentry, OpenTelemetry browser SDK, SSR tracing, structured logs, RUM correlation.
-agent: angular-tech-lead
+agent: angular-observability-engineer
 metadata:
   category: frontend
   tags: [angular, typescript, observability, web-vitals, sentry, opentelemetry, rum, workflow]

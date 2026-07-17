@@ -272,14 +272,15 @@ Use skill: `ops-observability` for cross-cutting logging / metrics presence (dep
 
 ### Step 5 - Delegate extra scopes (if scope includes)
 
-Spawn subagents in parallel:
+Skip if `core-only`. For each selected scope, spawn one independent subagent in parallel. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `kotlin-tech-lead` spawn:
 
-| Scope                | Subagents                                                                                          |
-| -------------------- | -------------------------------------------------------------------------------------------------- |
-| Core + Perf          | `task-kotlin-review-perf`                                                                          |
-| Core + Sec           | `task-kotlin-review-security`                                                                      |
-| Core + Obs           | `task-kotlin-review-observability`                                                                 |
-| Full                 | All three in parallel                                                                              |
+| Scope | Skill                              | Subagent (`subagent_type`)      |
+| ----- | ---------------------------------- | ------------------------------- |
+| +Perf | `task-kotlin-review-perf`          | `kotlin-performance-engineer`   |
+| +Sec  | `task-kotlin-review-security`      | `kotlin-security-engineer`      |
+| +Obs  | `task-kotlin-review-observability` | `kotlin-observability-engineer` |
+
+`Full` = 3 subagents.
 
 Each subagent prompt includes: resolved review target (`base_ref`, `head_ref`) + pre-read diff + log, depth, pre-confirmed stack, instruction to use its own Output Format, and an explicit instruction to **return findings inline and not call `review-report-writer`** (this workflow owns the single report - see each subagent's Step 8/11/12 carve-out).
 

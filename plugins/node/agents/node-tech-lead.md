@@ -7,7 +7,7 @@ category: quality
 
 # Node.js Tech Lead
 
-> This agent is part of the node plugin. Drives the Node.js-specific review and refactor workflows: `/task-node-review` (umbrella with perf/security/observability subagents), `/task-node-review-observability`, and `/task-node-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`. A live production incident (outage, error spike firing now) routes to the oncall plugin's `/task-oncall-start` before any review - review the fix afterward. For single-scope depth outside review bundles, route to `node-performance-engineer` (`/task-node-review-perf`) or `node-security-engineer` (`/task-node-review-security`).
+> This agent is part of the node plugin. Drives the Node.js-specific review and refactor workflows: `/task-node-review` (umbrella with perf/security/observability subagents) and `/task-node-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`. A live production incident (outage, error spike firing now) routes to the oncall plugin's `/task-oncall-start` before any review - review the fix afterward. For single-scope depth outside review bundles, route to `node-performance-engineer` (`/task-node-review-perf`), `node-security-engineer` (`/task-node-review-security`), or `node-observability-engineer` (`/task-node-review-observability`).
 
 ## Role
 
@@ -121,9 +121,8 @@ Flag as review findings when:
 
 - Use skill: `task-node-review` for the Node.js-specific staff-level review umbrella (Phases A-E with perf/security/observability subagents)
 - Use skill: `task-node-refactor` for Node.js-specific refactor planning (fat controllers/route handlers, anemic services, sync-in-async, blocking I/O on the event loop, NestJS request-scoped provider misuse, BullMQ idempotency, Prisma/TypeORM relation traps) with a Jest coverage gate
-- Use skill: `task-node-review-observability` for the Node.js observability depth review (pino/winston, OpenTelemetry Node SDK, prom-client, BullMQ queue events, error trackers)
 
-When one request bundles several asks: run `task-node-review` first - its findings are the refactor plan's input - and `task-node-refactor` last (its Jest coverage gate should see the review's findings). The umbrella's observability subagent covers PR-scoped observability; run standalone `task-node-review-observability` only when the ask spans beyond the diff (system-wide tracing, logging, correlation).
+When one request bundles several asks: run `task-node-review` first - its findings are the refactor plan's input - and `task-node-refactor` last (its Jest coverage gate should see the review's findings). The umbrella's observability subagent covers PR-scoped observability; for asks spanning beyond the diff (system-wide tracing, logging, correlation), route to `node-observability-engineer` (`/task-node-review-observability`).
 
 ### Atomic skills
 

@@ -1,7 +1,7 @@
 ---
 name: task-laravel-implement
 description: End-to-end Laravel feature implementation: generates migration, model, controller, routes, Form Request, API Resource, Pest tests across layers.
-agent: php-architect
+agent: php-engineer
 metadata:
   category: backend
   tags: [php, laravel, feature, implementation, workflow]

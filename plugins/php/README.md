@@ -13,16 +13,16 @@ Claude Code plugin for PHP development.
 
 ## Workflow Skills
 
-| Skill                              | Agent                    | Description                                                                                          |
-| ---------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| task-laravel-implement             | php-architect            | End-to-end feature implementation across all layers                                                  |
-| task-laravel-debug                 | php-architect            | Debug stack traces, query errors, queue failures, test errors                                        |
-| task-laravel-review                | php-tech-lead            | Staff-level code review umbrella with parallel perf / security / observability subagents             |
-| task-laravel-review-perf           | php-performance-engineer | Eloquent N+1, indexes, queue throughput (Horizon), caching, OPcache / Octane readiness               |
-| task-laravel-review-security       | php-security-engineer    | Mass assignment, Sanctum / Passport, Policies, SQL injection, file upload, OWASP for Laravel         |
-| task-laravel-review-observability  | php-tech-lead            | Monolog structured logging, OpenTelemetry PHP, Horizon / Telescope / Pulse, Sentry, lifecycle        |
-| task-laravel-test                  | php-test-engineer        | Pest / PHPUnit pyramid, factories, RefreshDatabase, facade fakes, Sanctum helpers                    |
-| task-laravel-refactor              | php-tech-lead            | Fat controller, mass assignment, Eloquent N+1, queue idempotency, Octane-readiness refactors         |
+| Skill                             | Agent                      | Description                                                                                   |
+| --------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------- |
+| task-laravel-implement            | php-engineer               | End-to-end feature implementation across all layers                                           |
+| task-laravel-debug                | php-engineer               | Debug stack traces, query errors, queue failures, test errors                                 |
+| task-laravel-review               | php-tech-lead              | Staff-level code review umbrella with parallel perf / security / observability subagents      |
+| task-laravel-review-perf          | php-performance-engineer   | Eloquent N+1, indexes, queue throughput (Horizon), caching, OPcache / Octane readiness        |
+| task-laravel-review-security      | php-security-engineer      | Mass assignment, Sanctum / Passport, Policies, SQL injection, file upload, OWASP for Laravel  |
+| task-laravel-review-observability | php-observability-engineer | Monolog structured logging, OpenTelemetry PHP, Horizon / Telescope / Pulse, Sentry, lifecycle |
+| task-laravel-test                 | php-test-engineer          | Pest / PHPUnit pyramid, factories, RefreshDatabase, facade fakes, Sanctum helpers             |
+| task-laravel-refactor             | php-tech-lead              | Fat controller, mass assignment, Eloquent N+1, queue idempotency, Octane-readiness refactors  |
 
 ## Atomic Skills (internal, not user-invocable)
 
@@ -41,13 +41,14 @@ Claude Code plugin for PHP development.
 
 ## Agents
 
-| Agent                    | Description                                                                                      |
-| ------------------------ | ------------------------------------------------------------------------------------------------ |
-| php-architect            | Designs Laravel APIs, Eloquent models, service/action layers, queue pipelines, project structure |
-| php-tech-lead            | Code review, refactoring guidance, Laravel conventions, type safety, architectural decisions     |
-| php-security-engineer    | OWASP Top 10 for PHP/Laravel, auth review, mass assignment, SQL injection, dependency scanning   |
-| php-performance-engineer | Eloquent query tuning, MySQL EXPLAIN analysis, queue throughput, caching strategy, N+1 detection |
-| php-test-engineer        | Pest/PHPUnit strategies, model factories, HTTP testing, mocking Laravel facades                  |
+| Agent                      | Description                                                                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| php-engineer               | Builds Laravel features end-to-end across migrations, models, services/actions, controllers, and jobs; debugs errors and failing Pest tests |
+| php-tech-lead              | Code review, refactoring guidance, Laravel conventions, type safety, architectural decisions                                                |
+| php-security-engineer      | OWASP Top 10 for PHP/Laravel, auth review, mass assignment, SQL injection, dependency scanning                                              |
+| php-performance-engineer   | Eloquent query tuning, MySQL EXPLAIN analysis, queue throughput, caching strategy, N+1 detection                                            |
+| php-observability-engineer | Monolog structured logging, correlation IDs, OpenTelemetry PHP, Horizon/Pulse metrics, Telescope, Sentry/Bugsnag PII scrubbing              |
+| php-test-engineer          | Pest/PHPUnit strategies, model factories, HTTP testing, mocking Laravel facades                                                             |
 
 ## Framework Detection
 

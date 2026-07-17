@@ -1,7 +1,7 @@
 ---
 name: task-go-implement
 description: End-to-end Go / Gin feature implementation - generates migration, repository, service, handler layers with full test coverage.
-agent: go-architect
+agent: go-engineer
 metadata:
   category: backend
   tags: [go, gin, gorm, sqlx, feature, implementation, workflow]

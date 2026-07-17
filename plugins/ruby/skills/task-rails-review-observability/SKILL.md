@@ -1,7 +1,7 @@
 ---
 name: task-rails-review-observability
 description: Rails observability review - AS::Notifications, lograge, Sidekiq tracing, Rack correlation IDs, Sentry/Honeybadger/Rollbar.
-agent: rails-tech-lead
+agent: rails-observability-engineer
 metadata:
   category: backend
   tags: [ruby, rails, observability, logging, metrics, tracing, sidekiq, workflow]

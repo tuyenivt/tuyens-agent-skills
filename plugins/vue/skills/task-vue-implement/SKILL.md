@@ -1,7 +1,7 @@
 ---
 name: task-vue-implement
 description: Implement Vue 3.5 / Nuxt 3 / Vite feature end-to-end - SFCs, composables, Pinia, data, routing, forms, a11y, tests.
-agent: vue-architect
+agent: vue-engineer
 metadata:
   category: frontend
   tags: [vue, typescript, nuxt, vite, feature, implementation, workflow]

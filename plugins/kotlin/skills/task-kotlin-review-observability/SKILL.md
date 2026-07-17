@@ -1,7 +1,7 @@
 ---
 name: task-kotlin-review-observability
 description: Kotlin / Spring Boot observability review: Micrometer, Actuator, Logback MDC + coroutine context, OpenTelemetry tracing, @Async/Kafka instrumentation.
-agent: kotlin-tech-lead
+agent: kotlin-observability-engineer
 metadata:
   category: backend
   tags: [kotlin, spring-boot, observability, logging, metrics, tracing, actuator, micrometer, coroutines, workflow]

@@ -21,7 +21,7 @@ category: quality
 | Ask | Route |
 | --- | ----- |
 | Test strategy, scaffolding, coverage/pyramid audit, or test quality review for Go code | `/task-go-test` |
-| Flaky test or data race | Diagnose under `go test -race` via `/task-go-test`. Race in test code (shared fixtures, unsynchronized state, `t.Parallel()` misuse): fix here. Race in production code: hand off to `/task-go-debug` (go-tech-lead) with the repro and race report |
+| Flaky test or data race | Diagnose under `go test -race` via `/task-go-test`. Race in test code (shared fixtures, unsynchronized state, `t.Parallel()` misuse): fix here. Race in production code: hand off to `/task-go-debug` (go-engineer) with the repro and race report |
 | Benchmarking, load testing, or profiling driven by a latency/throughput goal | go-performance-engineer via `/task-go-review-perf`; this agent only reviews benchmark test structure |
 | Code too tangled to test - needs restructuring first | `/task-go-refactor` (go-tech-lead), then resume test work |
 | Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` |

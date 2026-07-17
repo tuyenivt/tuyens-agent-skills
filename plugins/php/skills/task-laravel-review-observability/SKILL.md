@@ -1,7 +1,7 @@
 ---
 name: task-laravel-review-observability
 description: Laravel observability review: Monolog structured logs, correlation IDs, OpenTelemetry PHP, Horizon, Telescope, Pulse, Sentry/Bugsnag PII scrubbing.
-agent: php-tech-lead
+agent: php-observability-engineer
 metadata:
   category: backend
   tags: [php, laravel, observability, monolog, opentelemetry, horizon, telescope, pulse, sentry, workflow]

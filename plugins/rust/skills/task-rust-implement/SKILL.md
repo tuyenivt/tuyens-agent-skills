@@ -1,7 +1,7 @@
 ---
 name: task-rust-implement
 description: Implement multi-layer Rust / Axum / sqlx feature end-to-end - migration, repository, service, handler, DTO, tests, idempotency, webhooks.
-agent: rust-architect
+agent: rust-engineer
 metadata:
   category: backend
   tags: [rust, axum, sqlx, tokio, feature, implementation, workflow]

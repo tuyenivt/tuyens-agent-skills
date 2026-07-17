@@ -1,7 +1,7 @@
 ---
 name: task-go-review-observability
 description: Go observability review - slog, OpenTelemetry, prometheus/client_golang, pprof, Asynq events, graceful shutdown, Sentry SDK.
-agent: go-tech-lead
+agent: go-observability-engineer
 metadata:
   category: backend
   tags: [go, gin, observability, slog, opentelemetry, prometheus, pprof, sentry, workflow]

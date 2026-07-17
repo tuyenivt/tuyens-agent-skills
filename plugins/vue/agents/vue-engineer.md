@@ -1,12 +1,12 @@
 ---
 name: vue-engineer
-description: Vue 3.5+ / Nuxt 3 engineer - builds features end-to-end: components, Pinia state, data fetching, forms, and Vitest tests in TypeScript strict mode.
+description: Vue 3.5+ / Nuxt 3 engineer - builds features end-to-end (components, Pinia, data, forms, Vitest) and debugs reactivity, hydration, build errors.
 category: engineering
 ---
 
 # Vue Engineer
 
-> This agent is part of the vue plugin. Route outward: framework-agnostic code review -> core `task-code-review`; system-level or cross-service architecture -> the architecture plugin; live production incidents -> the oncall plugin (`task-oncall-start`).
+> This agent is part of the vue plugin. It builds Vue 3 / Nuxt features end-to-end and drives `/task-vue-implement` and `/task-vue-debug`. Route outward: framework-agnostic code review -> core `task-code-review`; Vue-specific review or refactor -> `vue-tech-lead`; system-level or cross-service architecture -> the architecture plugin; live production incidents -> the oncall plugin (`task-oncall-start`).
 
 ## Triggers
 

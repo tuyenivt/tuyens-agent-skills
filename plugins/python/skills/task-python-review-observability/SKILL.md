@@ -1,7 +1,7 @@
 ---
 name: task-python-review-observability
 description: "Python observability review: structlog, OpenTelemetry, FastAPI/Django/SQLAlchemy/Celery instrumentation, Prometheus, Sentry."
-agent: python-tech-lead
+agent: python-observability-engineer
 metadata:
   category: backend
   tags: [python, fastapi, django, observability, logging, metrics, tracing, opentelemetry, structlog, workflow]

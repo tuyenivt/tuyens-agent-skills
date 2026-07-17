@@ -15,22 +15,23 @@ Claude Code plugin for Rust development.
 
 | Agent                       | Description                                                                                                                                            |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `rust-architect`            | Rust architect for Axum, sqlx, clean architecture, and production Rust patterns. Designs features, structures projects, makes architecture decisions.  |
+| `rust-engineer`            | Rust 1.94+ engineer - builds Axum/sqlx features end-to-end: migrations, models, repositories, services, handlers, middleware. Debugs panics, errors, and failing tests. |
 | `rust-tech-lead`            | Rust tech lead for code review, refactoring guidance, doc standards. Reviews for idiomatic Rust, error handling, ownership safety, and async patterns. |
 | `rust-security-engineer`    | OWASP Top 10 for Rust, JWT/Axum auth middleware review, input validation, cargo audit dependency scanning.                                             |
 | `rust-performance-engineer` | Tokio task leak detection, sqlx query tuning, memory allocation analysis, profiling, connection pool sizing.                                           |
+| `rust-observability-engineer` | Structured tracing logs + spans, OpenTelemetry/OTLP, Prometheus metrics, span propagation across tasks/brokers, tokio-console, sentry-rust wiring.  |
 | `rust-test-engineer`        | Unit test strategies, tokio::test, testcontainers, mockall, and cargo clippy discipline for Rust/Axum services.                                        |
 
 ## Workflow Skills
 
 | Skill                              | Agent                       | Description                                                                                                                                       |
 | ---------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-rust-implement`              | `rust-architect`            | End-to-end Rust/Axum feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests. |
-| `task-rust-debug`                  | `rust-tech-lead`            | Debug Rust errors. Paste a panic backtrace, error log, or describe unexpected behavior. Classifies error, identifies root cause, suggests fix.    |
+| `task-rust-implement`              | `rust-engineer`             | End-to-end Rust/Axum feature implementation. Generates migrations, models, repositories, services, handlers, middleware, and comprehensive tests. |
+| `task-rust-debug`                  | `rust-engineer`             | Debug Rust errors. Paste a panic backtrace, error log, or describe unexpected behavior. Classifies error, identifies root cause, suggests fix.    |
 | `task-rust-review`                 | `rust-tech-lead`            | Rust staff-level code review umbrella - Phases A-E with Axum/sqlx/Tokio idioms. Spawns parallel perf/security/observability subagents.            |
 | `task-rust-review-perf`            | `rust-performance-engineer` | sqlx N+1, Tokio task leaks, std::sync::Mutex across .await, blocking I/O on the runtime, allocation hotspots, pool sizing.                        |
 | `task-rust-review-security`        | `rust-security-engineer`    | Axum auth, jsonwebtoken, validator-crate input, sqlx parameterization, mass assignment via serde_json::from_value, unsafe audit, cargo-audit.     |
-| `task-rust-review-observability`   | `rust-tech-lead`            | tracing crate + tracing-opentelemetry, OTel SDK, metrics-exporter-prometheus, tokio-console, graceful shutdown, sentry-rust.                      |
+| `task-rust-review-observability`   | `rust-observability-engineer` | tracing crate + tracing-opentelemetry, OTel SDK, metrics-exporter-prometheus, tokio-console, graceful shutdown, sentry-rust.                      |
 | `task-rust-test`                   | `rust-test-engineer`        | Test strategy: #[tokio::test], axum-test / tower::oneshot, testcontainers PostgreSQL, mockall, proptest, cargo nextest discipline.                |
 | `task-rust-refactor`               | `rust-tech-lead`            | Rust refactor planning: fat handlers, leaked Tokio tasks, std Mutex across await, single-impl traits, Box<dyn> defaults, mass assignment.         |
 

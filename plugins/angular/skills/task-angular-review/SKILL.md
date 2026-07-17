@@ -206,14 +206,15 @@ Use skill: `ops-observability` for cross-cutting logging/metrics presence (depth
 
 ### Step 5 - Delegate Extra Scopes in Parallel
 
-If scope is Core only, skip.
+If scope is Core only, skip. For each selected scope, spawn one independent subagent in parallel. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not an `angular-tech-lead` spawn:
 
-| Scope | Subagent |
-|-------|----------|
-| +Perf | `task-angular-review-perf` |
-| +Sec | `task-angular-review-security` |
-| +Obs | `task-angular-review-observability` |
-| Full | All three in parallel |
+| Scope | Skill | Subagent (`subagent_type`) |
+|-------|-------|----------------------------|
+| +Perf | `task-angular-review-perf` | `angular-performance-engineer` |
+| +Sec | `task-angular-review-security` | `angular-security-engineer` |
+| +Obs | `task-angular-review-observability` | `angular-observability-engineer` |
+
+`Full` = 3 subagents.
 
 **Subagent prompt:** resolved review target (`base_ref`, `head_ref`), pre-read diff + commit log, depth level, pre-confirmed stack + detected configuration. Instruction to return findings in its own Output Format.
 

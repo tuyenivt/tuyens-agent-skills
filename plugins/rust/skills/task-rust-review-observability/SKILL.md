@@ -1,7 +1,7 @@
 ---
 name: task-rust-review-observability
 description: "Rust / Axum observability review: tracing, tracing-opentelemetry, OTel SDK, metrics-exporter-prometheus, tokio-console, sentry, graceful shutdown."
-agent: rust-tech-lead
+agent: rust-observability-engineer
 metadata:
   category: backend
   tags: [rust, axum, observability, tracing, opentelemetry, prometheus, tokio-console, sentry, workflow]

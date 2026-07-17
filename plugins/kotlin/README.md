@@ -13,15 +13,16 @@ A Claude Code plugin for Kotlin + Spring Boot.
 
 ## Plugin contents
 
-### Agents (5)
+### Agents (6)
 
 | Agent                         | Description                                                                                                                                                                          |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `kotlin-architect`            | Kotlin + Spring Boot architect. Designs services with data classes, coroutines, null safety, sealed-class result hierarchies, Kotlin DSL configuration, and Kotlin JPA conventions. |
-| `kotlin-tech-lead`            | Code review, refactoring guidance, observability review, and doc standards with Kotlin idiom enforcement (null safety, coroutines, data class JPA, parameterized SLF4J).            |
+| `kotlin-engineer`             | Kotlin + Spring Boot engineer - builds features end-to-end: entities, repositories, services, controllers, DTOs, tests. Debugs coroutine, JPA, MockK, and Spring startup failures.  |
+| `kotlin-tech-lead`            | Code review, refactoring guidance, and doc standards with Kotlin idiom enforcement (null safety, coroutines, data class JPA, parameterized SLF4J).                                   |
 | `kotlin-test-engineer`        | JUnit 5 / Kotest + MockK + springmockk + Testcontainers + runTest + Turbine, Spring test slices with Kotlin DSL.                                                                     |
 | `kotlin-security-engineer`    | Spring Security 6.x with Kotlin DSL, OWASP for Kotlin/JVM, coroutine SecurityContext propagation.                                                                                    |
 | `kotlin-performance-engineer` | JVM/Spring/JPA performance with coroutine-aware profiling, dispatcher selection vs Virtual Threads, GC tuning.                                                                       |
+| `kotlin-observability-engineer` | Structured Logback logging, MDC + coroutine context correlation, Micrometer metrics, Spring Boot Actuator, OpenTelemetry tracing, async/messaging instrumentation, Sentry wiring.  |
 
 ### Atomic skills (16)
 
@@ -48,11 +49,11 @@ A Claude Code plugin for Kotlin + Spring Boot.
 
 | Skill                              | Agent                          | Description                                                                                                                                                                                |
 | ---------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `task-kotlin-implement`            | `kotlin-architect`             | End-to-end Kotlin + Spring Boot feature implementation (stack detect, requirements, design approval, code, migration, tests, validation) with Kotlin idioms throughout                    |
-| `task-kotlin-debug`                | `kotlin-tech-lead`             | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin, Jackson serialization, Spring startup) with classification tables                                                |
+| `task-kotlin-implement`            | `kotlin-engineer`              | End-to-end Kotlin + Spring Boot feature implementation (stack detect, requirements, design approval, code, migration, tests, validation) with Kotlin idioms throughout                    |
+| `task-kotlin-debug`                | `kotlin-engineer`              | Debug Kotlin-specific errors (null safety, coroutines, MockK, JPA plugin, Jackson serialization, Spring startup) with classification tables                                                |
 | `task-kotlin-review`               | `kotlin-tech-lead`             | Kotlin/Spring Boot staff-level code review umbrella (Phases A-E + scope auto-escalation). Spawns Kotlin perf / security / observability subagents in parallel                              |
 | `task-kotlin-review-perf`          | `kotlin-performance-engineer`  | Kotlin/Spring Boot perf review for JPA N+1, fetch strategies, coroutine dispatcher / Virtual Thread interop, HikariCP sizing, Flow backpressure, caching                                   |
 | `task-kotlin-review-security`      | `kotlin-security-engineer`     | Kotlin/Spring Boot security review for Spring Security 6.x Kotlin DSL, OAuth2/JWT, method security, mass assignment via data class DTOs, coroutine SecurityContext propagation, OWASP    |
-| `task-kotlin-review-observability` | `kotlin-tech-lead`             | Kotlin/Spring Boot observability review for Micrometer, Actuator, structured logging, MDC + coroutine context correlation, OTel tracing, async/messaging instrumentation, error tracker   |
+| `task-kotlin-review-observability` | `kotlin-observability-engineer` | Kotlin/Spring Boot observability review for Micrometer, Actuator, structured logging, MDC + coroutine context correlation, OTel tracing, async/messaging instrumentation, error tracker   |
 | `task-kotlin-test`                 | `kotlin-test-engineer`         | Kotlin/Spring Boot test strategy and scaffolding using JUnit 5 / Kotest, MockK + springmockk, Spring test slices, Testcontainers, runTest, Turbine, Spring Security Test                  |
 | `task-kotlin-refactor`             | `kotlin-tech-lead`             | Kotlin/Spring Boot refactor planning for fat controllers, anemic domain, `!!` abuse, GlobalScope leakage, blocking-in-suspend, lateinit overuse, data class JPA, missing kotlin plugins   |

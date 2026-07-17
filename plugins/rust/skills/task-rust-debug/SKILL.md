@@ -1,7 +1,7 @@
 ---
 name: task-rust-debug
 description: Debug Rust errors - panics, borrow checker, async/Send, deadlocks, sqlx (unique/FK/serialization), silent serde drops - from traces or symptoms.
-agent: rust-tech-lead
+agent: rust-engineer
 metadata:
   category: backend
   tags: [rust, axum, sqlx, tokio, debug, troubleshooting, backtrace, workflow]

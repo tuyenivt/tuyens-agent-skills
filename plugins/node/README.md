@@ -34,12 +34,12 @@ ORM selection can be overridden by declaring it in your project's repo context f
 
 | Skill                            | Agent                     | Description                                                                                                                         |
 | -------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `task-node-implement`            | node-architect            | End-to-end feature implementation across all layers with comprehensive tests                                                        |
-| `task-node-debug`                | node-architect            | Debug errors from stack traces, test failures, build errors, and runtime issues                                                     |
+| `task-node-implement`            | node-engineer             | End-to-end feature implementation across all layers with comprehensive tests                                                        |
+| `task-node-debug`                | node-engineer             | Debug errors from stack traces, test failures, build errors, and runtime issues                                                     |
 | `task-node-review`               | node-tech-lead            | Node staff-level code review umbrella - Phases A-E with NestJS / Express idioms; spawns parallel scope subagents                    |
 | `task-node-review-perf`          | node-performance-engineer | Prisma / TypeORM N+1, event-loop blocking, BullMQ throughput, NestJS request-scoped misuse, migration safety                        |
 | `task-node-review-security`      | node-security-engineer    | NestJS Guards / JWT / Passport, Express middleware auth, ValidationPipe / Zod input, prototype pollution, OWASP Top 10              |
-| `task-node-review-observability` | node-tech-lead            | pino / winston, OpenTelemetry Node SDK + auto-instrumentation, prom-client, BullMQ queue events (library-level focus)               |
+| `task-node-review-observability` | node-observability-engineer | pino / winston, OpenTelemetry Node SDK + auto-instrumentation, prom-client, BullMQ queue events (library-level focus)               |
 | `task-node-test`                 | node-test-engineer        | Jest / Supertest strategy / scaffolding (NestJS TestingModule, Testcontainers, MSW, BullMQ in-memory + real-broker)                 |
 | `task-node-refactor`             | node-tech-lead            | Refactor plan: fat controllers, anemic services, sync-in-async, listener abuse, BullMQ idempotency, prototype pollution, with gates |
 
@@ -89,8 +89,9 @@ Atomic skills are loaded by workflow skills and agents (not directly invocable).
 
 | Agent                       | Description                                                                                                         |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `node-architect`            | Node.js/TypeScript architect for NestJS and Express. Designs APIs, module structure, DI, Prisma/TypeORM data access |
+| `node-engineer`             | Node.js/TypeScript engineer - builds features end-to-end: schema, services, controllers, DTOs, BullMQ jobs, Jest. Debugs stack traces, build errors, and failing specs. |
 | `node-tech-lead`            | Code review, refactoring guidance, doc standards for TypeScript strictness, NestJS/Express patterns, test coverage  |
 | `node-security-engineer`    | OWASP Top 10 for Node.js, JWT/Guards audit, ValidationPipe review, dependency scanning with bun audit / npm audit   |
 | `node-performance-engineer` | Event loop blocking detection, Prisma/TypeORM query tuning, memory leak profiling, connection pool sizing           |
+| `node-observability-engineer` | Structured logging (pino/winston), OpenTelemetry Node SDK, prom-client metrics, AsyncLocalStorage correlation, BullMQ queue events, Sentry wiring. |
 | `node-test-engineer`        | Jest/Supertest strategies, NestJS TestingModule, Testcontainers, MSW, and test pyramid design                       |

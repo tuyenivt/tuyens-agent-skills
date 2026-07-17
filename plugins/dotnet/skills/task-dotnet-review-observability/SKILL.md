@@ -1,7 +1,7 @@
 ---
 name: task-dotnet-review-observability
 description: ".NET observability review: Serilog structured logging, OpenTelemetry SDK, Prometheus metrics, dotnet-counters, health checks, Sentry."
-agent: dotnet-tech-lead
+agent: dotnet-observability-engineer
 metadata:
   category: backend
   tags: [dotnet, aspnet-core, observability, serilog, opentelemetry, prometheus, dotnet-counters, sentry, application-insights, workflow]

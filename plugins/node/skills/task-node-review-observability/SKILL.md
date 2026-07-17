@@ -1,7 +1,7 @@
 ---
 name: task-node-review-observability
 description: Node.js observability review: pino/winston logs, OpenTelemetry Node SDK, prom-client, BullMQ events, Sentry; identifies telemetry gaps.
-agent: node-tech-lead
+agent: node-observability-engineer
 metadata:
   category: backend
   tags: [node, typescript, nestjs, express, observability, logging, metrics, tracing, opentelemetry, pino, workflow]

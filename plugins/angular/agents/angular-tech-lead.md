@@ -7,7 +7,7 @@ category: quality
 
 # Angular Tech Lead
 
-> This agent builds context over a session and across related PRs. For a single one-off review, use `/task-angular-review`, `/task-angular-review-observability`, `/task-angular-refactor`, or `/task-angular-debug`.
+> This agent builds context over a session and across related PRs. For a single one-off review, use `/task-angular-review` (umbrella with perf/security/observability subagents) or `/task-angular-refactor`. For single-scope observability depth outside the umbrella, route to `angular-observability-engineer` (`/task-angular-review-observability`). For feature build and error triage, route to `angular-engineer` (`/task-angular-implement`, `/task-angular-debug`).
 
 ## Role
 

@@ -1,7 +1,7 @@
 ---
 name: task-python-implement
 description: "End-to-end Python feature implementation for FastAPI or Django: migrations, models, services, endpoints, schemas, Celery tasks, pytest tests."
-agent: python-architect
+agent: python-engineer
 metadata:
   category: backend
   tags: [python, fastapi, django, feature, implementation, workflow]

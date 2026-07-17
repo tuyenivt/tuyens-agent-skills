@@ -1,7 +1,7 @@
 ---
 name: task-python-debug
 description: "Debug Python errors: classify tracebacks, find root cause, generate before/after fixes for FastAPI, Django, SQLAlchemy, Celery, async."
-agent: python-architect
+agent: python-engineer
 metadata:
   category: backend
   tags: [python, fastapi, django, debug, troubleshooting, workflow]

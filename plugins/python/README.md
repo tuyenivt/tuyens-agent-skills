@@ -15,12 +15,12 @@ Claude Code plugin for Python development.
 
 | Skill                             | Agent                       | Description                                                                                                          |
 | --------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| task-python-implement             | python-architect            | End-to-end feature implementation across all layers                                                                  |
-| task-python-debug                 | python-architect            | Debug tracebacks, logs, Celery errors, and test failures                                                             |
+| task-python-implement             | python-engineer             | End-to-end feature implementation across all layers                                                                  |
+| task-python-debug                 | python-engineer             | Debug tracebacks, logs, Celery errors, and test failures                                                             |
 | task-python-review                | python-tech-lead            | Python staff-level code review umbrella - Phases A-E with FastAPI/Django idioms; spawns parallel scope subagents     |
 | task-python-review-perf           | python-performance-engineer | SQLAlchemy / Django ORM N+1, async event-loop blocking, Celery throughput, migration safety                          |
 | task-python-review-security       | python-security-engineer    | FastAPI OAuth2 / JWT, Django auth / DRF permissions, Pydantic v2 mass assignment, ORM injection, OWASP Top 10        |
-| task-python-review-observability  | python-tech-lead            | structlog, OpenTelemetry SDK + auto-instrumentation, Prometheus client, error-tracker SDKs (library-level focus)     |
+| task-python-review-observability  | python-observability-engineer | structlog, OpenTelemetry SDK + auto-instrumentation, Prometheus client, error-tracker SDKs (library-level focus)     |
 | task-python-test                  | python-test-engineer        | pytest strategy / scaffolding (httpx ASGITransport, DRF APIClient, Testcontainers, factory_boy, Celery testing)      |
 | task-python-refactor              | python-tech-lead            | Refactor plan: fat routers/views, anemic services, sync-in-async, Django signal abuse, Celery idempotency, with gates|
 
@@ -44,10 +44,11 @@ Claude Code plugin for Python development.
 
 | Agent                       | Description                                                                                            |
 | --------------------------- | ------------------------------------------------------------------------------------------------------ |
-| python-architect            | Designs async APIs, repository patterns, SQLAlchemy models, Celery pipelines, project structure        |
+| python-engineer             | Builds FastAPI/Django features end-to-end (model, service, endpoint, tests); debugs tracebacks, logs, Celery errors, pytest failures |
 | python-tech-lead            | Code review, refactoring guidance, doc standards for Pythonic patterns, type safety, async correctness |
 | python-security-engineer    | OWASP Top 10 for Python, JWT/OAuth2 auth review, input validation, dependency vulnerability scan       |
 | python-performance-engineer | Async correctness, SQLAlchemy/Django ORM query tuning, Celery throughput, profiling                    |
+| python-observability-engineer | Structured logging (structlog/python-json-logger), OpenTelemetry instrumentation, Celery tracing, contextvars correlation, prometheus-client metrics, Sentry |
 | python-test-engineer        | pytest strategies, factory_boy fixtures, Testcontainers, async testing, and test pyramid design        |
 
 ## Framework Detection

@@ -1,7 +1,7 @@
 ---
 name: task-rails-debug
 description: Diagnose and fix Rails errors from stack traces, logs, Sidekiq failures, and RSpec output with root-cause confidence.
-agent: rails-architect
+agent: rails-engineer
 metadata:
   category: backend
   tags: [ruby, rails, debug, troubleshooting, workflow]

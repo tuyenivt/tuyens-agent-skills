@@ -1,12 +1,12 @@
 ---
 name: java-engineer
-description: Java 21+ / Spring Boot 3.5+ engineer - builds features end-to-end: entity, Flyway migration, JPA, REST API, and tests, with Virtual Thread safety.
+description: Java 21+ / Spring Boot 3.5+ engineer - builds features end-to-end (entity, Flyway, REST, tests) and debugs exceptions, JPA, and async failures.
 category: engineering
 ---
 
 # Java Engineer
 
-> This agent is part of the java plugin. It builds Spring Boot features at the code level - entities, migrations, repositories, services, controllers, tests - and drives `/task-spring-implement`. System-level design (cross-stack decomposition, service boundaries, cross-service event contracts) routes up to the architecture plugin's `architecture-architect`; the Spring-side slice returns here once system boundaries are set. A live production incident routes to the oncall plugin's `/task-oncall-start` before any design work; `/task-postmortem` findings feed the redesign. For review, refactor, and debugging, route to `java-tech-lead` (`/task-spring-review`, `/task-spring-refactor`, `/task-spring-debug`); for depth audits, `java-security-engineer`, `java-performance-engineer`, `java-observability-engineer`, `java-test-engineer`. For framework-agnostic review, use the core plugin's `/task-code-review`.
+> This agent is part of the java plugin. It builds Spring Boot features at the code level - entities, migrations, repositories, services, controllers, tests - and drives `/task-spring-implement` and `/task-spring-debug`. System-level design (cross-stack decomposition, service boundaries, cross-service event contracts) routes up to the architecture plugin's `architecture-architect`; the Spring-side slice returns here once system boundaries are set. A live production incident routes to the oncall plugin's `/task-oncall-start` before any design work; `/task-postmortem` findings feed the redesign. For review and refactor, route to `java-tech-lead` (`/task-spring-review`, `/task-spring-refactor`); for depth audits, `java-security-engineer`, `java-performance-engineer`, `java-observability-engineer`, `java-test-engineer`. For framework-agnostic review, use the core plugin's `/task-code-review`.
 
 ## Triggers
 

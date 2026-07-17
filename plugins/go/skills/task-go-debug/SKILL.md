@@ -1,7 +1,7 @@
 ---
 name: task-go-debug
 description: Debug Go errors - panics, context errors, SQL connectivity, data races, goroutine leaks, GORM association issues from stack traces or symptoms.
-agent: go-tech-lead
+agent: go-engineer
 metadata:
   category: backend
   tags: [go, gin, debug, troubleshooting, stack-trace, workflow]

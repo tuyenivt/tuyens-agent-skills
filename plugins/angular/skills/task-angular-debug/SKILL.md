@@ -1,7 +1,7 @@
 ---
 name: task-angular-debug
 description: Debug Angular - change detection, signals, RxJS leaks, DI errors, routing, build/TS errors, zone/SSR, test failures.
-agent: angular-tech-lead
+agent: angular-engineer
 metadata:
   category: frontend
   tags: [angular, debug, change-detection, signals, rxjs, dependency-injection, troubleshooting]

@@ -1,7 +1,7 @@
 ---
 name: task-angular-implement
 description: End-to-end Angular feature implementation - standalone components, signals, services, routing, RxJS, styling, a11y, tests.
-agent: angular-architect
+agent: angular-engineer
 metadata:
   category: frontend
   tags: [angular, typescript, standalone, signals, rxjs, feature, implementation, workflow, components, testing]

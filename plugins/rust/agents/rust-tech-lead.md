@@ -7,7 +7,7 @@ category: quality
 
 # Rust Tech Lead
 
-> This agent is part of the rust plugin. Primary workflows: `/task-rust-review` (Rust-aware staff review umbrella), `/task-rust-review-observability` (tracing / OTel / Prometheus / tokio-console / sentry-rust review), `/task-rust-refactor` (Rust-aware refactor planning), `/task-rust-debug` (Rust panic / error triage). For stack-agnostic code review, use the core plugin's `/task-code-review`.
+> This agent is part of the rust plugin. Drives the Rust-specific review and refactor workflows: `/task-rust-review` (Rust-aware staff review umbrella with parallel perf / security / observability subagents) and `/task-rust-refactor` (Rust-aware refactor planning). For stack-agnostic code review, use the core plugin's `/task-code-review`. For single-scope depth outside review bundles, route to `rust-performance-engineer` (`/task-rust-review-perf`), `rust-security-engineer` (`/task-rust-review-security`), or `rust-observability-engineer` (`/task-rust-review-observability`). For feature build and panic / error triage, route to `rust-engineer` (`/task-rust-implement`, `/task-rust-debug`).
 
 ## Role
 

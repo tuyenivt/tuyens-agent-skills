@@ -1,7 +1,7 @@
 ---
 name: task-vue-review-observability
 description: Vue / Nuxt observability review - web-vitals, Sentry Vue/Nuxt SDK, errorCaptured, OpenTelemetry browser + Nitro, RUM, structured logs.
-agent: vue-tech-lead
+agent: vue-observability-engineer
 metadata:
   category: frontend
   tags: [vue, typescript, nuxt, vite, observability, web-vitals, sentry, opentelemetry, rum, workflow]

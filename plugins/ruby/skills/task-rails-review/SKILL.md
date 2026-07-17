@@ -191,7 +191,15 @@ Load `backend-coding-standards` when new naming/structure patterns introduced.
 
 ### Step 9 - Delegate Extra Scopes in Parallel
 
-Skip if `core-only`. For each selected scope, spawn one independent subagent in parallel running the matching `task-rails-review-*`. `Full` = 3 subagents.
+Skip if `core-only`. For each selected scope, spawn one independent subagent in parallel. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `rails-tech-lead` spawn:
+
+| Scope | Skill                             | Subagent (`subagent_type`)     |
+| ----- | --------------------------------- | ------------------------------ |
+| +Perf | `task-rails-review-perf`          | `rails-performance-engineer`   |
+| +Sec  | `task-rails-review-security`      | `rails-security-engineer`      |
+| +Obs  | `task-rails-review-observability` | `rails-observability-engineer` |
+
+`Full` = 3 subagents.
 
 **Subagent prompt contract:** resolved `base_ref`/`head_ref` + pre-read diff and commit log; depth level; pre-confirmed stack; return findings in its own skill's Output Format.
 

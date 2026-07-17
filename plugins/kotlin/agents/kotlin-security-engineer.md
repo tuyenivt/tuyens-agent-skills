@@ -36,7 +36,7 @@ The review checklist itself lives in `task-kotlin-review-security` - do not audi
 
 | Ask | Route |
 | --- | ----- |
-| Design a security control (rate limiting, webhook signature verification, tenant scoping) | This agent specifies the requirement from `kotlin-spring-security-patterns`; the build goes to kotlin-architect via `/task-kotlin-implement` |
+| Design a security control (rate limiting, webhook signature verification, tenant scoping) | This agent specifies the requirement from `kotlin-spring-security-patterns`; the build goes to kotlin-engineer via `/task-kotlin-implement` |
 | Active attack or exploit in progress (happening now) | oncall plugin `/task-oncall-start` - containment before review; after `/task-postmortem`, this agent reviews the attacked surface via `/task-kotlin-review-security` |
 | Breach forensics beyond this codebase (credential-list origin, third-party compromise) | oncall plugin; this agent owns only the in-app leak hypothesis (secrets in source, logged credentials, injection exfiltration) |
 | Security-driven redesign (multi-tenant isolation, cross-service authz model) | architecture plugin; this agent contributes security requirements as design input |

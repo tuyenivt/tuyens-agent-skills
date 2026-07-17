@@ -218,7 +218,15 @@ Use skill: `backend-coding-standards`. Use skill: `ops-observability` for cross-
 
 ### Step 5 - Delegate Extra Scopes in Parallel
 
-Skip if Core only. Spawn the subagents the resolved scope requires (scope table in Depth and Scope) immediately after Phase A resolves depth - the earliest point the prompt contract below is satisfiable - so they run in parallel with Phases B-E.
+Skip if Core only. Spawn the subagents the resolved scope requires immediately after Phase A resolves depth - the earliest point the prompt contract below is satisfiable - so they run in parallel with Phases B-E. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `java-tech-lead` spawn:
+
+| Scope | Skill                              | Subagent (`subagent_type`)    |
+| ----- | ---------------------------------- | ----------------------------- |
+| +Perf | `task-spring-review-perf`          | `java-performance-engineer`   |
+| +Sec  | `task-spring-review-security`      | `java-security-engineer`      |
+| +Obs  | `task-spring-review-observability` | `java-observability-engineer` |
+
+`Full` = 3 subagents.
 
 **Subagent prompt contract:** pass the resolved `base_ref`/`head_ref`, the already-read diff and commit log, depth level, and pre-confirmed stack. Subagent skips `review-precondition-check` and re-reading the diff. Return findings using its own Output Format.
 

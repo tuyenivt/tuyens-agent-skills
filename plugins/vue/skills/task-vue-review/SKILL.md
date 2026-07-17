@@ -242,14 +242,15 @@ Use skill: `ops-observability` for cross-cutting logging/metrics presence (depth
 
 If scope is **Core only**, skip.
 
-For each extra scope, spawn an independent subagent **in parallel** with the main thread:
+For each extra scope, spawn one independent subagent **in parallel** with the main thread. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `vue-tech-lead` spawn:
 
-| Scope | Subagents |
-|-------|-----------|
-| + Perf | `task-vue-review-perf` |
-| + Sec | `task-vue-review-security` |
-| + Obs | `task-vue-review-observability` |
-| Full | All three in parallel |
+| Scope | Skill | Subagent (`subagent_type`) |
+|-------|-------|----------------------------|
+| + Perf | `task-vue-review-perf` | `vue-performance-engineer` |
+| + Sec | `task-vue-review-security` | `vue-security-engineer` |
+| + Obs | `task-vue-review-observability` | `vue-observability-engineer` |
+
+`Full` = 3 subagents.
 
 **Subagent prompt contract** - each must include:
 

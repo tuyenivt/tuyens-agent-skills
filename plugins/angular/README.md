@@ -26,12 +26,12 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 | Skill                                | Agent                          | Purpose                                                                                                          |
 | ------------------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `task-angular-implement`             | `angular-architect`            | End-to-end Angular feature implementation (components + state + data + tests)                                    |
-| `task-angular-debug`                 | `angular-tech-lead`            | Debug Angular errors (change detection, RxJS, DI, routing, build, zone.js)                                       |
+| `task-angular-implement`             | `angular-engineer`             | End-to-end Angular feature implementation (components + state + data + tests)                                    |
+| `task-angular-debug`                 | `angular-engineer`             | Debug Angular errors (change detection, RxJS, DI, routing, build, zone.js)                                       |
 | `task-angular-review`                | `angular-tech-lead`            | Angular staff-level code review umbrella (Phases A-E + parallel perf/security/observability subagents)           |
 | `task-angular-review-perf`           | `angular-performance-engineer` | Angular performance review (CWV, bundle, change detection, signals, `@defer`, SSR + HTTP transfer cache)         |
 | `task-angular-review-security`       | `angular-security-engineer`    | Angular security review (`[innerHTML]`, `bypassSecurityTrust*`, CSP, functional guards/interceptors, OWASP)      |
-| `task-angular-review-observability`  | `angular-tech-lead`            | Angular observability review (web-vitals, Sentry + ErrorHandler, OTel, RUM, structured logging)                  |
+| `task-angular-review-observability`  | `angular-observability-engineer` | Angular observability review (web-vitals, Sentry + ErrorHandler, OTel, RUM, structured logging)                  |
 | `task-angular-test`                  | `angular-test-engineer`        | Angular test strategy and scaffolding (TestBed, ATL, `HttpTestingController`, CDK harnesses, Playwright)         |
 | `task-angular-refactor`              | `angular-tech-lead`            | Angular refactor planning (god component, BehaviorSubject→signals, OnPush migration, NgModule→standalone, etc.)  |
 
@@ -60,10 +60,11 @@ Atomic skills provide focused, reusable Angular patterns. These are hidden from 
 
 | Agent                          | Focus                                                                   |
 | ------------------------------ | ----------------------------------------------------------------------- |
-| `angular-architect`            | Angular architecture: standalone components, signals, DI, routing, RxJS |
+| `angular-engineer`             | Builds features end-to-end: components, signals, services, state, data, routing, forms, tests. Debugs CD, RxJS, DI, routing errors |
 | `angular-tech-lead`            | Code review with session context - tracks recurring patterns            |
 | `angular-performance-engineer` | Change detection, bundle analysis, lazy loading, signals migration, CWV |
 | `angular-security-engineer`    | XSS prevention, DomSanitizer, auth guards, HTTP interceptor security    |
+| `angular-observability-engineer` | web-vitals RUM, Sentry ErrorHandler + browser SDK, OpenTelemetry, source maps, structured logging |
 | `angular-test-engineer`        | Testing strategy: Angular Testing Library, Vitest/Jest, Playwright      |
 
 ## Usage Examples

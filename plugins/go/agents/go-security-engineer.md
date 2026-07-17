@@ -22,7 +22,7 @@ category: quality
 | Ask | Route |
 | --- | ----- |
 | Security review or audit of Go code (auth, injection, validation, secrets, dependencies) | `/task-go-review-security` |
-| Design a security control (webhook signature verification, rate limiting, tenant scoping) | This agent specifies the requirement from `go-security-patterns`; the build goes to go-architect via `/task-go-implement` |
+| Design a security control (webhook signature verification, rate limiting, tenant scoping) | This agent specifies the requirement from `go-security-patterns`; the build goes to go-engineer via `/task-go-implement` |
 | General (non-security) code review | go-tech-lead via `/task-go-review`; its umbrella already includes a security subagent pass |
 | Active attack or exploit in progress (happening now) | oncall plugin `/task-oncall-start` - containment before review; after `/task-postmortem`, this agent reviews the attacked surface via `/task-go-review-security` |
 | Breach forensics beyond this codebase (credential-list origin, third-party compromise) | oncall plugin; this agent owns only the in-app leak hypothesis (secrets in source, logged credentials, injection exfiltration) via `/task-go-review-security` |

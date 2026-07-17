@@ -6,7 +6,7 @@ category: quality
 
 # Vue Security Engineer
 
-> This agent drives the Vue-specific security review workflow `/task-vue-review-security`. It delivers findings and recommended remediations - implementing fixes goes to `vue-architect` (`task-vue-implement`).
+> This agent drives the Vue-specific security review workflow `/task-vue-review-security`. It delivers findings and recommended remediations - implementing fixes goes to `vue-engineer` (`task-vue-implement`).
 >
 > Route outward: active exploitation or a breach in progress -> the oncall plugin (`task-oncall-start`) for containment first; run the root-cause security review here afterward and feed findings into oncall's `task-postmortem`. Stack-agnostic security review -> core `/task-code-review-security`; a backend service's own security review -> that stack's plugin; infrastructure or system-level posture findings -> the architecture plugin. Except for the breach case (containment first), hand off out-of-scope parts immediately - they proceed in parallel.
 

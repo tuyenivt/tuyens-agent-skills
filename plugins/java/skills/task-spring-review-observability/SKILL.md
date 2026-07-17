@@ -1,7 +1,7 @@
 ---
 name: task-spring-review-observability
 description: "Spring Boot observability review: Logback JSON, MDC, Actuator, Micrometer, Micrometer Tracing/OTel, listener instrumentation, error trackers."
-agent: java-tech-lead
+agent: java-observability-engineer
 metadata:
   category: backend
   tags: [java, spring-boot, observability, logging, metrics, tracing, actuator, micrometer, workflow]

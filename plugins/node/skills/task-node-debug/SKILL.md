@@ -1,7 +1,7 @@
 ---
 name: task-node-debug
 description: Debug Node.js / TypeScript errors: NestJS / Express, Prisma / TypeORM, tsc compile errors, Jest failures, BullMQ job failures.
-agent: node-architect
+agent: node-engineer
 metadata:
   category: backend
   tags: [node, typescript, nestjs, express, debug, troubleshooting, workflow]

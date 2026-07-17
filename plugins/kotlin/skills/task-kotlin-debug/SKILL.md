@@ -1,7 +1,7 @@
 ---
 name: task-kotlin-debug
 description: Debug Kotlin / Spring Boot errors: null safety, coroutine stack traces, MockK, kotlin-jpa plugin, Jackson, startup failures from final classes.
-agent: kotlin-architect
+agent: kotlin-engineer
 metadata:
   category: backend
   tags: [kotlin, spring-boot, debug, troubleshooting, workflow]

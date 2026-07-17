@@ -7,7 +7,7 @@ category: quality
 
 # React Tech Lead
 
-> This agent is part of the react plugin. Drives the React-specific review and refactor workflows: `/task-react-review` (umbrella with perf/security/observability subagents), `/task-react-review-observability`, and `/task-react-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`.
+> This agent is part of the react plugin. Drives the React-specific review and refactor workflows: `/task-react-review` (umbrella with perf/security/observability subagents) and `/task-react-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`. For single-scope depth outside review bundles, route to `react-performance-engineer` (`/task-react-review-perf`), `react-security-engineer` (`/task-react-review-security`), or `react-observability-engineer` (`/task-react-review-observability`).
 
 ## Role
 
@@ -77,7 +77,8 @@ When reviewing across a session or series of PRs, accumulate:
 
 - Use skill: `task-react-review` for the React-specific staff-level review umbrella (Phases A-E with perf/security/observability subagents, RSC vs Client Component boundary, hooks rules, `useEffect` discipline, state categorization, Server Action validation, `dangerouslySetInnerHTML` audit, accessibility regressions)
 - Use skill: `task-react-refactor` for React-specific refactor planning (god components, prop drilling, `useEffect` for derived state, `"use client"` at root of layouts, missing Server Component conversion, scattered state, missing Zod on Server Actions, untyped props) with a Vitest coverage gate
-- Use skill: `task-react-review-observability` for the React observability depth review (`web-vitals`, Sentry browser SDK + React error boundaries, OpenTelemetry web SDK, Next.js `instrumentation.ts`, structured client logging, RUM correlation)
+
+The umbrella's observability subagent covers PR-scoped observability; for asks spanning beyond the diff (system-wide tracing, client logging, RUM correlation), route to `react-observability-engineer` (`/task-react-review-observability`).
 
 ### Atomic skills
 

@@ -32,7 +32,7 @@ category: engineering
 | Ask | Route |
 | --- | ----- |
 | Live production incident (OOM crash-loop, outage happening now) | oncall plugin `/task-oncall-start` owns mitigation (rollback, limits, comms) first; this agent then diagnoses the implicated deploy via `/task-spring-review-perf` |
-| Gradle build performance | `java-gradle-build-optimization` (spring-architect's domain) - this agent owns runtime performance only |
+| Gradle build performance | `java-gradle-build-optimization` (java-engineer's domain) - this agent owns runtime performance only |
 | Cross-service capacity or scaling architecture | architecture plugin |
 
 ## Performance Checklist

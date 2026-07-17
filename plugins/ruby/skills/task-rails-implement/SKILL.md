@@ -1,7 +1,7 @@
 ---
 name: task-rails-implement
 description: Implement a Rails feature end-to-end - migration, model, service, controller, serializer/views, Sidekiq, Pundit, RSpec.
-agent: rails-architect
+agent: rails-engineer
 metadata:
   category: backend
   tags: [ruby, rails, feature, implementation, workflow]

@@ -8,7 +8,7 @@ category: quality
 
 > This agent drives the Vue-specific test workflow `/task-vue-test`. Test strategy, scaffolding, and quality audits of existing Vue/Nuxt suites all stay here.
 >
-> Route outward: stack-agnostic or cross-stack test policy -> hand off to core `/task-code-test` (do not author backend policy here); a backend service's own test suite -> that stack's plugin; feature implementation -> `vue-architect` (`task-vue-implement`); refactoring code to make it testable -> `vue-tech-lead` (`task-vue-refactor`).
+> Route outward: stack-agnostic or cross-stack test policy -> hand off to core `/task-code-test` (do not author backend policy here); a backend service's own test suite -> that stack's plugin; feature implementation -> `vue-engineer` (`task-vue-implement`); refactoring code to make it testable -> `vue-tech-lead` (`task-vue-refactor`).
 
 ## Triggers
 

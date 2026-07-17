@@ -234,7 +234,15 @@ Use skill: `backend-coding-standards` for cross-language naming. Use skill: `ops
 
 If scope is **Core only**, skip.
 
-For each extra scope, spawn an independent subagent **in parallel** with the main thread.
+For each selected scope, spawn one independent subagent **in parallel** with the main thread. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `rust-tech-lead` spawn:
+
+| Scope | Skill                            | Subagent (`subagent_type`)    |
+| ----- | -------------------------------- | ----------------------------- |
+| +Perf | `task-rust-review-perf`          | `rust-performance-engineer`   |
+| +Sec  | `task-rust-review-security`      | `rust-security-engineer`      |
+| +Obs  | `task-rust-review-observability` | `rust-observability-engineer` |
+
+`Full` = 3 subagents.
 
 **Subagent prompt contract:**
 

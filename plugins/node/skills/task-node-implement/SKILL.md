@@ -1,7 +1,7 @@
 ---
 name: task-node-implement
 description: End-to-end Node.js / TypeScript feature implementation for NestJS or Express: data model, services, controllers, DTOs, middleware, Jest tests.
-agent: node-architect
+agent: node-engineer
 metadata:
   category: backend
   tags: [node, typescript, nestjs, express, feature, implementation, workflow]

@@ -1,7 +1,7 @@
 ---
 name: task-vue-debug
 description: Debug Vue 3.5 / Nuxt 3 / Vite - reactivity, hydration mismatches, template/compile errors, Nuxt auto-imports, stale data, build failures.
-agent: vue-tech-lead
+agent: vue-engineer
 metadata:
   category: frontend
   tags: [vue, debug, reactivity, hydration, nuxt, troubleshooting]

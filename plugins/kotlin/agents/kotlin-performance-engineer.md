@@ -35,7 +35,7 @@ Diagnosis asks run through `/task-kotlin-review-perf` - the investigation proced
 | Ask | Route |
 | --- | ----- |
 | Live production incident (OOM crash-loop, outage happening now) | oncall plugin `/task-oncall-start` owns mitigation (rollback, limits, comms) first; this agent then diagnoses the implicated deploy via `/task-kotlin-review-perf` |
-| Gradle build performance | `kotlin-gradle-build-optimization` (kotlin-architect's domain) - this agent owns runtime performance only |
+| Gradle build performance | `kotlin-gradle-build-optimization` (kotlin-engineer's domain) - this agent owns runtime performance only |
 | Cross-service capacity or scaling architecture (sharding, 10x traffic plans) | architecture plugin; this agent contributes measured baselines and per-service headroom as design input |
 
 Bundled asks: live incidents first, then post-stability diagnosis (`/task-kotlin-review-perf`), then build or design-input work.

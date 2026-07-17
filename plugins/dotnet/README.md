@@ -27,12 +27,12 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 | Skill                              | Agent                          | Purpose                                                                                    |
 | ---------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
-| `task-dotnet-implement`            | `dotnet-architect`             | End-to-end ASP.NET Core feature implementation (entity + migration + API + tests)          |
-| `task-dotnet-debug`                | `dotnet-tech-lead`             | Developer debugging workflow (paste stack trace or describe unexpected behaviour, get fix) |
+| `task-dotnet-implement`            | `dotnet-engineer`              | End-to-end ASP.NET Core feature implementation (entity + migration + API + tests)          |
+| `task-dotnet-debug`                | `dotnet-engineer`              | Developer debugging workflow (paste stack trace or describe unexpected behaviour, get fix) |
 | `task-dotnet-review`               | `dotnet-tech-lead`             | .NET-aware staff-level code review umbrella (Phases A-E + parallel perf/security/observability subagents) |
 | `task-dotnet-review-perf`          | `dotnet-performance-engineer`  | Performance review: EF Core N+1, async pitfalls, allocation hotspots, caching, pool sizing |
 | `task-dotnet-review-security`      | `dotnet-security-engineer`     | Security review: JWT bearer, policy-based authz, mass assignment, FluentValidation, OWASP   |
-| `task-dotnet-review-observability` | `dotnet-tech-lead`             | Observability review: Serilog, OpenTelemetry, `Meter` + Prometheus, dotnet-counters, Sentry |
+| `task-dotnet-review-observability` | `dotnet-observability-engineer`| Observability review: Serilog, OpenTelemetry, `Meter` + Prometheus, dotnet-counters, Sentry |
 | `task-dotnet-test`                 | `dotnet-test-engineer`         | Test strategy & scaffolds: xUnit, WebApplicationFactory, Testcontainers, NSubstitute, Bogus |
 | `task-dotnet-refactor`             | `dotnet-tech-lead`             | Refactor planning: fat controllers, `.Result` blocking, EF Core N+1, mass assignment, captive deps |
 
@@ -57,13 +57,14 @@ Atomic skills provide focused, reusable .NET patterns. These are hidden from the
 
 ## Agents
 
-| Agent                         | Focus                                                                                           |
-| ----------------------------- | ----------------------------------------------------------------------------------------------- |
-| `dotnet-architect`            | ASP.NET Core architecture, EF Core, Clean Architecture, APIs                                    |
-| `dotnet-tech-lead`            | .NET code review, refactoring guidance, doc standards, async safety, layer boundary enforcement |
-| `dotnet-test-engineer`        | xUnit, Testcontainers, WebApplicationFactory, Bogus                                             |
-| `dotnet-security-engineer`    | JWT auth, policy-based authz, OWASP for .NET                                                    |
-| `dotnet-performance-engineer` | EF Core optimization, async patterns, caching, profiling                                        |
+| Agent                           | Focus                                                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `dotnet-engineer`               | Builds ASP.NET Core features end-to-end (EF Core, MediatR, controllers, migrations, tests); debugs exceptions, EF Core, async. |
+| `dotnet-tech-lead`              | .NET code review, refactoring guidance, doc standards, async safety, layer boundary enforcement                                |
+| `dotnet-test-engineer`          | xUnit, Testcontainers, WebApplicationFactory, Bogus                                                                            |
+| `dotnet-security-engineer`      | JWT auth, policy-based authz, OWASP for .NET                                                                                   |
+| `dotnet-performance-engineer`   | EF Core optimization, async patterns, caching, profiling                                                                       |
+| `dotnet-observability-engineer` | Serilog structured logging, OpenTelemetry, Meter + Prometheus, dotnet-counters, health checks, Sentry/App Insights.            |
 
 ## Usage Examples
 

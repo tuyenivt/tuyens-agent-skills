@@ -1,7 +1,7 @@
 ---
 name: task-react-review-observability
 description: React / Next.js observability review - web-vitals, Sentry, OpenTelemetry browser + instrumentation.ts, RUM, structured logs, PII.
-agent: react-tech-lead
+agent: react-observability-engineer
 metadata:
   category: frontend
   tags: [react, typescript, nextjs, vite, observability, web-vitals, sentry, opentelemetry, rum, workflow]

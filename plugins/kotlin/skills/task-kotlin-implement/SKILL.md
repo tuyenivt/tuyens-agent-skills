@@ -1,7 +1,7 @@
 ---
 name: task-kotlin-implement
 description: End-to-end Kotlin / Spring Boot feature implementation: clarification, design, layered code generation, Flyway migration, unit + integration tests.
-agent: kotlin-architect
+agent: kotlin-engineer
 metadata:
   category: backend
   tags: [kotlin, spring-boot, feature, implementation, workflow]

@@ -26,12 +26,12 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 | Skill                           | Purpose                                                                                                                                 | Agent                      |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| `task-vue-implement`            | End-to-end Vue feature implementation (components + state + data + tests)                                                               | `vue-architect`            |
-| `task-vue-debug`                | Debug Vue errors (reactivity, hydration, template compilation, Nuxt, build)                                                             | `vue-tech-lead`            |
+| `task-vue-implement`            | End-to-end Vue feature implementation (components + state + data + tests)                                                               | `vue-engineer`             |
+| `task-vue-debug`                | Debug Vue errors (reactivity, hydration, template compilation, Nuxt, build)                                                             | `vue-engineer`             |
 | `task-vue-review`               | Staff-level umbrella review with Phases A-E; spawns parallel perf / security / observability subagents                                  | `vue-tech-lead`            |
 | `task-vue-review-perf`          | Core Web Vitals (LCP / INP / CLS), bundle, hydration, reactivity hotspots, `useFetch` cache, `routeRules` (`prerender` / `swr` / `isr`) | `vue-performance-engineer` |
 | `task-vue-review-security`      | XSS via `v-html`, CSP / nonce, Nitro endpoint validation, `NUXT_PUBLIC_` / `VITE_` leakage, open redirect, OWASP (Vue lens)             | `vue-security-engineer`    |
-| `task-vue-review-observability` | `web-vitals`, Sentry Vue SDK + error boundaries, OTel browser, Nitro server-side OTel, RUM, structured client logging                   | `vue-tech-lead`            |
+| `task-vue-review-observability` | `web-vitals`, Sentry Vue SDK + error boundaries, OTel browser, Nitro server-side OTel, RUM, structured client logging                   | `vue-observability-engineer` |
 | `task-vue-test`                 | Test strategy / coverage assessment / scaffolds with Vitest + VTU/TLV + MSW + Playwright + `@nuxt/test-utils`; composable testing       | `vue-test-engineer`        |
 | `task-vue-refactor`             | Step-by-step refactor plan for god components, prop drilling, watcher overuse, deep `reactive`, etc.; Vitest coverage gate              | `vue-tech-lead`            |
 
@@ -57,10 +57,11 @@ Atomic skills provide focused, reusable Vue patterns. These are hidden from the 
 
 | Agent                      | Focus                                                                     |
 | -------------------------- | ------------------------------------------------------------------------- |
-| `vue-architect`            | Vue 3/Nuxt 3 architecture: Composition API, SFC design, Pinia, TypeScript |
+| `vue-engineer`             | Builds Vue 3.5+ / Nuxt 3 features end-to-end: components, Pinia state, data fetching, forms, Vitest tests. Debugs reactivity, hydration, build errors |
 | `vue-tech-lead`            | Code review with session context - tracks recurring patterns              |
 | `vue-performance-engineer` | Core Web Vitals, Nuxt SSR/SSG, bundle analysis, computed vs method        |
 | `vue-security-engineer`    | XSS prevention, CSP, v-html sanitization, auth patterns, Nuxt middleware  |
+| `vue-observability-engineer` | web-vitals RUM, Sentry browser SDK + error boundaries, source maps, OTel browser/Nitro tracing, client logging |
 | `vue-test-engineer`        | Testing strategy: Vitest, Vue Test Utils, @nuxt/test-utils, Playwright    |
 
 ## Usage Examples

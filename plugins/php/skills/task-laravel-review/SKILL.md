@@ -244,7 +244,15 @@ Use skill: `ops-observability` for cross-cutting logging/metrics presence (subag
 
 ### Step 5 - Delegate Extra Scopes in Parallel (if scope includes)
 
-Skip if Core only. Otherwise spawn each extra-scope subagent **in parallel** with the main Core thread: `+Perf` -> `task-laravel-review-perf`; `+Sec` -> `task-laravel-review-security`; `+Obs` -> `task-laravel-review-observability`; **Full** -> all three concurrently.
+Skip if Core only. For each selected scope, spawn one independent subagent **in parallel** with the main Core thread. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `php-tech-lead` spawn:
+
+| Scope | Skill                               | Subagent (`subagent_type`)   |
+| ----- | ----------------------------------- | ---------------------------- |
+| +Perf | `task-laravel-review-perf`          | `php-performance-engineer`   |
+| +Sec  | `task-laravel-review-security`      | `php-security-engineer`      |
+| +Obs  | `task-laravel-review-observability` | `php-observability-engineer` |
+
+**Full** = 3 subagents.
 
 Each subagent prompt must include: resolved `base_ref`/`head_ref` + pre-read diff/log (skips `review-precondition-check` and `git diff`); depth level + pre-confirmed stack/ORM/auth/queue signals (skips `stack-detect`); instruction to return findings in the subagent's own Output Format.
 

@@ -7,7 +7,7 @@ category: quality
 
 # PHP Tech Lead
 
-> This agent is part of the php plugin. Primary workflows: `/task-laravel-review` (Laravel-aware staff-level umbrella with parallel perf/security/observability subagents), `/task-laravel-review-observability` (Monolog / OpenTelemetry PHP / Horizon / Telescope / Pulse / Sentry / lifecycle), `/task-laravel-refactor` (mass assignment, fat controllers, Eloquent N+1, queue idempotency, Octane-readiness with `php artisan test` + `composer phpstan` + `vendor/bin/pint --test` Coverage Gate), `/task-laravel-debug`. For framework-agnostic code review workflow, use the core plugin's `/task-code-review`.
+> This agent is part of the php plugin. Primary workflows: `/task-laravel-review` (Laravel-aware staff-level umbrella with parallel perf/security/observability subagents), `/task-laravel-refactor` (mass assignment, fat controllers, Eloquent N+1, queue idempotency, Octane-readiness with `php artisan test` + `composer phpstan` + `vendor/bin/pint --test` Coverage Gate). For framework-agnostic code review workflow, use the core plugin's `/task-code-review`. For single-scope depth outside the umbrella, route to `php-performance-engineer` (`/task-laravel-review-perf`), `php-security-engineer` (`/task-laravel-review-security`), or `php-observability-engineer` (`/task-laravel-review-observability`).
 
 ## Role
 

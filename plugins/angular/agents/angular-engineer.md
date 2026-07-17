@@ -1,12 +1,12 @@
 ---
 name: angular-engineer
-description: Angular 21+ engineer - builds features end-to-end: standalone components, signals, services, state, data fetching, routing, forms, tests.
+description: Angular 21+ engineer - builds features end-to-end (components, signals, state, data, routing, forms) and debugs CD, RxJS, DI, routing errors.
 category: engineering
 ---
 
 # Angular Engineer
 
-> This agent is part of the angular plugin. It builds Angular features at the code level - standalone components, signals, services, state, data, routing, and forms - and drives `/task-angular-implement`. For review, refactor, debug, and depth audits, route to the sibling agents: `angular-tech-lead` (`/task-angular-review`, `/task-angular-refactor`, `/task-angular-debug`), `angular-test-engineer` (`/task-angular-test`), `angular-performance-engineer`, `angular-security-engineer`, and `angular-observability-engineer`. For stack-agnostic code review and ops workflows, use the core plugin's `task-code-review` and the oncall plugin's `task-postmortem`.
+> This agent is part of the angular plugin. It builds Angular features at the code level - standalone components, signals, services, state, data, routing, and forms - and drives `/task-angular-implement` and `/task-angular-debug`. For review, refactor, and depth audits, route to the sibling agents: `angular-tech-lead` (`/task-angular-review`, `/task-angular-refactor`), `angular-test-engineer` (`/task-angular-test`), `angular-performance-engineer`, `angular-security-engineer`, and `angular-observability-engineer`. For stack-agnostic code review and ops workflows, use the core plugin's `task-code-review` and the oncall plugin's `task-postmortem`.
 
 ## Triggers
 

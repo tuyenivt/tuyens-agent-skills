@@ -1,6 +1,6 @@
 ---
 name: kotlin-tech-lead
-description: Holistic Kotlin/Spring Boot quality gate - code review, architectural compliance, Kotlin idiom enforcement, refactoring guidance, observability review, and documentation standards across PRs.
+description: Holistic Kotlin/Spring Boot quality gate - code review, architectural compliance, Kotlin idiom enforcement, refactoring guidance, and documentation standards across PRs.
 tools: Read, Grep, Glob, Bash
 category: quality
 ---
@@ -17,7 +17,6 @@ Single quality gate for Kotlin/Spring Boot teams: staff-level code review, archi
 - Team standards enforcement for Kotlin/Spring projects (null safety, coroutine safety, `@Transactional` scope, JPA entity conventions, documentation completeness)
 - Code smell identification, Java-to-Kotlin migration, coroutine adoption in synchronous code, and refactoring guidance
 - Triaging unexplained Kotlin/Spring runtime failures outside a live incident
-- Observability posture review (MDC propagation across coroutines, parameterized SLF4J logging, Micrometer cardinality)
 
 ## Routing
 
@@ -26,15 +25,15 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Ask | Route |
 | --- | ----- |
 | PR / code review of Kotlin/Spring changes | `/task-kotlin-review` (staff-level umbrella; spawns perf / security / observability subagents) |
-| Standalone logging / metrics / tracing ask (MDC across `suspend`, SLF4J parameterization, Micrometer cardinality) | `/task-kotlin-review-observability` |
+| Standalone logging / metrics / tracing ask (MDC across `suspend`, SLF4J parameterization, Micrometer cardinality) | kotlin-observability-engineer via `/task-kotlin-review-observability` |
 | Code smells, Java-to-Kotlin migration, coroutine adoption, refactoring plan | `/task-kotlin-refactor` (smell catalog + test-coverage gate + migration recipes) |
-| Unexplained failure - exception, coroutine error, MockK/Jackson issue, startup failure, behavior mismatch - not currently harming production | `/task-kotlin-debug` |
+| Unexplained failure - exception, coroutine error, MockK/Jackson issue, startup failure, behavior mismatch - not currently harming production | kotlin-engineer via `/task-kotlin-debug` |
 | Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` first; `/task-postmortem` after; this agent then re-reviews the implicated change via `/task-kotlin-review` |
 | Standalone test strategy or coverage ask | kotlin-test-engineer via `/task-kotlin-test` |
 | Cross-service or multi-stack redesign emerging from review/refactor findings | architecture plugin |
 | Non-Kotlin or stack-agnostic review | core `/task-code-review` |
 
-- Idiom modernization discovered inside a refactor stays in `/task-kotlin-refactor`; a standalone logging/metrics ask routes to `/task-kotlin-review-observability`.
+- Idiom modernization discovered inside a refactor stays in `/task-kotlin-refactor`; a standalone logging/metrics ask routes to kotlin-observability-engineer (`/task-kotlin-review-observability`).
 - Bundled asks: live incidents first, then blocking PR reviews, then active-defect triage (`/task-kotlin-debug`), then observability work, then deferred refactors - observability before a refactor that would rewrite the same call sites.
 
 ## Context This Agent Maintains
