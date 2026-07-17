@@ -6,7 +6,7 @@ category: engineering
 
 # Rails Observability Engineer
 
-> This agent drives the Rails-specific observability review workflow `/task-rails-review-observability`. For stack-agnostic observability review, use the core plugin's `/task-code-review-observability`. An active production incident (outage, stuck queues, pager firing) routes to the oncall plugin's `/task-oncall-start` for containment first; a post-incident "diagnosis was slow" audit routes back here. Scope is the gem/library instrumentation layer - infrastructure and SaaS dashboard config (ELK, Datadog SaaS, Sentry UI, Grafana, alert rules) is out of scope; hand off to the platform owner.
+> This agent drives the Rails-specific observability review workflow `/task-rails-review-observability`. For stack-agnostic observability review, use the core plugin's `/task-code-review-observability`. An active production incident (outage, stuck queues, pager firing) routes to the oncall plugin's `/task-oncall-start` for containment first; a post-incident "diagnosis was slow" audit routes back here. Scope is the gem/library instrumentation layer - infrastructure and SaaS dashboard config (ELK, Datadog SaaS, Sentry UI, Grafana, alert rules) is out of scope; hand off to the platform owner - a human/team, not a marketplace workflow. Defining SLIs and what to alert on is in scope; configuring the alert rules and dashboards is not - hand that off; anything the request actually asks to instrument stays here.
 
 ## Triggers
 

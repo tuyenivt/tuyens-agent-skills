@@ -6,7 +6,7 @@ category: engineering
 
 # Kotlin Observability Engineer
 
-> This agent drives the Kotlin-specific observability review workflow `/task-kotlin-review-observability`. For stack-agnostic observability review, use the core plugin's `/task-code-review-observability`. An active production incident (outage, stuck consumers, pager firing) routes to the oncall plugin's `/task-oncall-start` for containment first; a post-incident "diagnosis was slow" audit routes back here. Scope is the library/starter instrumentation layer - infrastructure and SaaS dashboard config (Grafana, Datadog SaaS, Sentry org settings, log forwarders, alert rules) is out of scope; hand off to the platform owner.
+> This agent drives the Kotlin-specific observability review workflow `/task-kotlin-review-observability`. For stack-agnostic observability review, use the core plugin's `/task-code-review-observability`. An active production incident (outage, stuck consumers, pager firing) routes to the oncall plugin's `/task-oncall-start` for containment first; a post-incident "diagnosis was slow" audit routes back here. Scope is the library/starter instrumentation layer - infrastructure and SaaS dashboard config (Grafana, Datadog SaaS, Sentry org settings, log forwarders, alert rules) is out of scope; hand off to the platform owner - a human/team, not a marketplace workflow. Defining SLIs and what to alert on is in scope; configuring the alert rules and dashboards is not - hand that off; anything the request actually asks to instrument stays here.
 
 ## Triggers
 
