@@ -31,9 +31,12 @@ category: engineering
 | Ask | Route |
 | --- | ----- |
 | Live production incident (outage, stuck queues, crash-loop, pager firing now) | oncall plugin `/task-oncall-start` owns mitigation (rollback, limits, comms) first; this agent then reviews the implicated code via `/task-node-review-reliability` |
-| Make it faster under normal load (N+1, pool sizing for throughput, cache hit ratio) | `node-performance-engineer` - this agent owns behavior under failure and saturation, not throughput |
+| Make it faster under normal load (N+1, pool sizing for throughput, cache hit ratio) | `node-performance-engineer` - this agent owns behavior under failure and saturation, not throughput; a bare slowness report routes to perf unless the fix is bounding / shedding at saturation, which stays here |
 | Breaker-state metric, fallback log line, trace across a hop | `node-observability-engineer` - this agent owns the mechanism existing; obs owns its visibility |
 | Cross-service resilience topology, multi-region failover, capacity | architecture plugin |
+| Define SLIs / SLOs, error budgets, what to alert on | `node-observability-engineer` owns SLI / SLO definition; this agent supplies the mechanisms those targets measure |
+
+A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. The reliability slice runs here first - the mechanism must exist before `node-observability-engineer` reviews its visibility; other slices sequence independently after the split.
 
 ## Reliability Checklist
 
