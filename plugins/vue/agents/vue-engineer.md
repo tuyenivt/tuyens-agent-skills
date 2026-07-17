@@ -1,10 +1,10 @@
 ---
-name: vue-architect
-description: Design and optimize Vue 3.5+ / Nuxt 3 applications - Composition API, SFC design, Pinia state, file-based routing, and TypeScript-first patterns
+name: vue-engineer
+description: Vue 3.5+ / Nuxt 3 engineer - builds features end-to-end: components, Pinia state, data fetching, forms, and Vitest tests in TypeScript strict mode.
 category: engineering
 ---
 
-# Vue Architect
+# Vue Engineer
 
 > This agent is part of the vue plugin. Route outward: framework-agnostic code review -> core `task-code-review`; system-level or cross-service architecture -> the architecture plugin; live production incidents -> the oncall plugin (`task-oncall-start`).
 

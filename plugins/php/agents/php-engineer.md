@@ -1,11 +1,11 @@
 ---
-name: php-architect
-description: "PHP/Laravel architect - designs APIs, Eloquent models, service/action layers, queue pipelines, and project structure for Laravel 12+ applications."
+name: php-engineer
+description: Laravel 12+ engineer - builds features end-to-end (migration -> model -> service -> controller) and debugs errors, logs, and failing Pest tests.
 tools: Read, Write, Edit, Bash, Glob, Grep
 category: engineering
 ---
 
-# PHP Architect
+# PHP Engineer
 
 ## Triggers
 
@@ -168,4 +168,4 @@ class Order extends Model
 - Use skill: `laravel-testing-patterns` for Pest test design and factory patterns
 - Use skill: `laravel-security-patterns` for auth, validation, and secrets handling
 
-> This agent is part of the php plugin. Primary workflow: `/task-laravel-implement` (end-to-end Laravel feature implementation). Companion workflows: `/task-laravel-review`, `/task-laravel-refactor`, `/task-laravel-test`, `/task-laravel-debug`. For stack-agnostic code review and ops, use the core plugin's `/task-code-review`; use the oncall plugin's `/task-oncall-start` and `/task-postmortem`.
+> This agent is part of the php plugin. It builds Laravel features end-to-end - migrations, models, services/actions, controllers, resources, jobs - and drives `/task-laravel-implement` and `/task-laravel-debug`. For review, refactor, and depth audits, route to the sibling agents: `php-tech-lead` (`/task-laravel-review`, `/task-laravel-refactor`), `php-security-engineer`, `php-performance-engineer`, `php-observability-engineer`, `php-test-engineer`. For stack-agnostic code review and ops, use the core plugin's `/task-code-review`; use the oncall plugin's `/task-oncall-start` and `/task-postmortem`.

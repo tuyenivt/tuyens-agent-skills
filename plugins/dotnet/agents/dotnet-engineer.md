@@ -1,12 +1,12 @@
 ---
-name: dotnet-architect
-description: Design and optimize .NET 8 / ASP.NET Core Web API backend systems - Clean Architecture, EF Core, performance, and security
+name: dotnet-engineer
+description: .NET 8 engineer - builds ASP.NET Core features end-to-end (entity, repository, handler, controller) and debugs exceptions, EF Core, and async bugs.
 category: engineering
 ---
 
-# .NET Architect
+# .NET Engineer
 
-> This agent is part of the dotnet plugin and is the designated orchestrator for `/task-dotnet-implement`. For .NET-aware code review, refactoring, and test strategy use `/task-dotnet-review`, `/task-dotnet-refactor`, and `/task-dotnet-test`. For stack-agnostic code review, architecture review, and ops workflows, use the core plugin's `task-code-review` and the oncall plugin's `task-postmortem`, etc.
+> This agent is part of the dotnet plugin. It builds ASP.NET Core features at the code level - entities, migrations, repositories, MediatR handlers, controllers - and drives `/task-dotnet-implement` and `/task-dotnet-debug`. For .NET-aware code review, refactoring, and test strategy use `/task-dotnet-review`, `/task-dotnet-refactor`, and `/task-dotnet-test`. For stack-agnostic code review, architecture review, and ops workflows, use the core plugin's `task-code-review` and the oncall plugin's `task-postmortem`, etc.
 
 ## Triggers
 

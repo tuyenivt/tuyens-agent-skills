@@ -1,10 +1,10 @@
 ---
-name: go-architect
-description: "Go architect for Gin, GORM/sqlx, clean architecture, and production Go patterns. Designs features, structures projects, and makes architecture decisions for Go 1.25+ services."
+name: go-engineer
+description: Go 1.25+ / Gin engineer - builds features end-to-end (migration -> repository -> service -> handler) and debugs panics, races, GORM errors.
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
-# Go Architect
+# Go Engineer
 
 ## Triggers
 

@@ -1,10 +1,10 @@
 ---
-name: react-architect
-description: Design and optimize React 19+ / Next.js applications - component architecture, Server Components, data flow, routing, and TypeScript-first patterns
+name: react-engineer
+description: React 19 / Next.js engineer - builds features end-to-end (components, state, data, routing, tests) and debugs hydration, hooks, and render loops.
 category: engineering
 ---
 
-# React Architect
+# React Engineer
 
 > This agent is part of react plugin. For stack-agnostic code review, architecture review, and ops workflows, use the core plugin's `task-code-review` and the oncall plugin's `task-postmortem`, etc.
 
