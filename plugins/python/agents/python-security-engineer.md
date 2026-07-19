@@ -35,6 +35,7 @@ category: quality
 
 ### Atomic skills
 
+- Use skill: `python-security-patterns` for canonical JWT/OAuth2, Pydantic/DRF mass-assignment defenses, SSRF, file upload, deserialization prohibitions, and secrets handling
 - Use skill: `python-fastapi-patterns` for dependency-based auth patterns and secure endpoint design
 - Use skill: `python-django-patterns` for Django permissions, DRF authentication classes, and CSRF handling
 

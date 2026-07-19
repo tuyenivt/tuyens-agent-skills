@@ -157,6 +157,8 @@ Triage pass only. One verdict per category (`yes` / `no signal in diff`). Findin
 
 ### Step 8 - Common Python Vulnerability Patterns
 
+Canonical "build it right" patterns: Use skill: `python-security-patterns` (JWT decode allowlist, Pydantic / DRF mass-assignment defenses, SSRF allowlist, file upload magic-byte checks, `pickle`/`yaml`/`eval` prohibitions, secrets via `pydantic-settings`, subprocess, open redirect, TLS). The checks below flag deviations from it and add Python surface-specific risks (dynamic ORDER BY, SSTI, ReDoS, HTTP smuggling, trusted-proxy headers).
+
 - [ ] **`pickle.loads` / `yaml.load` without `SafeLoader`** on untrusted input - critical RCE
 - [ ] **`eval` / `exec` on user input** - critical regardless of "controlled" framing
 - [ ] **`requests.get(verify=False)` / `httpx.AsyncClient(verify=False)`** flagged unless documented test fixture
@@ -166,7 +168,7 @@ Triage pass only. One verdict per category (`yes` / `no signal in diff`). Findin
 - [ ] **`SECRET_KEY` / JWT signing key** from env / Vault, never committed; rotated on leak
 - [ ] **Debug exposure**: `DEBUG=True` flagged in any non-dev settings; debug toolbar dep flagged in prod builds
 - [ ] **Swagger / `/docs`**: gated behind auth in prod, or disabled (FastAPI `docs_url=None`; DRF `SchemaView` permission)
-- [ ] **SSRF depth**: allowlist rejects (a) cloud metadata `169.254.169.254` + IPv6 `fd00:ec2::254`, (b) localhost / `127.0.0.0/8` / `::1`, (c) RFC1918 (`10/8`, `172.16/12`, `192.168/16`), (d) link-local `169.254/16`. Re-resolve host at request time (DNS rebinding bypasses string-only allowlists). Watch `urllib.parse` quirks: backslash, unicode, `::ffff:127.0.0.1`
+- [ ] **SSRF depth**: allowlist rejects (a) cloud metadata `169.254.169.254` + IPv6 `fd00:ec2::254`, (b) localhost / `127.0.0.0/8` / `::1`, (c) RFC1918 (`10/8`, `172.16/12`, `192.168/16`), (d) link-local `169.254/16`. Validate the resolved IP (not the URL string) across every A/AAAA record, then pin that IP for the fetch - re-resolving for the request lets DNS rebinding slip past the check. Watch `urllib.parse` quirks: backslash, unicode, `::ffff:127.0.0.1`
 - [ ] **Celery serializer**: `task_serializer` / `accept_content` set to `["json"]` only - never `pickle`. A worker accepting `pickle` from any source that can publish to the broker is RCE by design
 - [ ] **ReDoS**: `Field(pattern=...)` / DRF `RegexValidator(...)` built from user / config input hangs the event loop. Compile patterns once at startup; never accept patterns from request bodies; bound with `re.match` + length cap
 - [ ] **HTTP smuggling / desync** (`gunicorn -k uvicorn` behind nginx / ALB): confirm proxy and worker agree on `Transfer-Encoding` / `Content-Length`; flag new ingress paths or middleware that change header forwarding without proxy-side update

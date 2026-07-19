@@ -47,7 +47,6 @@ Atomic skills provide focused, reusable Java/Spring Boot patterns. These are hid
 | `spring-test-integration`        | `@DataJpaTest`, `@WebMvcTest`, Testcontainers                           |
 | `spring-security-patterns`       | Spring Security 6.x configuration                                       |
 | `java-gradle-build-optimization` | Gradle build performance and multi-module setup                         |
-| `spring-websocket`               | Spring WebSocket and STOMP messaging                                    |
 | `spring-messaging-patterns`      | Spring Kafka, RabbitMQ, transactional outbox, Spring Application Events |
 | `spring-onboard-map`             | Maven/Gradle layout, `application.yml` profiles, key configuration classes, persistence schema injected into `task-onboard` |
 | `spring-overengineering-review`  | Necessity review: Bean Validation duplicating JPA / DB constraints, defensive `Optional` / `requireNonNull` / blanket-catch guards on framework guarantees, single-impl `@Service` interfaces / `BaseService` parents / speculative `@ConfigurationProperties` / custom `Result<T>` wrappers. Composed into `task-spring-review` Phase D. |

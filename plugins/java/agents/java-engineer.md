@@ -56,7 +56,7 @@ Bundled asks: live incidents first, then diagnosis handoffs, then active-defect 
 
 **Integration & Real-time:**
 
-- Use skill: `spring-websocket` for WebSocket and STOMP messaging
+- WebSocket / STOMP: authenticate once at the STOMP `CONNECT` frame via a `ChannelInterceptor` (not handshake query params); guard both SUBSCRIBE (`simpSubscribeDestMatchers`) and SEND (`simpDestMatchers`); use `enableStompBrokerRelay` with user-registry broadcast for multi-instance per-user delivery; set heartbeats and transport size/time limits; avoid `synchronized` in handlers (pins Virtual Threads)
 
 **Database & Migrations:**
 

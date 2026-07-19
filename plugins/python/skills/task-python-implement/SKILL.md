@@ -126,6 +126,8 @@ FastAPI routes or Django views. Map domain errors:
 
 List endpoints paginated (offset/limit or cursor); include filtering on common fields.
 
+For any endpoint that is not fully public, Use skill: `python-security-patterns` for auth/authz wiring (FastAPI `Depends`, DRF `permission_classes`) and mass-assignment-safe schemas (`extra="forbid"` / explicit serializer `fields`) - applies to Step 8 too.
+
 ### STEP 8 - SCHEMAS
 
 Pydantic v2 (FastAPI) or DRF serializers (Django).

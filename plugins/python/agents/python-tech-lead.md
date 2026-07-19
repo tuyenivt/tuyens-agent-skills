@@ -141,6 +141,7 @@ When one request bundles several asks: run `task-python-review` first, then acti
 - Use skill: `python-django-patterns` for Django ORM, ViewSet, and serializer review
 - Use skill: `python-celery-patterns` for Celery task design and retry strategy
 - Use skill: `python-testing-patterns` for test quality and fixture review
+- Use skill: `python-security-patterns` for auth, mass-assignment, input validation, and secrets review
 - Use skill: `complexity-review` for AI-generated verbosity and over-abstraction
 
 ## Behavior Across PRs
