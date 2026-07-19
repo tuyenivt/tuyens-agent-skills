@@ -43,6 +43,7 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review`   |
 | Node.js / TypeScript | `task-node-review`    |
 | Go / Gin             | `task-go-review`      |
+| Flutter / Dart       | `task-flutter-review` |
 
 Forward the user's invocation verbatim (target ref, `--base`, scope, depth). The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 4-5.**
 

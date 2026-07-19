@@ -57,6 +57,8 @@ Use skill: `stack-detect`.
 
 Rows match on language/runtime - the framework named is the plugin's primary flavor, not a filter (Go + Echo still dispatches to `task-go-review-api`; the stack workflow adapts or bounces back here).
 
+`Stack Type: mobile` has no row by design. This lens reviews the contract a server *exposes*; a client consumes contracts rather than designing them. Run Step 4 only if the mobile project also serves an API of its own - otherwise say the lens does not apply and point at `ops-backward-compatibility` for the concern that does travel to clients: installed app versions outlive releases, so server contract changes must stay compatible with old clients.
+
 Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow is unavailable (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5. Stacks with no matching plugin fall through to the Step 4 generic fallback.
 
 ### Step 4 - Generic Fallback (no dispatch)

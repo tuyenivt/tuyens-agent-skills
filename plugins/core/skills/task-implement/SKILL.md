@@ -46,8 +46,9 @@ Use skill: `stack-detect`.
 | Ruby / Rails                | `task-rails-implement`   |
 | Node.js / NestJS or Express | `task-node-implement`    |
 | Go / Gin                    | `task-go-implement`      |
+| Flutter / Dart              | `task-flutter-implement` |
 
-A detected frontend stack (React, Vue, Angular) has no dedicated workflow - run Step 4, whose IMPLEMENT phase covers the frontend layers.
+A detected frontend stack (React, Vue, Angular) has no dedicated workflow - run Step 4, whose IMPLEMENT phase covers the frontend layers. The same applies to a non-Flutter mobile stack (React Native, native Android/iOS): run Step 4's mobile path.
 
 **Fullstack (`Stack Type: fullstack`):** decide which side the feature belongs to from the user's description. Delegate the backend side to the table workflow first for the API contract; build the frontend side via the Step 4 frontend path. If parallel work is required, fix the API contract up front and mock data on the frontend until the backend lands. Include an integration test from UI action to DB persistence. Ask the user when the split is ambiguous.
 
@@ -61,16 +62,19 @@ Runs when the stack is unknown, unsupported by any table row, or the matched plu
 
 - *Backend / unknown:* feature name and operations; entity relationships and validation; external dependencies; auth per endpoint (public vs protected); async/job needs.
 - *Frontend:* feature behavior and affected pages/routes; component hierarchy and data needs; state scope (local/shared/global/URL); API endpoints to consume; form inputs and validation; accessibility requirements.
+- *Mobile:* feature behavior and affected screens; navigation entry points including deep links; API endpoints to consume; what must work offline and what may be cached on device; local persistence and whether its schema changes; permissions or native capabilities needed; which platform targets ship this feature.
 
 **DESIGN** - propose and wait for explicit approval before generating code:
 
 - *Backend:* schema changes (entities, fields, indexes for FK and filter columns); service / business logic boundaries and transactions; API contract (method, URI, request/response shapes, status codes); error model.
 - *Frontend:* component tree with responsibilities; routing changes (pages, layouts, guards); state strategy (local, store, URL); data-fetching strategy (hooks, server components, caching); form handling (validation library, submission flow).
+- *Mobile:* screen/widget tree with responsibilities; state holders and how they expose loading, error, and empty states; data layer (models, repository, remote client, local store); navigation and deep-link routes; offline and cache behaviour; layout plan per shipped platform target; accessibility and localization intent.
 
 **IMPLEMENT** in order. Load the atomic skill named at each applicable step; Use skill: `backend-coding-standards` throughout backend work:
 
 - *Backend:* (1) data layer - migration with indexes; never modify columns destructively; Use skill: `backend-db-migration`. (2) business logic - constructor injection; no logic in controllers. (3) API layer - never expose data-layer entities directly; map to DTOs; Use skill: `backend-api-guidelines`. (4) auth - explicit per endpoint, no implicit defaults. (5) background jobs if applicable; Use skill: `backend-idempotency` for retried or externally-triggered work. (6) tests - unit (logic), integration (DB), API (routing, serialization, auth).
 - *Frontend:* (1) routing - new routes, layouts, navigation. (2) components - single responsibility. (3) state - local first, lift or store only when sharing requires it. (4) data fetching - loading, error, caching, retry. (5) forms - validation, submission, errors. (6) accessibility - semantic HTML, ARIA, keyboard, focus. (7) tests - component, integration, E2E for critical flows.
+- *Mobile:* (1) models - typed, with a typed failure representation rather than raw exceptions. (2) data layer - repository over a remote client and a local store; every network call carries a timeout and is cancellable. (3) state - side effects outside the render path; loading, error, and empty modelled explicitly, not inferred from null. (4) UI - screens and components, adaptive to the shipped platform targets, no hardcoded user-facing strings, accessibility labels on interactive elements. (5) navigation - routes and deep links registered. (6) local persistence migration when the on-device schema changes; old app versions stay installed, so the change must be backward compatible - Use skill: `ops-backward-compatibility`. (7) tests - unit, component/widget, snapshot for key UI, integration for the critical flow.
 
 **VALIDATE:**
 
@@ -78,6 +82,7 @@ Runs when the stack is unknown, unsupported by any table row, or the matched plu
 - Implementation matches the approved design.
 - *Backend:* list endpoints paginated.
 - *Frontend:* keyboard navigable, labels present, correct heading hierarchy.
+- *Mobile:* code generation re-run and the build green for at least the primary platform target; accessibility labels present; no hardcoded user-facing strings.
 
 ## Output Format
 
@@ -103,7 +108,16 @@ When fallback runs (Step 4), output adapts to Stack Type:
 - [ ] Hooks/Composables: [path] (if applicable)
 - [ ] Tests: [paths]
 
-## Endpoints (backend) / Routes (frontend)
+[Mobile]
+- [ ] Models: [paths]
+- [ ] Repository / data sources: [paths]
+- [ ] State holders: [paths]
+- [ ] Screens/Components: [paths]
+- [ ] Navigation routes: [path]
+- [ ] Local store migration: [path] (if schema changed)
+- [ ] Tests: [paths]
+
+## Endpoints (backend) / Routes (frontend, mobile)
 
 | Method/Path | Handler/Component | Auth/Guard | Description |
 | ----------- | ----------------- | ---------- | ----------- |
@@ -120,6 +134,7 @@ When fallback runs (Step 4), output adapts to Stack Type:
 - [ ] Step 3: stack matched -> dispatched (feature context forwarded) and stopped; Step 4 skipped
 - [ ] Step 4 (backend/fullstack): GATHER confirmed; DESIGN approved before code; all layers (migration, model, service, controller, DTOs, tests) present; no entities in API responses; explicit auth per endpoint; list endpoints paginated; migrations non-destructive
 - [ ] Step 4 (frontend/fullstack): GATHER confirmed; DESIGN approved before code; components single-responsibility; state scope appropriate; accessibility verified
+- [ ] Step 4 (mobile): GATHER confirmed; DESIGN approved before code; loading/error/empty states modelled; network calls carry timeouts and are cancellable; local-store migration backward compatible; codegen re-run and build green; accessibility and localization verified
 - [ ] Tests pass; file list, route/endpoint table, and test counts presented
 
 ## Avoid

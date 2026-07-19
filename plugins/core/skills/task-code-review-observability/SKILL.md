@@ -46,6 +46,7 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review-observability`   |
 | Node.js / TypeScript | `task-node-review-observability`    |
 | Go / Gin             | `task-go-review-observability`      |
+| Flutter / Dart       | `task-flutter-review-observability` |
 
 Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5 as fallback.
 
@@ -62,9 +63,10 @@ Use skill: `ops-observability`. This is the primary source of findings - it cove
 | Distributed tracing       | backend          | Entry spans, DB/HTTP child spans with template attributes, W3C `traceparent` propagation, sampling policy |
 | Context propagation       | all              | Framework request context, background-job context extraction, async carry-forward     |
 | Frontend observability    | frontend         | Error tracking with source maps, global handlers, Core Web Vitals, no PII             |
+| Mobile observability      | mobile           | Crash reporting with symbol upload, uncaught-error handlers covering every async entry point, release/build attribution, analytics consent and no PII |
 | SLO and alerting          | deep depth only  | SLI per critical service, SLO target + window, burn-rate alerts on symptoms not causes |
 
-Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field. Flag services with no SLO as **Recommend** at deep depth. Every finding states what becomes invisible without the missing signal. Next Steps map severity to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`; `[Question]` only when the fix depends on the author's answer.
+Determine `Scope` (`backend` / `frontend` / `fullstack` / `mobile`) from `stack-detect`'s `Stack Type` field. Flag services with no SLO as **Recommend** at deep depth. On `mobile`, skip Metrics and Distributed tracing (the device is not a traced service) and treat the SLO category as client-side success/latency targets for the flows the app owns. Every finding states what becomes invisible without the missing signal. Next Steps map severity to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`; `[Question]` only when the fix depends on the author's answer.
 
 If the diff touches no instrumentable code (docs, tests, comments only), skip the category review and report `Overall: Adequate` with the note "diff contains no instrumentable surface" - still write the report in Step 5.
 

@@ -41,6 +41,7 @@ Check marker files in the project root.
 | `mix.exs`                                       | Elixir                          |
 | `*.csproj` / `*.sln`                            | .NET                            |
 | `composer.json`                                 | PHP                             |
+| `pubspec.yaml`                                  | Dart                            |
 
 Refinements (apply in this priority):
 
@@ -64,8 +65,13 @@ Refinements (apply in this priority):
    - `ormconfig.json` / `data-source.ts` -> TypeORM
    - `.sequelizerc` / `sequelize.config.js` -> Sequelize
 5. **Backend dependency inspection** (sets Framework): the marker file's own dependency declarations name the framework - `axum`/`actix-web` in `Cargo.toml`, `gin` in `go.mod`, `rails`/`sinatra` in `Gemfile`, `fastapi`/`django`/`flask` in `pyproject.toml`/`requirements.txt`, `laravel/framework` in `composer.json`, `phoenix` in `mix.exs`, `spring-boot` in `build.gradle*`/`pom.xml`, `@nestjs/core`/`express` in `package.json`. Same move for unlisted ecosystems: read the manifest's dependency section.
+6. **`pubspec.yaml` inspection** (Dart projects):
+   - `sdk: flutter` under `dependencies`, or a top-level `flutter:` section -> Framework = Flutter. Dart with neither stays plain Dart (CLI tool, server, or package).
+   - Dependencies fill `Additional`: `flutter_riverpod`/`riverpod`/`hooks_riverpod` -> Riverpod, `flutter_bloc`/`bloc` -> Bloc, `provider` -> Provider, `get` -> GetX (state management); `go_router`/`auto_route` (navigation); `dio`/`http`/`chopper` (networking); `drift`/`isar`/`hive`/`sqflite`/`shared_preferences` (persistence).
+   - **Platform targets** from directories beside `pubspec.yaml` - `android/` `ios/` `web/` `windows/` `macos/` `linux/` -> `Platforms: android, ios, ...` in `Additional`. This is the one directory check permitted by "read narrowly"; list the folders, do not descend into them.
+   - Build tool = `flutter` (or `dart` when Flutter is absent). Test framework = `flutter_test` when `flutter_test` is a dev dependency, plus `integration_test` when present.
 
-File-based detection can determine Language, Build tool, sometimes Framework and ORM. It cannot determine Database or Test framework.
+File-based detection can determine Language, Build tool, sometimes Framework and ORM. It cannot determine Database or Test framework - except for Dart, where `pubspec.yaml` declares the test framework directly.
 
 ### Step 2 - Instruction file (supplemental detail)
 
@@ -91,18 +97,23 @@ If no language results from either step, emit `language: unknown` and suggest th
 
 ### Step 3 - Classify Stack Type
 
+Rows are matched in order - the first match wins. `mobile` precedes `frontend` so a natively-packaged client is not mistaken for a web SPA.
+
 | Stack Type  | Condition                                                                                              |
 | ----------- | ------------------------------------------------------------------------------------------------------ |
+| `mobile`    | App-store-packaged client built with a mobile-first toolchain: Flutter, React Native/Expo, native Android/iOS                                          |
 | `frontend`  | React/Vue/Angular/Svelte SPA or SSR framework with no server-side routes or backend marker             |
 | `backend`   | Server framework (Spring, Django, FastAPI, Rails, NestJS, Express, Gin, Axum, ASP.NET, etc.)           |
-| `fullstack` | Both frontend and backend present, OR a meta-framework with server capability (see fullstack triggers) |
+| `fullstack` | Both a client and a backend present, OR a meta-framework with server capability (see fullstack triggers) |
 
 No row matches (library, CLI tool, framework still unknown): fall back to `frontend` if only frontend markers exist, otherwise `backend`. Never leave Stack Type unset.
+
+Flutter stays `mobile` whatever its platform folders are, including desktop-only or web-only - the applicable guidance is Flutter's, not a web SPA's. Dart with no Flutter (CLI, server, package) is not `mobile`; classify it by the normal rows. A web app merely wrapped for desktop (Electron, Tauri) stays `frontend` - its toolchain and guidance are the web's.
 
 Fullstack triggers:
 - Next.js with `app/api/`, Server Actions, or any DB ORM detected (Server Components can hit the DB directly).
 - Nuxt with `server/`.
-- Monorepo containing both `package.json` (with React/Vue/Angular) and a backend marker (`build.gradle`, `go.mod`, etc.).
+- Monorepo containing both a client marker (`package.json` with React/Vue/Angular, or `pubspec.yaml` with Flutter) and a backend marker (`build.gradle`, `go.mod`, etc.).
 
 For fullstack from two stacks (monorepo), set `Language` and `Framework` to the primary stack and describe the secondary in `Additional` (e.g., `Frontend: TypeScript (React)`). For fullstack from a single meta-framework (Next.js, Nuxt), keep the meta-framework as `Framework`; there is no secondary entry.
 
@@ -112,7 +123,7 @@ Single canonical schema. Workflow skills parse this; do not change field names.
 
 ```
 Detected stack:
-  Stack Type: {backend | frontend | fullstack}
+  Stack Type: {backend | frontend | fullstack | mobile}
   Language: {string or "unknown"}
   Framework: {string or "unknown"}
   Build tool: {string or "unknown"}

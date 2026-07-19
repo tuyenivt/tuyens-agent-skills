@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `oncall`, `java`, `python`, `ruby`, `node`, and `go`.
+Single marketplace repository for Claude Code plugins: `architecture`, `oncall`, `java`, `python`, `ruby`, `node`, `go`, and `flutter`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -53,6 +53,13 @@ claude plugin install node@tuyens-agent-skills --scope project
 ```bash
 claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install go@tuyens-agent-skills --scope project
+```
+
+**Flutter / Dart project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install flutter@tuyens-agent-skills --scope project
 ```
 
 **Architecture and delivery project:**
@@ -163,7 +170,18 @@ Go / Gin (plugin: go)
   reliability review                   -> /task-go-review-reliability
   API-contract review                  -> /task-go-review-api
   test strategy / scaffolds            -> /task-go-test
+
+Flutter / Dart (plugin: flutter)
+  implement a new feature              -> /task-flutter-implement
+  staff-level code review              -> /task-flutter-review
+  performance review                   -> /task-flutter-review-perf
+  security review                      -> /task-flutter-review-security
+  observability review                 -> /task-flutter-review-observability
+  reliability review                   -> /task-flutter-review-reliability
+  test strategy / scaffolds            -> /task-flutter-test
 ```
+
+> Flutter has no `review-api` counterpart: it is a client that consumes API contracts rather than designing them. Adaptivity, accessibility, and localization are handled during `/task-flutter-implement` and checked at baseline depth inside `/task-flutter-review`.
 
 **Common decision points:**
 
@@ -186,6 +204,7 @@ Go / Gin (plugin: go)
 | [ruby](plugins/ruby)                 | Ruby on Rails 7.2+                                                                                                                                                                  |
 | [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                                                                                                           |
 | [go](plugins/go)                     | Go 1.25+ / Gin                                                                                                                                                                      |
+| [flutter](plugins/flutter)           | Flutter / Dart 3.x client apps - Riverpod, go_router, Dio, Drift. Mobile primary, desktop secondary, web tertiary                                                                    |
 
 ## Notes
 

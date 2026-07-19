@@ -45,6 +45,7 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review-perf`   |
 | Node.js / TypeScript | `task-node-review-perf`    |
 | Go / Gin             | `task-go-review-perf`      |
+| Flutter / Dart       | `task-flutter-review-perf` |
 
 Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow is unavailable (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5.
 
@@ -52,7 +53,7 @@ Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workf
 
 Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full.
 
-Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field, then cover the applicable categories:
+Determine `Scope` (`backend` / `frontend` / `fullstack` / `mobile`) from `stack-detect`'s `Stack Type` field, then cover the applicable categories:
 
 **Database (backend / fullstack).** N+1 detection (recommend the ORM's eager-load mechanism), missing indexes on WHERE/ORDER BY, over-fetching, no leading-wildcard LIKE on large tables, pagination, query timeouts, connection-pool sizing. Use skill: `backend-db-indexing`.
 
@@ -63,6 +64,8 @@ Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `
 **Memory and I/O.** Streaming for large payloads, timeouts and circuit breakers on external calls, reused HTTP clients.
 
 **Frontend (frontend / fullstack).** Unnecessary re-renders / change-detection cycles, heavy computation in render path, virtualization for long lists (>100), client-side caching, image optimization, lazy loading, route-level code splitting.
+
+**Mobile (mobile).** Frame budget (16ms at 60Hz, 8ms at 120Hz) and dropped frames, rebuild/re-render scoping, list virtualization for long or unbounded lists, image decode and cache limits, work moved off the UI thread, startup time to first interaction, installed app size, and leaked subscriptions/controllers/timers. Network and persistence findings use the Memory and I/O category, not the Database one - the device talks to a server, it does not own the schema.
 
 **Observability cross-check.** RED metrics on critical paths, correlation IDs propagated, latency histograms. Use skill: `ops-observability`.
 

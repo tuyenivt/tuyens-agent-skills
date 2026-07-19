@@ -66,6 +66,7 @@ If detected stack matches, load the atomic. It injects stack-specific bootstrap 
 | Ruby / Rails         | `rails-onboard-map`   |
 | Node.js / TypeScript | `node-onboard-map`    |
 | Go / Gin             | `go-onboard-map`      |
+| Flutter / Dart       | `flutter-onboard-map` |
 
 If no atomic matches the detected stack (e.g., Elixir), or the matched atomic does not resolve (stack plugin not installed), proceed with the generic workflow and note `no stack-specific onboarding atomic - generic guidance applied` under the Stack table.
 
@@ -89,6 +90,8 @@ Classify based on layout, naming, framework conventions, and detected `Stack Typ
 **Backend patterns:** Layered (MVC/MVS) - controller/service/repository folders; Clean/Hexagonal - domain/application/infrastructure separation; Modular monolith - feature modules each containing their own layers; Vertical slice - feature folders with controller+service+model+test; Microservice - multiple deployables; Event-driven - events as primary coupling.
 
 **Frontend patterns:** Feature-based - feature folders with components/hooks/tests; Atomic Design - atoms/molecules/organisms; Route-based - pages/routes top-level; Module-based - self-contained modules per feature; Monolith integration - frontend inside a backend framework (Rails views, Django templates, Inertia).
+
+**Mobile patterns:** Feature-first - feature folders each holding their own UI, state, and data; Layer-first - top-level `presentation`/`domain`/`data` (or `ui`/`model`/`repository`); Clean architecture with explicit use-case objects; Melos or Gradle multi-module. Note which platform targets are wired up (the platform folders present) and whether generated code is committed.
 
 State which pattern(s) are used, citing file paths and naming evidence.
 
@@ -116,6 +119,8 @@ Read representative files. Focus on what applies to the detected `Stack Type`.
 Use skill: `backend-coding-standards` to compare observations to best practice for the detected stack.
 
 **Frontend (when `frontend` or `fullstack`):** component architecture (smart/dumb split, feature components, shared UI); state strategy (local, store/context, URL, server state); data fetching (hooks/composables, server components, global fetch wrapper); routing (file-based vs manual, layouts, guards); styling (CSS modules, Tailwind, styled-components, tokens); form handling; accessibility discipline.
+
+**Mobile (when `mobile`):** state management library and how state reaches the UI; navigation and deep-link registration; networking client, interceptors, and auth-token refresh; local persistence and its migration story across app updates; code generation (which generators, whether output is committed, how it is run); build flavors, environment injection, and signing; permissions and native/platform integration points; crash reporting and analytics wiring.
 
 **Tests (all stacks):** unit / integration / E2E split; test data construction (factories, fixtures, builders, MSW); mocking approach; naming conventions.
 
