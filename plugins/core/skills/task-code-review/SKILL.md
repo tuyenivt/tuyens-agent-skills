@@ -16,11 +16,11 @@ Detects the project stack and delegates to the matching stack-specific review wo
 
 - PR review, pre-merge risk assessment, post-AI-generation quality gate.
 
-**Not for:** New-system architecture, security-only audits (`task-code-review-security`), perf-only (`task-code-review-perf`), observability-only (`task-code-review-observability`), reliability-only (`task-code-review-reliability`).
+**Not for:** New-system architecture, security-only audits (`task-code-review-security`), perf-only (`task-code-review-perf`), observability-only (`task-code-review-observability`), reliability-only (`task-code-review-reliability`), API-contract-only (`task-code-review-api`).
 
 ## Invocation
 
-`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | +rel | full | core-only] [standard | deep] [--base <branch>]`
+`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | +rel | +api | full | core-only] [standard | deep] [--base <branch>]`
 
 All flags are forwarded to the dispatched stack workflow.
 
@@ -77,7 +77,7 @@ Use skill: `review-precondition-check` with the user's target argument and any `
 
 **Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
-**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `+rel` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all four) with the read-once diff/log and the detected stack handle. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations.
+**Extra scopes.** If `+perf`, `+sec`, `+obs`, `+rel`, or `+api` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all five) with the read-once diff/log and the detected stack handle. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations. At the API/security and API/reliability seams a single defect can surface in two scopes (a payment endpoint missing `Idempotency-Key`): keep the contract finding under `+api` and the enforcement/correctness finding under its lens, deduped to one line at the strongest intent.
 
 ### Step 5 - Write Report
 

@@ -19,7 +19,7 @@ The consuming workflow passes these fields when invoking this skill:
 
 | Field             | Required          | Source                                                                              |
 | ----------------- | ----------------- | ----------------------------------------------------------------------------------- |
-| `report_type`     | yes               | `review` / `review-perf` / `review-security` / `review-observability` / `review-reliability` |
+| `report_type`     | yes               | `review` / `review-perf` / `review-security` / `review-observability` / `review-reliability` / `review-api` |
 | `report_body`     | yes               | The full assembled Markdown report (no frontmatter)                                 |
 | `branch`          | yes               | Resolved current branch name (or `detached`)                                        |
 | `base_ref`        | yes               | From `review-precondition-check` handle                                             |
@@ -29,7 +29,7 @@ The consuming workflow passes these fields when invoking this skill:
 | `mode`            | yes               | `full` or `incremental`                                                             |
 | `round`           | yes               | `1` for first review on this branch; increment per re-review                        |
 | `prior_head_sha`  | only if `round>1` | The `head_sha` from the prior round's frontmatter                                   |
-| `scope`           | yes               | `core-only` / `+perf` / `+sec` / `+obs` / `+rel` / `full`                            |
+| `scope`           | yes               | `core-only` / `+perf` / `+sec` / `+obs` / `+rel` / `+api` / `full`                   |
 | `depth`           | yes               | `standard` / `deep`                                                                 |
 | `stack`           | yes               | Stack identifier from `stack-detect` (e.g., `java-spring-boot`, `unknown`)          |
 
@@ -46,6 +46,7 @@ Only the workflow that owns the report invokes this skill. Sub-agents spawned fo
   - `review-security` -> `review-security-<branch>.md`
   - `review-observability` -> `review-observability-<branch>.md`
   - `review-reliability` -> `review-reliability-<branch>.md`
+  - `review-api` -> `review-api-<branch>.md`
 - Write the file in the current working directory (where the workflow runs - next round's `review-precondition-check` looks for it there): the frontmatter (below) immediately followed by `report_body`.
 - Overwrite without prompting - the file is a rolling checkpoint, not an archive. Round history lives inside the report body.
 - Run no git command (the workflow already captured `base_sha` and `head_sha`).
@@ -69,7 +70,7 @@ head_sha: <full SHA>
 mode: full | incremental
 round: <N>
 prior_head_sha: <full SHA from prior round>   # omit on round 1; required on round 2+
-scope: core-only | +perf | +sec | +obs | +rel | full
+scope: core-only | +perf | +sec | +obs | +rel | +api | full
 depth: standard | deep
 stack: <stack identifier>
 generated_at: <ISO 8601 UTC timestamp>

@@ -1,6 +1,6 @@
 ---
 name: task-node-review
-description: Node.js/NestJS/Express code review - event-loop blocking, async pitfalls, ORM leaks, missing guards, validation; spawns perf/security/obs/reliability agents.
+description: Node.js/NestJS/Express code review - event-loop blocking, async pitfalls, ORM leaks, missing guards, validation; spawns perf/security/obs/reliability/api agents.
 agent: node-tech-lead
 metadata:
   category: backend
@@ -13,7 +13,7 @@ user-invocable: true
 
 # Node.js Code Review
 
-Staff-level Node.js / NestJS / Express code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability / reliability subagents in parallel for extra scopes. Runs standalone with full PR/branch resolution.
+Staff-level Node.js / NestJS / Express code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability / reliability / api subagents in parallel for extra scopes. Runs standalone with full PR/branch resolution.
 
 ## When to Use
 
@@ -27,7 +27,7 @@ Staff-level Node.js / NestJS / Express code review umbrella. Covers correctness,
 - Production incident (`/task-oncall-start`)
 - Single-error debug
 - New-system architecture (`task-design-architecture`)
-- Single-scope reviews - delegate to `task-node-review-perf` / `-security` / `-observability` / `-reliability`
+- Single-scope reviews - delegate to `task-node-review-perf` / `-security` / `-observability` / `-reliability` / `-api`
 
 ## Depth Levels
 
@@ -47,7 +47,8 @@ Staff-level Node.js / NestJS / Express code review umbrella. Covers correctness,
 | + Sec | Core + `task-node-review-security` subagent |
 | + Obs | Core + `task-node-review-observability` subagent |
 | + Rel | Core + `task-node-review-reliability` subagent |
-| Full | Core + all four subagents in parallel |
+| + Api | Core + `task-node-review-api` subagent |
+| Full | Core + all five subagents in parallel |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
@@ -57,6 +58,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 - **+Perf:** new Prisma / TypeORM migration, new ORM query (`findMany` / `find` / `createQueryBuilder`), new `include` / `relations`, new pagination, new endpoints with payloads, loops calling DB or HTTP, new `lru-cache` / Redis read paths
 - **+Obs:** new service / module, new external client (`axios.create`, `undici` Pool), new BullMQ producer / processor, logging config change (`pino` / `winston`), new `prom-client`, new lifecycle hook (`OnModuleInit`, `OnApplicationBootstrap`)
 - **+Rel:** new `axios` / `undici` / `fetch` client without an `AbortSignal.timeout`, new `opossum` / `cockatiel` / `p-retry` config, BullMQ processor without an idempotency check, unbounded `Promise.all` over a collection, missing `SIGTERM` / graceful-shutdown drain, dual write (`queue.add` / `stripe.charge` / `mailer.send` inside `$transaction`)
+- **+Api:** a *contract-change* signal (not merely a new internal endpoint) - a removed / renamed / retyped response-DTO field, a changed HTTP status, a new **required** request field or tightened class-validator / zod constraint, a new public route on a `/v1/`-versioned or externally consumed API, a controller returning a raw TypeORM / Prisma entity, or an edit to a `@nestjs/swagger` / swagger-jsdoc / committed OpenAPI spec
 - **2+ categories → Full**
 
 ## Invocation
@@ -262,8 +264,9 @@ If scope is **Core only**, skip. For each extra scope, spawn one independent sub
 | + Sec | `task-node-review-security` | `node-security-engineer` |
 | + Obs | `task-node-review-observability` | `node-observability-engineer` |
 | + Rel | `task-node-review-reliability` | `node-reliability-engineer` |
+| +Api | `task-node-review-api` | `node-api-engineer` |
 
-`Full` = 4 subagents.
+`Full` = 5 subagents.
 
 **Subagent prompt contract** - each must include:
 
@@ -304,7 +307,7 @@ Use skill: `review-report-writer` with `report_type: review` and these checkpoin
 
 - `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
 - `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = node-typescript`
+- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `+Api` -> `+api`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = node-typescript`
 
 Write before ending; print the confirmation line.
 
@@ -329,7 +332,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Stack Detected:** Node.js <version> / TypeScript <version>
 **Framework:** NestJS <version> | Express <version> | mixed
 **ORM:** Prisma <version> | TypeORM <version>
-**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | +Rel | +Api | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
 **Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
@@ -402,7 +405,7 @@ _Omit if no actionable findings._
 - Apply Node conventions, not generic backend conventions
 - Provide actionable feedback with TypeScript code examples
 - Default Core; auto-escalate; honor `core-only`
-- Delegate perf / security / observability / reliability depth to subagents
+- Delegate perf / security / observability / reliability / api depth to subagents
 
 ## Self-Check
 
@@ -433,7 +436,7 @@ _Omit if no actionable findings._
 - Vague feedback ("this could be better")
 - Blocking on personal preference
 - Running extra scopes when `core-only` was passed
-- Duplicating perf / security / observability / reliability depth here when the dedicated subagent owns them
+- Duplicating perf / security / observability / reliability / api depth here when the dedicated subagent owns them
 - Sequential extra scopes that could parallelize
 - Appending raw subagent reports instead of merging
 - Recommending sync `fs.readFileSync` / `crypto.pbkdf2Sync` in request paths, `eval` / `new Function` on untrusted input, or `Object.assign(target, req.body)` as acceptable patterns

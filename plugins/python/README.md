@@ -16,11 +16,12 @@ Claude Code plugin for Python development.
 | Skill                             | Agent                       | Description                                                                                                          |
 | --------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | task-python-implement             | python-engineer             | End-to-end feature implementation across all layers                                                                  |
-| task-python-review                | python-tech-lead            | Python staff-level code review umbrella - Phases A-E with FastAPI/Django idioms; spawns parallel scope subagents     |
+| task-python-review                | python-tech-lead            | Python staff-level code review umbrella - Phases A-E with FastAPI/Django idioms; spawns parallel perf/security/obs/reliability/api subagents |
 | task-python-review-perf           | python-performance-engineer | SQLAlchemy / Django ORM N+1, async event-loop blocking, Celery throughput, migration safety                          |
 | task-python-review-security       | python-security-engineer    | FastAPI OAuth2 / JWT, Django auth / DRF permissions, Pydantic v2 mass assignment, ORM injection, OWASP Top 10        |
 | task-python-review-observability  | python-observability-engineer | structlog, OpenTelemetry SDK + auto-instrumentation, Prometheus client, error-tracker SDKs (library-level focus)     |
 | task-python-review-reliability    | python-reliability-engineer | httpx/asyncio timeouts, tenacity retries, circuit breakers, Celery acks_late/DLQ + idempotency, async pool bounds, graceful degradation |
+| task-python-review-api            | python-api-engineer         | API-contract review - REST design, breaking-change/versioning, Pydantic response models over ORM rows, RFC 9457 errors, pagination, OpenAPI drift |
 | task-python-test                  | python-test-engineer        | pytest strategy / scaffolding (httpx ASGITransport, DRF APIClient, Testcontainers, factory_boy, Celery testing)      |
 
 ## Atomic Skills (internal, not user-invocable)
@@ -49,6 +50,7 @@ Claude Code plugin for Python development.
 | python-performance-engineer | Async correctness, SQLAlchemy/Django ORM query tuning, Celery throughput, profiling                    |
 | python-observability-engineer | Structured logging (structlog/python-json-logger), OpenTelemetry instrumentation, Celery tracing, contextvars correlation, prometheus-client metrics, Sentry |
 | python-reliability-engineer | httpx/asyncio timeouts, tenacity retries, circuit breakers, Celery acks_late/DLQ + idempotency, async pool bounds, graceful degradation, recoverability under partial failure |
+| python-api-engineer         | API-contract review - REST resource design, breaking-change/versioning detection, Pydantic response models over SQLAlchemy rows, RFC 9457 errors, pagination, OpenAPI drift |
 | python-test-engineer        | pytest strategies, factory_boy fixtures, Testcontainers, async testing, and test pyramid design        |
 
 ## Framework Detection

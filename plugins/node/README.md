@@ -35,7 +35,8 @@ ORM selection can be overridden by declaring it in your project's repo context f
 | Skill                            | Agent                     | Description                                                                                                                         |
 | -------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `task-node-implement`            | node-engineer             | End-to-end feature implementation across all layers with comprehensive tests                                                        |
-| `task-node-review`               | node-tech-lead            | Node staff-level code review umbrella - Phases A-E with NestJS / Express idioms; spawns parallel scope subagents                    |
+| `task-node-review`               | node-tech-lead            | Node staff-level code review umbrella - Phases A-E with NestJS / Express idioms; spawns parallel perf / security / obs / reliability / api subagents |
+| `task-node-review-api`           | node-api-engineer         | REST contract review - breaking-change / versioning, response DTOs over TypeORM / Prisma entities, RFC 9457 errors, pagination, @nestjs/swagger drift |
 | `task-node-review-perf`          | node-performance-engineer | Prisma / TypeORM N+1, event-loop blocking, BullMQ throughput, NestJS request-scoped misuse, migration safety                        |
 | `task-node-review-security`      | node-security-engineer    | NestJS Guards / JWT / Passport, Express middleware auth, ValidationPipe / Zod input, prototype pollution, OWASP Top 10              |
 | `task-node-review-observability` | node-observability-engineer | pino / winston, OpenTelemetry Node SDK + auto-instrumentation, prom-client, BullMQ queue events (library-level focus)               |
@@ -93,4 +94,5 @@ Atomic skills are loaded by workflow skills and agents (not directly invocable).
 | `node-performance-engineer` | Event loop blocking detection, Prisma/TypeORM query tuning, memory leak profiling, connection pool sizing           |
 | `node-observability-engineer` | Structured logging (pino/winston), OpenTelemetry Node SDK, prom-client metrics, AsyncLocalStorage correlation, BullMQ queue events, Sentry wiring. |
 | `node-reliability-engineer` | AbortSignal timeouts, opossum/cockatiel breakers, p-retry, bounded concurrency (p-limit), BullMQ DLQ/idempotency, transactional outbox, graceful shutdown draining. |
+| `node-api-engineer`         | API-contract review - REST design, breaking-change/versioning, response DTOs over TypeORM/Prisma entities, RFC 9457 errors, pagination, @nestjs/swagger drift. Drives `task-node-review-api`. |
 | `node-test-engineer`        | Jest/Supertest strategies, NestJS TestingModule, Testcontainers, MSW, and test pyramid design                       |

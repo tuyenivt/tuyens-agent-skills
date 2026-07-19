@@ -1,6 +1,6 @@
 ---
 name: task-go-review
-description: Go / Gin / GORM / sqlx code review - goroutine leaks, context propagation, N+1, auth; spawns perf/security/observability/reliability subagents.
+description: Go / Gin / GORM / sqlx code review - goroutine leaks, context propagation, N+1, auth; spawns perf/security/observability/reliability/api subagents.
 agent: go-tech-lead
 metadata:
   category: backend
@@ -13,7 +13,7 @@ user-invocable: true
 
 # Go Code Review
 
-Staff-level Go/Gin/GORM/sqlx review umbrella. Covers correctness, architecture, AI quality, maintainability. Coordinates perf / security / observability / reliability subagents in parallel.
+Staff-level Go/Gin/GORM/sqlx review umbrella. Covers correctness, architecture, AI quality, maintainability. Coordinates perf / security / observability / reliability / api subagents in parallel.
 
 ## When to Use
 
@@ -22,7 +22,7 @@ Staff-level Go/Gin/GORM/sqlx review umbrella. Covers correctness, architecture, 
 - Architecture drift detection
 - Pre-merge risk assessment
 
-**Not for:** pre-implementation design (`task-go-implement`), production incident (`/task-oncall-start`), single-error debug, new-system architecture (`task-design-architecture`), single-scope reviews (delegate to perf/security/observability/reliability).
+**Not for:** pre-implementation design (`task-go-implement`), production incident (`/task-oncall-start`), single-error debug, new-system architecture (`task-design-architecture`), single-scope reviews (delegate to perf/security/observability/reliability/api).
 
 ## Depth
 
@@ -42,7 +42,8 @@ Staff-level Go/Gin/GORM/sqlx review umbrella. Covers correctness, architecture, 
 | + Sec | Core + `task-go-review-security` subagent |
 | + Obs | Core + `task-go-review-observability` subagent |
 | + Rel | Core + `task-go-review-reliability` subagent |
-| Full | Core + all four in parallel |
+| + Api | Core + `task-go-review-api` subagent |
+| Full | Core + all five in parallel |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
@@ -52,6 +53,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 - **+Perf:** new migration, new GORM query statement (`Find` / `First` / `Preload` / `Joins` - new DB roundtrip, not a modifier like `Order` / `Limit` added to an existing query), new pagination, new endpoints with payloads, loops calling DB or HTTP, new cache reads, new goroutines / `errgroup`
 - **+Obs:** new service / package, new external client, new Asynq / Kafka producer / consumer, logging config change, `prometheus` registration, `pprof`, lifecycle changes
 - **+Rel:** new `http.Client` without `Timeout` or use of `http.DefaultClient` / `http.Get` on a downstream call, `sony/gobreaker` / `cenkalti/backoff` config, new `go func()` without a `<-ctx.Done()` arm or owner, a downstream call not taking the request `ctx`, unbounded channel / per-request goroutine spawn, `tx.Create` + `asynq.Enqueue` / `kafka.Produce` dual write inside one transaction
+- **+Api:** a *contract-change* signal (not merely a new internal endpoint) - a removed / renamed / retyped response-struct field, a changed status code, a new **required** request field or tightened `binding` constraint, a new public route on a `/v1/`-versioned or externally consumed API, a handler returning a raw GORM entity via `c.JSON`, or an edit to a committed OpenAPI / swaggo spec
 - **2+ categories -> Full**
 
 ## Invocation
@@ -258,8 +260,9 @@ Skip if scope is **Core only**. For each selected scope, spawn one independent s
 | +Sec  | `task-go-review-security`      | `go-security-engineer`      |
 | +Obs  | `task-go-review-observability` | `go-observability-engineer` |
 | +Rel  | `task-go-review-reliability`   | `go-reliability-engineer`   |
+| +Api  | `task-go-review-api`           | `go-api-engineer`           |
 
-`Full` = 4 subagents.
+`Full` = 5 subagents.
 
 **Subagent prompt contract:**
 
@@ -302,7 +305,7 @@ Use skill: `review-report-writer` with `report_type: review` and these checkpoin
 
 - `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
 - `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = go-gin`
+- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `+Api` -> `+api`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = go-gin`
 
 Write before ending; print confirmation.
 
@@ -327,7 +330,7 @@ No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn
 **Stack Detected:** Go <version> / Gin <version>
 **Data Access:** GORM | sqlx | database/sql | mixed
 **Messaging:** Asynq | Kafka | none
-**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(if auto-escalated: `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | +Rel | +Api | Full _(if auto-escalated: `auto-escalated from Core; signals: <list>`)_
 **Depth:** standard | deep _(if auto-promoted: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
@@ -396,7 +399,7 @@ _Omit if no actionable findings._
 - Actionable feedback with Go code
 - `gofmt` / `goimports` apply; don't nitpick style
 - Default Core; auto-escalate; honor `core-only`
-- Delegate perf / security / observability / reliability depth to subagents
+- Delegate perf / security / observability / reliability / api depth to subagents
 
 ## Self-Check
 
@@ -438,7 +441,7 @@ _Omit if no actionable findings._
 - Vague feedback ("this could be better")
 - Blocking on personal preference
 - Running extra scopes when `core-only` was passed
-- Duplicating perf / security / observability / reliability depth here
+- Duplicating perf / security / observability / reliability / api depth here
 - Sequential extra scopes that could parallelize
 - Appending raw subagent reports
 - Recommending `panic` in service code
