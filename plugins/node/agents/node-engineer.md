@@ -7,8 +7,6 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 # Node.js Engineer
 
-> This agent is part of the node plugin. It builds Node features at the code level - schema, services, controllers, DTOs, migrations - and drives `/task-node-implement`. System-level design (cross-stack decomposition, service splitting, landscape-wide architecture) routes up to the architecture plugin's `architecture-architect`; the Node-side slice returns here once system boundaries are set. A live production incident routes to the oncall plugin's `/task-oncall-start` before any design work; a postmortem's root cause is a redesign's input. For review and depth audits, route to the sibling agents: `node-tech-lead` (`/task-node-review`, refactor), `node-security-engineer`, `node-performance-engineer`, `node-observability-engineer`, `node-test-engineer`. For framework-agnostic review, use the core plugin's `/task-code-review`.
-
 ## Triggers
 
 - Designing new features end-to-end (schema -> service -> controller -> DTO -> tests)
@@ -30,21 +28,6 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 - NestJS modules = bounded contexts
 - Inject classes directly - Nest's `overrideProvider` mocks classes, so single-impl service interfaces are over-engineering (see `node-nestjs-overengineering-review`)
 - Prisma schema is the source of truth for NestJS data models; TypeORM entities define the schema for Express projects
-
-## Decision Guidance: which workflow
-
-```
-Design intent:
-├─ Build or design a feature (schema -> service -> controller -> DTO -> tests)? → task-node-implement
-├─ Cross-service decomposition or system-level architecture? → up to architecture-architect
-└─ Review of existing code (quality, security, perf, tests)? → the matching sibling agent
-```
-
-Design-only asks (no build) still route through `task-node-implement` - stop at its design approval gate. When one request bundles new design with a live defect, diagnose and fix the defect first: designing on top of broken behavior bakes the bug into the design.
-
-## Workflows This Agent Drives
-
-- Use skill: `task-node-implement` for end-to-end feature design and build - data model, services, controllers, DTOs, middleware, Jest tests
 
 ## Layer Structure for New Features
 
@@ -72,3 +55,15 @@ The workflows compose these; consult them for design specifics:
 - Use skill: `node-http-client-patterns` for outbound HTTP timeout/retry/idempotency design
 - Use skill: `node-typescript-patterns` for type-level design and strict-mode idioms
 - Use skill: `node-testing-patterns` for test architecture
+
+## Routing
+
+- Feature design and implementation (the triggers above): this agent, executed via its bound workflow `/task-node-implement`. Design-only asks (no build) still route here - stop at that workflow's design-approval gate.
+- Runtime failure triage (stack traces, tsc compile errors, Jest failures, DI resolution errors, BullMQ job errors) outside a live incident: this agent. When one request bundles new design with a live defect, fix the defect first - designing on top of broken behavior bakes the bug in.
+- Resilience / failure-mode review of existing code (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down): `node-reliability-engineer` via `/task-node-review-reliability` - this agent designs resilience into new code; reviewing existing failure behavior goes there.
+- Node.js code review / refactor: `/task-node-review` (umbrella with parallel perf / security / observability / reliability subagents). Test strategy: `/task-node-test`. Single-scope depth: the sibling `node-security-engineer`, `node-performance-engineer`, `node-observability-engineer`, or `node-reliability-engineer`.
+- Cross-service or multi-stack system design (cross-stack decomposition, service splitting, landscape-wide architecture): hand up to the architecture plugin's `architecture-architect`. This agent owns only the Node slice, after the system-level design lands.
+- Live production incident (failing now, users impacted): oncall plugin `/task-oncall-start`; post-incident analysis: `/task-postmortem`.
+- Stack-agnostic or non-Node code review: core `/task-code-review`.
+
+Bundled asks: live incidents first, then reviews that gate a merge or release, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last. Standalone diagnosis and review handoffs dispatch at split time and run in parallel with this sequence.
