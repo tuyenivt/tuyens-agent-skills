@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `oncall`, `java`, `kotlin`, `python`, `ruby`, `node`, and `go`.
+Single marketplace repository for Claude Code plugins: `architecture`, `oncall`, `java`, `python`, `ruby`, `node`, and `go`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -25,13 +25,6 @@ Run these commands from your project root. Claude Code will store the selection 
 ```bash
 claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install java@tuyens-agent-skills --scope project
-```
-
-**Kotlin / Spring Boot project:**
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install kotlin@tuyens-agent-skills --scope project
 ```
 
 **Python / FastAPI or Django project:**
@@ -97,7 +90,6 @@ Quick routing guide across all plugins. Find your intent and pick the right skil
 I want to...
   review code (PR / AI-gen)               -> /task-code-review
   implement a feature                     -> /task-implement (dispatches to stack-specific)
-  fix a bug or crash                      -> /task-code-debug (dispatches to stack-specific)
   break a design into tasks / review one  -> /task-breakdown-design [architecture]
   design/review system, API, diagrams     -> /task-design-architecture [architecture]
   write tests                             -> /task-code-test
@@ -105,9 +97,7 @@ I want to...
   write a postmortem                      -> /task-postmortem (run after root-cause) [oncall]
   hand off an on-call shift               -> /task-oncall-start [oncall]
   onboard to a codebase                   -> /task-onboard
-  understand a file or function           -> /task-code-explain
   plan/review a database migration        -> /task-db-migration [architecture]
-  refactor safely                         -> /task-code-refactor
   decompose monolith into services        -> /task-decompose-monolith [architecture]
   consolidate over-split services         -> /task-consolidate-services [architecture]
   modernize a legacy system               -> /task-modernize-legacy [architecture]
@@ -125,76 +115,54 @@ I want to...
 ```
 Java / Spring Boot (plugin: java)
   implement a new feature              -> /task-spring-implement
-  debug an issue                       -> /task-spring-debug
   staff-level code review              -> /task-spring-review
   performance review                   -> /task-spring-review-perf
   security review                      -> /task-spring-review-security
   observability review                 -> /task-spring-review-observability
   reliability review                   -> /task-spring-review-reliability
   test strategy / scaffolds            -> /task-spring-test
-  refactor plan                        -> /task-spring-refactor
-
-Kotlin / Spring Boot (plugin: kotlin)
-  implement a new feature              -> /task-kotlin-implement
-  debug an issue                       -> /task-kotlin-debug
-  staff-level code review              -> /task-kotlin-review
-  performance review                   -> /task-kotlin-review-perf
-  security review                      -> /task-kotlin-review-security
-  observability review                 -> /task-kotlin-review-observability
-  reliability review                   -> /task-kotlin-review-reliability
-  test strategy / scaffolds            -> /task-kotlin-test
-  refactor plan                        -> /task-kotlin-refactor
 
 Python / FastAPI / Django (plugin: python)
   implement a new feature              -> /task-python-implement
-  debug an issue                       -> /task-python-debug
   staff-level code review              -> /task-python-review
   performance review                   -> /task-python-review-perf
   security review                      -> /task-python-review-security
   observability review                 -> /task-python-review-observability
   reliability review                   -> /task-python-review-reliability
   test strategy / scaffolds            -> /task-python-test
-  refactor plan                        -> /task-python-refactor
 
 Ruby on Rails (plugin: ruby)
   implement a new feature              -> /task-rails-implement
-  debug an issue                       -> /task-rails-debug
   staff-level code review              -> /task-rails-review
   performance review                   -> /task-rails-review-perf
   security review                      -> /task-rails-review-security
   observability review                 -> /task-rails-review-observability
   reliability review                   -> /task-rails-review-reliability
   test strategy / scaffolds            -> /task-rails-test
-  refactor plan                        -> /task-rails-refactor
 
 Node.js / TypeScript / NestJS (plugin: node)
   implement a new feature              -> /task-node-implement
-  debug an issue                       -> /task-node-debug
   staff-level code review              -> /task-node-review
   performance review                   -> /task-node-review-perf
   security review                      -> /task-node-review-security
   observability review                 -> /task-node-review-observability
   reliability review                   -> /task-node-review-reliability
   test strategy / scaffolds            -> /task-node-test
-  refactor plan                        -> /task-node-refactor
 
 Go / Gin (plugin: go)
   implement a new feature              -> /task-go-implement
-  debug an issue                       -> /task-go-debug
   staff-level code review              -> /task-go-review
   performance review                   -> /task-go-review-perf
   security review                      -> /task-go-review-security
   observability review                 -> /task-go-review-observability
   reliability review                   -> /task-go-review-reliability
   test strategy / scaffolds            -> /task-go-test
-  refactor plan                        -> /task-go-refactor
 ```
 
 **Common decision points:**
 
-- "Universal entry points vs stack-specific" - most `task-code-*` skills (`debug`, `refactor`, `review`, `review-perf`, `review-security`, `review-observability`, `review-reliability`, `test`) are **thin routers**: they auto-detect your stack and dispatch to `/task-<stack>-<verb>`. Use the universal entry point if unsure; for installed language plugins, calling the stack-specific skill directly skips the routing layer. `/task-code-explain` and `/task-onboard` are **composing workflows**: they remain direct entry points and weave a stack-specific atomic into a single output. `/task-implement` is a router (delegates to `/task-<stack>-implement`).
+- "Universal entry points vs stack-specific" - most `task-code-*` skills (`review`, `review-perf`, `review-security`, `review-observability`, `review-reliability`, `test`) are **thin routers**: they auto-detect your stack and dispatch to `/task-<stack>-<verb>`. Use the universal entry point if unsure; for installed language plugins, calling the stack-specific skill directly skips the routing layer. `/task-onboard` is a **composing workflow**: it remains a direct entry point and weaves a stack-specific atomic into a single output. `/task-implement` is a router (delegates to `/task-<stack>-implement`).
 - "Review code" vs "Review a design" - `/task-code-review` (and stack-specific reviews) target source code and PRs, and also handle pre-merge risk analysis of a change. Architecture workflows (`/task-design-architecture`, `/task-db-migration`, `/task-dependency-upgrade`, `/task-decompose-monolith`, `/task-consolidate-services`, `/task-modernize-legacy`, `/task-breakdown-design`) each double as a review workflow for the corresponding artifact - paste an existing artifact instead of authoring requirements.
-- "Debug" vs "Explain" - if something is broken, use `/task-code-debug`. If it works but you don't understand it, use `/task-code-explain`.
 - "Design-to-tasks breakdown" vs "Architecture" - `/task-breakdown-design` turns an approved design into a phased, dependency-ordered task graph with effort sizing (or, in review mode, critiques a breakdown someone else authored). Architecture produces the design proposal itself (boundaries, failure modes). Run architecture first, then break the resulting design into tasks.
 - "Root cause" vs "Postmortem" - root cause runs during or immediately after an incident. Postmortem runs after resolution to extract systemic improvements.
 - "PR conflict analysis" vs "Code review" - conflict analysis detects semantic conflicts across concurrent PRs (shared schema, API, shared code). Code review evaluates a single PR for quality. Run conflict analysis before batch-merging a sprint.
@@ -208,7 +176,6 @@ Go / Gin (plugin: go)
 | [architecture](plugins/architecture) | Stack-agnostic architecture, re-architecture, and delivery: unified system design (boundaries + API contracts + C4 diagrams), monolith decomposition, service consolidation, legacy modernization, DB migration, dependency upgrade, design-to-tasks breakdown (HLD/LLD -> task graph), task-breakdown review, and release notes with rollback risk register. Every design workflow doubles as a review workflow. |
 | [oncall](plugins/oncall)             | Incident response: triage, investigation, root cause analysis, and postmortem                                                                                                       |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         |
-| [kotlin](plugins/kotlin)             | Kotlin 2.0+ / Spring Boot 3.5+                                                                                                                 |
 | [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                                                                                                 |
 | [ruby](plugins/ruby)                 | Ruby on Rails 7.2+                                                                                                                                                                  |
 | [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                                                                                                           |

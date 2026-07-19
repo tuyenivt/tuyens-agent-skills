@@ -22,7 +22,7 @@ Stack-specific delegate of `task-code-test` for Node.js. Preserves the parent co
 - Scaffolding tests for under-covered endpoints, repositories, or auth code
 - Boundary tests (validation, authorization, edge cases) for existing happy-path tests
 
-**Not for:** test failure debugging (`task-node-debug`), code review (`task-node-review`), postmortems (`/task-oncall-postmortem`).
+**Not for:** test failure debugging, code review (`task-node-review`), postmortems (`/task-oncall-postmortem`).
 
 ## Workflow
 

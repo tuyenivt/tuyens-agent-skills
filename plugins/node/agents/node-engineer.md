@@ -7,7 +7,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 # Node.js Engineer
 
-> This agent is part of the node plugin. It builds Node features at the code level - schema, services, controllers, DTOs, migrations - and drives `/task-node-implement` and `/task-node-debug`. System-level design (cross-stack decomposition, service splitting, landscape-wide architecture) routes up to the architecture plugin's `architecture-architect`; the Node-side slice returns here once system boundaries are set. A live production incident routes to the oncall plugin's `/task-oncall-start` before any design work; a postmortem's root cause is a redesign's input. For review and depth audits, route to the sibling agents: `node-tech-lead` (`/task-node-review`, refactor), `node-security-engineer`, `node-performance-engineer`, `node-observability-engineer`, `node-test-engineer`. For framework-agnostic review, use the core plugin's `/task-code-review`.
+> This agent is part of the node plugin. It builds Node features at the code level - schema, services, controllers, DTOs, migrations - and drives `/task-node-implement`. System-level design (cross-stack decomposition, service splitting, landscape-wide architecture) routes up to the architecture plugin's `architecture-architect`; the Node-side slice returns here once system boundaries are set. A live production incident routes to the oncall plugin's `/task-oncall-start` before any design work; a postmortem's root cause is a redesign's input. For review and depth audits, route to the sibling agents: `node-tech-lead` (`/task-node-review`, refactor), `node-security-engineer`, `node-performance-engineer`, `node-observability-engineer`, `node-test-engineer`. For framework-agnostic review, use the core plugin's `/task-code-review`.
 
 ## Triggers
 
@@ -36,17 +36,15 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 ```
 Design intent:
 ├─ Build or design a feature (schema -> service -> controller -> DTO -> tests)? → task-node-implement
-├─ Error, stack trace, failing build/test, or BullMQ failure to diagnose? → task-node-debug
 ├─ Cross-service decomposition or system-level architecture? → up to architecture-architect
 └─ Review of existing code (quality, security, perf, tests)? → the matching sibling agent
 ```
 
-Design-only asks (no build) still route through `task-node-implement` - stop at its design approval gate. When one request bundles new design with a live defect, run `task-node-debug` first: designing on top of broken behavior bakes the bug into the design.
+Design-only asks (no build) still route through `task-node-implement` - stop at its design approval gate. When one request bundles new design with a live defect, diagnose and fix the defect first: designing on top of broken behavior bakes the bug into the design.
 
 ## Workflows This Agent Drives
 
 - Use skill: `task-node-implement` for end-to-end feature design and build - data model, services, controllers, DTOs, middleware, Jest tests
-- Use skill: `task-node-debug` for stack traces, tsc compile errors, Jest failures, DI resolution failures, and BullMQ job failures
 
 ## Layer Structure for New Features
 

@@ -61,7 +61,7 @@ Narrow first, then verify it is not silently affecting others.
 
 ### Step 4 - Verify Expected Behavior
 
-Before concluding "bug", read the code and confirm what the system is *designed* to do. Use skill: `task-code-explain` if the path is unfamiliar. Check feature flags, config values, A/B assignments, and recent deploys (inaccessible systems: see Rules).
+Before concluding "bug", read the code and confirm what the system is *designed* to do. When the path is unfamiliar, trace it end to end - entry point -> handler -> service -> persistence - and note any framework-implicit behavior that could explain the symptom on its own (transactions and their boundaries, ORM callbacks/signals, async or scheduled execution, retries, caching, default serialization). Check feature flags, config values, A/B assignments, and recent deploys (inaccessible systems: see Rules).
 
 For Alert investigations, "expected behavior" means the monitor's intent: compare threshold, evaluation window, and recovery threshold against the observed metric pattern, and check whether the triggering pattern is scheduled or known load.
 
@@ -84,7 +84,7 @@ Use skill: `ops-observability-fetch` for any row whose evidence lives in an APM/
 
 | Finding                  | Recommended Action                                                  |
 | ------------------------ | ------------------------------------------------------------------- |
-| Bug                      | Reproduction steps + route to `task-code-debug`                     |
+| Bug                      | Reproduction steps + hand off to the owning engineer for a fix      |
 | Working as designed      | Document why it is correct; draft response to requester             |
 | Config                   | Identify the change; assess change risk                             |
 | Data                     | Identify correction; hotfix vs migration for stored data, invalidation + code fix for stale caches |
@@ -134,6 +134,6 @@ Time Window: {when}
 ## Avoid
 
 - Fishing through logs without a hypothesis - state what signal you needed if absent
-- Routing to `task-code-debug` without a stack trace or reproduction path
+- Handing off a "Bug" verdict without a stack trace or reproduction path
 - Skipping layer isolation on data issues - "the value is wrong" without naming which layer is incorrect
 - Tuning an alert without asking whether the underlying load pattern should change instead

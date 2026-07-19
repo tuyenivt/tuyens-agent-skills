@@ -17,7 +17,7 @@ Detects the project stack and delegates to the matching implementation workflow.
 - New features spanning multiple layers (API, service, persistence, tests)
 - New routes, pages, or components for a frontend stack
 
-**Not for:** bug fixes (`task-code-debug`), refactors (`task-code-refactor`), isolated single-file edits.
+**Not for:** bug fixes, refactors, isolated single-file edits.
 
 ## Inputs
 
@@ -42,7 +42,6 @@ Use skill: `stack-detect`.
 | Detected stack              | Delegate to              |
 | --------------------------- | ------------------------ |
 | Java / Spring Boot          | `task-spring-implement`  |
-| Kotlin / Spring Boot        | `task-kotlin-implement`  |
 | Python / FastAPI or Django  | `task-python-implement`  |
 | Ruby / Rails                | `task-rails-implement`   |
 | Node.js / NestJS or Express | `task-node-implement`    |

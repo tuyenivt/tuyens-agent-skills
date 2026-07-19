@@ -17,7 +17,7 @@ user-invocable: true
 
 End-to-end Go/Gin feature work: migration + model + repository + service + handler + tests in one pass.
 
-Not for: single-file edits, bugfixes (`task-go-debug`), frontend.
+Not for: single-file edits, bugfixes, frontend.
 
 ## Rules
 

@@ -22,7 +22,7 @@ Staff-level Go/Gin/GORM/sqlx review umbrella. Covers correctness, architecture, 
 - Architecture drift detection
 - Pre-merge risk assessment
 
-**Not for:** pre-implementation design (`task-go-implement`), production incident (`/task-oncall-start`), single-error debug (`task-go-debug`), new-system architecture (`task-design-architecture`), single-scope reviews (delegate to perf/security/observability/reliability).
+**Not for:** pre-implementation design (`task-go-implement`), production incident (`/task-oncall-start`), single-error debug, new-system architecture (`task-design-architecture`), single-scope reviews (delegate to perf/security/observability/reliability).
 
 ## Depth
 
@@ -216,7 +216,7 @@ Use skill: `architecture-guardrail` for layer violations and coupling.
 - **Gin middleware order:** `recovery -> logging -> request-id -> CORS -> auth -> rate-limit -> handler`. Auth at group level, not per-route
 - **GORM hooks** for genuine cross-cutting (audit, search-index sync) - not hidden control flow for emails / Asynq dispatch
 - **Error-handling middleware:** `c.Error(err)` flows to centralized middleware; per-handler `c.JSON(500, ...)` scattered is `[Recommend]`
-- **Anemic domain (deep depth only):** rules in services while models stay pure data - flag for `task-go-refactor`. Don't raise on a single PR alone
+- **Anemic domain (deep depth only):** rules in services while models stay pure data - flag for refactor/extraction. Don't raise on a single PR alone
 
 **Multi-service PRs:** API contract compatibility (OpenAPI diff, Pact); deployment order documented; use skill: `ops-backward-compatibility`.
 

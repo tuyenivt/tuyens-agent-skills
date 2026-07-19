@@ -9,7 +9,7 @@ user-invocable: false
 
 > Load `Use skill: stack-detect` first to determine the project stack.
 
-Single owner for the application-wide rescue contract. `node-nestjs-patterns` / `node-express-patterns` show framework wiring; this skill owns the domain-error hierarchy, retry propagation, ORM translation at the boundary, and Sentry capture discipline. Workflows (`task-node-implement`, `task-node-review-observability`, `task-node-debug`) delegate here.
+Single owner for the application-wide rescue contract. `node-nestjs-patterns` / `node-express-patterns` show framework wiring; this skill owns the domain-error hierarchy, retry propagation, ORM translation at the boundary, and Sentry capture discipline. Workflows (`task-node-implement`, `task-node-review-observability`) delegate here.
 
 ## When to Use
 

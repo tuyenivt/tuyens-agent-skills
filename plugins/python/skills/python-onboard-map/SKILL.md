@@ -99,7 +99,7 @@ If a `Makefile` is present, treat it as the authoritative command source - `make
 - **Sync I/O / blocking calls inside `async def`** (FastAPI): see `python-async-patterns`.
 - **`AsyncSession` lazy-loading + `MissingGreenlet`**: see `python-sqlalchemy-patterns`.
 - **Django queryset writes that bypass `save()` / signals** (`bulk_create`, `update()`, raw SQL): see `python-django-patterns`.
-- **Celery `.delay()` inside an open transaction**: see `python-celery-patterns`, `task-python-refactor`.
+- **Celery `.delay()` inside an open transaction**: see `python-celery-patterns`.
 - **Migration safety on large tables** (full-table locks, unbounded backfills): see `python-migration-safety`.
 - **Python footguns**: Pydantic v1 vs v2 drift, mutable default args, settings drift, circular imports.
 

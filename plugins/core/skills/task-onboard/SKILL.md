@@ -19,7 +19,7 @@ Produces a structured codebase map calibrated to the reader's goal so engineer r
 - Before the first significant change to an unknown codebase
 - Due diligence / acquisition code review
 
-**Not for:** explaining a single file or function (`task-code-explain`), code-quality review (`task-code-review`), proposing new architecture.
+**Not for:** code-quality review (`task-code-review`), proposing new architecture.
 
 ## Inputs
 
@@ -62,7 +62,6 @@ If detected stack matches, load the atomic. It injects stack-specific bootstrap 
 | Detected stack       | Load atomic           |
 | -------------------- | --------------------- |
 | Java / Spring Boot   | `spring-onboard-map`  |
-| Kotlin / Spring Boot | `kotlin-onboard-map`  |
 | Python               | `python-onboard-map`  |
 | Ruby / Rails         | `rails-onboard-map`   |
 | Node.js / TypeScript | `node-onboard-map`    |

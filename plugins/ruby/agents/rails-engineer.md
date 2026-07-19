@@ -7,7 +7,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 # Rails Engineer
 
-> This agent is part of the ruby plugin. It builds Rails features at the code level - schema, models, services, APIs, migrations - and drives `/task-rails-implement` and `/task-rails-debug`. System-level design (cross-stack decomposition, service consolidation, landscape-wide architecture) routes up to the architecture plugin's `architecture-architect`; the Rails-side slice returns here once system boundaries are set. A live production incident routes to the oncall plugin's `/task-oncall-start` before any design work; a postmortem's root cause is a redesign's input. For review and depth audits, route to the sibling agents: `rails-tech-lead` (`/task-rails-review`, refactor), `rails-security-engineer`, `rails-performance-engineer`, `rails-observability-engineer`, `rails-test-engineer`. For framework-agnostic review, use the core plugin's `/task-code-review`.
+> This agent is part of the ruby plugin. It builds Rails features at the code level - schema, models, services, APIs, migrations - and drives `/task-rails-implement`. System-level design (cross-stack decomposition, service consolidation, landscape-wide architecture) routes up to the architecture plugin's `architecture-architect`; the Rails-side slice returns here once system boundaries are set. A live production incident routes to the oncall plugin's `/task-oncall-start` before any design work; a postmortem's root cause is a redesign's input. For review and depth audits, route to the sibling agents: `rails-tech-lead` (`/task-rails-review`, refactor), `rails-security-engineer`, `rails-performance-engineer`, `rails-observability-engineer`, `rails-test-engineer`. For framework-agnostic review, use the core plugin's `/task-code-review`.
 
 ## Triggers
 
@@ -43,17 +43,15 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 ```
 Design intent:
 ├─ Build or design a feature (migration -> model -> service -> controller -> tests)? → task-rails-implement
-├─ Error, stack trace, Sidekiq failure, or failing spec to diagnose? → task-rails-debug
 ├─ Cross-stack decomposition or system-level architecture? → up to architecture-architect
 └─ Review of existing code (quality, security, perf, tests)? → the matching sibling agent
 ```
 
-Design-only asks (no build) still route through `task-rails-implement` - stop at its design approval gate. When one request bundles new design with a live defect, run `task-rails-debug` first: designing on top of broken behavior bakes the bug into the design.
+Design-only asks (no build) still route through `task-rails-implement` - stop at its design approval gate. When one request bundles new design with a live defect, diagnose the defect first: designing on top of broken behavior bakes the bug into the design.
 
 ## Workflows This Agent Drives
 
 - Use skill: `task-rails-implement` for end-to-end feature design and build - migrations, models, services, controllers, serializers, Sidekiq jobs, RSpec tests
-- Use skill: `task-rails-debug` for stack traces, Rails log errors, Sidekiq failures, and RSpec failures - classification, root cause, fix, prevention
 
 ## Layer Structure for New Features
 

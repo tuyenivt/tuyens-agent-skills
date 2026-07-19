@@ -104,7 +104,7 @@ The fetched evidence (error_event, monitor_state, log_window, trace, deploy_even
 | Type                       | Signals                                                                                | Route to                                        |
 | -------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | **Active incident**        | Ongoing user-facing impact: error rate spike, service down, SLA breach, data loss risk | `incident-root-cause`                           |
-| **Code bug**               | Stack trace, test failure, crash, reproducible error - without ongoing multi-user impact | `task-code-debug`                               |
+| **Code bug**               | Stack trace, test failure, crash, reproducible error - without ongoing multi-user impact | Reproduce + hand off to owning engineer         |
 | **Operational issue**      | Batch missed, queue backed up, "why did X happen?"                                     | `oncall-investigate`                            |
 | **User / support request** | Single user issue, access problem, data question                                       | `oncall-investigate`                            |
 | **Performance**            | Slow response, high latency, timeout (no outage)                                       | `oncall-investigate` or `task-code-review-perf` |
@@ -147,7 +147,7 @@ Severity: {Critical | High | Medium | Low}
 Ongoing: {Yes (symptom still occurring) | No | Unknown}
 
 ### Recommended Workflow
-Use: {incident-root-cause | task-code-debug | oncall-investigate | task-code-review-perf}
+Use: {incident-root-cause | oncall-investigate | task-code-review-perf | code-fix handoff (repro + owning engineer)}
 
 ### Context Package
 - Symptom: {one sentence}

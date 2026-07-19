@@ -22,7 +22,7 @@ Stack-specific delegate of `task-code-test` for Python. Preserves the parent con
 - Scaffolding tests for under-covered endpoints, repositories, or auth code
 - Boundary tests (validation, authorization, edge cases) for existing happy-path tests
 
-**Not for:** test failure debugging (`task-python-debug`), code review (`task-python-review`), postmortems (`/task-oncall-postmortem`).
+**Not for:** test failure debugging, code review (`task-python-review`), postmortems (`/task-oncall-postmortem`).
 
 ## Workflow
 

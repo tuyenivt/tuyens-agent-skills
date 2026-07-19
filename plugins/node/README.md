@@ -35,14 +35,12 @@ ORM selection can be overridden by declaring it in your project's repo context f
 | Skill                            | Agent                     | Description                                                                                                                         |
 | -------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `task-node-implement`            | node-engineer             | End-to-end feature implementation across all layers with comprehensive tests                                                        |
-| `task-node-debug`                | node-engineer             | Debug errors from stack traces, test failures, build errors, and runtime issues                                                     |
 | `task-node-review`               | node-tech-lead            | Node staff-level code review umbrella - Phases A-E with NestJS / Express idioms; spawns parallel scope subagents                    |
 | `task-node-review-perf`          | node-performance-engineer | Prisma / TypeORM N+1, event-loop blocking, BullMQ throughput, NestJS request-scoped misuse, migration safety                        |
 | `task-node-review-security`      | node-security-engineer    | NestJS Guards / JWT / Passport, Express middleware auth, ValidationPipe / Zod input, prototype pollution, OWASP Top 10              |
 | `task-node-review-observability` | node-observability-engineer | pino / winston, OpenTelemetry Node SDK + auto-instrumentation, prom-client, BullMQ queue events (library-level focus)               |
 | `task-node-review-reliability`   | node-reliability-engineer | AbortSignal timeouts, opossum / cockatiel breakers, p-retry, bounded concurrency (p-limit), BullMQ DLQ / idempotency, graceful shutdown |
 | `task-node-test`                 | node-test-engineer        | Jest / Supertest strategy / scaffolding (NestJS TestingModule, Testcontainers, MSW, BullMQ in-memory + real-broker)                 |
-| `task-node-refactor`             | node-tech-lead            | Refactor plan: fat controllers, anemic services, sync-in-async, listener abuse, BullMQ idempotency, prototype pollution, with gates |
 
 ### Usage Examples
 
@@ -76,7 +74,6 @@ Atomic skills are loaded by workflow skills and agents (not directly invocable).
 | `node-typescript-patterns` | TypeScript strict mode: generics, discriminated unions, type guards, branded types, utility types, no `any`                   |
 | `node-migration-safety`    | Safe migrations: Prisma migrate + TypeORM migrations, zero-downtime DDL, enum management, deploy ordering                     |
 | `node-bullmq-patterns`     | BullMQ background jobs: job design, idempotency, retry strategy, queue routing, fan-out, worker lifecycle, testing strategies |
-| `node-code-explain`        | Event loop and async semantics, NestJS DI/module graph, Express middleware, error propagation across async, TS-vs-runtime - injected into `task-code-explain` |
 | `node-onboard-map`         | Package manager (npm/yarn/pnpm/bun), framework (NestJS/Express), TS config, build/run scripts, ORM, ESM/CJS - injected into `task-onboard` |
 | `node-nestjs-overengineering-review` | Necessity review for NestJS: class-validator decorators duplicating Prisma/TypeORM / DB / TS strict-null, defensive guards on DI-injected providers / guards / `findUniqueOrThrow`, single-impl service interfaces / `BaseService<T>` / `Scope.REQUEST` on stateless providers / `Result<T,E>` wrappers / AutoMapper-style mappers / speculative `ConfigService` keys, broad `catch (e)` defeating the global exception filter. Composed into `task-node-review` Phase D when NestJS is detected. |
 | `node-express-overengineering-review` | Necessity review for Express: Zod schemas duplicating TypeORM / DB / TS strict-null, defensive null after `findOneOrFail` or on typed values, middleware factories of one, Repository wrappers over TypeORM's `Repository<T>`, custom error hierarchies with no consumer branching, `Result<T,E>` wrappers, broad `catch (e)` defeating Express's error-handling middleware. Composed into `task-node-review` Phase D when Express is detected. |

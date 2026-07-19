@@ -41,7 +41,6 @@ Use skill: `stack-detect`.
 | Detected stack       | Delegate to                |
 | -------------------- | -------------------------- |
 | Java / Spring Boot   | `task-spring-review-perf`  |
-| Kotlin / Spring Boot | `task-kotlin-review-perf`  |
 | Python               | `task-python-review-perf`  |
 | Ruby / Rails         | `task-rails-review-perf`   |
 | Node.js / TypeScript | `task-node-review-perf`    |

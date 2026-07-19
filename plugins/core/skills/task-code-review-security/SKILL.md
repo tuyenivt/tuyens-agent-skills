@@ -43,7 +43,6 @@ Use skill: `stack-detect`.
 | Detected stack       | Delegate to                    |
 | -------------------- | ------------------------------ |
 | Java / Spring Boot   | `task-spring-review-security`  |
-| Kotlin / Spring Boot | `task-kotlin-review-security`  |
 | Python               | `task-python-review-security`  |
 | Ruby / Rails         | `task-rails-review-security`   |
 | Node.js / TypeScript | `task-node-review-security`    |

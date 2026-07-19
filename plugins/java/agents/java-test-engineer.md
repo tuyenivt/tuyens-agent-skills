@@ -34,7 +34,7 @@ category: quality
 
 | Ask | Route |
 | --- | ----- |
-| A specific failing or flaky test with an unexplained error (intermittent assertion, Testcontainers startup failure) | `/task-spring-debug` - structural suite problems (slow suite, overbroad `@SpringBootTest`, missing `@Transactional`) stay here via `/task-spring-test` |
+| A specific failing or flaky test with an unexplained error (intermittent assertion, Testcontainers startup failure) | Diagnosing the specific failure is debugging, not test-strategy work; structural suite problems (slow suite, overbroad `@SpringBootTest`, missing `@Transactional`) stay here via `/task-spring-test` |
 | Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` first; this agent writes the regression test after the fix is identified |
 
 ## Key Skills

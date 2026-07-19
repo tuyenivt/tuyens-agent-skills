@@ -14,7 +14,6 @@ plugins/
   architecture/  # Stack-agnostic architecture design, re-architecture, task breakdown, and release notes
   oncall/        # Incident response workflows
   java/          # Java 21+ / Spring Boot 3.5+
-  kotlin/        # Kotlin 2.0+ / Spring Boot 3.5+
   python/        # Python 3.11+ / FastAPI (primary), Django (secondary)
   ruby/          # Ruby 3.4+ / Ruby on Rails 7.2+
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)

@@ -20,7 +20,7 @@ Spring-aware test strategy and scaffolding. Stack-specific delegate of `task-cod
 - Scaffolding controller / repository / service / security tests
 - Reviewing pyramid balance or adding boundary tests to happy-path-only suites
 
-**Not for:** test failure debugging (`task-spring-debug`), code review (`task-code-review`), postmortems (`/task-oncall-postmortem`).
+**Not for:** test failure debugging, code review (`task-code-review`), postmortems (`/task-oncall-postmortem`).
 
 ## Workflow
 

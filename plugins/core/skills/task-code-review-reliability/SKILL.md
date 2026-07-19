@@ -50,7 +50,6 @@ Use skill: `stack-detect`.
 | Detected stack       | Delegate to                       |
 | -------------------- | --------------------------------- |
 | Java / Spring Boot   | `task-spring-review-reliability`  |
-| Kotlin / Spring Boot | `task-kotlin-review-reliability`  |
 | Python               | `task-python-review-reliability`  |
 | Ruby / Rails         | `task-rails-review-reliability`   |
 | Node.js / TypeScript | `task-node-review-reliability`    |

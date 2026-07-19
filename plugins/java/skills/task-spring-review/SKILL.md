@@ -16,7 +16,7 @@ Spring-aware staff-level review umbrella. Stack-specific delegate of `task-code-
 ## When to Use
 
 - Pre-merge Spring Boot PR review, post-AI-generation quality gate, architecture drift detection.
-- **Not for:** design (`task-spring-implement`), incidents (`/task-oncall-start`), debugging (`task-spring-debug`), new-system architecture (`task-design-architecture`), single-scope reviews (delegate to `task-spring-review-{perf,security,observability,reliability}`).
+- **Not for:** design (`task-spring-implement`), incidents (`/task-oncall-start`), debugging, new-system architecture (`task-design-architecture`), single-scope reviews (delegate to `task-spring-review-{perf,security,observability,reliability}`).
 
 ## Depth and Scope
 
@@ -186,7 +186,7 @@ Use skill: `architecture-guardrail`.
 
 - [ ] **Layering** - `@RestController` -> `@Service` -> `@Repository`. No business logic in controllers; no HTTP clients in repos/entities; no view rendering in services. DTO mapping at service/controller boundary.
 - [ ] **Service-layer discipline** - controller orchestration > 5 lines -> extract `@Service`; methods reveal intent (`fulfillOrder(orderId)`) over CRUD pass-through; cross-aggregate work lives in a service, not `@PostPersist`/`@PostUpdate`.
-- [ ] **Anemic domain** - rules accumulating in services with entities as pure data -> flag for refactor (see `task-spring-refactor`).
+- [ ] **Anemic domain** - rules accumulating in services with entities as pure data -> flag for refactor/extraction.
 - [ ] **DI style** - constructor only; `final` fields with `@RequiredArgsConstructor`; no setter injection, no field `@Autowired`, no `ApplicationContextAware`.
 - [ ] **Configuration** - typed `@ConfigurationProperties` records over `@Value`; profiles separated; no hardcoded values.
 - [ ] **Module boundaries** - feature-package layout; cross-feature access via public service interfaces, not direct `OtherFeatureRepository` calls.

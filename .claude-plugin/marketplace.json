@@ -1,6 +1,6 @@
 {
   "name": "tuyens-agent-skills",
-  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, oncall, java, kotlin, python, ruby, node, and go.",
+  "description": "Marketplace for Tuyen's Agent Skills plugins: architecture, oncall, java, python, ruby, node, and go.",
   "owner": {
     "name": "Tuyen",
     "contact": "github.com/tuyenivt"
@@ -84,24 +84,6 @@
         "gradle",
         "virtual-threads",
         "testing"
-      ]
-    },
-    {
-      "name": "kotlin",
-      "source": "./plugins/kotlin",
-      "description": "Skills and agents for Kotlin 2.0+ / Spring Boot 3.5+ development.",
-      "version": "1.133.0",
-      "author": {
-        "name": "Tuyen",
-        "url": "https://github.com/tuyenivt"
-      },
-      "tags": [
-        "kotlin",
-        "spring-boot",
-        "gradle",
-        "coroutines",
-        "mockk",
-        "kotest"
       ]
     },
     {

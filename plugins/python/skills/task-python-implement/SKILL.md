@@ -17,7 +17,7 @@ user-invocable: true
 
 End-to-end Python feature work: migration + model + service + endpoint + schema + tests in one pass for FastAPI or Django.
 
-Not for: single-file edits (edit directly), bugfixes (`task-python-debug`), frontend.
+Not for: single-file edits (edit directly), bugfixes, frontend.
 
 ## Rules
 

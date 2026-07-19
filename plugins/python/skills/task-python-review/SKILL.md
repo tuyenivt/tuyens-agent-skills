@@ -25,7 +25,7 @@ Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, 
 **Not for:**
 - Pre-implementation design (`task-python-implement`)
 - Production incident (`/task-oncall-start`)
-- Single-error debug (`task-python-debug`)
+- Single-error debug
 - New-system architecture (`task-design-architecture`)
 - Single-scope reviews - delegate to `task-python-review-perf` / `-security` / `-observability` / `-reliability`
 
@@ -219,7 +219,7 @@ Use skill: `architecture-guardrail` for layer violations and coupling.
 - **Feature-package layout** (`app/orders/{router,service,repository,schema}.py`) preferred over layer-package; cross-feature imports go through public service interfaces, not direct repository imports
 - **Multi-tenant isolation** enforced at the repository / queryset layer (`with_loader_criteria` / `Manager` override), not at routers / views alone
 - **Signal / event discipline:** Django `post_save` / `pre_delete` and SQLAlchemy event listeners reserved for genuinely cross-cutting concerns (audit, search-index) - not as hidden control flow dispatching emails / Celery tasks
-- **Anemic domain (deep depth only):** business rules accumulating in services while ORM models stay pure data - flag for `task-python-refactor`. Do not raise on a single PR's evidence alone
+- **Anemic domain (deep depth only):** business rules accumulating in services while ORM models stay pure data - flag for refactoring. Do not raise on a single PR's evidence alone
 
 **Multi-service PRs:**
 

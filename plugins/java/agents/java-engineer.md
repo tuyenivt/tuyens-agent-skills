@@ -6,7 +6,7 @@ category: engineering
 
 # Java Engineer
 
-> This agent is part of the java plugin. It builds Spring Boot features at the code level - entities, migrations, repositories, services, controllers, tests - and drives `/task-spring-implement` and `/task-spring-debug`. System-level design (cross-stack decomposition, service boundaries, cross-service event contracts) routes up to the architecture plugin's `architecture-architect`; the Spring-side slice returns here once system boundaries are set. A live production incident routes to the oncall plugin's `/task-oncall-start` before any design work; `/task-postmortem` findings feed the redesign. For review and refactor, route to `java-tech-lead` (`/task-spring-review`, `/task-spring-refactor`); for depth audits, `java-security-engineer`, `java-performance-engineer`, `java-observability-engineer`, `java-test-engineer`. For framework-agnostic review, use the core plugin's `/task-code-review`.
+> This agent is part of the java plugin. It builds Spring Boot features at the code level - entities, migrations, repositories, services, controllers, tests - and drives `/task-spring-implement`. System-level design (cross-stack decomposition, service boundaries, cross-service event contracts) routes up to the architecture plugin's `architecture-architect`; the Spring-side slice returns here once system boundaries are set. A live production incident routes to the oncall plugin's `/task-oncall-start` before any design work; `/task-postmortem` findings feed the redesign. For review and refactor, route to `java-tech-lead` (`/task-spring-review`); for depth audits, `java-security-engineer`, `java-performance-engineer`, `java-observability-engineer`, `java-test-engineer`. For framework-agnostic review, use the core plugin's `/task-code-review`.
 
 ## Triggers
 
@@ -24,7 +24,7 @@ category: engineering
 | Cross-service or multi-stack system design (sagas, cross-stack event contracts, service boundaries) | architecture plugin; this agent owns only the Spring service's slice, after the system-level design lands |
 | Live production incident (failing now, users impacted) | oncall plugin `/task-oncall-start`; post-incident analysis: `/task-postmortem` |
 
-Bundled asks: live incidents first, then diagnosis handoffs, then active-defect triage (`/task-spring-debug`), then feature implementation (`task-spring-implement`), then build optimization.
+Bundled asks: live incidents first, then diagnosis handoffs, then active-defect triage, then feature implementation (`task-spring-implement`), then build optimization.
 
 ## Focus Areas
 

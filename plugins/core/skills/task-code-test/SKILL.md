@@ -38,7 +38,6 @@ Use skill: `stack-detect` to identify language, framework, and `Stack Type`.
 | Detected stack       | Delegate to         |
 | -------------------- | ------------------- |
 | Java / Spring Boot   | `task-spring-test`  |
-| Kotlin / Spring Boot | `task-kotlin-test`  |
 | Python               | `task-python-test`  |
 | Ruby / Rails         | `task-rails-test`   |
 | Node.js / TypeScript | `task-node-test`    |

@@ -7,7 +7,7 @@ category: quality
 
 # Python Tech Lead
 
-> This agent is part of the python plugin. Drives the Python-specific review and refactor workflows: `/task-python-review` (umbrella with perf/security/observability subagents) and `/task-python-refactor`. For framework-agnostic review, use the core plugin's `/task-code-review`. For single-scope depth outside review bundles, route to `python-performance-engineer` (`/task-python-review-perf`), `python-security-engineer` (`/task-python-review-security`), or `python-observability-engineer` (`/task-python-review-observability`). For feature build and error/bug triage, route to `python-engineer` (`/task-python-implement`, `/task-python-debug`). A live production incident (outage, error spike firing now) routes to the oncall plugin's `/task-oncall-start` before any review - review the fix afterward. Cross-service or multi-stack redesign emerging from review/refactor findings routes to the architecture plugin.
+> This agent is part of the python plugin. Drives the Python-specific review workflow: `/task-python-review` (umbrella with perf/security/observability subagents). For framework-agnostic review, use the core plugin's `/task-code-review`. For single-scope depth outside review bundles, route to `python-performance-engineer` (`/task-python-review-perf`), `python-security-engineer` (`/task-python-review-security`), or `python-observability-engineer` (`/task-python-review-observability`). For feature build and error/bug triage, route to `python-engineer` (`/task-python-implement`). A live production incident (outage, error spike firing now) routes to the oncall plugin's `/task-oncall-start` before any review - review the fix afterward. Cross-service or multi-stack redesign emerging from review/refactor findings routes to the architecture plugin.
 
 ## Role
 
@@ -130,9 +130,8 @@ Flag as review findings when:
 ### Workflows this agent drives
 
 - Use skill: `task-python-review` for the Python-specific staff-level review umbrella (Phases A-E with perf/security/observability subagents)
-- Use skill: `task-python-refactor` for Python-specific refactor planning (fat routers/views, anemic services, sync-in-async, blocking I/O, signal abuse, lazy-load traps) with a pytest coverage gate
 
-When one request bundles several asks: run `task-python-review` first - its findings are the refactor plan's input - then active-defect triage (`python-engineer` via `/task-python-debug`), and `task-python-refactor` last (its pytest coverage gate should see the review's findings). The umbrella's observability subagent covers PR-scoped observability; for asks spanning beyond the diff (system-wide tracing, logging, correlation), route to `python-observability-engineer` (`/task-python-review-observability`).
+When one request bundles several asks: run `task-python-review` first, then active-defect triage (`python-engineer`). The umbrella's observability subagent covers PR-scoped observability; for asks spanning beyond the diff (system-wide tracing, logging, correlation), route to `python-observability-engineer` (`/task-python-review-observability`).
 
 ### Atomic skills
 

@@ -17,7 +17,7 @@ user-invocable: true
 
 End-to-end Node.js/TypeScript feature work: migration + model + service + controller + DTOs + tests in one pass for NestJS or Express.
 
-Not for: single-file edits (edit directly), bugfixes (`task-node-debug`), frontend.
+Not for: single-file edits (edit directly), bugfixes, frontend.
 
 ## Rules
 

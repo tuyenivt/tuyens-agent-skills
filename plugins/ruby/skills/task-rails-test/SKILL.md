@@ -21,7 +21,7 @@ Stack-specific delegate of `task-code-test`. Risk-prioritized test planning, cov
 - Adding boundary tests (authorization, validation, edge cases) to happy-path specs
 - Reviewing test pyramid balance
 
-Not for: test failure debugging (`task-rails-debug`), general code review (`task-code-review`), postmortems (`/task-oncall-postmortem`).
+Not for: test failure debugging, general code review (`task-code-review`), postmortems (`/task-oncall-postmortem`).
 
 ## Workflow
 

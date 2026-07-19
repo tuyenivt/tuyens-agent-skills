@@ -69,13 +69,13 @@ Rows keyed on a gem/config signal appear only when the evidence shows it; code-s
 | Implicit config                 | `load_defaults` < installed Rails version; `new_framework_defaults_*.rb`; `touch:`/`autosave:` | `rails-implicit-config-audit` |
 | Unmaintained gems               | EOL/abandoned gems (paperclip, etc.) - migrate before touching their domain   | (gem-specific)                     |
 | Packwerk boundaries             | `package.yml` packs - check `bin/packwerk check` runs in CI                   | -                                  |
-| Callback abuse                  | Heavy `after_save` business logic                                             | `rails-code-explain`               |
-| `update_columns` / `update_all` | Bypass callbacks/validations                                                  | `rails-code-explain`               |
+| Callback abuse                  | Heavy `after_save` business logic                                             | -                                  |
+| `update_columns` / `update_all` | Bypass callbacks/validations                                                  | -                                  |
 | `permit!`                       | Mass assignment escape hatch in controllers                                   | `rails-security-patterns`          |
 | Connection pool                 | Sidekiq concurrency vs DB `max_connections`                                   | `rails-connection-pool-sizing`     |
 | MySQL `REPEATABLE READ`         | Long transactions, gap locks                                                  | `rails-db-locking-patterns`        |
 | Worker memory                   | jemalloc / `MALLOC_ARENA_MAX=2` / WorkerKiller                                | `rails-batch-processing-patterns`  |
-| Zeitwerk / `master.key`         | Constant-loading bugs at boot; missing key blocks boot                        | `rails-code-explain`               |
+| Zeitwerk / `master.key`         | Constant-loading bugs at boot; missing key blocks boot                        | -                                  |
 
 ### First-PR safe zones
 

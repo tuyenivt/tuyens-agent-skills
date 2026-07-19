@@ -25,7 +25,7 @@ Staff-level Node.js / NestJS / Express code review umbrella. Covers correctness,
 **Not for:**
 - Pre-implementation design (`task-node-implement`)
 - Production incident (`/task-oncall-start`)
-- Single-error debug (`task-node-debug`)
+- Single-error debug
 - New-system architecture (`task-design-architecture`)
 - Single-scope reviews - delegate to `task-node-review-perf` / `-security` / `-observability` / `-reliability`
 
@@ -217,7 +217,7 @@ Use skill: `architecture-guardrail` for layer violations and coupling.
 - **Feature-module layout** (`src/orders/{controller,service,repository,dto}.ts`) preferred over layer-package; cross-feature imports go through public module exports, not direct repository imports
 - **Multi-tenant isolation** enforced at the repository layer (Prisma extension / TypeORM listener / QueryBuilder helper), not at controllers alone
 - **Listener / middleware discipline:** `@AfterInsert`, `@BeforeUpdate`, Prisma middleware reserved for genuinely cross-cutting concerns (audit, soft-delete, search-index) - not as hidden control flow dispatching emails / BullMQ jobs
-- **Anemic domain (deep depth only):** business rules accumulating in services while ORM models stay pure data - flag for `task-node-refactor`. Do not raise on a single PR's evidence alone
+- **Anemic domain (deep depth only):** business rules accumulating in services while ORM models stay pure data - flag for refactor/extraction. Do not raise on a single PR's evidence alone
 
 **Multi-service PRs:**
 

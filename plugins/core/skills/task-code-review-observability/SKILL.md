@@ -42,7 +42,6 @@ Use skill: `stack-detect`.
 | Detected stack       | Delegate to                         |
 | -------------------- | ----------------------------------- |
 | Java / Spring Boot   | `task-spring-review-observability`  |
-| Kotlin / Spring Boot | `task-kotlin-review-observability`  |
 | Python               | `task-python-review-observability`  |
 | Ruby / Rails         | `task-rails-review-observability`   |
 | Node.js / TypeScript | `task-node-review-observability`    |

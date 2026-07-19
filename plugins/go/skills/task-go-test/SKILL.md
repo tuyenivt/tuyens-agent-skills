@@ -23,7 +23,7 @@ Go-aware test strategy and scaffolding using table-driven tests, `httptest.NewRe
 - Test pyramid review
 - Adding boundary tests to happy-path-only tests
 
-**Not for:** test failure debugging (`task-go-debug`), general review (`task-go-review`), postmortems (`/task-oncall-postmortem`).
+**Not for:** test failure debugging, general review (`task-go-review`), postmortems (`/task-oncall-postmortem`).
 
 ## Workflow
 

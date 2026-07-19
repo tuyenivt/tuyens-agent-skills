@@ -37,7 +37,7 @@ Oncall intent:
 └─ Incident resolved, root cause known, want prevention? → task-postmortem
 ```
 
-Triage routes onward by work type: active incident → `incident-root-cause`; operational / support / alert / performance question → `oncall-investigate`; a reproducible code bug → `task-code-debug` (core's router; dispatches to the matching stack workflow); a latency concern without outage → `task-code-review-perf`. A request to (re)design the system so a failure class cannot recur is not oncall work - hand off to the architecture plugin. Run `task-postmortem` only after root cause is known - it is not a debugging tool.
+Triage routes onward by work type: active incident → `incident-root-cause`; operational / support / alert / performance question → `oncall-investigate`; a reproducible code bug → reproduce, then hand off to the owning stack engineer for a fix; a latency concern without outage → `task-code-review-perf`. A request to (re)design the system so a failure class cannot recur is not oncall work - hand off to the architecture plugin. Run `task-postmortem` only after root cause is known - it is not a debugging tool.
 
 When one page bundles several asks, sequence by live impact: anything still affecting production now - an active incident, or a firing alert even below incident thresholds - is triaged and routed before forward-looking work such as a postmortem for an already-resolved issue. After live impact is routed: Shift-Start next when the bundle includes taking over a rotation (its summary absorbs the remaining items as handoff context), then deadline-bearing prevention work such as postmortems, then non-urgent tickets.
 
@@ -57,4 +57,4 @@ The workflows compose these directly; the agent does not call them standalone:
 - Use skill: `log-analysis` for time-window isolation, correlation tracing, and healthy/unhealthy comparison
 - Use skill: `review-gap-analysis` to find why review and quality gates missed the failure - process gaps, not blame
 
-For failure classification, blast radius, resiliency, observability, and governance, the workflows compose the core plugin's atomics (`ops-failure-classification`, `review-blast-radius`, `ops-resiliency`, `ops-observability`, `ops-engineering-governance`, and others). For stack-specific debugging and performance review, they route through core's `task-code-debug` and `task-code-review-perf` routers, which dispatch to the matching stack plugin.
+For failure classification, blast radius, resiliency, observability, and governance, the workflows compose the core plugin's atomics (`ops-failure-classification`, `review-blast-radius`, `ops-resiliency`, `ops-observability`, `ops-engineering-governance`, and others). For stack-specific performance review, they route through core's `task-code-review-perf` router, which dispatches to the matching stack plugin.

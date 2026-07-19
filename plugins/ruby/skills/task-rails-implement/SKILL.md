@@ -15,7 +15,7 @@ user-invocable: true
 - New aggregate with REST API, persistence, authorization, tests
 - Scaffolding a domain resource with production-ready patterns
 
-Not for: single-file bug fixes (`task-rails-debug`), view-only edits (use `rails-view-templates`), migration-only changes.
+Not for: single-file bug fixes, view-only edits (use `rails-view-templates`), migration-only changes.
 
 ## Workflow
 
