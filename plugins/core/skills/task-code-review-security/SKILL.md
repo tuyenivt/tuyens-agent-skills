@@ -48,6 +48,7 @@ Use skill: `stack-detect`.
 | Node.js / TypeScript | `task-node-review-security`    |
 | Go / Gin             | `task-go-review-security`      |
 | Flutter / Dart       | `task-flutter-review-security` |
+| React / Next.js      | `task-react-review-security`   |
 
 A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow does not resolve (stack plugin not installed), state that and run Steps 4-5 instead.
 

@@ -134,6 +134,17 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 | `review-prior-findings-reconcile` | Round 2+ of any `task-*-review*` workflow: classify each prior finding as Addressed / Still open / Obsolete / Needs re-check by checking whether the cited smell persists in the new diff. Binary contract; no causation linking. |
 | `review-report-writer`       | Writes the completed review with YAML checkpoint frontmatter (head_sha, base_sha, mode, round) so the next round can auto-detect incremental scope. Called as the final step of all `task-*-review*` workflows.                                       |
 
+### Frontend
+
+| Skill                       | Description                                                                                                                                                      |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `frontend-state-management` | State management patterns: local vs global, when to lift state, derived state, state normalization. Adapts to detected stack (Redux, Pinia, NgRx, Zustand, etc.) |
+| `frontend-testing-patterns` | Frontend testing: component testing, integration testing, e2e with Playwright/Cypress, mocking APIs (MSW), snapshot discipline. Adapts to detected stack         |
+| `frontend-accessibility`    | WCAG 2.1 AA compliance: semantic HTML, ARIA, keyboard navigation, focus management, color contrast, screen reader testing                                        |
+| `frontend-api-integration`  | Data fetching patterns: loading/error states, caching, optimistic updates, pagination. Adapts to detected stack (TanStack Query, SWR, Apollo, etc.)              |
+| `frontend-performance`      | Core Web Vitals, bundle splitting, lazy loading, image optimization, render performance, memoization discipline                                                  |
+| `frontend-form-handling`    | Form patterns: validation, error display, multi-step forms, dirty tracking, submission handling. Adapts to detected stack                                        |
+
 ## Skill Dependency Index
 
 Quick reference showing which atomic skills each workflow invokes. Use this to understand scope before customizing or extending a workflow.
@@ -146,7 +157,7 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 | `task-onboard`                   | `stack-detect` + `*-onboard-map` (per stack), `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `ops-observability`, `dependency-impact-analysis`                                                                                                                  |
 | `task-pr-create`                 | `stack-detect`, `review-pr-risk`                                                                                                                                                                                                                                                           |
 | `task-code-review`               | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `review-pr-risk`, `review-blast-radius`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `backend-api-guidelines`, `architecture-concurrency`, `ops-observability`, `ops-resiliency`, `ops-backward-compatibility`, `review-report-writer`)_ |
-| `task-code-review-perf`          | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `backend-db-indexing`, `ops-observability`, `architecture-concurrency`, `review-report-writer`)_                                                                                                                                    |
+| `task-code-review-perf`          | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `backend-db-indexing`, `ops-observability`, `architecture-concurrency`, `frontend-performance`, `review-report-writer`)_                                                                                                                                    |
 | `task-code-review-security`      | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `review-report-writer`)_                                                                                                                                                                                    |
 | `task-code-review-observability` | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `ops-observability`, `review-report-writer`)_                                                                                                                                                               |
 | `task-code-review-reliability`   | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `ops-resiliency`, `backend-idempotency`, `failure-propagation-analysis`, `architecture-data-consistency`, `review-report-writer`)_                                                                            |

@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `oncall`, `java`, `python`, `ruby`, `node`, `go`, and `flutter`.
+Single marketplace repository for Claude Code plugins: `architecture`, `oncall`, `java`, `python`, `ruby`, `node`, `go`, `flutter`, and `react`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -60,6 +60,13 @@ claude plugin install go@tuyens-agent-skills --scope project
 ```bash
 claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install flutter@tuyens-agent-skills --scope project
+```
+
+**React / Next.js project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install react@tuyens-agent-skills --scope project
 ```
 
 **Architecture and delivery project:**
@@ -179,9 +186,18 @@ Flutter / Dart (plugin: flutter)
   observability review                 -> /task-flutter-review-observability
   reliability review                   -> /task-flutter-review-reliability
   test strategy / scaffolds            -> /task-flutter-test
+
+React / Next.js (plugin: react)
+  implement a new feature              -> /task-react-implement
+  staff-level code review              -> /task-react-review
+  performance review                   -> /task-react-review-perf
+  security review                      -> /task-react-review-security
+  observability review                 -> /task-react-review-observability
+  reliability review                   -> /task-react-review-reliability
+  test strategy / scaffolds            -> /task-react-test
 ```
 
-> Flutter has no `review-api` counterpart: it is a client that consumes API contracts rather than designing them. Adaptivity, accessibility, and localization are handled during `/task-flutter-implement` and checked at baseline depth inside `/task-flutter-review`.
+> The client plugins (`flutter`, `react`) have no `review-api` counterpart: a client consumes API contracts rather than designing them. In `react`, Server Action and Route Handler input validation is covered by `/task-react-review-security`. Accessibility is handled during `/task-<stack>-implement` and checked at baseline depth inside the stack umbrella review, alongside adaptivity and localization for `flutter`.
 
 **Common decision points:**
 
@@ -205,6 +221,7 @@ Flutter / Dart (plugin: flutter)
 | [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                                                                                                           |
 | [go](plugins/go)                     | Go 1.25+ / Gin                                                                                                                                                                      |
 | [flutter](plugins/flutter)           | Flutter / Dart 3.x client apps - Riverpod, go_router, Dio, Drift. Mobile primary, desktop secondary, web tertiary                                                                    |
+| [react](plugins/react)               | React 19 / TypeScript client apps - Next.js App Router (primary), Vite (secondary). Server Components, TanStack Query, Zustand, Tailwind                                             |
 
 ## Notes
 

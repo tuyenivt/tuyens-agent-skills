@@ -18,14 +18,15 @@ plugins/
   ruby/          # Ruby 3.4+ / Ruby on Rails 7.2+
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
   go/            # Go 1.25+ / Gin / GORM+sqlx
-  flutter/       # Flutter / Dart 3.x - the first client plugin (mobile primary, desktop secondary, web tertiary)
+  flutter/       # Flutter / Dart 3.x - client plugin (mobile primary, desktop secondary, web tertiary)
+  react/         # React 19 / TypeScript - client plugin (Next.js App Router primary, Vite secondary)
 ```
 
 Each plugin folder has a `README.md`. Each skill lives in its own directory as `SKILL.md`. Agent files are plain Markdown in `plugins/<stack>/agents/`.
 
 `core` is required by all other plugins.
 
-**`flutter` is the marketplace's first client/UI plugin**; every other stack plugin is server-side. Two consequences: its skills are authored fresh rather than adapted from a backend plugin (transactions, connection pools, and server middleware do not map to a device), and it carries no `api` review lens - a client consumes API contracts rather than designing them, so `task-code-review-api` has no `flutter` row. Adaptivity, accessibility, and localization are client-only concerns with no universal lens either; they are handled in `task-flutter-implement` and checked at baseline depth in the umbrella's Phase E.
+**`flutter` and `react` are the marketplace's client/UI plugins**; every other stack plugin is server-side. Two consequences: their skills are authored fresh rather than adapted from a backend plugin (transactions, connection pools, and server middleware do not map to a client), and neither carries an `api` review lens - a client consumes API contracts rather than designing them, so `task-code-review-api` has no `flutter` or `react` row. In `react`, Server Action and Route Handler input validation is owned by `task-react-review-security`, not an api lens. Accessibility is a client-only concern with no universal lens; it is handled in `task-<stack>-implement` and checked at baseline depth in the umbrella's Phase E, alongside adaptivity and localization for `flutter`.
 
 ## Skill File Format
 

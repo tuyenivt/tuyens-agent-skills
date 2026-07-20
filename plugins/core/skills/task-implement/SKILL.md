@@ -47,8 +47,9 @@ Use skill: `stack-detect`.
 | Node.js / NestJS or Express | `task-node-implement`    |
 | Go / Gin                    | `task-go-implement`      |
 | Flutter / Dart              | `task-flutter-implement` |
+| React / Next.js             | `task-react-implement`   |
 
-A detected frontend stack (React, Vue, Angular) has no dedicated workflow - run Step 4, whose IMPLEMENT phase covers the frontend layers. The same applies to a non-Flutter mobile stack (React Native, native Android/iOS): run Step 4's mobile path.
+A detected frontend stack other than React (Vue, Angular, Svelte) has no dedicated workflow - run Step 4, whose IMPLEMENT phase covers the frontend layers. The same applies to a non-Flutter mobile stack (React Native, native Android/iOS): run Step 4's mobile path.
 
 **Fullstack (`Stack Type: fullstack`):** decide which side the feature belongs to from the user's description. Delegate the backend side to the table workflow first for the API contract; build the frontend side via the Step 4 frontend path. If parallel work is required, fix the API contract up front and mock data on the frontend until the backend lands. Include an integration test from UI action to DB persistence. Ask the user when the split is ambiguous.
 
@@ -73,7 +74,7 @@ Runs when the stack is unknown, unsupported by any table row, or the matched plu
 **IMPLEMENT** in order. Load the atomic skill named at each applicable step; Use skill: `backend-coding-standards` throughout backend work:
 
 - *Backend:* (1) data layer - migration with indexes; never modify columns destructively; Use skill: `backend-db-migration`. (2) business logic - constructor injection; no logic in controllers. (3) API layer - never expose data-layer entities directly; map to DTOs; Use skill: `backend-api-guidelines`. (4) auth - explicit per endpoint, no implicit defaults. (5) background jobs if applicable; Use skill: `backend-idempotency` for retried or externally-triggered work. (6) tests - unit (logic), integration (DB), API (routing, serialization, auth).
-- *Frontend:* (1) routing - new routes, layouts, navigation. (2) components - single responsibility. (3) state - local first, lift or store only when sharing requires it. (4) data fetching - loading, error, caching, retry. (5) forms - validation, submission, errors. (6) accessibility - semantic HTML, ARIA, keyboard, focus. (7) tests - component, integration, E2E for critical flows.
+- *Frontend:* (1) routing - new routes, layouts, navigation. (2) components - single responsibility. (3) state - local first, lift or store only when sharing requires it; Use skill: `frontend-state-management`. (4) data fetching - loading, error, caching, retry; Use skill: `frontend-api-integration`. (5) forms - validation, submission, errors; Use skill: `frontend-form-handling`. (6) accessibility - semantic HTML, ARIA, keyboard, focus; Use skill: `frontend-accessibility`. (7) tests - component, integration, E2E for critical flows; Use skill: `frontend-testing-patterns`.
 - *Mobile:* (1) models - typed, with a typed failure representation rather than raw exceptions. (2) data layer - repository over a remote client and a local store; every network call carries a timeout and is cancellable. (3) state - side effects outside the render path; loading, error, and empty modelled explicitly, not inferred from null. (4) UI - screens and components, adaptive to the shipped platform targets, no hardcoded user-facing strings, accessibility labels on interactive elements. (5) navigation - routes and deep links registered. (6) local persistence migration when the on-device schema changes; old app versions stay installed, so the change must be backward compatible - Use skill: `ops-backward-compatibility`. (7) tests - unit, component/widget, snapshot for key UI, integration for the critical flow.
 
 **VALIDATE:**

@@ -55,6 +55,7 @@ Use skill: `stack-detect`.
 | Node.js / TypeScript | `task-node-review-reliability`    |
 | Go / Gin             | `task-go-review-reliability`      |
 | Flutter / Dart       | `task-flutter-review-reliability` |
+| React / Next.js      | `task-react-review-reliability`   |
 
 Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow is unavailable (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5. Stacks with no matching plugin fall through to the Step 4 generic fallback.
 

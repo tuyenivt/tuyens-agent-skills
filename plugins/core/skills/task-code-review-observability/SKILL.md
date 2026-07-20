@@ -47,6 +47,7 @@ Use skill: `stack-detect`.
 | Node.js / TypeScript | `task-node-review-observability`    |
 | Go / Gin             | `task-go-review-observability`      |
 | Flutter / Dart       | `task-flutter-review-observability` |
+| React / Next.js      | `task-react-review-observability`   |
 
 Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5 as fallback.
 

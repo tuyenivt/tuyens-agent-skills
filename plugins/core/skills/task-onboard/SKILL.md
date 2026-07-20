@@ -67,6 +67,7 @@ If detected stack matches, load the atomic. It injects stack-specific bootstrap 
 | Node.js / TypeScript | `node-onboard-map`    |
 | Go / Gin             | `go-onboard-map`      |
 | Flutter / Dart       | `flutter-onboard-map` |
+| React / Next.js      | `react-onboard-map`   |
 
 If no atomic matches the detected stack (e.g., Elixir), or the matched atomic does not resolve (stack plugin not installed), proceed with the generic workflow and note `no stack-specific onboarding atomic - generic guidance applied` under the Stack table.
 
