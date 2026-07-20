@@ -38,6 +38,7 @@ category: engineering
 - Use skill: `react-data-fetching` for TanStack Query patterns, Server Component fetching, cache invalidation
 - Use skill: `react-state-patterns` for state management selection and architecture
 - Use skill: `frontend-state-management` for state categorization and normalization
+- Use skill: `frontend-api-integration` for loading / error / empty states, caching, and optimistic-update patterns
 
 **Routing & Next.js:**
 
