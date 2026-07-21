@@ -183,6 +183,8 @@ useQuery({
 - [ ] **Dynamic `import()` failure has a recovery path.** After a redeploy, a tab open on the old build requests chunks that no longer exist and every lazy route throws `ChunkLoadError` on click. Catch it in a boundary that detects the error and forces `location.reload()`, and keep prior build assets available (or set a stable `deploymentId`) so the window is survivable. This is the most commonly missed React reliability defect and it fires on every deploy.
 - [ ] **Third-party scripts fail closed.** A blocked or timed-out analytics / chat / tag-manager script must not break the page: `next/script` with `strategy="lazyOnload"` and an `onError`, and no render path that assumes `window.<vendor>` exists.
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 11 - Write Report
 
 **Subagent mode:** when invoked by `task-react-review` or `task-code-review-reliability`, return the findings in this skill's Output Format for the parent to merge and write nothing - the parent owns the report and `review-report-writer` rejects subagent writes. At `deep`, return the Failure-Mode and User-Impact Map with the findings so the parent preserves it as its own section. Skip the rest of this step.

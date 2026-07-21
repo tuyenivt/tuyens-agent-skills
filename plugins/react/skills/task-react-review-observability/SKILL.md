@@ -151,6 +151,8 @@ _Skip on apps without a chosen RUM provider (or greenfield / audit mode applies)
 - [ ] Synthetic checks (Datadog Synthetics, Checkly) complement RUM for critical journeys
 - [ ] Bundle-size budget per route enforced in CI (`@next/bundle-analyzer`, `bundlesize`) - LCP regressions correlate with bundle growth
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 12 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-observability`. Write the report to file and print the confirmation line.

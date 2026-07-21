@@ -106,6 +106,8 @@ Run only the detected flavor's bullets.
 - [ ] No sensitive data in URLs - POST body or signed tokens
 - [ ] Rails credentials for all third-party keys; per-environment credential files
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 10 - Write Report
 
 Standalone runs: use skill `review-report-writer` with `report_type: review-security` (checkpoint fields come from Step 3); print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report. Security-adjacent correctness bugs found en route (double `body.read`, broken comparisons) stay in the report - they weaken the security posture even when the category is "bug".

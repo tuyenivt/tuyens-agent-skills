@@ -138,6 +138,8 @@ async def get_user(user_id: int, session: AsyncSession = Depends(get_session)) -
     return UserResponse.model_validate(user)
 ```
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 9 - Write Report
 
 Standalone only - subagent runs return findings in the Output Format to the parent, which writes the single merged report. At `deep`, a subagent returns the Consumer-Impact Map with its findings so the parent can preserve it as its own section.

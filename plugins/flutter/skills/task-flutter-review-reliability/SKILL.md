@@ -195,6 +195,8 @@ Old app versions stay installed for months. Users on metered connections, locked
 - [ ] **A minimum-version gate exists for changes that cannot be made compatible** - a server-driven force-update or feature gate, so an incompatible old build shows a clear screen rather than crashing or corrupting data.
 - [ ] **Local schema changes are forward-safe** - a user can downgrade, reinstall, or restore a backup; a migration that only moves forward must at least fail loudly rather than corrupt.
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 12 - Write Report
 
 Standalone only. When spawned by `task-flutter-review`, return findings in the Output Format to the parent and write nothing - the parent owns the single merged report. At `deep`, a subagent returns the Failure-Mode and User-Impact Map with its findings so the parent can preserve it as its own section.

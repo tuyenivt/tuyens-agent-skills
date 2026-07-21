@@ -179,6 +179,8 @@ Frame-cost *causes* are `task-flutter-review-perf`; this lens owns whether the c
 - [ ] **Store data-collection declarations match what the app actually reports.** A field added in Dart without updating the declaration is a compliance defect, not only a privacy one.
 - [ ] **Web and desktop caveats surfaced** when those targets are present: web has no native crash layer and symbolicates via source maps; desktop native coverage varies by SDK - verify rather than assume.
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 12 - Write Report
 
 Standalone only. When spawned by `task-flutter-review`, return findings in the Output Format to the parent and write nothing - the parent owns the single merged report.

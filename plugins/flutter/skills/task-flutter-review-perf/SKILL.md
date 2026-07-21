@@ -191,6 +191,8 @@ Label every finding's evidence. Never present an estimate as a measurement, and 
 
 Instrumentation depth - custom traces, production perf monitoring, trace coverage - belongs to `task-flutter-review-observability`. Confirm only that a hot path introduced here is observable at all; if it is not, raise Low and delegate.
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 12 - Write Report
 
 Standalone only. Subagent runs return findings in the Output Format to the parent, which writes the single merged report.

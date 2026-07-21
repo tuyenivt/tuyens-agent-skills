@@ -72,6 +72,8 @@ Determine `Scope` (`backend` / `frontend` / `fullstack` / `mobile`) from `stack-
 
 Every finding states estimated impact (e.g., "N+1 adds ~200ms per request at 1K rows"), not just "this is slow". Separate quick wins from structural changes. Next Steps map impact to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`.
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 5 - Write Report
 
 Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-perf` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +perf`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.

@@ -134,6 +134,8 @@ public UserResponse get(@PathVariable Long id) {
 }
 ```
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 9 - Write Report
 
 Standalone only - subagent runs return the full Output Format body (findings, Recommendations, and at `deep` the Consumer-Impact Map as its own section) to the parent, which writes the single merged report.

@@ -175,6 +175,8 @@ Use skill: `go-gin-patterns` for graceful shutdown, recovery middleware, and rea
 - [ ] **Readiness reflects dependencies** - `/readyz` gates on own-pod dependencies (DB pool `PingContext`, Asynq client) so an unready replica sheds rather than accepts traffic it cannot serve; `/livez` stays dependency-free (probe-wiring depth -> `task-go-review-observability`).
 - [ ] **Migration rollout safety** - write-path migrations are expand-then-contract so a rollback does not corrupt in-flight writes (use skill: `go-migration-safety`, `ops-backward-compatibility`).
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 12 - Write Report
 
 Standalone only - subagent runs return findings in the Output Format to the parent, which writes the single merged report. At `deep`, a subagent returns the Failure-Mode and Blast-Radius Map with its findings so the parent can preserve it as its own section.

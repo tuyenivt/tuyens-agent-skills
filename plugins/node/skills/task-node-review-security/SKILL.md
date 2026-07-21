@@ -181,6 +181,8 @@ Surface-specific extras not covered by the atomic:
 - [ ] **DB backups encrypted**; access controlled
 - [ ] **Secrets**: from Vault/AWS SM/GCP SM/Doppler; `.env` gitignored; access via typed `ConfigService` so missing-at-startup fails fast
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 10 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-security`. Write the assembled review to file and print the confirmation line.

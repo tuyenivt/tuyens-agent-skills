@@ -291,6 +291,12 @@ Merge subagent findings into the single Output Format below. Do not append raw s
 - **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by intent
 - **Preserve deep-only sections** returned by subagents (e.g., reliability's `Failure-Mode and Blast-Radius Map`) as their own section after Next Steps - they are not findings; the merge must not drop them
 
+### Step 6.6 - Verify Findings (second pass)
+
+Use skill: `review-finding-verify` with the assembled findings (including any merged back from subagents), the diff already read, and `base_ref` / `head_ref`.
+
+Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`.
+
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
 
 Skip if `mode = full`. Otherwise use skill: `review-prior-findings-reconcile` with:
@@ -339,6 +345,7 @@ The fence below delimits the template for display only - it is not part of the r
 **Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
+**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_
 
 ## Prior Round Reconciliation _(incremental rounds only; omit otherwise)_
@@ -415,6 +422,7 @@ _Omit if no actionable findings._
 - [ ] Phases C-E ran (C: layering, DI, settings, listener / middleware, multi-tenant; D: `complexity-review` + framework-matching necessity skill; E: naming, magic numbers, function length, logging hygiene) - or low-risk short-circuit invoked and noted in Summary
 - [ ] Every Must cites system risk; every finding has label + `file:line` + actionable Node fix
 - [ ] Extra scopes ran in parallel; subagent findings merged intent-ordered (no raw reports); missing scope noted as `Scope incomplete: <scope>`
+- [ ] Step 6.6 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels applied; tally in Summary
 - [ ] Step 6.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered by intent
 - [ ] Report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed

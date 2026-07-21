@@ -83,6 +83,8 @@ Cover the applicable categories. Use skill: `ops-resiliency` for the canonical t
 
 Every finding names the failure mode it enables (not just the missing pattern) and states the blast radius. **Severity:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (untimed hot call, uncapped or non-idempotent retry, in-tx dual write, unbounded queue); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, non-idempotent consumer); Low = hardening with no immediate failure path. Next Steps map severity to intent: High -> `[Must]`, Medium -> `[Recommend]`, Low -> `[Recommend]`.
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 5 - Write Report
 
 Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-reliability` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +rel`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-reliability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.

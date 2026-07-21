@@ -153,6 +153,8 @@ Apply against changed files. **Gate**: only run a sub-block when its Step 5 row 
 - [ ] Server secrets sourced from secret store; `.env.local` gitignored; no literal keys committed
 - [ ] `productionBrowserSourceMaps: false` unless intentionally serving
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 7 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-security`. Write the assembled output to the report file; print the confirmation line.

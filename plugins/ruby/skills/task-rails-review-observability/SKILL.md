@@ -110,6 +110,8 @@ Use skill: `ops-observability` for liveness/readiness shapes and SLI/SLO definit
 
 A Rails service with no SLI/SLO is a **High** observability gap - when the PR introduces the service or feature. On infra-only PRs (tracing setup, gem bumps), note the absence as a Recommendation instead of filing High.
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 11 - Write Report
 
 Standalone runs: use skill `review-report-writer` with `report_type: review-observability` (checkpoint fields come from Step 3); print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report.

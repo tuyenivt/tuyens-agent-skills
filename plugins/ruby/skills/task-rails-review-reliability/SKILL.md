@@ -133,6 +133,8 @@ Use skill: `architecture-data-consistency`, `rails-transaction-patterns`, `rails
 - [ ] **Post-commit dispatch** - jobs, email, cache invalidation fire from `after_commit`, so a rolled-back transaction never acts on state that did not persist.
 - [ ] **Migration rollout safety** - write-path migrations are expand-then-contract so a rollback does not corrupt in-flight writes (use skill: `rails-postgresql-migration-safety` or `rails-migration-safety` per detected DB).
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 11 - Write Report
 
 Standalone runs (resolved diff): use skill: `review-report-writer` with `report_type: review-reliability`. Assemble every checkpoint field the writer requires: `scope: +rel`, `depth` as invoked, `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-reliability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Write the report file, then print confirmation. (Whole-service sweep skips the writer and writes the body directly - see Depth.)

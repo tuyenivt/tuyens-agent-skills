@@ -154,6 +154,8 @@ Canonical rescue strategy and capture-once discipline: Use skill: `node-exceptio
 - [ ] SLO targets documented in code (decorator / README), not free-floating
 - [ ] Synthetic probes hit `/ready`, not just `/health`
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 11 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review-observability`. Write the assembled output to the report file and print the confirmation line.

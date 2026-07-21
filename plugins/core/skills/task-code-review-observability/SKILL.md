@@ -71,6 +71,8 @@ Determine `Scope` (`backend` / `frontend` / `fullstack` / `mobile`) from `stack-
 
 If the diff touches no instrumentable code (docs, tests, comments only), skip the category review and report `Overall: Adequate` with the note "diff contains no instrumentable surface" - still write the report in Step 5.
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 5 - Write Report
 
 Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-observability` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +obs`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-observability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.

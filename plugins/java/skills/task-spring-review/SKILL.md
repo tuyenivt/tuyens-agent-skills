@@ -250,6 +250,12 @@ Skip if Step 5 didn't run. Merge subagent findings into the single Output Format
 - **Merge Next Steps**: combine, preserve `[Implement]`/`[Delegate]`, dedupe, re-sort.
 - **Preserve deep-only sections** returned by subagents (e.g., perf's `Capacity and Load-Test Plan`) as their own section after Next Steps - they are not findings; the merge must not drop them.
 
+### Step 6.6 - Verify Findings (second pass)
+
+Use skill: `review-finding-verify` with the assembled findings (including any merged back from subagents), the diff already read, and `base_ref` / `head_ref`.
+
+Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`.
+
 ### Step 6.5 - Reconcile Prior Findings (incremental mode only)
 
 Skip if `mode = full`. Otherwise use skill: `review-prior-findings-reconcile` with:
@@ -287,6 +293,7 @@ The fence below delimits the template for display only - it is not part of the r
 **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
+**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_
 **Notes:** <free text> _(omit if empty - home for checkpoint gaps, `Scope incomplete: ...` records, subagent failures, deep-pass limitations)_
 
@@ -351,6 +358,7 @@ Omit empty sections.
 - [ ] Phase E - maintainability applied (skipped under the Phase A low-risk short-circuit)
 - [ ] Step 5 - subagents ran in parallel with pre-resolved handle (when scope > Core)
 - [ ] Step 6 - findings deduped, highest-severity wins, severity-ordered, raw subagent reports not appended; missing scopes noted
+- [ ] Step 6.6 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels applied; tally in Summary
 - [ ] Step 6.5 - on incremental rounds, `review-prior-findings-reconcile` ran; reconciliation table inserted; `Still open` rows folded into Next Steps with `(open since round <N>)` suffix
 - [ ] Step 7 - report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
 - [ ] Every Must cites system risk; every finding has label, `file:line`, actionable Spring fix

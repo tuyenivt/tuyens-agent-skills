@@ -130,6 +130,8 @@ Cover each category. State "No issues found" per category that is clean - never 
 
 Plus Spring-specific: open redirect (`response.sendRedirect(userInput)` allowlisted), SSTI (no Thymeleaf `${...}` on user-controlled template strings; SpEL never receives user input as expression), XSS (no `th:utext` on user input), CSRF token on SPAs via `CookieCsrfTokenRepository.withHttpOnlyFalse()`.
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 10 - Write Report
 
 **Subagent mode:** if invoked by `task-spring-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes and the parent passes no checkpoint fields). Skip the rest of this step.

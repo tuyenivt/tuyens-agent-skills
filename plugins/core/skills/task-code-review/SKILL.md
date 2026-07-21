@@ -65,7 +65,7 @@ Use skill: `review-precondition-check` with the user's target argument and any `
 | `git merge-base --is-ancestor <prior_head_sha> <head_sha>` fails, OR prior `base_sha`/`base_ref` differs | `mode: full`, `round: prior + 1` |
 | Otherwise                                                                | `mode: incremental`, `round: prior + 1`; re-read diff/log scoped to `<prior_head_sha>...<head_ref>` |
 
-**Incremental reconciliation.** When `mode: incremental`, Use skill: `review-prior-findings-reconcile` with the prior report body, the incremental diff, and `git diff --name-status <prior_head_sha>...<head_ref>`; its table goes under `## Prior Round Reconciliation` in the report. Full-mode rounds skip it (fresh pass).
+**Incremental reconciliation.** When `mode: incremental`, Use skill: `review-prior-findings-reconcile` with the prior report body, the incremental diff, and `git diff --name-status <prior_head_sha>...<head_ref>`; its table goes under `## Prior Round Reconciliation` in the report. Full-mode rounds skip it (fresh pass). Run this after the phases below and after **Verify findings**, so reconciliation matches against the verified set - the mode decision is made here, but the reconciliation pass is not executed until findings exist.
 
 **Depth.** `standard` (default): review diff hunks plus immediate context. `deep`: skip the Phase A fast-path and read each touched file in full.
 
@@ -82,6 +82,8 @@ Use skill: `review-precondition-check` with the user's target argument and any `
 **Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
 **Extra scopes.** If `+perf`, `+sec`, `+obs`, `+rel`, or `+api` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all five) with the read-once diff/log and the detected stack handle. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend; highest wins on duplicates); preserve `file:line` citations. At the API/security and API/reliability seams a single defect can surface in two scopes (a payment endpoint missing `Idempotency-Key`): keep the contract finding under `+api` and the enforcement/correctness finding under its lens, deduped to one line at the strongest intent.
+
+**Verify findings.** Use skill: `review-finding-verify` with the assembled findings (including any merged from sub-scopes), the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`.
 
 ### Step 5 - Write Report
 
@@ -112,6 +114,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full
 **Depth:** standard | deep
 **Mode:** full | incremental (round <N>)
+**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
 
 ## Prior Round Reconciliation
 
@@ -160,7 +163,7 @@ _Omit sections with no findings._
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran
 - [ ] Step 3: if matched and available, stack workflow ran with all flags forwarded, Steps 4-5 skipped; if matched but unavailable, missing plugin named and fallback ran
-- [ ] Step 4: if no dispatch, SHAs captured; mode/round decided from `prior_checkpoint`; prior findings reconciled on incremental rounds; Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel and merged without writing their own reports; findings ordered Must > Recommend
+- [ ] Step 4: if no dispatch, SHAs captured; mode/round decided from `prior_checkpoint`; prior findings reconciled on incremental rounds; Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel and merged without writing their own reports; `review-finding-verify` ran on the assembled findings with Dropped rows excluded; findings ordered Must > Recommend
 - [ ] Step 5: report written via `review-report-writer` with all required inputs (fallback path only)
 
 ## Avoid

@@ -215,6 +215,12 @@ Skip if `core-only`. For each selected scope, spawn one independent subagent in 
 
 On incremental rounds, scopes added by *firing signals* review the incremental diff only (the signals fired from it); scopes added by *user flag* follow Step 3.5d.
 
+### Step 9.4 - Verify Findings (second pass)
+
+Use skill: `review-finding-verify` with the assembled findings (including any merged back from subagents), the diff already read, and `base_ref` / `head_ref`.
+
+Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`.
+
 ### Step 9.5 - Reconcile Prior Findings (incremental mode only)
 
 Skip if `mode = full`. Otherwise use skill: `review-prior-findings-reconcile` with:
@@ -270,6 +276,7 @@ _(Request Changes = any [Must]; Discuss = no [Must] but an unresolved assumption
 **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
+**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
 **Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_
 
 ## Prior Round Reconciliation _(incremental rounds only; omit otherwise)_
@@ -323,6 +330,7 @@ _Omit empty sections. Omit Next Steps entirely if no actionable findings._
 - [ ] Step 7: complexity + overengineering reviews run; test verbosity checked
 - [ ] Step 8: maintainability checks applied
 - [ ] Step 9: non-Core subagents ran in parallel with pre-resolved artifacts; failed scopes noted
+- [ ] Step 9.4 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels applied; tally in Summary
 - [ ] Step 9.5 - on incremental rounds, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
 - [ ] Step 10: findings merged with dedup + strongest-intent-wins; report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack)
 - [ ] Every Must cites system risk; every finding has label + `file:line` + actionable Rails fix

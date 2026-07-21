@@ -131,6 +131,7 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 | `complexity-review`          | Complexity assessment - cyclomatic complexity, cognitive load, abstraction depth                                                                                                                                                                      |
 | `ops-engineering-governance` | Engineering process, governance improvement, and guardrail evolution for incident prevention                                                                                                                                                          |
 | `review-pr-risk`             | Lightweight heuristic PR risk classification based on change signals                                                                                                                                                                                  |
+| `review-finding-verify`      | Adversarial second pass over draft findings before the report is written: confirm each claim against the cited code, attribute it to the diff or to pre-existing code, drop false positives. Verdict enum; dropped only when disproven or resolved by the diff itself.  |
 | `review-prior-findings-reconcile` | Round 2+ of any `task-*-review*` workflow: classify each prior finding as Addressed / Still open / Obsolete / Needs re-check by checking whether the cited smell persists in the new diff. Binary contract; no causation linking. |
 | `review-report-writer`       | Writes the completed review with YAML checkpoint frontmatter (head_sha, base_sha, mode, round) so the next round can auto-detect incremental scope. Called as the final step of all `task-*-review*` workflows.                                       |
 
@@ -181,6 +182,7 @@ Atomics used by the most workflows - highest customization leverage:
 | `review-blast-radius`        | `task-code-review`                                                                                                         |
 | `review-precondition-check`  | `task-code-review`, `task-code-review-perf`, `task-code-review-security`, `task-code-review-observability`                 |
 | `dependency-impact-analysis` | `task-onboard`                                                                                                             |
+| `review-finding-verify`      | all `task-*-review*` workflows (core + all stack plugins); lens workflows on standalone runs only                          |
 | `review-prior-findings-reconcile` | all `task-*-review` stack workflows (round 2+ only)                                                                  |
 | `review-report-writer`       | all `task-*-review*` workflows (core + all stack plugins)                                                                  |
 

@@ -186,6 +186,8 @@ Confirm presence only (depth belongs to `task-react-review-observability`):
 
 Gaps -> Low / Recommendation with `[Delegate] -> task-react-review-observability`.
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 Then use skill: `review-report-writer` with `report_type: review-perf`. Write the report to file; print the confirmation line.
 
 ## Output Format

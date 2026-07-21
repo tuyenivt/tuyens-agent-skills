@@ -116,6 +116,8 @@ Use skill: `architecture-data-consistency`. Use skill: `spring-transaction` for 
 - [ ] **Health probes reflect readiness** - readiness gates on the dependencies the service needs to serve, so an unready instance sheds rather than accepts traffic it cannot handle (probe wiring depth -> `task-spring-review-observability`).
 - [ ] **Migration rollout safety** - write-path migrations are expand-then-contract so a rollback does not corrupt in-flight writes (use skill: `spring-db-migration-safety`, `ops-backward-compatibility`).
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 10 - Write Report
 
 **Subagent mode:** if invoked by `task-spring-review`, do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes). At `deep`, include the Failure-Mode and Blast-Radius Map with the returned findings - the parent preserves it as its own section. Skip the rest of this step.

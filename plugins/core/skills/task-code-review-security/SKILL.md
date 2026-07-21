@@ -79,6 +79,8 @@ Use skill: `review-precondition-check` when running standalone (skip if the pare
 
 Every finding states an attack scenario, not just a code observation. Next Steps map severity to intent: Critical/High -> `[Must]`, Medium/Low -> `[Recommend]`.
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 5 - Write Report
 
 Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-security` and every required input: `report_body`, `branch` (from the handle), refs from the precondition handle, SHAs via `git rev-parse`, `stack` from `stack-detect` (kebab-case `<language>-<framework>`, or `unknown`), `depth` from the invocation (default `standard`), `scope: +sec`, and `mode: full`, `round: 1` - unless `review-security-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`. (The handle's `prior_checkpoint` is keyed to the general review report - do not use it here.)

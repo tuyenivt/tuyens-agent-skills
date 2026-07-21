@@ -139,6 +139,8 @@ Use skill: `architecture-data-consistency`.
 - [ ] **Readiness reflects dependencies** - `/readyz` gates on the DB pool, Redis, and broker so an instance that cannot serve sheds rather than accepts (probe-wiring depth -> `task-python-review-observability`).
 - [ ] **Migration rollout safety** - write-path migrations are expand-then-contract so a rollback does not corrupt in-flight writes (use skill: `python-migration-safety`, `ops-backward-compatibility`).
 
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+
 ### Step 11 - Write Report
 
 **Subagent mode:** if invoked by `task-python-review` (or `task-code-review-reliability`), do not write a file - return the findings in this skill's Output Format for the parent to merge (the parent owns the report; `review-report-writer` rejects subagent writes). At `deep`, include the Failure-Mode and Blast-Radius Map with the returned findings - the parent preserves it as its own section. Skip the rest of this step.
