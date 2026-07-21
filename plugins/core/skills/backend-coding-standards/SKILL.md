@@ -80,7 +80,7 @@ Consuming workflows parse this structure.
 
 ### Violations
 
-- [Must | Recommend | Question] {file:line} - {description}
+- [Must | Recommend] {file:line} - {description}
   - Rule: {the naming/structure/anti-pattern rule violated}
   - Fix: {concrete correction}
 
@@ -97,7 +97,7 @@ Consuming workflows parse this structure.
 
 - **[Must]**: Breaks correctness, security, or layering - logic or data crossing layer boundaries (god class, entity exposed in API, business logic in the presentation layer, swallowed errors, disabled security feature)
 - **[Recommend]**: Structural drift that compounds (mixed naming, magic numbers, file placed in the wrong layer directory)
-- **[Question]**: Ambiguous case where the rule may or may not apply - ask before flagging
+- **[Recommend]**: Ambiguous case where the rule may or may not apply - state the assumption and ask the author to confirm in the same finding
 
 Omit Anti-Patterns if none. Omit "No Issues Found" if violations were listed.
 

@@ -136,7 +136,9 @@ Standalone: use skill: `review-report-writer` with `report_type: review-perf`. A
 
 ## Output Format
 
-**Severity assignment:** High = user-facing latency/throughput regression or resource exhaustion (pool, executor, memory) on a hot path; Medium = measurable waste off the hot path, or a hot-path risk gated on load growth; Low = polish with minor measurable benefit. Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a hot path; Low -> `[Recommend]` or `[Question]`.
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+**Severity assignment:** High = user-facing latency/throughput regression or resource exhaustion (pool, executor, memory) on a hot path; Medium = measurable waste off the hot path, or a hot-path risk gated on load growth; Low = polish with minor measurable benefit. Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a hot path; Low -> `[Recommend]`.
 
 ```markdown
 ## Spring Boot Performance Review Summary
@@ -178,7 +180,7 @@ _(`deep` only - omit at `standard`.)_
 2. **[Delegate]** [Recommend] [scope: schema] - [action]
 3. **[Implement]** [Recommend] file:line - [action]
 
-_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, schema, load test). Order Must > Recommend > Question. Omit if none._
+_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, schema, load test). Order Must > Recommend. Omit if none._
 ```
 
 ## Self-Check
@@ -209,4 +211,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no migrations, no me
 - Conflating perf with general review or security
 - Treating broker retries as a substitute for idempotency
 - Recommending `synchronized` in VT-enabled paths on JDK < 24
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

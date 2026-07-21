@@ -128,7 +128,9 @@ Standalone: use skill: `review-report-writer` with `report_type: review-reliabil
 
 ## Output Format
 
-**Severity assignment:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (missing timeout on a hot outbound call, uncapped retry, non-idempotent POST retry, in-tx dual write, unbounded `Promise.all` on a hot path, event-loop blocking in a request path, no graceful shutdown dropping in-flight work on deploy); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, missing timeout / retry budget on a chained path, consumer not idempotent, unbounded in-memory accumulation); Low = hardening with no immediate failure path (missing `p-limit` bulkhead, fail-fast where cached data would serve). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]` or `[Question]`.
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+**Severity assignment:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (missing timeout on a hot outbound call, uncapped retry, non-idempotent POST retry, in-tx dual write, unbounded `Promise.all` on a hot path, event-loop blocking in a request path, no graceful shutdown dropping in-flight work on deploy); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, missing timeout / retry budget on a chained path, consumer not idempotent, unbounded in-memory accumulation); Low = hardening with no immediate failure path (missing `p-limit` bulkhead, fail-fast where cached data would serve). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]`.
 
 ```markdown
 ## Node.js Reliability Review Summary
@@ -172,7 +174,7 @@ Per new / changed dependency: **what happens when it is down or slow**, the shar
 2. **[Delegate]** [Recommend] [scope: platform] - [action]
 3. **[Implement]** [Recommend] file:line - [action]
 
-_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra). Order Must > Recommend > Question. Omit if none._
+_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra). Order Must > Recommend. Omit if none._
 ```
 
 ## Self-Check
@@ -204,4 +206,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no messaging, no sch
 - Approving `Promise.all` fan-out where one optional failure must not fail the batch (use `allSettled`), or an unbounded `Promise.all` over a large array (bound with `p-limit`)
 - Approving sync `fs.readFileSync` / `crypto.pbkdf2Sync` on request paths, or `setTimeout(..., 0)` as a way to "free" the event loop
 - Mitigating a live incident here - route to `/task-oncall-start` first
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

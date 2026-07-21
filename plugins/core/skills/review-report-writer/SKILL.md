@@ -39,6 +39,7 @@ Only the workflow that owns the report invokes this skill. Sub-agents spawned fo
 
 - If any required input from the Inputs table is missing or empty, halt and return `Missing required input: <field>` to the caller. Do not write a partial file, do not invent a default, do not blank the field.
 - If a value-set field (`report_type`, `mode`, `scope`, `depth`) holds a value outside its set in the Inputs table, halt and return `Invalid input: <field>: <value>`. Do not coerce (`Core` does not auto-map to `core-only`) - mapping display values to enum values is the caller's job.
+- **`report_body` is raw Markdown, never fenced.** The consuming workflow's Output Format section shows its template inside a ` ```markdown ` fence for display only; that fence is not part of the report. The written body must render as Markdown - real headings, tables, and lists, not one monospace block. If the received `report_body` is wrapped in a single outer fence that opens at the start and closes at the very end, strip that outer fence before writing. Fenced blocks *inside* the body (a code sample on a Fix line) are content - keep them.
 - Sanitize `branch` for the filename: replace `/` and any character outside `[A-Za-z0-9_-]` with `-`, collapse consecutive `-`, strip leading/trailing `-`. The frontmatter `branch` field keeps the raw value; only the filename is sanitized.
 - Build the filename from `report_type`:
   - `review` -> `review-<branch>.md`
@@ -90,6 +91,7 @@ The file contains the YAML frontmatter followed by the workflow's standard Markd
 ## Avoid
 
 - Writing a partial or summarized report
+- Wrapping the report body in an outer code fence (renders the whole report as fixed-width text instead of Markdown)
 - Emitting frontmatter without the trailing `---` delimiter (breaks the next round's parse)
 - Creating subdirectories or archiving prior rounds to separate files
 - Running git commands - the workflow supplies all SHAs

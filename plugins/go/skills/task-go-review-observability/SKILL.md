@@ -184,10 +184,12 @@ Use skill: `review-report-writer` with `report_type: review-observability` and e
 - [ ] Findings name a Go / OTel / slog / Prometheus idiom - not "add observability"
 - [ ] Library-level scope respected; infra concerns deferred to ops
 - [ ] Depth honored: `standard` ran all; `deep` ran SLI
-- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend > Question
+- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend
 - [ ] Report written via `review-report-writer` with all required checkpoint fields (standalone only; subagent runs return findings to the parent); confirmation printed
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 ```markdown
 ## Go Observability Review Summary
@@ -237,8 +239,8 @@ _Omit empty sections. Within each impact bucket, group by surface when > 2 findi
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
-Impact maps to intent: High -> [Must]; Medium / Low -> [Recommend]; [Question] when the fix depends on the author's answer (traffic, SLO targets, deployment topology).
+Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
+Impact maps to intent: High -> [Must]; Medium / Low -> [Recommend].
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: ops] - [one-line action]
@@ -264,4 +266,4 @@ _Omit if no actionable findings._
 - Prescribing OTLP endpoint URL or Sentry DSN value (infra config, not source review)
 - One finding per missing checkbox when whole surface is absent
 - Plain `slog.Info(...)` when OTel is wired (log-trace correlation needs `slog.InfoContext`)
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

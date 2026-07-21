@@ -271,7 +271,7 @@ Close with one coverage line: `Checks clean: {comma-separated Check values with 
 
 **Severity calibration.** `Blocker` = an action is impossible via an assistive path (unlabelled control on a required flow, content clipped at the supported text scale, focus trap, keyboard-unreachable action on a keyboard tier). `High` = the action is possible but the announcement is wrong or misleading, or contrast is below AA on body text. `Medium` = extra friction (unmerged rows, decorative nodes in traversal, colour-only meaning with a redundant cue nearby). `Low` = wording of a label or hint.
 
-**Label mapping for the umbrella review:** `Blocker`, `High` -> `[Must]`; `Medium`, `Low` -> `[Recommend]`. Use `[Question]` only when the intended assistive behaviour is genuinely ambiguous.
+**Label mapping for the umbrella review:** `Blocker`, `High` -> `[Must]`; `Medium`, `Low` -> `[Recommend]`.
 
 Contrast findings that cannot be computed from source (image or gradient backgrounds, runtime-derived colours) are reported as `Check: Contrast` with `Impact: unverifiable from source - manual check required` rather than being dropped or guessed.
 

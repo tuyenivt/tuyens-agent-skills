@@ -173,6 +173,8 @@ Logical correctness, error handling, backward compatibility, transaction boundar
 
 **Test coverage as a named finding** (not buried in Takeaways): logic changes without JUnit / slice / Testcontainers -> `[Recommend]`; escalate to `[Must]` for security, money, multi-table state machines, `@Async`/`@KafkaListener` mutations, or migrations changing column semantics.
 
+**Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
+
 **Migration PRs** (`db/migration/`, `db/changelog/`) - use skills `spring-db-migration-safety`, `ops-backward-compatibility`:
 
 - [ ] Column rename/drop via two-phase deploy (add -> backfill -> cut over -> remove).
@@ -243,7 +245,7 @@ Skip if Core only. Spawn the subagents the resolved scope requires immediately a
 Skip if Step 5 didn't run. Merge subagent findings into the single Output Format - never append raw reports.
 
 - **Deduplicate** cross-cutting findings (e.g., external call in `@Transactional` flagged by Phase B and Perf) into one entry citing all scopes.
-- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`.
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend`.
 - **Preserve `file:line` citations**; order by severity, not by scope.
 - **Merge Next Steps**: combine, preserve `[Implement]`/`[Delegate]`, dedupe, re-sort.
 - **Preserve deep-only sections** returned by subagents (e.g., perf's `Capacity and Load-Test Plan`) as their own section after Next Steps - they are not findings; the merge must not drop them.
@@ -268,14 +270,16 @@ Use skill: `review-report-writer` with `report_type: review` and these checkpoin
 - `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
 - `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `+Api` -> `+api`, `Full` -> `full` - the writer rejects unmapped values), `depth` (resolved/auto-promoted in Phase A), `stack = java-spring-boot`
 
-The report writer owns label semantics (`[Must]` / `[Recommend]` / `[Question]` - no severity-mixed `[Blocker]`/`[High]`/`[Suggestion]`, no `[Nit]`/`[Consider]`/`[Praise]`).
+The report writer owns label semantics (`[Must]` / `[Recommend]` - no severity-mixed `[Blocker]`/`[High]`/`[Suggestion]`, no `[Nit]`/`[Consider]`/`[Praise]`).
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 ```markdown
 ## Summary
 
-**Assessment:** Approve | Request Changes | Discuss _(fill rule: any `[Must]` -> Request Changes; no `[Must]` but a `[Question]` whose answer could block merge -> Discuss; otherwise Approve)_
+**Assessment:** Approve | Request Changes | Discuss _(fill rule: any `[Must]` -> Request Changes; no `[Must]` but an unresolved assumption stated in a `[Recommend]` could block merge -> Discuss; otherwise Approve)_
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Java <version> / Spring Boot <version>
@@ -309,10 +313,6 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 - Impact:
 - Fix:
 
-### [Question] file:line
-- Question:
-- Why it matters:
-
 ## Architecture Notes
 - Boundary impact:
 - Coupling change:
@@ -326,7 +326,7 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 - 2-4 bullets summarizing systemic impact and what to address before merge.
 
 ## Next Steps
-Prioritized, each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question. On incremental rounds, prior-round `Still open` items are folded in with `(open since round <N>)` suffix and ordered by intent alongside new findings.
+Prioritized, each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend. On incremental rounds, prior-round `Still open` items are folded in with `(open since round <N>)` suffix and ordered by intent alongside new findings.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Implement]** [Recommend] OldFile.java:88 - N+1 in listAll (open since round 1)
@@ -354,7 +354,7 @@ Omit empty sections.
 - [ ] Step 6.5 - on incremental rounds, `review-prior-findings-reconcile` ran; reconciliation table inserted; `Still open` rows folded into Next Steps with `(open since round <N>)` suffix
 - [ ] Step 7 - report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
 - [ ] Every Must cites system risk; every finding has label, `file:line`, actionable Spring fix
-- [ ] Next Steps tagged `[Implement]`/`[Delegate]`, ordered Must > Recommend > Question (omit if none); carry-overs from prior round inline-suffixed, not in a separate section
+- [ ] Next Steps tagged `[Implement]`/`[Delegate]`, ordered Must > Recommend (omit if none); carry-overs from prior round inline-suffixed, not in a separate section
 
 ## Avoid
 
@@ -368,6 +368,6 @@ Omit empty sections.
 - Running perf/security/observability/reliability/api when user passed `core-only`; sequential subagent runs when they could be parallel.
 - Appending raw subagent reports instead of one severity-ordered list.
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Approving `WebSecurityConfigurerAdapter`, field `@Autowired`, or `@Transactional` self-invocation.

@@ -19,7 +19,7 @@ user-invocable: false
 - Every finding cites the constraint that makes the code redundant: FK name, `null=False` field, unique index, model field validator, DRF serializer rule, type annotation, or framework guarantee. No citation, no finding.
 - Intent:
   - **Default `[Recommend]`.** Cite the constraint, recommend the edit. Escalate to **`[Must]`** when a measurable cost is present: extra SELECT in a hot path, bare `except` defeating DRF's exception handler, single-impl `ABC` forcing two-file refactors, or a `post_save` signal hiding async dispatch / external side effects from the call site. Cite the cost in the `Cost:` field.
-  - **`[Question]`** when justification is plausible but not visible in the diff, **or when the constraint that would make the code redundant lives outside the diff** (unique index not shown, model field elsewhere). Recommend confirming it rather than asserting `[Must]`. A justification stated only in a code comment ("second impl next sprint") counts as visible - skip it, but note staleness if the second impl never lands.
+  - **`[Recommend]`** when justification is plausible but not visible in the diff, **or when the constraint that would make the code redundant lives outside the diff** (unique index not shown, model field elsewhere). Ask the author to confirm it rather than asserting `[Must]`. A justification stated only in a code comment ("second impl next sprint") counts as visible - skip it, but note staleness if the second impl never lands.
 - A redundancy with **visible** justification is not a finding. Skip it. Classic cases: DRF validation on a ViewSet serializer (owns 400 + field errors); defense-in-depth across multiple write paths (HTTP + Celery + management command + admin); `ABC` with a planned second implementer or a `pytest` substitution.
 
 ## Patterns
@@ -208,7 +208,7 @@ Keep `Result[T]` only when callers branch on multiple distinct failure modes car
 Findings contribute to the consuming workflow's unified output. One block per finding:
 
 ```
-### [Must | Recommend | Question] file:line
+### [Must | Recommend] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `validate_quantity` re-running `MinValueValidator(1)`}

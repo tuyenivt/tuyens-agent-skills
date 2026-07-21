@@ -188,10 +188,12 @@ Use skill: `review-report-writer` with `report_type: review-perf` and every requ
 - [ ] Every finding states impact - measured (`p95 800ms -> 120ms`) when pprof / APM data exists, estimated otherwise (`adds ~N queries at K rows`)
 - [ ] Findings ordered by impact; quick wins separated from structural
 - [ ] Depth honored: `standard` ran all; `deep` adds capacity + load plan
-- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend > Question
+- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend
 - [ ] Report written via `review-report-writer` with all required checkpoint fields (standalone only; subagent runs return findings to the parent); confirmation printed
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 ```markdown
 ## Go Performance Review Summary
@@ -223,8 +225,8 @@ _Omit empty sections._
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
-Impact maps to intent: High -> [Must]; Medium / Low -> [Recommend]; [Question] when impact depends on data only the author has (row counts, traffic).
+Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
+Impact maps to intent: High -> [Must]; Medium / Low -> [Recommend].
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]
@@ -249,4 +251,4 @@ _Omit if no actionable findings._
 - `sync.Map` as a default (`map + sync.RWMutex` faster for typical workloads)
 - `sync.Pool` for long-lived objects
 - `panic` for "this should never happen"
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

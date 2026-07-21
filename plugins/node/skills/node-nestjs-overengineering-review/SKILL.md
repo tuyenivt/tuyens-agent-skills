@@ -19,7 +19,7 @@ user-invocable: false
 - Cite the constraint making the code redundant: FK, `@Column({ nullable: false })`, unique index, Prisma `@unique` / non-`?` field, TS non-null type, DTO decorator, `ValidationPipe` whitelist, or framework guarantee.
 - Intent:
   - **`[Recommend]`** default. Cite the constraint, recommend the edit. Escalate to **`[Must]`** when a measurable cost is present (filled in `Cost:`): extra SELECT in a hot path, broad `catch (e)` defeating the global filter, single-impl service interface, `Scope.REQUEST` on a stateless provider.
-  - **`[Question]`** when justification is plausible but not visible in the diff.
+  - **`[Recommend]`** when justification is plausible but not visible in the diff - state the justification being assumed and ask the author to confirm.
 - A redundancy with **visible** justification is not a finding. See `Avoid`.
 
 ## Patterns
@@ -206,7 +206,7 @@ Flag config keys declared in the Zod/Joi schema but never read via `ConfigServic
 Findings contribute to the consuming workflow's unified output. One block per finding:
 
 ```
-### [Must | Recommend | Question] file:line
+### [Must | Recommend] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `@IsNotEmpty()` on non-optional `customerId: string`}

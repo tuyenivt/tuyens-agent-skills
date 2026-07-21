@@ -182,6 +182,8 @@ Use skill: `review-report-writer` with `report_type: review-perf`. Write before 
 
 ## Output Format
 
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
 ```markdown
 ## Python Performance Review Summary
 
@@ -213,7 +215,7 @@ _Omit sections with no findings._
 
 ## Next Steps
 
-Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
+Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [one-line action, e.g., "Add `.options(selectinload(Order.items).selectinload(OrderItem.product))` to OrderRepository.list"]
 2. **[Delegate]** [Recommend] [scope: schema] - [one-line action, e.g., "Add concurrent composite index on (tenant_id, created_at)"]
@@ -235,7 +237,7 @@ _Omit if no actionable findings._
 - [ ] Pydantic v2 / DRF serializer cost assessed when applicable
 - [ ] Every finding states impact - measured (`p95 800ms -> 120ms`) when APM data exists, estimated otherwise (`adds ~N queries per request at K rows`)
 - [ ] Depth honored: `standard` ran all; `deep` adds capacity + load plan
-- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend > Question
+- [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend
 - [ ] Review report written via `review-report-writer`; confirmation printed
 
 ## Avoid
@@ -246,4 +248,4 @@ _Omit if no actionable findings._
 - Suggesting caching without invalidation strategy
 - Treating Celery retries as a substitute for idempotency
 - Reporting "missing index" without confirming the column appears in `where` / `order_by` / `group_by`
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

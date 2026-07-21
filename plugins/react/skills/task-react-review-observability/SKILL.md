@@ -157,6 +157,8 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Writ
 
 ## Output Format
 
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
 ```markdown
 ## React Observability Review Summary
 
@@ -205,7 +207,7 @@ _Omit empty buckets. Group by Surface within a bucket when >2 findings share one
 
 ## Next Steps
 
-Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: Must > Recommend > Question.
+Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [action]
 2. **[Delegate]** [Recommend] [scope: ops] - [action]
@@ -243,4 +245,4 @@ Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]`
 - Approving error boundaries with a blank-screen fallback
 - Infra scope (Datadog dashboards, Sentry org settings, log forwarders, alert rules) - delegate to ops review
 - State-changing git commands
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

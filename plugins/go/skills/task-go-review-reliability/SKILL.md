@@ -203,7 +203,9 @@ Mark a line N/A when the diff has no matching surface (e.g. no messaging, no gor
 
 ## Output Format
 
-**Severity assignment:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (missing `context` deadline on a hot external call, `http.DefaultClient` with no timeout, uncapped retry, non-idempotent retry, in-tx dual write, unbounded per-request goroutine spawn, unrecovered panic in a spawned goroutine); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, missing timeout / retry budget on a chained path, consumer not idempotent, unbounded channel on a warm path); Low = hardening with no immediate failure path (missing bulkhead, fail-fast where stale data would serve). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]` or `[Question]`.
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+**Severity assignment:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (missing `context` deadline on a hot external call, `http.DefaultClient` with no timeout, uncapped retry, non-idempotent retry, in-tx dual write, unbounded per-request goroutine spawn, unrecovered panic in a spawned goroutine); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, missing timeout / retry budget on a chained path, consumer not idempotent, unbounded channel on a warm path); Low = hardening with no immediate failure path (missing bulkhead, fail-fast where stale data would serve). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]`.
 
 **One finding per root cause:** when a defect satisfies multiple checklist items (an unbounded fan-out hits Steps 7 and 10), report it once at the strongest severity and fold the other aspects into that finding - do not emit one finding per checklist line.
 
@@ -249,7 +251,7 @@ Per new / changed dependency: **what happens when it is down or slow**, the shar
 2. **[Delegate]** [Recommend] [scope: platform] - [action]
 3. **[Implement]** [Recommend] file:line - [action]
 
-_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra). Order Must > Recommend > Question. Omit if none._
+_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra). Order Must > Recommend. Omit if none._
 ```
 
 ## Avoid
@@ -265,4 +267,4 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra).
 - Ignoring a panic path in a spawned goroutine (crashes the process; Gin `Recovery()` does not cover it)
 - Overlapping into perf (throughput tuning) or observability (metric / log wiring) - name the failure-survival gap
 - Mitigating a live incident here - route to `/task-oncall-start` first
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

@@ -18,7 +18,7 @@ Reviewing Express diffs that add Zod / class-validator schemas, null guards, mid
 - Cite the constraint making the code redundant: FK, `@Column({ nullable: false })`, unique index, TypeORM non-`?` field, TS non-null type, Zod rule, validation middleware, or framework guarantee.
 - Intent:
   - **`[Recommend]`** default. Escalate to **`[Must]`** with `Cost:` field for: extra SELECT in hot path, blanket `catch` defeating error middleware, no-arg middleware factory, custom error hierarchy with no `instanceof` branching, Repository wrapper of passthroughs.
-  - **`[Question]`** when justification is plausible but not visible in the diff.
+  - **`[Recommend]`** when justification is plausible but not visible in the diff - state the justification being assumed and ask the author to confirm.
 - Redundancy with **visible** justification is not a finding. See `Avoid`.
 
 ## Patterns
@@ -185,7 +185,7 @@ Flag schema-validated config keys with zero read sites. Confirm with a repo-wide
 Findings contribute to the consuming workflow's unified output. One block per finding:
 
 ```
-### [Must | Recommend | Question] file:line
+### [Must | Recommend] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `if (!order)` after `findOneOrFail`}

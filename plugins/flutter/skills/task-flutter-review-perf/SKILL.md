@@ -183,9 +183,9 @@ Label every finding's evidence. Never present an estimate as a measurement, and 
 |----------|----------|------------------|
 | `measured` | A profile-mode trace, startup trace, or size analysis was supplied | `raster thread 24ms/frame on the feed scroll, Pixel 6, profile mode` |
 | `estimated` | The pattern is unambiguous but no trace exists | `rebuilds all 200 rows on every keystroke` |
-| `unverified` | Cost depends on data only the author has (collection size, image dimensions, device tier) | Raise as `[Question]` and name the measurement to run |
+| `unverified` | Cost depends on data only the author has (collection size, image dimensions, device tier) | Raise as `[Recommend]` and name the measurement to run |
 
-`flutter-performance` emits only `measured` and `estimated`; `unverified` is this workflow's third bucket for findings that become `[Question]`. With no profile data supplied, cap the finding at High Impact - the atomic applies the same cap.
+`flutter-performance` emits only `measured` and `estimated`; `unverified` is this workflow's third bucket for findings that stay `[Recommend]` pending measurement. With no profile data supplied, cap the finding at High Impact - the atomic applies the same cap.
 
 **Severity mapping.** `flutter-performance` grades findings `Critical | High | Medium | Low`; this report groups by impact. Map `Critical` and `High` to **High Impact**, `Medium` to Medium, `Low` to Low. A `Critical`-origin finding leads the High Impact section and keeps the atomic's rationale (sustained dropped frames or unbounded growth on a primary path) in its impact line - do not silently flatten it into an ordinary High.
 
@@ -198,6 +198,8 @@ Standalone only. Subagent runs return findings in the Output Format to the paren
 Use skill: `review-report-writer` with `report_type: review-perf` and every required input: `report_body`, `branch` (from the handle), refs from the precondition handle, `base_sha` / `head_sha` from Step 3, `stack: flutter`, `scope: +perf`, `depth` as resolved from the Depth table, and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`. (The handle's `prior_checkpoint` is keyed to the general review report - do not use it here.) Write before ending; print confirmation.
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 ```markdown
 ## Flutter Performance Review Summary
@@ -236,8 +238,8 @@ _Omit empty sections._
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
-Impact maps to intent: High -> [Must]; Medium / Low -> [Recommend]; [Question] when cost depends on data only the author has (collection size, image dimensions, device tier).
+Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
+Impact maps to intent: High -> [Must]; Medium / Low -> [Recommend].
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: observability] - [one-line action]
@@ -262,7 +264,7 @@ _Omit if no actionable findings._
 - [ ] Generated files excluded from findings; the producing source cited instead
 - [ ] Findings ordered by impact; quick wins separated from structural changes
 - [ ] Depth honored: `standard` ran all steps; `deep` added the Device & Measurement Plan
-- [ ] Next Steps produced with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend > Question
+- [ ] Next Steps produced with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend
 - [ ] Report written via `review-report-writer` with all required checkpoint fields (standalone only; subagent runs return findings to the parent); confirmation printed
 
 ## Avoid
@@ -282,4 +284,4 @@ _Omit if no actionable findings._
 - Filing a missing loading state or unhandled offline path as a perf finding - that is reliability
 - Duplicating observability depth here beyond confirming a hot path is instrumented at all
 - Optimizing without a measurement plan that would show the fix worked
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

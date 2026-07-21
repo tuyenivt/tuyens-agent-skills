@@ -112,6 +112,8 @@ Standalone runs: use skill `review-report-writer` with `report_type: review-secu
 
 ## Output Format
 
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
 ```markdown
 ## Rails Security Review Summary
 
@@ -146,7 +148,7 @@ _Omit empty severity sections. If all empty, state "No security issues found."_
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
 
-`[Implement]` = localized fix. `[Delegate]` = cross-cutting hardening / dependency upgrade / threat-model. Order Must > Recommend > Question. Intent per finding: Critical/High -> [Must]; Medium/Low -> [Recommend]; needs author confirmation (unverifiable from diff) -> [Question]. Omit if no issues.
+`[Implement]` = localized fix. `[Delegate]` = cross-cutting hardening / dependency upgrade / threat-model. Order Must > Recommend. Intent per finding: Critical/High -> [Must]; Medium/Low -> [Recommend]. Omit if no issues.
 ```
 
 ## Self-Check
@@ -168,4 +170,4 @@ _Omit empty severity sections. If all empty, state "No security issues found."_
 - Disabling `verify_authorized` instead of adding the missing call
 - N near-duplicate findings when one combined finding captures the shared root cause
 - Walking flavor-specific bullets when the diff doesn't touch that flavor
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

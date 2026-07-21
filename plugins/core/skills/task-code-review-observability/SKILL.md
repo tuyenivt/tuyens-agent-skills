@@ -67,7 +67,7 @@ Use skill: `ops-observability`. This is the primary source of findings - it cove
 | Mobile observability      | mobile           | Crash reporting with symbol upload, uncaught-error handlers covering every async entry point, release/build attribution, analytics consent and no PII |
 | SLO and alerting          | deep depth only  | SLI per critical service, SLO target + window, burn-rate alerts on symptoms not causes |
 
-Determine `Scope` (`backend` / `frontend` / `fullstack` / `mobile`) from `stack-detect`'s `Stack Type` field. Flag services with no SLO as **Recommend** at deep depth. On `mobile`, skip Metrics and Distributed tracing (the device is not a traced service) and treat the SLO category as client-side success/latency targets for the flows the app owns. Every finding states what becomes invisible without the missing signal. Next Steps map severity to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`; `[Question]` only when the fix depends on the author's answer.
+Determine `Scope` (`backend` / `frontend` / `fullstack` / `mobile`) from `stack-detect`'s `Stack Type` field. Flag services with no SLO as **Recommend** at deep depth. On `mobile`, skip Metrics and Distributed tracing (the device is not a traced service) and treat the SLO category as client-side success/latency targets for the flows the app owns. Every finding states what becomes invisible without the missing signal. Next Steps map severity to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`.
 
 If the diff touches no instrumentable code (docs, tests, comments only), skip the category review and report `Overall: Adequate` with the note "diff contains no instrumentable surface" - still write the report in Step 5.
 
@@ -76,6 +76,8 @@ If the diff touches no instrumentable code (docs, tests, comments only), skip th
 Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-observability` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +obs`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-observability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
@@ -127,4 +129,4 @@ _Omit sections with no findings. If all are omitted, state "No observability gap
 - Recommending more logging without considering volume cost and alert noise
 - Suggesting metrics with high-cardinality labels
 - Treating the fallback as equivalent to a stack workflow
-- Emitting labels outside `[Must]` / `[Recommend]` / `[Question]`
+- Emitting labels outside `[Must]` / `[Recommend]`

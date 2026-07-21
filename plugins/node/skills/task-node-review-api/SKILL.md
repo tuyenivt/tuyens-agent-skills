@@ -161,7 +161,9 @@ Mark a line N/A when the diff has no matching surface (e.g. no collection endpoi
 
 ## Output Format
 
-**Severity assignment:** High = an unversioned breaking change to an externally consumed contract, or a leaked internal shape (raw TypeORM / Prisma entity exposed, stack trace / ORM error in the response); Medium = a breaking change to an internal contract with no coordinated-deploy note, an inconsistent status code / error envelope, an unpaginated unbounded collection, a method-semantics violation (state change behind GET - High when the side effect is destructive or money-moving), a non-idempotent POST with no `Idempotency-Key` in the contract, or OpenAPI drift on a published spec; Low = naming / convention / field-casing drift with no consumer impact, or OpenAPI drift on an internal-only spec. When consumption is unknown, treat a published or versioned surface (`/v1/` route, published spec) as externally consumed. Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on an external contract; Low -> `[Recommend]` or `[Question]`.
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+**Severity assignment:** High = an unversioned breaking change to an externally consumed contract, or a leaked internal shape (raw TypeORM / Prisma entity exposed, stack trace / ORM error in the response); Medium = a breaking change to an internal contract with no coordinated-deploy note, an inconsistent status code / error envelope, an unpaginated unbounded collection, a method-semantics violation (state change behind GET - High when the side effect is destructive or money-moving), a non-idempotent POST with no `Idempotency-Key` in the contract, or OpenAPI drift on a published spec; Low = naming / convention / field-casing drift with no consumer impact, or OpenAPI drift on an internal-only spec. When consumption is unknown, treat a published or versioned surface (`/v1/` route, published spec) as externally consumed. Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on an external contract; Low -> `[Recommend]`.
 
 **One finding per root cause:** when a defect satisfies multiple checklist items (a raw entity exposed that is also unversioned), report it once at the strongest severity and fold the other aspects into that finding - do not emit one finding per checklist line. A defect chain triggered by one change (a tightened schema routing new errors into a leaking handler) is one root cause.
 
@@ -206,7 +208,7 @@ Per changed contract: **what changed**, whether it is **breaking** from the cons
 2. **[Delegate]** [Recommend] [scope: security] - [action]
 3. **[Implement]** [Recommend] file:line - [action]
 
-_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting - enforcement to security, dedup correctness to reliability, gateway rate limits to platform). Order Must > Recommend > Question. Omit if none._
+_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting - enforcement to security, dedup correctness to reliability, gateway rate limits to platform). Order Must > Recommend. Omit if none._
 ```
 
 ## Avoid
@@ -220,4 +222,4 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting - enforcement to s
 - Reviewing auth enforcement or `ValidationPipe` / zod bypass here - name the contract gap and route to `task-node-review-security`
 - Reviewing idempotency-dedup correctness or timeout behavior here - route to `task-node-review-reliability`
 - Overlapping into perf (throughput) - own the response *shape*, not its cost
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

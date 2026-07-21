@@ -124,7 +124,9 @@ Standalone: use skill: `review-report-writer` with `report_type: review-reliabil
 
 ## Output Format
 
-**Severity assignment:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (missing timeout on a hot external call, uncapped retry, non-idempotent retry, in-tx dual write, unbounded queue on a hot path); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, missing timeout / retry budget on a chained path, consumer not idempotent); Low = hardening with no immediate failure path (missing bulkhead, fail-fast where stale data would serve). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]` or `[Question]`.
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+**Severity assignment:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (missing timeout on a hot external call, uncapped retry, non-idempotent retry, in-tx dual write, unbounded queue on a hot path); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, missing timeout / retry budget on a chained path, consumer not idempotent); Low = hardening with no immediate failure path (missing bulkhead, fail-fast where stale data would serve). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]`.
 
 ```markdown
 ## Spring Boot Reliability Review Summary
@@ -166,7 +168,7 @@ Per new / changed dependency: **what happens when it is down or slow**, the shar
 2. **[Delegate]** [Recommend] [scope: platform] - [action]
 3. **[Implement]** [Recommend] file:line - [action]
 
-_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra). Order Must > Recommend > Question. Omit if none._
+_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra). Order Must > Recommend. Omit if none._
 ```
 
 ## Self-Check
@@ -196,4 +198,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no messaging, no sch
 - Treating broker retries as a substitute for consumer idempotency
 - Approving an in-transaction `save` + `kafkaTemplate.send` dual write
 - Mitigating a live incident here - route to `/task-oncall-start` first
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

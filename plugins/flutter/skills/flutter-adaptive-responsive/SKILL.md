@@ -253,7 +253,7 @@ Close with one coverage line: `Checks clean: {comma-separated Check values with 
 
 **Severity calibration.** `Blocker` = content unreachable or an action impossible on a declared target tier (clipped behind the keyboard, off-screen past a cutout, a runtime throw on web). `High` = a declared tier is visibly broken but usable. `Medium` = correct output produced by fragile means (screen-size branching, inline breakpoint). `Low` = naming and organization.
 
-**Label mapping for the umbrella review:** `Blocker`, `High` -> `[Must]`; `Medium`, `Low` -> `[Recommend]`. Use `[Question]` only when the intended target tier is genuinely ambiguous.
+**Label mapping for the umbrella review:** `Blocker`, `High` -> `[Must]`; `Medium`, `Low` -> `[Recommend]`.
 
 Findings are raised only for tiers the project actually targets. If the tier set is unknown, emit `Tiers assumed: Mobile (platform directories not inspected)` and confine findings to mobile.
 

@@ -190,6 +190,8 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write the
 
 ## Output Format
 
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
 ```markdown
 ## Python Security Review Summary
 
@@ -236,7 +238,7 @@ Use skill: `review-report-writer` with `report_type: review-security`. Write the
 
 ## Next Steps
 
-Tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat model). Order: Must > Recommend > Question.
+Tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat model). Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [action]
 2. **[Delegate]** [Recommend] [scope: dependencies] - [action]
@@ -258,7 +260,7 @@ _Omit if no security issues found._
 - [ ] Step 8: `pickle.loads`, `yaml.load`, `eval` / `exec`, raw SQL via `text(...)` / `cursor.execute`, `verify=False`, dynamic ORDER BY, SSRF, Celery serializer, `secrets` randomness, trusted-proxy headers checked when touched
 - [ ] Severity rubric applied consistently (not invented)
 - [ ] Every finding has attack scenario, regression-risk, or topology-dependent framing - never "input not validated" alone
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omit if no findings)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend (omit if no findings)
 
 **Requires repo / infra access (note "could not verify from diff alone - flag for separate audit" if not visible):**
 
@@ -277,4 +279,4 @@ _Omit if no security issues found._
 - Recommending `algorithms=None` / unspecified for JWT decode - explicit allowlist only
 - Approving `pickle` / `yaml.load` / `eval` / `exec` / `verify=False` outside fully trusted server input or test fixtures
 - Approving `DEBUG=True` or open `/docs` in any non-dev settings module
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

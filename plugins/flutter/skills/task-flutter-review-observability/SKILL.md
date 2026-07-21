@@ -187,6 +187,8 @@ Use skill: `review-report-writer` with `report_type: review-observability` and e
 
 ## Output Format
 
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
 **Severity assignment:** High = a class of crash or a whole user journey is invisible in production, or PII leaves the device (missing error surface, reporter init after `runApp`, obfuscated build with no symbol upload, token in a log line or event parameter, collection before consent); Medium = signal arrives but is unreadable, unattributable, or duplicated (missing build attribution, doubled reporting from two owners, `print` as the release logging strategy, untyped event names); Low = naming, cardinality, verbosity, or coverage of a secondary path.
 
 **One finding per root cause:** a defect matching several checklist lines is reported once at the strongest severity with the other aspects folded in.
@@ -249,7 +251,7 @@ _Omit empty sections. Group by surface when > 2 findings share one. A wholly abs
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: release pipeline] - [one-line action]
 
-_Tag `[Implement]` (localized) or `[Delegate]` (CI, release pipeline, backend, product). High -> `[Must]`; Medium / Low -> `[Recommend]`; `[Question]` when the fix depends on the author's answer (consent regime, analytics ownership, target platforms). Order Must > Recommend > Question. Omit if none._
+_Tag `[Implement]` (localized) or `[Delegate]` (CI, release pipeline, backend, product). High -> `[Must]`; Medium / Low -> `[Recommend]`. Order Must > Recommend. Omit if none._
 ```
 
 ## Self-Check
@@ -272,7 +274,7 @@ Mark a line N/A when the diff has no matching surface (e.g. no analytics SDK, no
 - [ ] Findings name what an on-call engineer cannot see, not just the missing wire
 - [ ] Backend framing avoided - no scrape, RED, exporter, or distributed-span recommendations
 - [ ] Depth honored: `standard` ran all; `deep` added per-journey signal coverage under Recommendations
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered Must > Recommend > Question (omit if none)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered Must > Recommend (omit if none)
 
 ## Avoid
 
@@ -293,4 +295,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no analytics SDK, no
 - One finding per missing checkbox when the whole surface is absent
 - Reviewing dashboards, alert rules, or on-call routing - they are not in this repo's source
 - Duplicating reliability depth (timeouts, retries, offline) - route to `task-flutter-review-reliability`
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

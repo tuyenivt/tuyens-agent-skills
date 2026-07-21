@@ -203,7 +203,9 @@ Use skill: `review-report-writer` with `report_type: review-reliability` and eve
 
 ## Output Format
 
-**Severity assignment:** High = the app hangs, loses a write, double-applies one, corrupts local data, or crashes on a plausible failure (a call with no timeout, an optimistic update with no rollback, a retried non-idempotent write, a terminal loading state, a `switch` that throws on a new server enum value); Medium = the failure is bounded but recovery or comprehension is impaired (missing empty state, an error with no retry affordance, no offline affordance, uncapped-but-short retry, unstated conflict policy); Low = hardening with no immediate failure path (staleness tolerance undocumented, backoff without jitter on a cold path). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]` or `[Question]`.
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+**Severity assignment:** High = the app hangs, loses a write, double-applies one, corrupts local data, or crashes on a plausible failure (a call with no timeout, an optimistic update with no rollback, a retried non-idempotent write, a terminal loading state, a `switch` that throws on a new server enum value); Medium = the failure is bounded but recovery or comprehension is impaired (missing empty state, an error with no retry affordance, no offline affordance, uncapped-but-short retry, unstated conflict policy); Low = hardening with no immediate failure path (staleness tolerance undocumented, backoff without jitter on a cold path). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]`.
 
 **One finding per root cause:** a defect matching several checklist lines (an uncancelled call that also writes to disposed state) is reported once at the strongest severity with the other aspects folded in.
 
@@ -255,7 +257,7 @@ Per new or changed dependency: **what happens when it is slow, absent, or return
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: server contract] - [one-line action]
 
-_Tag `[Implement]` (localized) or `[Delegate]` (server contract, release gating, platform config). Order Must > Recommend > Question. Omit if none._
+_Tag `[Implement]` (localized) or `[Delegate]` (server contract, release gating, platform config). Order Must > Recommend. Omit if none._
 ```
 
 ## Self-Check
@@ -278,7 +280,7 @@ Mark a line N/A when the diff has no matching surface (e.g. no background tasks,
 - [ ] Every finding names the failure mode and what the user experiences, never just the missing pattern
 - [ ] Client framing held - no server pool, middleware, or service-mesh recommendations
 - [ ] Depth honored: `standard` ran all; `deep` filled the Failure-Mode and User-Impact Map
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered Must > Recommend > Question (omit if none)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered Must > Recommend (omit if none)
 
 ## Avoid
 
@@ -304,4 +306,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no background tasks,
 - Reviewing whether the server's contract is well designed - that belongs to the owning service or the architecture plugin
 - Duplicating perf depth (rebuild cost, frame budget) or observability depth (crash reporting, log fields)
 - Mitigating a live incident here - route to `/task-oncall-start` first
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

@@ -209,6 +209,6 @@ If no issues, emit a single line: `No overengineering signals found in <scope>.`
 - Recommending the opposite extreme: "delete all memoization" is as wrong as memoizing everything. The rule is: a named reason.
 - Calling all custom hooks overengineering. A hook with three call sites that cleanly factors state + effect is not the target.
 - Mistaking a *partial* implementation for overengineering. A generic with one usage now and one in the same PR is fine.
-- Recommending inlining a generic component when the team's design system explicitly hosts it for future use - flag as `[Question]` instead.
+- Recommending inlining a generic component when the team's design system explicitly hosts it for future use - `[Recommend]` confirming the design-system intent instead.
 - Suggesting Redux / Zustand removal during a refactor without confirming no other slice depends on the same store wiring.
 - Flagging `useCallback` / `useMemo` inside a custom hook whose return value is documented as referentially stable (consumers depend on the contract).

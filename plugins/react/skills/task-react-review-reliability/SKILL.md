@@ -191,7 +191,9 @@ Standalone: use skill: `review-report-writer` with `report_type: review-reliabil
 
 ## Output Format
 
-**Severity assignment:** High = the user hits an unrecoverable or wrong state on a plausible failure (a route with no error boundary, `ChunkLoadError` with no recovery, an optimistic update with no rollback, a retried non-idempotent mutation or Server Action, an untimed `fetch` in an RSC render, a hydration mismatch, a `reset` that cannot recover); Medium = the failure is bounded but recovery or comprehension is impaired (missing invalidation after a mutation, retry on non-retryable 4xx, no cancellation on unmount, no offline affordance, error fallback with no next action, `loading.tsx` with no sibling `error.tsx`); Low = hardening with no immediate failure path (no jitter, `staleTime` undocumented, no cross-tab propagation on low-stakes state). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]` or `[Question]`.
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+**Severity assignment:** High = the user hits an unrecoverable or wrong state on a plausible failure (a route with no error boundary, `ChunkLoadError` with no recovery, an optimistic update with no rollback, a retried non-idempotent mutation or Server Action, an untimed `fetch` in an RSC render, a hydration mismatch, a `reset` that cannot recover); Medium = the failure is bounded but recovery or comprehension is impaired (missing invalidation after a mutation, retry on non-retryable 4xx, no cancellation on unmount, no offline affordance, error fallback with no next action, `loading.tsx` with no sibling `error.tsx`); Low = hardening with no immediate failure path (no jitter, `staleTime` undocumented, no cross-tab propagation on low-stakes state). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]`.
 
 **One finding per root cause:** a defect matching several checklist lines (an uncancelled query that also retries a 403) is reported once at the strongest severity with the other aspects folded in.
 
@@ -241,7 +243,7 @@ Per new or changed data dependency: **what happens when it is slow, absent, or r
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: API contract] - [one-line action]
 
-_Tag `[Implement]` (localized) or `[Delegate]` (API contract, deploy config, platform). Order Must > Recommend > Question. Omit if none._
+_Tag `[Implement]` (localized) or `[Delegate]` (API contract, deploy config, platform). Order Must > Recommend. Omit if none._
 ```
 
 ## Self-Check
@@ -262,7 +264,7 @@ Mark a line N/A when the diff has no matching surface (e.g. no mutations, no dyn
 - [ ] Every finding names the failure mode and what the user experiences, never just the missing pattern
 - [ ] Client framing held - no connection pools, server middleware, graceful shutdown, or distributed-transaction recommendations
 - [ ] Depth honored: `standard` ran all; `deep` filled the Failure-Mode and User-Impact Map
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered Must > Recommend > Question (omit if none)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered Must > Recommend (omit if none)
 
 ## Avoid
 
@@ -286,4 +288,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no mutations, no dyn
 - Reviewing whether the API's contract is well designed - that belongs to the owning service or the architecture plugin
 - Duplicating perf depth (bundle size, render churn, Core Web Vitals) or observability depth (Sentry wiring, log fields)
 - Mitigating a live incident here - route to `/task-oncall-start` first
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

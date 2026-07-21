@@ -244,7 +244,7 @@ Close with one coverage line: `Checks clean: {comma-separated Check values with 
 
 **Severity calibration.** `Blocker` = text is unreadable or wrong in a supported locale (clipped label, mirrored layout collision, a date or amount that reads as a different value). `High` = correct characters, wrong language or wrong grammatical form for a supported locale (hardcoded string, two-branch plural). `Medium` = correct today but structurally fragile (concatenation, fixed-width box that currently fits, missing `description`). `Low` = key naming and ARB organization.
 
-**Label mapping for the umbrella review:** `Blocker`, `High` -> `[Must]`; `Medium`, `Low` -> `[Recommend]`. Use `[Question]` only when it is genuinely ambiguous whether a string is user-facing.
+**Label mapping for the umbrella review:** `Blocker`, `High` -> `[Must]`; `Medium`, `Low` -> `[Recommend]`.
 
 If the project has no `l10n.yaml` or ARB directory, emit `Localization not configured` once, cap hardcoded-string findings at `Medium`, and raise the setup itself as a single `High` finding rather than filing one finding per literal. Findings cite the ARB file or the Dart call site, never the generated localizations output.
 

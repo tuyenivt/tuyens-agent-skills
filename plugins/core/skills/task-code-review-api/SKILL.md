@@ -79,13 +79,15 @@ Cover the applicable categories. Use skill: `backend-api-guidelines` for the can
 
 **OpenAPI / documentation drift.** If the project publishes an OpenAPI spec or generated client, the changed endpoints, schemas, status codes, and error shapes match the code. A response field present in code but absent from the spec (or vice versa) is drift.
 
-Every finding names who breaks and how (not just the deviated convention) and states blast radius (which consumers, which version). One finding per root cause - fold overlapping aspects (a raw entity that is also unversioned) into the strongest finding. **Severity:** High = an unversioned breaking change to an externally consumed contract, or a leaked internal shape (raw ORM entity, stack trace); Medium = a breaking change to an internal contract without a coordinated-deploy note, an inconsistent status code / error envelope, an unpaginated unbounded collection, a method-semantics violation (state change behind GET - High when the side effect is destructive or money-moving), or a non-idempotent POST with no `Idempotency-Key` in the contract; Low = naming / convention drift with no consumer impact. When consumption is unknown, treat a published or versioned surface (`/v1/` path, OpenAPI-documented) as externally consumed. Next Steps map severity to intent: High -> `[Must]`, Medium -> `[Recommend]`, Low -> `[Recommend]` or `[Question]`.
+Every finding names who breaks and how (not just the deviated convention) and states blast radius (which consumers, which version). One finding per root cause - fold overlapping aspects (a raw entity that is also unversioned) into the strongest finding. **Severity:** High = an unversioned breaking change to an externally consumed contract, or a leaked internal shape (raw ORM entity, stack trace); Medium = a breaking change to an internal contract without a coordinated-deploy note, an inconsistent status code / error envelope, an unpaginated unbounded collection, a method-semantics violation (state change behind GET - High when the side effect is destructive or money-moving), or a non-idempotent POST with no `Idempotency-Key` in the contract; Low = naming / convention drift with no consumer impact. When consumption is unknown, treat a published or versioned surface (`/v1/` path, OpenAPI-documented) as externally consumed. Next Steps map severity to intent: High -> `[Must]`, Medium -> `[Recommend]`, Low -> `[Recommend]`.
 
 ### Step 5 - Write Report
 
 Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-api` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +api`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-api-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
@@ -120,7 +122,7 @@ _Omit sections with no findings. If all are omitted, state "No API contract or d
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: security] - [one-line action]
 
-_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting - e.g. enforcement to security, dedup correctness to reliability, gateway rate limits to platform). Order Must > Recommend > Question. Omit if none._
+_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting - e.g. enforcement to security, dedup correctness to reliability, gateway rate limits to platform). Order Must > Recommend. Omit if none._
 ```
 
 At `deep`, append a `## Consumer-Impact Map` section before Next Steps - per changed contract: what changed, whether it is breaking from the consumer's view, which consumers are affected, and the expand-contract step that keeps them working. A brand-new contract with no consumers yet gets a row stating that - fix its shape before the first consumer ships.
@@ -142,4 +144,4 @@ At `deep`, append a `## Consumer-Impact Map` section before Next Steps - per cha
 - Reviewing idempotency-dedup correctness or timeout behavior here - route to `task-code-review-reliability`
 - Judging a change "additive" without a consumer-view check, or "no callers" without a search
 - Overlapping into security (enforcement) or reliability (behavior under failure) - own the contract, route the rest
-- Emitting labels outside `[Must]` / `[Recommend]` / `[Question]`
+- Emitting labels outside `[Must]` / `[Recommend]`

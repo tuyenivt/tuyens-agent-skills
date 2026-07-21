@@ -70,13 +70,15 @@ Determine `Scope` (`backend` / `frontend` / `fullstack` / `mobile`) from `stack-
 
 **Observability cross-check.** RED metrics on critical paths, correlation IDs propagated, latency histograms. Use skill: `ops-observability`.
 
-Every finding states estimated impact (e.g., "N+1 adds ~200ms per request at 1K rows"), not just "this is slow". Separate quick wins from structural changes. Next Steps map impact to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`; `[Question]` only when the fix depends on the author's answer.
+Every finding states estimated impact (e.g., "N+1 adds ~200ms per request at 1K rows"), not just "this is slow". Separate quick wins from structural changes. Next Steps map impact to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`.
 
 ### Step 5 - Write Report
 
 Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-perf` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +perf`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
@@ -128,4 +130,4 @@ _Omit sections with no findings. If all are omitted, state "No performance issue
 - Premature optimization on cold paths
 - Recommending caching without addressing invalidation
 - Treating the fallback as equivalent to a stack workflow - install the matching stack plugin when one exists
-- Emitting labels outside `[Must]` / `[Recommend]` / `[Question]`
+- Emitting labels outside `[Must]` / `[Recommend]`

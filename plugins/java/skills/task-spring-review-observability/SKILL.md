@@ -152,7 +152,9 @@ Standalone: use skill: `review-report-writer` with `report_type: review-observab
 
 ## Output Format
 
-**Severity assignment:** High = the gap blocks incident diagnosis or exposes data (lost trace/MDC context across a hop, swallowed stack traces, PII in logs, unsecured Actuator). Medium = diagnosis possible but degraded or costly (unstructured logs, missing metrics on key flows, unbounded tag cardinality). Low = polish (naming, levels, encoder tuning). Intent labels follow severity: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on an incident-path surface; Low -> `[Recommend]` or `[Question]`.
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+**Severity assignment:** High = the gap blocks incident diagnosis or exposes data (lost trace/MDC context across a hop, swallowed stack traces, PII in logs, unsecured Actuator). Medium = diagnosis possible but degraded or costly (unstructured logs, missing metrics on key flows, unbounded tag cardinality). Low = polish (naming, levels, encoder tuning). Intent labels follow severity: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on an incident-path surface; Low -> `[Recommend]`.
 
 ```markdown
 ## Spring Boot Observability Review Summary
@@ -186,7 +188,7 @@ _Repeat the four-line block per finding, numbered, within its severity section. 
 
 ## Next Steps
 
-Prioritized, each tagged `[Implement]` (localized) or `[Delegate]` (cross-cutting / dashboards / ops). Order: Must > Recommend > Question.
+Prioritized, each tagged `[Implement]` (localized) or `[Delegate]` (cross-cutting / dashboards / ops). Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: ops] - [one-line action]
@@ -220,4 +222,4 @@ _Omit if no actionable findings._
 - Leaving `*` in `management.endpoints.web.exposure.include` for prod
 - `log.info("...", e)` (loses stack) instead of `log.error("...", e)`
 - Approving Sleuth on Boot 3 - migrate to Micrometer Tracing
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

@@ -19,9 +19,9 @@ user-invocable: false
 - Cite the constraint that makes the code redundant: FK, `nullable = false`, unique index, DTO `@Valid` + `@NotNull`, `@RestControllerAdvice`, or framework guarantee. No citation, no finding.
 - Intent:
   - `[Recommend]` - default; cite the constraint and recommend the edit. Escalate to `[Must]` when measurable cost is present (extra SELECT, masked exception, forced two-file refactor, broken proxy semantics) - record cost in `Cost:` field
-  - `[Question]` - plausible justification not visible in the diff; ask before recommending removal
-- Code matching multiple patterns (e.g., a blanket catch that also rethrows) gets one finding under the higher-intent pattern (`Must` > `Recommend` > `Question`)
-- Justification checks (unique index exists, sole write path, second impl, test seam) are repo searches, not diff guesses - search first; only a claim the search cannot resolve becomes `[Question]`
+  - `[Recommend]` - plausible justification not visible in the diff; state the assumption and ask the author to confirm rather than asserting removal
+- Code matching multiple patterns (e.g., a blanket catch that also rethrows) gets one finding under the higher-intent pattern (`Must` > `Recommend`)
+- Justification checks (unique index exists, sole write path, second impl, test seam) are repo searches, not diff guesses - search first; only a claim the search cannot resolve stays `[Recommend]` with the open assumption stated
 - Skip when the diff shows justification (non-controller write path, second implementation, async consumer bypassing the DTO)
 
 ## Patterns
@@ -148,14 +148,14 @@ public Optional<Order> findOrder(Long id) { return orderRepository.findById(id);
 One block per finding:
 
 ```
-### [Must | Recommend | Question] file:line
+### [Must | Recommend] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `@NotNull` on `Order.user`}
 - Unnecessary because: {FK | `nullable = false` | unique index | DTO `@NotNull` | `@RestControllerAdvice` | framework guarantee | single impl | `Optional` already expresses this | unread/speculative}
 - Cost: {extra SELECT | masked exception | proxy mismatch | forced two-file refactor | speculative surface} _(required for `[Must]`)_
 - Recommendation: {concrete edit}
-- Justified when: {one-line note - on `[Question]` always; on `[Must]`/`[Recommend]` when a known exception exists, e.g., "no unique index present"}
+- Justified when: {one-line note - state it whenever a known exception exists, e.g., "no unique index present", or when the justification is assumed but unverified}
 ```
 
 For each of the three categories with no findings, state `No <category> findings.` so the workflow sees the check ran.

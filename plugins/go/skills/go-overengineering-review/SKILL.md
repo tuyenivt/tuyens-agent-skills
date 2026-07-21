@@ -21,7 +21,7 @@ user-invocable: false
 - Every finding cites the constraint making the code redundant: FK name, `gorm:"not null"`, `uniqueIndex`, `binding:` tag, framework guarantee, compile-time contract. When multiple constraints stack (e.g., binding + GORM tag + "only HTTP write path"), list them comma-separated in `Redundant because:`.
 - Intent:
   - **`[Recommend]`** (default). Cite the constraint, recommend the edit. Escalate to **`[Must]`** when measurable cost is present. Cite the cost in `Cost:`. Triggers: extra SELECT in a hot path; silent error swallow via `if err != nil { return nil }`; single-impl interface declared at the implementation; naked `go fn()` wrapping a sequential call
-  - **`[Question]`** when justification is plausible but not visible in the diff
+  - **`[Recommend]`** when justification is plausible but not visible in the diff - state the justification being assumed and ask the author to confirm
 - A redundancy with **visible** justification is not a finding
 - `Cost:` for premature-abstraction `[Must]` findings is maintenance cost (parallel definitions to keep in sync, indirect call, lost IDE jump-to-impl), not runtime cost - that is still measurable and worth citing
 
@@ -206,7 +206,7 @@ Justified when callers genuinely read fields off the error (`*ValidationError` c
 One block per finding; consuming workflow merges them:
 
 ```
-### [Must | Recommend | Question] file:line
+### [Must | Recommend] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation}

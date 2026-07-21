@@ -147,7 +147,9 @@ Standalone: use skill: `review-report-writer` with `report_type: review-reliabil
 
 ## Output Format
 
-**Severity assignment:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (missing `httpx.Timeout` on a hot call, uncapped `tenacity` retry, non-idempotent retry, blocking sync I/O in an async path, `BackgroundTasks` for a critical side effect, in-transaction dual write, unbounded `asyncio.gather`); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, missing timeout / retry budget on a chained path, consumer not idempotent); Low = hardening with no immediate failure path (missing bulkhead `Semaphore`, fail-fast where stale cache would serve). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]` or `[Question]`.
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+**Severity assignment:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (missing `httpx.Timeout` on a hot call, uncapped `tenacity` retry, non-idempotent retry, blocking sync I/O in an async path, `BackgroundTasks` for a critical side effect, in-transaction dual write, unbounded `asyncio.gather`); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, missing timeout / retry budget on a chained path, consumer not idempotent); Low = hardening with no immediate failure path (missing bulkhead `Semaphore`, fail-fast where stale cache would serve). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]`.
 
 ```markdown
 ## Python Reliability Review Summary
@@ -186,7 +188,7 @@ Per new / changed dependency: **what happens when it is down or slow**, the shar
 
 ## Next Steps
 
-Each item tagged `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra). Order: Must > Recommend > Question.
+Each item tagged `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra). Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [one-line action, e.g., "Set `httpx.Timeout(connect=2, read=5, write=5, pool=1)` on the shared client in `app/clients/payment.py`"]
 2. **[Delegate]** [Recommend] [scope: platform] - [one-line action, e.g., "Provision a dead-letter queue for the `payments` Celery route"]
@@ -212,7 +214,7 @@ Mark a line N/A when the diff has no matching surface (e.g. no Celery, no extern
 - [ ] Step 11: standalone: report written via `review-report-writer` with full checkpoint fields, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding names the failure mode and blast radius, never just the missing pattern
 - [ ] Depth honored: `standard` ran all; `deep` filled the Failure-Mode and Blast-Radius Map (via `failure-propagation-analysis`)
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered Must > Recommend > Question (omit if none)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered Must > Recommend (omit if none)
 
 ## Avoid
 
@@ -225,4 +227,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no Celery, no extern
 - Approving `.delay()` inside a transaction, or a `save` + publish dual write without an outbox
 - Wrapping `asyncio.timeout` around an outer `gather` for partial results (cancels completed work) - put the timeout inside each task
 - Mitigating a live incident here - route to `/task-oncall-start` first
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

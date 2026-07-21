@@ -115,6 +115,8 @@ Standalone runs: use skill `review-report-writer` with `report_type: review-perf
 
 ## Output Format
 
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
 ```markdown
 ## Rails Performance Review Summary
 
@@ -143,7 +145,7 @@ _Omit sections with no findings._
 
 ## Next Steps
 
-Prioritized. Each `[Implement]` (localized) or `[Delegate]` (cross-cutting refactor, schema migration, load-test). Order: Must > Recommend > Question. Intent per finding: High Impact -> [Must]; Medium/Low/Quick Win -> [Recommend]; needs measurement to confirm -> [Question].
+Prioritized. Each `[Implement]` (localized) or `[Delegate]` (cross-cutting refactor, schema migration, load-test). Order: Must > Recommend. Intent per finding: High Impact -> [Must]; Medium/Low/Quick Win -> [Recommend].
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]
@@ -162,7 +164,7 @@ _Omit if no actionable findings._
 - [ ] Step 9: instrumentation gap flagged on new hot paths
 - [ ] Step 10: report via `review-report-writer`; confirmation printed
 - [ ] Every finding states impact - measured when APM data exists, estimated otherwise (`adds ~N queries at K rows`)
-- [ ] Findings ordered by impact; Next Steps `[Implement]`/`[Delegate]` ordered Must > Recommend > Question
+- [ ] Findings ordered by impact; Next Steps `[Implement]`/`[Delegate]` ordered Must > Recommend
 
 ## Avoid
 
@@ -173,4 +175,4 @@ _Omit if no actionable findings._
 - Treating Sidekiq retries as a substitute for idempotency
 - Walking through DB-specific bullets for the wrong DB
 - Re-running the connection-pool checklist when the PR doesn't touch pool config
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

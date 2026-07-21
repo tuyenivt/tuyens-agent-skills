@@ -149,11 +149,13 @@ Standalone: use skill: `review-report-writer` with `report_type: review-security
 - [ ] Step 9 - every OWASP row addressed in the OWASP Sweep section; clean categories explicitly marked "No issues found"
 - [ ] Step 10 - standalone: report written via `review-report-writer`, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding includes an attack scenario and a concrete Spring fix
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omit if none)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend (omit if none)
 
 ## Output Format
 
-**Severity assignment:** Critical = exploitable now for auth/authz bypass or data compromise (IDOR, matcher-order bypass, unvalidated JWT, injection on a reachable path, MD5 password hashing). High = exploitable with preconditions or exposes sensitive internals (public `heapdump`/`env`, open redirect, missing brute-force protection on auth endpoints). Medium = defense-in-depth gap with no direct exploit path (missing `@PreAuthorize` behind a correct matcher, undocumented `csrf().disable()` rationale). Low = hardening polish (headers, cookie flags on non-sensitive paths). Intent labels follow severity: Critical/High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on an exposed path; Low -> `[Recommend]` or `[Question]`.
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+**Severity assignment:** Critical = exploitable now for auth/authz bypass or data compromise (IDOR, matcher-order bypass, unvalidated JWT, injection on a reachable path, MD5 password hashing). High = exploitable with preconditions or exposes sensitive internals (public `heapdump`/`env`, open redirect, missing brute-force protection on auth endpoints). Medium = defense-in-depth gap with no direct exploit path (missing `@PreAuthorize` behind a correct matcher, undocumented `csrf().disable()` rationale). Low = hardening polish (headers, cookie flags on non-sensitive paths). Intent labels follow severity: Critical/High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on an exposed path; Low -> `[Recommend]`.
 
 ```markdown
 ## Spring Boot Security Review Summary
@@ -190,7 +192,7 @@ _Omit empty severity sections. If all omitted, state "No security issues found."
 
 ## Next Steps
 
-Prioritized, each tagged `[Implement]` (localized) or `[Delegate]` (cross-cutting, dep upgrade, threat-model). Order: Must > Recommend > Question.
+Prioritized, each tagged `[Implement]` (localized) or `[Delegate]` (cross-cutting, dep upgrade, threat-model). Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
@@ -209,4 +211,4 @@ _Omit if no security issues._
 - Recommending `WebSecurityConfigurerAdapter` (removed in 6.x) - use `SecurityFilterChain`
 - Widening `@PreAuthorize` (e.g., `hasRole('ADMIN')` to `permitAll`) without an explicit security note
 - Conflating security with perf or general review
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

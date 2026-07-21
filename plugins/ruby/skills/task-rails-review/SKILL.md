@@ -151,6 +151,8 @@ Checks:
 
 **Test coverage** (named finding, not buried): logic added without RSpec coverage -> `[Recommend]`; escalate to `[Must]` on critical paths: auth, authz, money/billing, multi-record transactions, state machines, data-mutating Sidekiq jobs, migrations changing column semantics.
 
+**Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
+
 **Migration PRs** (`db/migrate/` change) - use skill: `ops-backward-compatibility`:
 
 - [ ] Two-phase column rename/drop (add -> backfill -> cut over -> remove)
@@ -230,7 +232,7 @@ Fold any `Still open` rows into `## Next Steps` as `(open since round <prior.rou
 
 Merge subagent findings:
 - Deduplicate cross-cutting findings; one entry citing all scopes that raised it
-- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend`
 - Preserve `file:line` citations; order by intent, not scope
 - Merge Next Steps into one prioritized list; preserve `[Implement]`/`[Delegate]` tags
 - Preserve deep-only sections returned by subagents (e.g., reliability's `Failure-Mode and Blast-Radius Map`) as their own section after Next Steps - they are not findings; the merge must not drop them
@@ -249,17 +251,18 @@ Print confirmation line.
 | ------------ | ------------------------------------------------------------------------ |
 | [Must]       | Do not merge until this is fixed.                                        |
 | [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
-| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 ```markdown
 ## Summary
 
 **Assessment:** Approve | Request Changes | Discuss
-_(Request Changes = any [Must]; Discuss = no [Must] but open [Question]s gate the verdict; Approve = neither - [Recommend]s alone don't block.)_
+_(Request Changes = any [Must]; Discuss = no [Must] but an unresolved assumption in a [Recommend] gates the verdict; Approve = neither - [Recommend]s alone don't block.)_
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Ruby <version> / Rails <version>
@@ -290,10 +293,6 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 - Impact:
 - Fix:
 
-### [Question] file:line
-- Question:
-- Why it matters:
-
 ## Architecture Notes
 - Boundary impact / Coupling change / Drift detected
 
@@ -305,7 +304,7 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## Next Steps
 
-On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Prioritized; each `[Implement]` or `[Delegate]`; order Must > Recommend > Question.
+On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Prioritized; each `[Implement]` or `[Delegate]`; order Must > Recommend.
 
 1. **[Implement]** [Must] file:line - one-line action
 2. **[Implement]** [Recommend] OldFile.rb:88 - N+1 in listAll (open since round 1)
@@ -335,7 +334,7 @@ _Omit empty sections. Omit Next Steps entirely if no actionable findings._
 - Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Duplicating perf / security / observability / reliability / api depth here - dedicated subagents own it
 - Reviewing without reading the full diff and log first

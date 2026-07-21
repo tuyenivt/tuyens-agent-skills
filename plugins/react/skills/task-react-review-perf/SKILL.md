@@ -190,6 +190,8 @@ Then use skill: `review-report-writer` with `report_type: review-perf`. Write th
 
 ## Output Format
 
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
 ```markdown
 ## React Performance Review Summary
 
@@ -227,7 +229,7 @@ _Omit empty sections._
 
 ## Next Steps
 
-Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / build config / load test). Order: Must > Recommend > Question.
+Each item `[Implement]` (localized) or `[Delegate]` (cross-cutting / build config / load test). Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: build] - [one-line action]
@@ -249,7 +251,7 @@ _Omit if no actionable findings._
 - [ ] Step 9 - observability presence checked or `[Delegate]` added; report written via `review-report-writer`; confirmation line printed
 - [ ] Every finding states impact (measured or estimated - never just "this is slow") and cites `file:line`
 - [ ] Depth honored: `standard` ran 1-9; `deep` adds capacity + budget plan
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omit when no actionable findings)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend (omit when no actionable findings)
 
 ## Avoid
 
@@ -265,4 +267,4 @@ _Omit if no actionable findings._
 - `useEffect(() => fetch(...), [])` in a Client Component when a Server Component parent could fetch
 - Conflating perf with general / security review - delegate
 - **Dual perf+security findings** (untrusted `dangerouslySetInnerHTML`, `eval`, prototype pollution via spread): emit a single `[Delegate] -> task-react-review-security` line in Next Steps only - no Findings-section entry and no parallel security commentary. If the issue has no independent perf cost, it is Next Steps only; if it also has a real perf cost, file that perf cost as its own Finding and still delegate the security half once
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

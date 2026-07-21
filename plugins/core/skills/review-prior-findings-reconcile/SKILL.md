@@ -44,8 +44,9 @@ To read file content at the new head (Steps 3-4), use `git show <head_sha>:<path
 
 Parse the prior report's `## High-Impact Findings` section. Each finding has a heading like `### [<Label>] file:line`. Accept both label vocabularies:
 
-- **Current (intent-based):** `[Must]`, `[Recommend]`, `[Question]`
+- **Current (intent-based):** `[Must]`, `[Recommend]`
 - **Legacy (severity-based):** `[Blocker]`, `[High]`, `[Suggestion]`, `[Nitpick]`, `[Praise]`
+- **Legacy (intent-based):** `[Question]` - retired label; still parsed from prior rounds, never emitted in new findings
 
 Collect `(label, file, line, smell_summary)` where `label` is preserved **verbatim** as it appeared in the prior report (do not translate `[Blocker]` to `[Must]` - the reconciliation table reflects what was actually written). `smell_summary` is the first sentence of the `Issue:` or `Improvement:` line.
 
@@ -96,7 +97,7 @@ Emit a single Markdown table - this is what the workflow inserts under `## Prior
 
 Status column is one of exactly: `Addressed`, `Still open`, `Obsolete`, `Needs re-check`. Notes column is optional per row; keep to one short sentence.
 
-Labels in the first column appear **exactly as they were in the prior report**. If round 1 used the legacy severity vocabulary (`[Blocker]`, `[High]`, `[Suggestion]`), those rows keep those labels; round-2 *new* findings use the current intent vocabulary (`[Must]`, `[Recommend]`, `[Question]`). Mixing in one report during the transition is expected and correct.
+Labels in the first column appear **exactly as they were in the prior report**. If round 1 used a retired label (`[Blocker]`, `[High]`, `[Suggestion]`, `[Question]`), those rows keep those labels; round-2 *new* findings use the current intent vocabulary (`[Must]`, `[Recommend]`). Mixing in one report during the transition is expected and correct.
 
 After the table, emit a one-line tally the workflow uses for the Round History row:
 

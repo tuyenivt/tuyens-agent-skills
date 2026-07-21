@@ -73,13 +73,15 @@ Use skill: `review-precondition-check` with the user's target argument and any `
 
 **Phase B - Correctness and Safety.** Logical correctness, error handling, edge cases, transaction boundaries, unsafe shared-state mutation. Use skill: `ops-resiliency` for fault tolerance. Use skill: `backend-api-guidelines` when API contracts change. Use skill: `architecture-concurrency` when concurrency is present. Use skill: `ops-backward-compatibility` for migrations or contract changes. **Raise an explicit named finding when logic was added or modified without tests** ([Recommend] minimum; [Must] for critical paths).
 
+**Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
+
 **Phase C - Architecture Guardrails.** Use skill: `architecture-guardrail` for layer violations, new coupling, circular dependency risk, boundary erosion.
 
 **Phase D - AI-Generated Code Quality.** Use skill: `complexity-review` for over-abstraction, premature generalization, redundant mapping layers, speculative config.
 
 **Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
-**Extra scopes.** If `+perf`, `+sec`, `+obs`, `+rel`, or `+api` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all five) with the read-once diff/log and the detected stack handle. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend > Question; highest wins on duplicates); preserve `file:line` citations. At the API/security and API/reliability seams a single defect can surface in two scopes (a payment endpoint missing `Idempotency-Key`): keep the contract finding under `+api` and the enforcement/correctness finding under its lens, deduped to one line at the strongest intent.
+**Extra scopes.** If `+perf`, `+sec`, `+obs`, `+rel`, or `+api` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all five) with the read-once diff/log and the detected stack handle. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend; highest wins on duplicates); preserve `file:line` citations. At the API/security and API/reliability seams a single defect can surface in two scopes (a payment endpoint missing `Idempotency-Key`): keep the contract finding under `+api` and the enforcement/correctness finding under its lens, deduped to one line at the strongest intent.
 
 ### Step 5 - Write Report
 
@@ -91,11 +93,12 @@ Use skill: `review-report-writer` with `report_type: review` and every required 
 | ------------ | ------------------------------------------------------------------------ |
 | [Must]       | Do not merge until this is fixed.                                        |
 | [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
-| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
@@ -127,11 +130,6 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
 [Same structure]
 
-### [Question] file:line
-
-- Question:
-- Why it matters:
-
 ## Architecture Notes
 
 - Boundary impact:
@@ -149,7 +147,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
 ## Next Steps
 
-Order: Must > Recommend > Question.
+Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope] - [one-line action]
@@ -162,7 +160,7 @@ _Omit sections with no findings._
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran
 - [ ] Step 3: if matched and available, stack workflow ran with all flags forwarded, Steps 4-5 skipped; if matched but unavailable, missing plugin named and fallback ran
-- [ ] Step 4: if no dispatch, SHAs captured; mode/round decided from `prior_checkpoint`; prior findings reconciled on incremental rounds; Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel and merged without writing their own reports; findings ordered Must > Recommend > Question
+- [ ] Step 4: if no dispatch, SHAs captured; mode/round decided from `prior_checkpoint`; prior findings reconciled on incremental rounds; Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel and merged without writing their own reports; findings ordered Must > Recommend
 - [ ] Step 5: report written via `review-report-writer` with all required inputs (fallback path only)
 
 ## Avoid
@@ -174,4 +172,4 @@ _Omit sections with no findings._
 - Stylistic nits without a project standard
 - Blocking on personal preference over correctness, risk, or maintainability
 - Treating the fallback as equivalent to a stack workflow
-- Emitting labels outside `[Must]` / `[Recommend]` / `[Question]` (see Feedback Labels)
+- Emitting labels outside `[Must]` / `[Recommend]` (see Feedback Labels)

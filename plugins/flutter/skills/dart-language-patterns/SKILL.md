@@ -205,7 +205,7 @@ When invoked from an implementation workflow, emit decisions per concern:
 When invoked from a review workflow, emit one block per finding:
 
 ```
-### [Must | Recommend | Question] file:line
+### [Must | Recommend] file:line
 
 - Category: {Null Safety | Exhaustiveness | Type Modeling | Async | Resource Lifecycle | Collection Style}
 - Code: {one-line citation}

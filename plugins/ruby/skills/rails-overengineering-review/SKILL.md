@@ -17,7 +17,7 @@ Reviewing a Rails diff that adds validations, `rescue` blocks, service objects, 
 
 - Every finding cites the specific constraint making the code redundant: FK name, NOT NULL column, unique index, enum, framework guarantee - or, for Category 3, the absence of a second call site/type/consumer. No citation, no finding.
 - Default intent is `[Recommend]`. Escalate to `[Must]` only when there is measurable cost: extra SELECT on a hot path, blanket `rescue` masking real bugs, a service hiding a transaction boundary the call site should see, or silent data corruption (racing uniqueness with no index).
-- Use `[Question]` when justification is plausible but not evidenced. Facts supplied alongside the diff (schema, call-site counts, form usage) count as evidence - don't [Question] what the requester already answered.
+- Use `[Recommend]` with the open assumption stated when justification is plausible but not evidenced. Facts supplied alongside the diff (schema, call-site counts, form usage) count as evidence - don't re-ask what the requester already answered.
 - Cite locations as the diff presents them (hunk/line); never invent file paths.
 - Don't flag redundancy with a legitimate reason: form-level error messages, system-boundary validation on untrusted input, an interface stabilized across 3+ call sites, intentional `touch:` side effects, or uniqueness validation paired with a unique index as advisory UX.
 
@@ -204,7 +204,7 @@ Justified when a second type is already designed and lands in the same release.
 Findings contribute to the consuming workflow's unified output. Each entry:
 
 ```
-### [Must | Recommend | Question] file:line
+### [Must | Recommend] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction} (append "(inverted)" for missing-constraint findings)
 - Code: {one-line citation, e.g., `validates :user, presence: true`}

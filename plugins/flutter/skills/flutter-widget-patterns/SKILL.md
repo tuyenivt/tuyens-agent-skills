@@ -263,7 +263,7 @@ When invoked from an implementation workflow, emit the tree decisions:
 When invoked from a review workflow, emit one block per finding:
 
 ```
-### [Must | Recommend | Question] file:line
+### [Must | Recommend] file:line
 
 - Category: {Widget Type | Const Usage | Key Correctness | Context Safety | Lifecycle | Composition | Constraints | Rebuild Scope}
 - Code: {one-line citation}

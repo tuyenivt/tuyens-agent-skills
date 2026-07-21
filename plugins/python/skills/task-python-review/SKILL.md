@@ -193,6 +193,8 @@ Apply atomic skills. Each owns the canonical patterns; this phase flags deviatio
 **Additional Python-specific checks the atomics don't own:**
 
 - **Test coverage finding (named, not buried).** PR adds logic without pytest coverage -> `[Recommend]`; escalate to `[Must]` when the change is critical path: auth (OAuth2 / JWT / Django auth), authorization (`permission_classes` / FastAPI security dependencies), money / billing, multi-table writes, state machines, Celery mutators, migrations changing column semantics. Surface as a dedicated finding.
+
+**Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
 - **Type hints on public functions.** Return types and parameters typed; mypy / pyright not silently disabled mid-file.
 - **`async def` discipline + `await` everywhere (FastAPI).** No blocking I/O on the event loop, no missing `await` returning a coroutine object. Catalog in `python-async-patterns`.
 - **Pydantic v2 (FastAPI).** Input schemas declare `model_config = ConfigDict(extra="forbid")` for user-facing endpoints; `Field(...)` constraints on user inputs; `from_attributes=True` on response models built from ORM rows. `extra="allow"` on user input is a mass-assignment surface.
@@ -284,7 +286,7 @@ If scope is **Core only**, skip. For each selected scope, spawn one independent 
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
 - **Deduplicate** cross-cutting findings (one entry citing all scopes that raised it)
-- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend`
 - **Preserve `file:line` citations**
 - **Order by intent**, not by scope
 - **Note missing scopes** in Summary as `Scope incomplete: <scope>`
@@ -319,11 +321,12 @@ Write before ending; print the confirmation line.
 | ------------ | ------------------------------------------------------------------------ |
 | [Must]       | Do not merge until this is fixed.                                        |
 | [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
-| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 ```markdown
 ## Summary
@@ -361,12 +364,6 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 - Impact: ...
 - Fix: ...
 
-### [Question] file:line
-- Question: [what is ambiguous]
-- Why it matters: [what the right next step depends on]
-
-_Use [Question] for genuine ambiguity, not as a softer Must._
-
 ## Architecture Notes
 
 _Cross-cutting commentary. Do not restate individual findings; reference them by file:line._
@@ -388,7 +385,7 @@ _Same rule as Architecture Notes._
 
 ## Next Steps
 
-Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question. On incremental rounds, prior-round `Still open` items are folded in with `(open since round <N>)` suffix and ordered by intent alongside new findings.
+Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend. On incremental rounds, prior-round `Still open` items are folded in with `(open since round <N>)` suffix and ordered by intent alongside new findings.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Implement]** [Recommend] old_file.py:88 - missing await on async DB call (open since round 1)
@@ -444,6 +441,6 @@ _Omit if no actionable findings._
 - Sequential extra scopes that could parallelize
 - Appending raw subagent reports instead of merging
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Recommending `pickle.loads` / `yaml.load` on untrusted input, or `extra="allow"` on user-facing Pydantic schemas, as acceptable patterns

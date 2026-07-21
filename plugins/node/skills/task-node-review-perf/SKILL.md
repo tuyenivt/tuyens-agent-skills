@@ -166,6 +166,8 @@ Use skill: `review-report-writer` with `report_type: review-perf`. Write before 
 
 ## Output Format
 
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
 ```markdown
 ## Node.js Performance Review Summary
 
@@ -198,7 +200,7 @@ _Omit sections with no findings._
 
 ## Next Steps
 
-Each item tagged `[Implement]` or `[Delegate]`. Map impact to intent: High -> `[Must]`; Medium / Low -> `[Recommend]`; `[Question]` only for genuine ambiguity. Order: Must > Recommend > Question.
+Each item tagged `[Implement]` or `[Delegate]`. Map impact to intent: High -> `[Must]`; Medium / Low -> `[Recommend]`. Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]
@@ -216,7 +218,7 @@ _Omit if no actionable findings._
 - [ ] Observability presence/absence confirmed; depth delegated (Step 10)
 - [ ] Depth honored: `standard` ran all; `deep` adds capacity + load plan
 - [ ] Every finding states measured or estimated impact; findings ordered by impact
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend
 - [ ] Report written via `review-report-writer`; confirmation printed
 
 ## Avoid
@@ -228,7 +230,7 @@ _Omit if no actionable findings._
 - Suggesting caching without invalidation strategy
 - Conflating perf with general or security review
 - Treating BullMQ retries as a substitute for idempotency
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 - Recommending sync APIs (`fs.readFileSync`, `crypto.pbkdf2Sync`) on request paths
 - Recommending `setTimeout(..., 0)` to "yield" - pushes work to the next macrotask but doesn't free the event loop; use `worker_threads` for CPU
 - Reporting "missing index" without confirming the column appears in `where` / `orderBy` / `groupBy`

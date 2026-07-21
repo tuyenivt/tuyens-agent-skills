@@ -21,7 +21,7 @@ user-invocable: false
 - Every finding names what makes the abstraction unnecessary: no mutable state or lifecycle, no second reader, no second implementer, no transformation, the type is already non-nullable. When several stack, comma-separate them in `Unnecessary because:`.
 - Intent:
   - **`[Recommend]`** (default). Name the constraint, recommend the edit. Escalate to **`[Must]`** when measurable cost is present; cite it in `Cost:`. Triggers: `dynamic` propagating past a decode boundary into business logic or a widget (runtime failure replaces a compile error); a mapping hop that silently drops a field; a branch presented as handling a case it can never reach, leaving the real failure mode unhandled
-  - **`[Question]`** when justification is plausible but not visible in the diff
+  - **`[Recommend]`** when justification is plausible but not visible in the diff - state the justification being assumed and ask the author to confirm
 - An abstraction with **visible** justification - a second implementer, a test override, a union case - is not a finding
 - `Cost:` on a pure-abstraction `[Must]` is maintenance cost (parallel definitions to keep in sync, `build_runner` time, lost jump-to-implementation), not runtime cost - still measurable and worth citing
 - Never propose deleting a layer the diff's own tests bind to
@@ -204,7 +204,7 @@ Justified when 2+ instantiations exist in the codebase or the type is a package'
 One block per finding; the consuming workflow merges them:
 
 ```
-### [Must | Recommend | Question] file:line
+### [Must | Recommend] file:line
 
 - Category: {Widget Structure | State Abstraction | Premature Abstraction | Type-System Waste}
 - Code: {one-line citation}

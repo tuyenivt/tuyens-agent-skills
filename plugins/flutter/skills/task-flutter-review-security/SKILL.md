@@ -210,6 +210,8 @@ Use skill: `review-report-writer` with `report_type: review-security` and every 
 
 ## Output Format
 
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
 ```markdown
 ## Flutter Security Review Summary
 
@@ -257,8 +259,8 @@ _Omit severity sections with no findings. If all are omitted: "No security issue
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
-Severity maps to intent: Critical / High -> [Must]; Medium / Low -> [Recommend]; [Question] only when the fix depends on the author's answer.
+Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
+Severity maps to intent: Critical / High -> [Must]; Medium / Low -> [Recommend].
 A finding whose `flutter-security-patterns` block carries a non-`none` **Server-side dependency** also produces a `[Delegate]` entry naming what the backend must enforce - the client fix alone does not close it.
 
 1. **[Implement]** [Must] file:line - [one-line action]
@@ -293,7 +295,7 @@ _Omit if no issues found._
 - [ ] Generated files excluded from findings; the producing source cited instead
 - [ ] Severity rubric applied consistently; combined-finding rule applied where two defects compose on one path
 - [ ] Every finding carries an attack scenario, a regression-risk rationale, or an exposure-dependent framing
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend > Question (omitted only when no issues)
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend (omitted only when no issues)
 
 **Requires repo or device access:**
 
@@ -317,4 +319,4 @@ _Omit if no issues found._
 - Reviewing the server's authentication or API contract here - it belongs to the owning service or the architecture plugin
 - Filing a hardcoded user-facing string as a security finding - that is maintainability, unless the string is itself a secret
 - Conflating security with perf or general review
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

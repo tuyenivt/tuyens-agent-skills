@@ -94,7 +94,7 @@ Bad - vague:
 
 ### Violations
 
-#### [Must | Recommend | Question] {file:line}
+#### [Must | Recommend] {file:line}
 
 - Issue: {what boundary or layer was violated}
 - Impact: {coupling or drift consequence}
@@ -109,9 +109,9 @@ Intent:
 
 - **[Must]**: any Layer Violations pattern, circular dependency, cross-runtime import
 - **[Recommend]**: other Module Coupling and Boundary Erosion patterns
-- **[Question]**: drift with unclear intent - ask before flagging as a violation
+- **[Recommend]**: drift with unclear intent - state the assumption being checked and ask the author to confirm in the same finding
 
-A finding matching patterns in multiple sections takes the highest intent (Must > Recommend > Question).
+A finding matching patterns in multiple sections takes the highest intent (Must > Recommend).
 
 Stated intent (commit message, ADR) downgrades only the `Drift:` line, never the violation: an intentional layer violation is still [Must] - record the stated rationale in the finding.
 

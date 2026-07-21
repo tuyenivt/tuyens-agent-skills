@@ -192,6 +192,7 @@ Apply atomic skills. Each owns canonical patterns; this phase flags deviations:
 **Additional React-specific checks (deviation-flagging only; canonical rules live in the atomics above):**
 
 - **Test coverage finding** (named, not buried). PR adds logic without Vitest / Testing Library coverage -> `[Recommend]`; escalate to `[Must]` on critical paths: auth UI, Server Actions, money / billing UI, form validation, error boundaries.
+- **Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
 - **TypeScript strict**: no `strict: false`, no `props: any`, no `as any` outside test setup.
 - **Accessibility**: labels associated, `aria-describedby` for errors, dialogs use `<dialog>` or full ARIA, images have explicit dimensions and `alt`.
 - **Canonical security rules** are defined in `react-nextjs-patterns` (loaded above): cite by name, do not restate. If the +Sec subagent is running, defer depth to it.
@@ -274,7 +275,7 @@ For each selected scope, spawn one independent subagent **in parallel** with the
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
 - **Deduplicate** cross-cutting findings (one entry citing all scopes that raised it)
-- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`. Map subagent scales: `Critical` -> `Must`, `High` -> `Recommend`, `Medium` / `Low` -> drop from the merged list (only `Must`, `Recommend`, `Question` are emitted)
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend`. Map subagent scales: `Critical` -> `Must`, `High` -> `Recommend`, `Medium` / `Low` -> drop from the merged list (only `Must`, `Recommend`, `Question` are emitted)
 - **Preserve `file:line` citations** from the originating subagent
 - **Order by intent**, not by scope
 - **Note missing scopes** in Summary as `Scope incomplete: <scope>`
@@ -309,11 +310,12 @@ Write before ending; print the confirmation line.
 | ------------ | ------------------------------------------------------------------------ |
 | [Must]       | Do not merge until this is fixed.                                        |
 | [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
-| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 ```markdown
 ## Summary
@@ -351,12 +353,6 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 - Impact: ...
 - Fix: ...
 
-### [Question] file:line
-- Question: [what is ambiguous]
-- Why it matters: [what the right next step depends on]
-
-_Use [Question] for genuine ambiguity, not as a softer Must._
-
 ## Architecture Notes
 
 _Cross-cutting commentary. Do not restate individual findings; reference them by file:line._
@@ -379,7 +375,7 @@ _Same rule as Architecture Notes._
 
 ## Next Steps
 
-On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
+On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [one-line action, e.g., "Move `\"use client\"` from app/dashboard/layout.tsx to app/dashboard/_components/Filters.tsx; revert layout to Server Component"]
 2. **[Implement]** [Recommend] OldList.ts:88 - missing key on reorderable list (open since round 1)
@@ -426,7 +422,7 @@ _Omit if no actionable findings._
 - Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Reviewing without reading the full diff and commit log first
 - Generic frontend conventions when a React idiom exists ("extract to a custom hook", not "extract to a helper")

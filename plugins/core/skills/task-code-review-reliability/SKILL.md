@@ -81,13 +81,15 @@ Cover the applicable categories. Use skill: `ops-resiliency` for the canonical t
 
 **Failure-mode and blast radius (deep, or when the change touches a shared resource).** For each new or changed dependency, state what happens when it is down or slow, and what contains the cascade. Use skill: `failure-propagation-analysis` to trace shared-resource coupling and amplification loops. Use skill: `architecture-data-consistency` for consistency under partial failure and safe replay / recovery.
 
-Every finding names the failure mode it enables (not just the missing pattern) and states the blast radius. **Severity:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (untimed hot call, uncapped or non-idempotent retry, in-tx dual write, unbounded queue); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, non-idempotent consumer); Low = hardening with no immediate failure path. Next Steps map severity to intent: High -> `[Must]`, Medium -> `[Recommend]`, Low -> `[Recommend]` or `[Question]`.
+Every finding names the failure mode it enables (not just the missing pattern) and states the blast radius. **Severity:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (untimed hot call, uncapped or non-idempotent retry, in-tx dual write, unbounded queue); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, non-idempotent consumer); Low = hardening with no immediate failure path. Next Steps map severity to intent: High -> `[Must]`, Medium -> `[Recommend]`, Low -> `[Recommend]`.
 
 ### Step 5 - Write Report
 
 Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-reliability` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +rel`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-reliability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
@@ -122,7 +124,7 @@ _Omit sections with no findings. If all are omitted, state "No reliability gaps 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: platform] - [one-line action]
 
-_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra). Order Must > Recommend > Question. Omit if none._
+_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra). Order Must > Recommend. Omit if none._
 ```
 
 At `deep`, append a `## Failure-Mode and Blast-Radius Map` section before Next Steps - per new / changed dependency: what happens when it is down or slow, the shared resource on the propagation path, and the loop-breaker that contains it.
@@ -144,4 +146,4 @@ At `deep`, append a `## Failure-Mode and Blast-Radius Map` section before Next S
 - Recommending a circuit breaker with no monitoring
 - Overlapping into perf (throughput) or observability (visibility) - name the failure-survival gap, not the speed or the metric
 - Mitigating a live incident here - route to the oncall plugin first
-- Emitting labels outside `[Must]` / `[Recommend]` / `[Question]`
+- Emitting labels outside `[Must]` / `[Recommend]`

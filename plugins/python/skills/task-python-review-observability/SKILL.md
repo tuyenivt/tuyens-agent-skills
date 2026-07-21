@@ -154,6 +154,8 @@ Use skill: `review-report-writer` with `report_type: review-observability`. Writ
 
 ## Output Format
 
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
 ```markdown
 ## Python Observability Review Summary
 
@@ -203,7 +205,7 @@ _Omit empty sections. Group by surface within a bucket when 3+ share one; otherw
 
 ## Next Steps
 
-Prioritized action list. Each item `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: Must > Recommend > Question.
+Prioritized action list. Each item `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [one-line action, e.g., "Bind `order_id` via `structlog.contextvars.bind_contextvars(order_id=...)` at `OrderService.place` entry; clear in `finally`"]
 2. **[Delegate]** [Recommend] [scope: ops] - [one-line action, e.g., "Wire `/metrics` to org Prometheus scrape config"]
@@ -227,7 +229,7 @@ _Omit if no actionable findings._
 - [ ] Step 11: Report written via `review-report-writer`; confirmation line printed
 - [ ] Findings name a Python / OTel / structlog / prometheus-client idiom directly - not "add observability"
 - [ ] Library-level scope respected; infra concerns deferred to ops
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered Must > Recommend > Question
+- [ ] Next Steps tagged `[Implement]` / `[Delegate]` and ordered Must > Recommend
 
 ## Avoid
 
@@ -239,4 +241,4 @@ _Omit if no actionable findings._
 - Prescribing OTLP endpoint URL or Sentry DSN - say "sourced from env / Vault" and stop
 - One finding per missing checkbox when a whole surface is absent - collapse per Step 3
 - Recommending only structlog when the team uses stdlib `logging` - `python-json-logger` + `LoggingInstrumentor` is acceptable
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

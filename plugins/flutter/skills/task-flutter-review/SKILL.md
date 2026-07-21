@@ -201,6 +201,7 @@ Apply atomic skills; each owns canonical patterns:
 **Additional checks (not owned by atomics):**
 
 - **Test coverage finding (named, not buried).** PR adds logic without a matching test -> `[Recommend]`; escalate to `[Must]` when critical path: auth or session handling, money or purchase flows, on-device schema migration, data sync or conflict resolution, permission gating
+- **Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
 - **Disposal completeness.** Every `AnimationController`, `StreamSubscription`, `TextEditingController`, `ScrollController`, `FocusNode`, timer, and platform-channel listener created in a `State` is released in `dispose`. A missing release is a leak that survives navigation
 - **`BuildContext` across async gaps.** Any `context` used after an `await` is guarded by a `mounted` check. This is the most common source of "widget disposed" crashes
 - **Unawaited futures.** A future that is fired and not awaited either has an explicit reason or is a bug - errors from it bypass the caller's error handling entirely
@@ -278,7 +279,7 @@ Skip if scope is **Core only**. For each selected scope, spawn one independent s
 Merge subagent findings into single Output Format. Do not append raw reports.
 
 - Deduplicate cross-cutting findings (one entry citing all scopes)
-- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend` > `Question`
+- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend`
 - Preserve `file:line` citations
 - Order by intent, not scope
 - Note missing scopes as `Scope incomplete: <scope>`
@@ -317,11 +318,12 @@ Write before ending; print confirmation.
 | ------------ | ------------------------------------------------------------------------ |
 | [Must]       | Do not merge until this is fixed.                                        |
 | [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
-| [Question]   | Author must answer; reviewer decides if a fix follows.                   |
 
-No `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 ```markdown
 ## Summary
@@ -360,12 +362,6 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 ### [Recommend] file:line
 - Issue, Impact, Fix
 
-### [Question] file:line
-- Question: [what is ambiguous]
-- Why it matters
-
-_Use [Question] for genuine ambiguity, not as softer Must._
-
 ## Architecture Notes
 
 _Cross-cutting commentary. Reference findings by file:line._
@@ -384,7 +380,7 @@ _Cross-cutting commentary. Reference findings by file:line._
 
 ## Next Steps
 
-On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
+On incremental rounds, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Implement]** [Recommend] old_screen.dart:88 - controller never disposed (open since round 1)
@@ -440,7 +436,7 @@ _Omit if no actionable findings._
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
 - Raising findings against `*.g.dart`, `*.freezed.dart`, `*.gr.dart`, `*.config.dart`, `*.mocks.dart`, or generated localization output.
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count.
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Reviewing without reading the full diff and commit log first
 - Flagging a project for using Bloc, Provider, or GetX instead of Riverpod

@@ -116,6 +116,8 @@ Standalone runs: use skill `review-report-writer` with `report_type: review-obse
 
 ## Output Format
 
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
 ```markdown
 ## Rails Observability Review Summary
 
@@ -147,7 +149,7 @@ _Omit empty sections._
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: Sidekiq] - [one-line action]
 
-`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Severity maps to intent: High -> [Must], Medium/Low -> [Recommend]; needs author confirmation (unverifiable from the diff) -> [Question]. Order Must > Recommend > Question. Omit if no gaps; state "No observability gaps found" when clean.
+`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Severity maps to intent: High -> [Must], Medium/Low -> [Recommend]. Order Must > Recommend. Omit if no gaps; state "No observability gaps found" when clean.
 ```
 
 ## Self-Check
@@ -161,7 +163,7 @@ _Omit empty sections._
 - [ ] Step 9: scrub/user-context/Sidekiq capture every PR; setup checks only on initializer change
 - [ ] Step 10 (deep): liveness/readiness/SLI via `ops-observability`
 - [ ] Step 11: report via `review-report-writer`; confirmation printed
-- [ ] Every finding states the missing signal AND what becomes invisible; Next Steps ordered Must > Recommend > Question
+- [ ] Every finding states the missing signal AND what becomes invisible; Next Steps ordered Must > Recommend
 
 ## Avoid
 
@@ -172,4 +174,4 @@ _Omit empty sections._
 - Reviewing infra-level config - stays at gem/library level
 - Filing the same correlation-ID gap as separate findings under logging + Sidekiq + outbound HTTP
 - Filing `filter_parameters` coverage as observability - that's security
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

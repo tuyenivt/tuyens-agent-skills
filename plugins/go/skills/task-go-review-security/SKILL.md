@@ -196,7 +196,7 @@ Use skill: `review-report-writer` with `report_type: review-security` and every 
 - [ ] SQL parameterization, command injection, `text/template`, `gob.Decode`, `unsafe`, `reflect.FieldByName`, `InsecureSkipVerify`, open redirect checked when diff touches them
 - [ ] Severity rubric applied consistently
 - [ ] Every finding includes an attack scenario, "regression risk" rationale, or "topology-dependent" framing
-- [ ] Next Steps tagged `[Implement]` or `[Delegate]`; ordered Must > Recommend > Question (omitted only when no issues)
+- [ ] Next Steps tagged `[Implement]` or `[Delegate]`; ordered Must > Recommend (omitted only when no issues)
 
 **Requires repo / infra access:**
 
@@ -208,6 +208,8 @@ Use skill: `review-report-writer` with `report_type: review-security` and every 
 - [ ] Report written via `review-report-writer` with all required checkpoint fields (standalone only; subagent runs return findings to the parent); confirmation printed
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 ```markdown
 ## Go Security Review Summary
@@ -258,8 +260,8 @@ _Omit severity sections with no findings. If all omitted: "No security issues fo
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend > Question.
-Severity maps to intent: Critical / High -> [Must]; Medium / Low -> [Recommend]; [Question] only when the fix depends on the author's answer.
+Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
+Severity maps to intent: Critical / High -> [Must]; Medium / Low -> [Recommend].
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
@@ -286,4 +288,4 @@ _Omit if no issues found._
 - Conflating security with general or perf review
 - Exposed `pprof` in prod
 - `gob.Decode` on untrusted input
-- Emitting `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]`, `[Recommend]`, or `[Question]`, don't write it down.
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

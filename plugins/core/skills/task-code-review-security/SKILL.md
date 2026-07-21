@@ -77,13 +77,15 @@ Use skill: `review-precondition-check` when running standalone (skip if the pare
 
 **Data protection.** No sensitive data in logs, client-side state, or URLs. Encryption at rest for sensitive fields. Secrets in a secret manager, not env vars or code.
 
-Every finding states an attack scenario, not just a code observation. Next Steps map severity to intent: Critical/High -> `[Must]`, Medium/Low -> `[Recommend]`; `[Question]` only when the fix depends on the author's answer.
+Every finding states an attack scenario, not just a code observation. Next Steps map severity to intent: Critical/High -> `[Must]`, Medium/Low -> `[Recommend]`.
 
 ### Step 5 - Write Report
 
 Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-security` and every required input: `report_body`, `branch` (from the handle), refs from the precondition handle, SHAs via `git rev-parse`, `stack` from `stack-detect` (kebab-case `<language>-<framework>`, or `unknown`), `depth` from the invocation (default `standard`), `scope: +sec`, and `mode: full`, `round: 1` - unless `review-security-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`. (The handle's `prior_checkpoint` is keyed to the general review report - do not use it here.)
 
 ## Output Format
+
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
@@ -143,4 +145,4 @@ _Omit severity sections with no findings. If all are omitted, state "No security
 - Silently skipping OWASP categories that look clean
 - Recommendations that conflict with the framework's built-in security model
 - Treating the fallback as equivalent to a stack workflow
-- Emitting labels outside `[Must]` / `[Recommend]` / `[Question]`
+- Emitting labels outside `[Must]` / `[Recommend]`
