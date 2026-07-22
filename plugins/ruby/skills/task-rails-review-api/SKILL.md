@@ -63,17 +63,19 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect`. Accept a pre-confirmed stack from a parent (`task-rails-review`) and skip detection. If not Rails, stop and route the user to `/task-code-review-api`.
 
-Detect the serializer approach in use (ActiveModel::Serializer / Jbuilder / Alba / Blueprinter / none - raw `render json:`) and whether an OpenAPI spec is published (rswag request specs, a committed `openapi.yaml` / `swagger.yaml`, or a codegen step) - these gate Steps 7 and 8.
+Detect the serializer approach in use (ActiveModel::Serializer / Jbuilder / Alba / Blueprinter / none - raw `render json:`) and whether an OpenAPI spec is published (rswag request specs, a committed `openapi.yaml` / `swagger.yaml`, or a codegen step) - these gate Steps 7 and 8. This detection is always this skill's own job: a pre-confirmed stack covers language / framework only, so run it (read the repo) even as a subagent.
 
 ### Step 3 - Resolve the Diff
 
 Use skill: `review-precondition-check`. Read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent with handle + artifacts pre-passed. Surface any fail-fast verbatim.
 
-Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
+Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>` (standalone only - subagent runs write no report, so skip the capture).
 
-### Step 4 - Read the API Surface
+### Step 4 - Contract-Change Gate, then Read the API Surface
 
-Before applying checklists, read every changed file in these categories plus any unchanged file the diff calls into (a changed serializer ripples to every action rendering it). Checklists apply to the whole surface read: a pre-existing gap on a changed or rippled contract is a finding (note it as pre-existing), not out of scope.
+**Quick scan first (before loading any guideline atomic).** Scan the diff for a contract-change signal: a changed `config/routes.rb` entry, a changed `params.require(...).permit(...)` shape, a changed / added / removed serializer or presenter, a changed `render json:` shape or status code, a `rescue_from` / error-envelope change, a pagination change, or an rswag / `openapi.yaml` / `swagger.yaml` edit. If **none** is present, the PR carries no contract change: emit `No contract change detected - API review skipped` and stop **before** loading `backend-api-guidelines` / `ops-backward-compatibility` / `rails-activerecord-patterns`. A skip writes **no report file** - a prior `review-api-<branch>.md` (with its findings and round state) stays byte-identical, mirroring the umbrella's no-op rule. Standalone runs print the skip line; subagent runs return it to the parent. Whole-service sweeps skip this gate (they review current code, not a diff).
+
+If a signal is present, read every changed file in these categories plus any unchanged file the diff calls into (a changed serializer ripples to every action rendering it). Checklists apply to the whole surface read: a pre-existing gap on a changed or rippled contract is a finding (note it as pre-existing), not out of scope.
 
 - Route registration: `config/routes.rb` `resources` / `namespace` / `member` / `collection` / explicit verb wiring - paths, methods, version namespaces
 - Strong params and their `params.require(...).permit(...)` shape - required fields, permitted attributes, field names on the wire
@@ -104,7 +106,7 @@ Use skill: `backend-api-guidelines` for the design rules.
 
 ### Step 7 - Response Shape, Errors, and Pagination
 
-Use skill: `rails-activerecord-patterns` for query mechanics behind collection endpoints (preloading before serialization). The serializer-boundary rules live in this workflow's checklist below - the atomics build internals; where their examples differ from these contract rules, **this workflow's rules win**.
+Preload associations at the controller boundary (`includes` / `preload`) before the serializer renders them - a serializer walking associations per row is an N+1 behind the contract (throughput depth -> `task-rails-review-perf`). The serializer-boundary rules are this workflow's own, below. (The one preload rule this lens needs is inlined on purpose - do not re-delegate to `rails-activerecord-patterns`; its full query mechanics are perf's concern, not the API contract's.)
 
 - [ ] **Explicit serializer, never a raw AR model** - actions render a dedicated serializer / presenter, not `render json: @model`. Rendering the model calls `as_json` over every column and over-exposes internal attributes (`password_digest`, internal FKs, `deleted_at`) and couples the wire contract to the DB schema, so a column rename silently breaks clients.
 - [ ] **RFC 9457 error envelope** - errors return `type` / `title` / `status` / `detail` / `instance`, consistently across actions via `rescue_from` in `ApplicationController`. No Ruby backtrace, no leaked `ActiveRecord::RecordNotFound` internal, no internal ID leaked to the client.
@@ -147,8 +149,8 @@ Mark a line N/A when the diff has no matching surface (e.g. no collection endpoi
 
 - [ ] Step 1: behavioral principles loaded
 - [ ] Step 2: stack confirmed Ruby 3.4+ / Rails 7.2+ (or pre-confirmed stack accepted from parent); serializer approach and OpenAPI-spec presence recorded
-- [ ] Step 3: precondition check ran (or handle received); diff + log read once; `current_head_sha` and `current_base_sha` captured
-- [ ] Step 4: routes, strong params, serializers, error paths, pagination, and any OpenAPI spec read; `backend-api-guidelines` + `ops-backward-compatibility` consulted
+- [ ] Step 3: precondition check ran (or handle received); diff + log read once; `current_head_sha` and `current_base_sha` captured (standalone only)
+- [ ] Step 4: contract-change gate applied first - on skip, the line emitted and **no report file written** (prior report untouched); otherwise routes, strong params, serializers, error paths, pagination, and any OpenAPI spec read; `backend-api-guidelines` + `ops-backward-compatibility` consulted
 - [ ] Step 5: every changed request / response contract judged from the consumer's view; breaking changes flagged with a version / expand-contract requirement; "no callers" proven by search
 - [ ] Step 6: resource naming, method semantics, status codes, sub-resource nesting checked
 - [ ] Step 7: explicit serializer (no raw AR model), RFC 9457 errors, pagination, field-naming consistency checked
@@ -212,6 +214,7 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting - enforcement to s
 
 ## Avoid
 
+- Writing any report file on a no-contract-change skip - a prior `review-api-<branch>.md` must stay byte-identical
 - Reporting a deviated convention without naming who breaks ("use a serializer" vs "rendering the `User` model exposes `password_digest` and breaks every client when a column is renamed")
 - Rendering a raw AR model via `render json: @model` (`as_json` over-exposure + DB-schema-to-wire coupling)
 - Leaking a Ruby backtrace, `ActiveRecord::RecordNotFound`, or an internal ID in an error response

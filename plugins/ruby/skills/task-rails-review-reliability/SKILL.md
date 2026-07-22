@@ -69,7 +69,9 @@ Before applying checklists, read every changed file in these categories plus any
 - Config: `config/database.yml` (`pool`, `checkout_timeout`, `reaping_frequency`, `idle_timeout`), `config/sidekiq.yml`, `config/puma.rb` (`workers` / `threads`), `config/initializers/*` (`stoplight`, `retriable`, `rack-timeout`), `*.timeout` keys
 - Gemfile adds: `stoplight`, `retriable`, `faraday-retry`, `sidekiq-unique-jobs`, `rack-timeout`
 
-Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns.
+Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns - load it when the surface above includes an external client, a fanning-out service, or breaker / retry / timeout config (it feeds Steps 5, 6, and 8). Skip it on a diff that is purely Sidekiq-idempotency, transaction, or locking work with no synchronous dependency - Steps 7, 9, and 10 carry their own atomics.
+
+**Gating skips atomic loads, never checklist rows.** Every checklist row below runs on this skill's own text regardless of which atomics loaded; a row goes N/A only when the diff has no matching surface (the Self-Check rule). Also read the full `Gemfile` here (not just diff adds) to fill the Summary's `Resilience Gems:` field.
 
 ### Step 5 - Timeouts and Deadlines
 
@@ -87,7 +89,7 @@ http.open_timeout = 2; http.read_timeout = 5
 
 ### Step 6 - Retries, Circuit Breakers, and Isolation
 
-Use skill: `rails-http-client-patterns`, `rails-sidekiq-patterns`.
+Use skill: `rails-sidekiq-patterns` (`rails-http-client-patterns` already loaded in Step 5 - reuse it for the retry / breaker rules).
 
 - [ ] **Retries bounded, backoff + jitter** - Faraday `:retry` (`max: 2-3`, `backoff_factor: 2`, `interval_randomness`) or the `retriable` gem; in-process budget <5s web / <30s job. Sidekiq owns longer waits (`sidekiq_options retry: <N>`, `sidekiq_retry_in` with jitter). Do not stack Faraday + Retriable + Sidekiq - waits compound unpredictably.
 - [ ] **Retry only transient errors** (5xx, timeouts, connection); never 4xx; never `POST` / non-idempotent ops without an `Idempotency-Key`. ActiveJob equivalent: `retry_on TransientError, wait: :polynomially_longer, attempts: N`; `discard_on` permanent errors.
@@ -115,9 +117,9 @@ Use skill: `backend-idempotency`, `rails-sidekiq-patterns`, `rails-transaction-p
 
 ### Step 9 - Resource Exhaustion and Saturation
 
-Use skill: `rails-connection-pool-sizing` (config-change PRs), `rails-batch-processing-patterns`.
+Use skill: `rails-connection-pool-sizing` only on config-change PRs (pool / Puma / Sidekiq concurrency), `rails-batch-processing-patterns` only when the diff adds or changes batch / bulk iteration. Skip both when the surface is absent.
 
-- [ ] **AR pool bounded and correct** - per-process `pool >= in-process thread count`; deployment-wide sum (Puma `workers` x `threads` + Sidekiq `concurrency` + CLI / ops) under DB `max_connections` with 15-25% headroom; size for the rolling-deploy peak. `checkout_timeout` fails fast rather than blocking indefinitely under exhaustion (`ConnectionTimeoutError`).
+- [ ] **AR pool bounded and correct** - per-process `pool >= in-process thread count`; deployment-wide sum (Puma `workers` x `threads` + Sidekiq `concurrency` + CLI / ops) under DB `max_connections` with 15-25% headroom; size for the rolling-deploy peak. `checkout_timeout` fails fast rather than blocking indefinitely under exhaustion (`ConnectionTimeoutError`). When a ceiling (`max_connections`, deployed concurrency) is not in the diff, read the repo config for it; still unknown → run the check anyway and state the assumption in the finding (`verify: max_connections unknown`) - never silently skip it.
 - [ ] **Puma bounds under the GVL** - worker / thread counts sized so CPU-bound work does not starve threads; `reaping_frequency` / `idle_timeout` reclaim dead / idle connections.
 - [ ] **No unbounded `.all.each`** - iterate with `find_each` / `in_batches`; `pluck(:id)` cursors when AR objects are not needed; `WorkerKiller` / jemalloc for memory-heavy Sidekiq queues.
 - [ ] **Pooled Redis** - non-Sidekiq Redis use goes through the `connection_pool` gem; a per-call `Redis.new` leaks connections under load.
@@ -125,7 +127,7 @@ Use skill: `rails-connection-pool-sizing` (config-change PRs), `rails-batch-proc
 
 ### Step 10 - Recoverability and Consistency Under Failure
 
-Use skill: `architecture-data-consistency`, `rails-transaction-patterns`, `rails-db-locking-patterns`.
+Use skill: `rails-transaction-patterns`, `rails-db-locking-patterns`. Cross-aggregate consistency rule (inlined on purpose - do not re-delegate to `architecture-data-consistency`; it overlaps the two atomics already loaded here, and its one distinct rule is captured below): writes that cannot share one DB transaction (a charge + a separate provisioning record, a local write + a remote call) need a compensating action or a reconciliation job on partial failure - never a best-effort inline rollback that can itself fail. Prefer one transaction; when impossible, make the second step idempotent and retriable so a re-run converges.
 
 - [ ] **Crash-safety** - a multi-step side effect interrupted mid-way (Sidekiq `SIGTERM` re-push, deploy) leaves recoverable state: checkpoint progress per chunk so the re-pushed job resumes; never swallow `Sidekiq::Shutdown` in a broad `rescue`.
 - [ ] **Compensating action on partial failure** - a charge that succeeds before a failing DB write enqueues a reconciliation / refund job, not an inline refund that compounds failure. Cross-aggregate writes that cannot be one transaction have a compensation.
@@ -198,13 +200,13 @@ Mark a line N/A when the diff has no matching surface (e.g. no external clients,
 - [ ] Step 1: behavioral principles loaded
 - [ ] Step 2: stack confirmed Rails 7.2+ / Ruby 3.4+ (or pre-confirmed stack accepted from parent); DB + background runtime recorded
 - [ ] Step 3: precondition check ran (or handle received); diff + log read once
-- [ ] Step 4: external clients, composing services, jobs, cron tasks, side-effecting flows, pool / Sidekiq / timeout config read; `ops-resiliency` consulted
+- [ ] Step 4: external clients, composing services, jobs, cron tasks, side-effecting flows, pool / Sidekiq / timeout config read; full `Gemfile` read for the Resilience Gems field; `ops-resiliency` consulted when a synchronous-dependency surface is present (skipped on idempotency/transaction/locking-only diffs)
 - [ ] Step 5: Faraday + `Net::HTTP` timeouts, `Rack::Timeout` deadline, chained-call budget checked
 - [ ] Step 6: retry safety / budget, `Stoplight` breaker, recovery-herd control, queue isolation checked
 - [ ] Step 7: `backend-idempotency` consulted; idempotent jobs, duplicate-enqueue guard, keyed dedup, no in-transaction enqueue, dead set checked
 - [ ] Step 8: fallback per critical dependency; fallbacks log; partial responses; load shedding verified
 - [ ] Step 9: AR pool + Puma bounded; no unbounded `.all.each`; pooled Redis; cron overlap guarded
-- [ ] Step 10: `architecture-data-consistency` consulted; crash-safety, compensation, locking, post-commit dispatch, migration rollout checked
+- [ ] Step 10: cross-aggregate compensation rule applied; crash-safety, compensation, locking, post-commit dispatch, migration rollout checked
 - [ ] Step 11: standalone: report written via `review-report-writer` with `report_type: review-reliability`, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding names the failure mode and blast radius, never just the missing pattern
 - [ ] Depth honored: `standard` ran all; `deep` filled the Failure-Mode and Blast-Radius Map (via `failure-propagation-analysis`)

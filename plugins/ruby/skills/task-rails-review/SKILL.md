@@ -209,6 +209,8 @@ Skip if `core-only`. For each selected scope, spawn one independent subagent in 
 
 **Subagent prompt contract:** resolved `base_ref`/`head_ref` + pre-read diff and commit log; depth level; pre-confirmed stack; return findings in its own skill's Output Format.
 
+**+Api short-circuit:** the +Api scope should already be gated by a contract-change signal (Depth and Scope), but the spawned `task-rails-review-api` re-checks its own contract-change gate on the pre-read diff; if it returns `No contract change detected`, record `Scope +Api: no contract change` in Summary and merge nothing from it. This keeps the api subagent from loading its guideline atomics on a diff that only tripped a borderline signal.
+
 **Failure isolation:** if a subagent fails or times out, continue with remaining results; note `Scope incomplete: <scope>` under Summary.
 
 **No-spawn fallback:** when the environment can't spawn subagents, run each selected scope's checks inline and sequentially using the same `task-rails-review-*` skills, label the findings per scope, and note `Scopes run inline` in Summary. Inline runs behave as subagent runs: their Steps 1-3 are pre-satisfied and their report writers are skipped - this workflow owns the report. Depth propagates to delegates (security always runs full depth regardless).
