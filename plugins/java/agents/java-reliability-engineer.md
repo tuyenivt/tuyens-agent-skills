@@ -63,7 +63,6 @@ The driven workflow verifies these - use this list to frame scope when routing, 
 - Use skill: `ops-resiliency` for timeout / retry / circuit-breaker / bulkhead / fallback patterns and the resilience library per stack
 - Use skill: `backend-idempotency` for idempotency-key strategy and atomic dedup
 - Use skill: `spring-messaging-patterns` for transactional outbox, DLT, and idempotent consumer patterns
-- Use skill: `architecture-data-consistency` for consistency and recovery under partial failure
 - Use skill: `failure-propagation-analysis` to trace shared-resource coupling and cascading-failure blast radius
 
 ## Principle

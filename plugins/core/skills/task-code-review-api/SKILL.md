@@ -65,6 +65,8 @@ Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workf
 
 Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review changed endpoints, schemas, and serializers, plus every unchanged endpoint a changed schema or serializer ripples to (a changed response shape pulls in each endpoint returning it); `deep`: read each touched contract surface in full and trace every response field to its source and every consumer of a changed contract.
 
+**Contract-change gate (do first, before loading any guideline atomic).** Scan the diff for a contract-change signal: a changed route/handler registration, a changed request-body / DTO / params schema, a changed/added/removed serializer or response model, a changed response shape or status code, an error-envelope change, a pagination change, or an OpenAPI / spec edit. If NONE is present, emit `No contract change detected - API review skipped` and STOP before loading the guideline atomics. A skip writes NO report - standalone prints the skip line; a subagent returns it to the parent. Whole-service sweeps skip this gate (they review current code, not a diff). Detecting the serializers / response models and any published spec is always this skill's own job even as a subagent - a pre-confirmed stack covers language / framework only.
+
 **Whole-service sweep** (API-consistency pass with no feature branch): when the precondition check fails fast on trunk, do not stop - skip the diff gate and review the API surface repo-wide at `HEAD`; findings cite current code; checkpoint `base_sha` = `head_sha` = `HEAD`.
 
 Cover the applicable categories. Use skill: `backend-api-guidelines` for the canonical REST/HTTP design rules and `ops-backward-compatibility` for the compatibility judgment and expand-contract plan.
@@ -134,12 +136,13 @@ At `deep`, append a `## Consumer-Impact Map` section before Next Steps - per cha
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran
 - [ ] Step 3: if matched and installed, stack workflow ran with arguments forwarded; Steps 4-5 skipped
-- [ ] Step 4: if no dispatch, every applicable category (compatibility / REST design / response shape / versioning / OpenAPI drift) covered (repo-wide at `HEAD` on a trunk sweep); every finding names who breaks, blast radius, and a rubric-based severity
+- [ ] Step 4: if no dispatch, the contract-change gate ran first (skip line emitted and no report written when no contract signal, except on a trunk sweep); otherwise every applicable category (compatibility / REST design / response shape / versioning / OpenAPI drift) covered (repo-wide at `HEAD` on a trunk sweep); every finding names who breaks, blast radius, and a rubric-based severity
 - [ ] Step 5: report written via `review-report-writer` with all required inputs (standalone fallback only; subagent runs return findings to the parent)
 
 ## Avoid
 
 - Running both Step 3 dispatch and Step 4 fallback
+- Writing any report file on a no-contract-change skip - a prior `review-api-<branch>.md` must stay byte-identical
 - Writing a report when invoked as a subagent - the parent owns it
 - API findings without naming who breaks ("rename the field" vs "removing `total` breaks mobile v3, which has no fallback")
 - Reviewing endpoint auth enforcement or input-validation bypass here - name the contract gap and route to `task-code-review-security`

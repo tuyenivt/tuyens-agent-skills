@@ -66,7 +66,6 @@ The driven workflow verifies these - use this list to frame scope when routing, 
 - Use skill: `node-transaction-patterns` for no-I/O-in-transaction, post-commit dispatch, and the transactional outbox
 - Use skill: `node-bullmq-patterns` for `attempts` / `backoff` / DLQ, `jobId` dedup, worker lifecycle, and idempotent processors
 - Use skill: `node-connection-pool-sizing` for bounded Prisma / TypeORM pools vs worker concurrency and rolling-deploy overlap
-- Use skill: `architecture-data-consistency` for consistency and recovery under partial failure
 - Use skill: `failure-propagation-analysis` to trace shared-resource coupling (event loop, DB pool, Redis) and cascading-failure blast radius
 
 ## Principle

@@ -65,7 +65,9 @@ Use skill: `review-precondition-check` when running standalone (skip if the pare
 
 **Whole-service sweep** (reliability-debt pass with no feature branch): when the precondition check fails fast on trunk, do not stop - skip the diff gate and review the reliability surface repo-wide at `HEAD`; findings cite current code; checkpoint `base_sha` = `head_sha` = `HEAD`.
 
-Cover the applicable categories. Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns and the per-stack resilience library (for stacks it does not list, apply the same patterns with the ecosystem's standard resilience libraries).
+Cover the applicable categories. Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns and the per-stack resilience library (for stacks it does not list, apply the same patterns with the ecosystem's standard resilience libraries). Gate it: load `ops-resiliency` when the surface includes an external client, a fanning-out service, or breaker / retry / timeout config; skip it on a diff that is purely queue-system idempotency, transaction, or locking work with no synchronous dependency.
+
+Gating skips atomic loads, never checklist rows. Every category below runs on this skill's own text regardless of which atomics loaded; a category goes N/A only when the diff has no matching surface (the Self-Check rule).
 
 **Timeouts and deadlines.** Every external and internal call bounded; no unbounded waits. Chained calls share a timeout budget; deadline / cancellation context propagated downstream.
 
@@ -77,7 +79,7 @@ Cover the applicable categories. Use skill: `ops-resiliency` for the canonical t
 
 **Graceful degradation and fallbacks.** Every critical dependency has a defined fallback (cached / default / partial / queue-for-later / provider failover / fail-fast). Fallbacks log the original failure - never swallow it. Load shedding / backpressure on saturation instead of unbounded queueing.
 
-**Resource exhaustion and saturation.** Connection, thread, and worker pools bounded and sized; queues, buffers, and in-memory accumulators bounded; no unbounded growth under load. Streaming for large payloads.
+**Resource exhaustion and saturation.** Connection, thread, and worker pools bounded and sized; queues, buffers, and in-memory accumulators bounded; no unbounded growth under load. Streaming for large payloads. When a pool's ceiling (DB max_connections, deployed concurrency) is not in the diff, read repo config; if still unknown, run the check anyway and state the assumption in the finding (e.g. `verify: max_connections unknown`) - never silently skip it.
 
 **Failure-mode and blast radius (deep, or when the change touches a shared resource).** For each new or changed dependency, state what happens when it is down or slow, and what contains the cascade. Use skill: `failure-propagation-analysis` to trace shared-resource coupling and amplification loops. Use skill: `architecture-data-consistency` for consistency under partial failure and safe replay / recovery.
 

@@ -63,15 +63,17 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect`. Accept a pre-confirmed stack from a parent (`task-spring-review`) and skip detection. If not Spring Boot, stop and route the user to `/task-code-review-api`.
 
-Detect whether an OpenAPI spec is published (springdoc-openapi on the classpath, `@Operation` / `@Schema` annotations, a committed `openapi.yaml` / `swagger.json`, or a codegen step) - this gates Step 8. Record which form: annotated / committed file / **bare springdoc** (classpath only, no annotations - the spec auto-tracks the code). When invoked as a subagent, still run this detection - the parent's handle does not carry it.
+Detect whether an OpenAPI spec is published (springdoc-openapi on the classpath, `@Operation` / `@Schema` annotations, a committed `openapi.yaml` / `swagger.json`, or a codegen step) - this gates Step 8. Record which form: annotated / committed file / **bare springdoc** (classpath only, no annotations - the spec auto-tracks the code). Response-DTO / record convention and OpenAPI-spec detection is always this skill's own job even as a subagent - a pre-confirmed stack covers language / framework only, not the spec form; still run this detection - the parent's handle does not carry it.
 
 ### Step 3 - Resolve the Diff
 
 Use skill: `review-precondition-check`. Read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent with handle + artifacts pre-passed. Surface any fail-fast verbatim.
 
-Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
+Standalone only - capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`. Subagent runs write no report, so skip the SHA capture.
 
 ### Step 4 - Read the API Surface
+
+**Contract-change quick-scan gate (before loading any guideline atomic).** Scan the diff for a contract-change signal: a changed `@RestController` / `@RequestMapping` route registration, a changed request-body / DTO / `@RequestParam` schema, a changed / added / removed response DTO or record, a changed response shape or status code, an error-envelope (`ProblemDetail` / `@RestControllerAdvice`) change, a pagination change, or a springdoc / OpenAPI spec edit. If NONE is present: emit `No contract change detected - API review skipped` and STOP before loading `backend-api-guidelines` / `ops-backward-compatibility`. This gate does not apply to a whole-service sweep (it reviews current code, not a diff). A skip writes NO report file - a prior `review-api-<branch>.md` with its findings and round state stays byte-identical (standalone prints the skip line; subagent returns it to the parent).
 
 Before applying checklists, read every changed file in these categories plus any unchanged file the diff calls into (a changed response DTO ripples to every controller returning it):
 
@@ -104,7 +106,7 @@ Use skill: `backend-api-guidelines` for the design rules.
 
 ### Step 7 - Response Shape, Errors, and Pagination
 
-Use skill: `spring-jpa-performance` for the entity-to-DTO boundary and pagination shape. Use skill: `spring-exception-handling` for the RFC 9457 error envelope.
+DTO-projection rule (inlined on purpose - do not re-delegate to `spring-jpa-performance`; its full query mechanics - N+1, fetch join, JDBC batching - are perf's concern): project the entity to a response record before serialization so no lazy association or internal column reaches the wire. Use skill: `spring-exception-handling` for the RFC 9457 error envelope.
 
 - [ ] **Response DTO, never a raw entity** - controllers return a dedicated response DTO / record, not a JPA `@Entity`. Returning the entity over-exposes internal fields (`passwordHash`, internal FKs, soft-delete timestamps), triggers lazy-loading serialization surprises, and couples the wire contract to the JPA schema, so a column rename silently breaks clients.
 - [ ] **RFC 9457 error envelope** - errors return a `ProblemDetail` (`type` / `title` / `status` / `detail` / `instance`), consistently across handlers via `@RestControllerAdvice`. No Java stack trace, no `EntityNotFoundException` message, no internal ID leaked to the client.
@@ -148,8 +150,8 @@ Mark a line N/A when the diff has no matching surface (e.g. no collection endpoi
 
 - [ ] Step 1: behavioral principles loaded
 - [ ] Step 2: stack confirmed Java 21+ / Spring Boot 3.5+ (or pre-confirmed stack accepted from parent); OpenAPI-spec presence recorded
-- [ ] Step 3: precondition check ran (or handle received); diff + log read once; `current_head_sha` and `current_base_sha` captured
-- [ ] Step 4: routes, request DTOs, response DTOs, error paths, pagination, and any OpenAPI spec read; `backend-api-guidelines` + `ops-backward-compatibility` consulted
+- [ ] Step 3: precondition check ran (or handle received); diff + log read once; standalone captured `current_head_sha` / `current_base_sha` (subagent skips)
+- [ ] Step 4: contract-change quick-scan gate ran (skip + no-write if none, except whole-service sweep); then routes, request DTOs, response DTOs, error paths, pagination, and any OpenAPI spec read; `backend-api-guidelines` + `ops-backward-compatibility` consulted
 - [ ] Step 5: every changed request / response contract judged from the consumer's view; breaking changes flagged with a version / expand-contract requirement; "no callers" proven by search
 - [ ] Step 6: resource naming, method semantics, status codes, sub-resource nesting checked
 - [ ] Step 7: response DTO (no raw `@Entity`), RFC 9457 `ProblemDetail` errors, pagination, field-naming consistency checked
@@ -221,4 +223,5 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting - enforcement to s
 - Reviewing auth enforcement or `@Valid` bypass here - name the contract gap and route to `task-spring-review-security`
 - Reviewing idempotency-dedup correctness or timeout behavior here - route to `task-spring-review-reliability`
 - Overlapping into perf (throughput, N+1, `LazyInitializationException`) - own the response *shape*, not its cost
+- Writing any report file on a no-contract-change skip - a prior `review-api-<branch>.md` must stay byte-identical
 - Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

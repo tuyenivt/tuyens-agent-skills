@@ -70,7 +70,9 @@ Before applying checklists, read every changed file in these categories plus any
 - Side-effecting flows (payment, notification, provisioning) - idempotency keys, outbox
 - Config and lifecycle: `main.ts` (`enableShutdownHooks`, `SIGTERM`), `prisma.service.ts` / `data-source.ts` pool config, `ConfigModule`, resilience wiring (`opossum` / `cockatiel` / `p-retry` / `p-limit`), and `package.json` dependency adds
 
-Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns and the Node resilience library.
+Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns and the Node resilience library - load it when the surface above includes an external client, a fanning-out service, or breaker / retry / timeout config. Skip it on a diff that is purely BullMQ-idempotency, transaction, or locking work with no synchronous dependency - the later steps carry their own atomics.
+
+**Gating skips atomic loads, never checklist rows.** Every checklist row below runs on this skill's own text regardless of which atomics loaded; a row goes N/A only when the diff has no matching surface (the Self-Check rule). Also read the full `package.json` here (not just diff adds) to fill the Summary's `Resilience Library:` field.
 
 ### Step 5 - Timeouts, Retries, Circuit Breakers, Bounded Concurrency
 
@@ -103,7 +105,7 @@ Use skill: `node-bullmq-patterns` and `node-transaction-patterns`. Use skill: `b
 
 ### Step 8 - Resource Exhaustion and Saturation
 
-- [ ] **DB pool bounded** - Prisma `connection_limit` / TypeORM `extra.max` set; `connectionTimeoutMillis` fails fast (1-3s) rather than blocking the caller under exhaustion; `idleTimeoutMillis` reaps idle connections; worker `concurrency` <= pool size (see `node-connection-pool-sizing`).
+- [ ] **DB pool bounded** - Prisma `connection_limit` / TypeORM `extra.max` set; `connectionTimeoutMillis` fails fast (1-3s) rather than blocking the caller under exhaustion; `idleTimeoutMillis` reaps idle connections; worker `concurrency` <= pool size (see `node-connection-pool-sizing`). When a ceiling (DB `max_connections`, deployed concurrency) is not in the diff, read the repo config for it; still unknown -> run the check anyway and state the assumption in the finding (`verify: max_connections unknown`) - never silently skip it.
 - [ ] **No unbounded `Promise.all`** - fanning `Promise.all` over a user-sized or large array opens N connections / sockets at once; bound it with `p-limit`. (Distinct from Step 7's `allSettled` fail-all point - here the hazard is unbounded width.)
 - [ ] **No event-loop blocking on request paths** - `fs.readFileSync`, `crypto.pbkdf2Sync`, large `JSON.parse`, catastrophic regex stall *every in-flight request on the process*; offload to `worker_threads` (`piscina`) or BullMQ. Presence is the reliability finding; tuning depth -> `task-node-review-perf`.
 - [ ] **No unbounded accumulation** - in-memory `Map` / `Set` / cache / buffer that grows with load has a bound or eviction (`lru-cache`); streamed, not fully buffered, for large data.
@@ -111,7 +113,7 @@ Use skill: `node-bullmq-patterns` and `node-transaction-patterns`. Use skill: `b
 
 ### Step 9 - Recoverability and Consistency Under Failure
 
-Use skill: `architecture-data-consistency`. Use skill: `node-transaction-patterns` for boundary correctness.
+`node-transaction-patterns` (already loaded in Step 6 - reuse it) carries the boundary-correctness rules. Cross-aggregate consistency rule (inlined on purpose - do not re-delegate this to a separate consistency atomic; it overlaps the transaction atomic already loaded here, and its one distinct rule is captured below): writes that cannot share one transaction (a charge + a separate provisioning record, a local write + a remote call) need a compensating action or a reconciliation job on partial failure - never a best-effort inline rollback that can itself fail. Prefer one transaction; when impossible, make the second step idempotent and retriable so a re-run converges.
 
 - [ ] **Graceful shutdown drains in-flight** - on `SIGTERM`: stop accepting (`app.close()` / `server.close()`), await in-flight, `await worker.close()`, `await prisma.$disconnect()` / `dataSource.destroy()`. NestJS wires this via `app.enableShutdownHooks()` + `OnApplicationShutdown`. Absence drops in-flight HTTP requests and re-queues in-flight jobs on **every deploy**.
 - [ ] **Crash-safety** - a multi-step side effect interrupted mid-way leaves recoverable state (outbox pending, safe re-run), not a half-applied change.
@@ -186,12 +188,12 @@ Mark a line N/A when the diff has no matching surface (e.g. no messaging, no sch
 - [ ] Step 1: behavioral principles loaded
 - [ ] Step 2: stack confirmed Node / TypeScript (or pre-confirmed stack accepted from parent); framework + ORM recorded
 - [ ] Step 3: precondition check ran (or handle received); diff + log read once
-- [ ] Step 4: outbound clients, composing services, BullMQ, scheduled jobs, side-effecting flows, config/lifecycle read
-- [ ] Step 5: `node-http-client-patterns` + `ops-resiliency` consulted; `AbortSignal` timeouts, retry safety/budget, breaker, bounded concurrency checked
+- [ ] Step 4: outbound clients, composing services, BullMQ, scheduled jobs, side-effecting flows, config/lifecycle read; full `package.json` read for the Resilience Library field; `ops-resiliency` consulted when a synchronous-dependency surface is present (skipped on idempotency/transaction/locking-only diffs)
+- [ ] Step 5: `node-http-client-patterns` consulted; `AbortSignal` timeouts, retry safety/budget, breaker, bounded concurrency checked
 - [ ] Step 6: `backend-idempotency` + `node-bullmq-patterns` + `node-transaction-patterns` consulted; idempotency keys, BullMQ attempts/DLQ/`jobId`, no in-tx dual write, consumer idempotency checked
 - [ ] Step 7: fallback per critical dependency; `allSettled` on optional fan-out; fallbacks log; partial responses; load shedding / backpressure verified
 - [ ] Step 8: DB pool bounded; no unbounded `Promise.all`; no event-loop blocking; no unbounded accumulation; scheduled overlap guarded
-- [ ] Step 9: `architecture-data-consistency` consulted; `SIGTERM` drain, crash-safety, unhandled-rejection backstops, compensation, readiness, migration rollout checked
+- [ ] Step 9: cross-aggregate compensation rule applied; `SIGTERM` drain, crash-safety, unhandled-rejection backstops, compensation, readiness, migration rollout checked
 - [ ] Step 10: standalone: report written via `review-report-writer`, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding names the failure mode and blast radius, never just the missing pattern
 - [ ] Depth honored: `standard` ran all; `deep` filled the Failure-Mode and Blast-Radius Map

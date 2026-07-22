@@ -63,15 +63,17 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect`. Accept a pre-confirmed stack from a parent (`task-go-review`) and skip detection. If not Go, stop and route the user to `/task-code-review-api`.
 
-Detect whether an OpenAPI spec is published (swaggo annotations, a committed `swagger.json` / `openapi.yaml`, or a codegen step) - this gates Step 8.
+Detect whether an OpenAPI spec is published (swaggo annotations, a committed `swagger.json` / `openapi.yaml`, or a codegen step) - this gates Step 8. Response-DTO/response-model and spec detection is always this skill's own job, even as a subagent: a pre-confirmed stack covers language / framework only, never the contract surface.
 
 ### Step 3 - Resolve the Diff
 
 Use skill: `review-precondition-check`. Read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent with handle + artifacts pre-passed. Surface any fail-fast verbatim.
 
-Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
+Capture for the report checkpoint (standalone only - subagent runs write no report): `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
 
 ### Step 4 - Read the API Surface
+
+**Contract-change quick-scan gate.** Before loading any guideline atomic, scan the diff for a contract-change signal: a changed route registration, a changed request-binding struct / params schema, a changed / added / removed response DTO or serializer, a changed response shape or status code, an error-envelope change, a pagination change, or a swaggo / OpenAPI spec edit. If none is present, emit `No contract change detected - API review skipped` and STOP before loading the guideline atomics - standalone prints the skip line, a subagent returns it to the parent, and NO report file is written (a prior `review-api-<branch>.md` with its findings and round state stays byte-identical). A whole-service sweep skips this gate (it reviews current code, not a diff).
 
 Before applying checklists, read every changed file in these categories plus any unchanged file the diff calls into (a changed response struct ripples to every handler returning it). Checklists apply to the whole surface read: a pre-existing gap on a changed or rippled contract is a finding (note it as pre-existing), not out of scope.
 
@@ -149,8 +151,8 @@ Mark a line N/A when the diff has no matching surface (e.g. no collection endpoi
 
 - [ ] Step 1: behavioral principles loaded
 - [ ] Step 2: stack confirmed Go 1.25+ / Gin (or pre-confirmed stack accepted from parent); OpenAPI-spec presence recorded
-- [ ] Step 3: precondition check ran (or handle received); diff + log read once; `current_head_sha` and `current_base_sha` captured
-- [ ] Step 4: routes, binding structs, response DTOs, error paths, pagination, and any OpenAPI spec read; `backend-api-guidelines` + `ops-backward-compatibility` consulted
+- [ ] Step 3: precondition check ran (or handle received); diff + log read once; `current_head_sha` / `current_base_sha` captured (standalone only)
+- [ ] Step 4: contract-change gate ran (skip-and-stop with no report write if no signal); routes, binding structs, response DTOs, error paths, pagination, and any OpenAPI spec read; `backend-api-guidelines` + `ops-backward-compatibility` consulted
 - [ ] Step 5: every changed request / response contract judged from the consumer's view; breaking changes flagged with a version / expand-contract requirement; "no callers" proven by search
 - [ ] Step 6: resource naming, method semantics, status codes, sub-resource nesting checked
 - [ ] Step 7: response DTO (no raw entity), RFC 9457 errors, pagination, field-naming consistency checked
@@ -221,5 +223,6 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting - enforcement to s
 - An unbounded `Find(&all)` returned as a collection with no pagination
 - Reviewing auth enforcement or `ShouldBindJSON` bypass here - name the contract gap and route to `task-go-review-security`
 - Reviewing idempotency-dedup correctness or timeout behavior here - route to `task-go-review-reliability`
+- Writing any report file on a no-contract-change skip - a prior `review-api-<branch>.md` must stay byte-identical
 - Overlapping into perf (throughput) - own the response *shape*, not its cost
 - Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

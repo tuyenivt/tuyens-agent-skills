@@ -41,7 +41,7 @@ Stack-specific delegate of `task-code-review-api` for Node.
 
 At `deep`, trace each changed contract with `ops-backward-compatibility`: what changed, whether it is breaking from the consumer's view, which consumers are affected, and the expand-contract step that keeps them working - captured in the Consumer-Impact Map. A brand-new contract with no consumers yet gets a row stating that - fix its shape before the first consumer ships.
 
-**Whole-service sweep** (API-consistency pass with no feature branch): when Step 3 fails fast on trunk, do not stop - skip the diff gate and run Steps 4-9 repo-wide at `HEAD` (Step 4's categories read in full, not per changed file); findings cite current code; checkpoint `base_sha` = `head_sha` = `HEAD`.
+**Whole-service sweep** (API-consistency pass with no feature branch): when Step 3 fails fast on trunk, do not stop - skip the diff gate and run Steps 4-9 repo-wide at `HEAD` (Step 4's categories read in full, not per changed file; Step 5's changed-contract checks are N/A); findings cite current code; checkpoint `base_sha` = `head_sha` = `HEAD`.
 
 ## Invocation
 
@@ -65,17 +65,19 @@ Use skill: `stack-detect`. Accept a pre-confirmed stack from a parent (`task-nod
 
 Detect framework: NestJS (`nest-cli.json` + `@nestjs/*`) vs Express (`express` without NestJS). Record it - route registration, DTO validation, and OpenAPI tooling all branch on it.
 
-Detect whether an OpenAPI spec is published (`@nestjs/swagger` `@ApiProperty` / `@ApiResponse` decorators, swagger-jsdoc annotations, a committed `swagger.json` / `openapi.yaml`, or a codegen step) - this gates Step 8.
+Detect whether an OpenAPI spec is published (`@nestjs/swagger` `@ApiProperty` / `@ApiResponse` decorators, swagger-jsdoc annotations, a committed `swagger.json` / `openapi.yaml`, or a codegen step) - this gates Step 8. Response-DTO-approach and spec detection is always this skill's own job: a pre-confirmed stack covers language / framework only, so run it (read the repo) even as a subagent.
 
 ### Step 3 - Resolve the Diff
 
 Use skill: `review-precondition-check`. Read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent with handle + artifacts pre-passed. Surface any fail-fast verbatim.
 
-Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
+Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>` (standalone only - subagent runs write no report, so skip the capture).
 
-### Step 4 - Read the API Surface
+### Step 4 - Contract-Change Gate, then Read the API Surface
 
-Before applying checklists, read every changed file in these categories plus any unchanged file the diff calls into (a changed response DTO ripples to every handler returning it). Checklists apply to the whole surface read: a pre-existing gap on a changed or rippled contract is a finding (note it as pre-existing), not out of scope.
+**Quick scan first (before loading any guideline atomic).** Scan the diff for a contract-change signal: a changed route registration (NestJS `@Controller` / `@Get` / `@Post` / ... decorator or its path / version prefix, Express `router.*` wiring), a changed request-DTO / class-validator (or zod / joi) shape, a changed / added / removed response DTO, a changed response shape or status code, a `@Catch` filter / error-middleware / error-envelope change, a pagination change, or a `@nestjs/swagger` / swagger-jsdoc / `openapi.yaml` edit. If **none** is present, the PR carries no contract change: emit `No contract change detected - API review skipped` and stop **before** loading `backend-api-guidelines` / `ops-backward-compatibility`. A skip writes **no report file** - a prior `review-api-<branch>.md` (with its findings and round state) stays byte-identical, mirroring the umbrella's no-op rule. Standalone runs print the skip line; subagent runs return it to the parent. Whole-service sweeps skip this gate (they review current code, not a diff).
+
+If a signal is present, read every changed file in these categories plus any unchanged file the diff calls into (a changed response DTO ripples to every handler returning it). Checklists apply to the whole surface read: a pre-existing gap on a changed or rippled contract is a finding (note it as pre-existing), not out of scope.
 
 - Route registration: NestJS `@Controller` / `@Get` / `@Post` / `@Put` / `@Patch` / `@Delete` decorators and their path / version prefixes; Express `router.get` / `.post` / `.use` wiring
 - Request DTOs and their class-validator decorators (or zod / joi schemas) - required fields, constraints, field names on the wire
@@ -150,8 +152,8 @@ Mark a line N/A when the diff has no matching surface (e.g. no collection endpoi
 
 - [ ] Step 1: behavioral principles loaded
 - [ ] Step 2: stack confirmed Node (or pre-confirmed stack accepted from parent); framework (NestJS / Express) recorded; OpenAPI-spec presence recorded
-- [ ] Step 3: precondition check ran (or handle received); diff + log read once; `current_head_sha` and `current_base_sha` captured
-- [ ] Step 4: routes, request DTOs, response DTOs, error paths, pagination, and any OpenAPI spec read; `backend-api-guidelines` + `ops-backward-compatibility` consulted
+- [ ] Step 3: precondition check ran (or handle received); diff + log read once; `current_head_sha` and `current_base_sha` captured (standalone only)
+- [ ] Step 4: contract-change gate applied first - on skip, the line emitted and **no report file written** (prior report untouched); otherwise routes, request DTOs, response DTOs, error paths, pagination, and any OpenAPI spec read; `backend-api-guidelines` + `ops-backward-compatibility` consulted
 - [ ] Step 5: every changed request / response contract judged from the consumer's view; breaking changes flagged with a version / expand-contract requirement; "no callers" proven by search
 - [ ] Step 6: resource naming, method semantics, status codes, sub-resource nesting checked
 - [ ] Step 7: response DTO (no raw entity), RFC 9457 errors, pagination, field-naming consistency checked
@@ -215,6 +217,7 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting - enforcement to s
 
 ## Avoid
 
+- Writing any report file on a no-contract-change skip - a prior `review-api-<branch>.md` must stay byte-identical
 - Reporting a deviated convention without naming who breaks ("use a DTO" vs "returning the `User` entity exposes `passwordHash` and breaks every client when a column is renamed")
 - Returning a raw TypeORM / Prisma entity from a controller (over-exposure + DB-schema-to-wire coupling)
 - Leaking a JS stack trace, `QueryFailedError` / `PrismaClientKnownRequestError`, or an internal ID in an error response

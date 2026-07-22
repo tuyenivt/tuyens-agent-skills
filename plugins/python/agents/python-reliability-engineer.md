@@ -64,7 +64,6 @@ The driven workflow verifies these - use this list to frame scope when routing, 
 - Use skill: `backend-idempotency` for idempotency-key strategy and atomic dedup
 - Use skill: `python-async-patterns` for `asyncio.timeout`, `gather` / `TaskGroup` bounding, and event-loop blocking prevention
 - Use skill: `python-celery-patterns` for `acks_late`, retry / DLQ, idempotent tasks, and post-commit dispatch
-- Use skill: `architecture-data-consistency` for consistency and recovery under partial failure
 - Use skill: `failure-propagation-analysis` to trace shared-resource coupling (async pool, event loop, broker) and cascading-failure blast radius
 
 ## Principle

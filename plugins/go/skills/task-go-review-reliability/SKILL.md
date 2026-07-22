@@ -73,7 +73,7 @@ Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`
 
 ### Step 4 - Read the Reliability Surface
 
-Before applying checklists, read every changed file in these categories plus any unchanged file the diff calls into (a small diff ripples: a new service method calling an unchanged untimed `http.Client` is a new failure path at the call site):
+Before applying checklists, read every changed file in these categories plus any unchanged file the diff calls into (a small diff ripples: a new service method calling an unchanged untimed `http.Client` is a new failure path at the call site). Read the full `go.mod` here (not just diff adds) to fill the Summary's Resilience Libraries field.
 
 - External clients: `http.Client` construction / shared clients, gRPC dials, third-party SDKs - `Timeout`, `Transport` tuning, breaker, retry
 - `service` methods composing multiple downstream calls - timeout budget, `errgroup` fan-out, partial-failure handling
@@ -83,7 +83,9 @@ Before applying checklists, read every changed file in these categories plus any
 - Config / wiring: `cmd/api/main.go` / `internal/db/db.go` for `database/sql` pool bounds, `gobreaker` / `backoff` config, `http.Transport` setup, graceful-shutdown and recovery middleware
 - Dependency adds: `sony/gobreaker`, `cenkalti/backoff/v4`, `golang.org/x/sync`
 
-Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns. Use skill: `failure-propagation-analysis` to trace how a failure at each new / changed dependency propagates through shared resources (the `database/sql` pool, a worker pool, a channel, the broker) - this gives each finding its blast radius.
+Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns - load it when the surface includes an external client, a fanning-out service, or breaker / retry / timeout config; skip it on a diff that is purely Asynq-idempotency, transaction, or locking work with no synchronous dependency. Use skill: `failure-propagation-analysis` to trace how a failure at each new / changed dependency propagates through shared resources (the `database/sql` pool, a worker pool, a channel, the broker) - this gives each finding its blast radius.
+
+Gating skips atomic loads, never checklist rows. Every checklist row below runs on this skill's own text regardless of which atomics loaded; a row goes N/A only when the diff has no matching surface (the Self-Check rule).
 
 ### Step 5 - Timeouts and Deadlines (context.Context)
 
@@ -106,7 +108,7 @@ resp, err := s.client.Do(req) // s.client = &http.Client{Timeout: 3*time.Second,
 
 ### Step 6 - Retries
 
-Use skill: `ops-resiliency` for backoff, jitter, and retry-budget rules.
+`ops-resiliency` already loaded in Step 4 - reuse it for backoff, jitter, and retry-budget rules.
 
 - [ ] **Bounded backoff with jitter** - `cenkalti/backoff/v4` (`NewExponentialBackOff` adds jitter; cap with `WithMaxRetries`) or a manual capped loop; never an uncapped `for` retry. Wrap with `backoff.WithContext(b, ctx)` so retries stop on cancellation.
 - [ ] **Transient + idempotent only** - retry 5xx / timeouts / `context.DeadlineExceeded` / connection resets classified via `errors.Is`; never 4xx (won't succeed), never a non-idempotent write without an idempotency key (Step 8).
@@ -115,7 +117,7 @@ Use skill: `ops-resiliency` for backoff, jitter, and retry-budget rules.
 
 ### Step 7 - Circuit Breakers and Bounded Concurrency
 
-Use skill: `go-concurrency` for `errgroup` / `semaphore.Weighted` bounding.
+`go-concurrency` already loaded in Step 5 - reuse it for `errgroup` / `semaphore.Weighted` bounding.
 
 - [ ] **Breaker per external dependency** - `sony/gobreaker` with explicit `MaxRequests`, `Interval`, `Timeout`, and a `ReadyToTrip` threshold; one breaker per dependency, its state metered (visibility gap -> `task-go-review-observability`). A shared or unmonitored breaker counts as missing.
 - [ ] **Bounded fan-out** - `errgroup.WithContext` + `g.SetLimit(N)` or `golang.org/x/sync/semaphore.Weighted`; unbounded per-request goroutine fan-out exhausts the scheduler, FDs, and the pool. `errgroup` cancels siblings on first error - use a separate `sync.WaitGroup` for optional legs so one failure does not drop the rest.
@@ -133,7 +135,7 @@ Use skill: `go-data-access` for post-commit dispatch, the transactional outbox, 
 
 ### Step 9 - Graceful Degradation, Fallbacks, and Backpressure
 
-Use skill: `ops-resiliency` for fallback patterns.
+`ops-resiliency` already loaded in Step 4 - reuse it for fallback patterns.
 
 - [ ] **Fallback per critical dependency** - a breaker-open / timeout path returns cached / default / partial data or fails fast with 503, rather than an unbounded wait. It logs the original failure at WARN (`slog.WarnContext`) - no silent swallow that hides degradation until it compounds.
 - [ ] **Partial-failure fan-out** - an optional downstream (recommendations, enrichment) failing degrades the response, not the whole request: a separate `sync.WaitGroup` from the required `errgroup`, log-and-continue on the optional leg.
@@ -157,9 +159,9 @@ default:
 
 ### Step 10 - Resource Exhaustion and Goroutine-Leak Prevention
 
-Use skill: `go-data-access` for `database/sql` pool bounds. Use skill: `go-concurrency` for goroutine ownership and leak diagnosis.
+`go-data-access` already loaded in Step 8 - reuse it for `database/sql` pool bounds. `go-concurrency` already loaded in Step 5 - reuse it for goroutine ownership and leak diagnosis.
 
-- [ ] **`database/sql` pool bounded** - `SetMaxOpenConns` / `SetMaxIdleConns` / `SetConnMaxLifetime` / `SetConnMaxIdleTime` set; `replicas * SetMaxOpenConns < DB max_connections - reserved`. GORM / sqlx default to unbounded open conns - one slow-query storm exhausts Postgres.
+- [ ] **`database/sql` pool bounded** - `SetMaxOpenConns` / `SetMaxIdleConns` / `SetConnMaxLifetime` / `SetConnMaxIdleTime` set; `replicas * SetMaxOpenConns < DB max_connections - reserved`. GORM / sqlx default to unbounded open conns - one slow-query storm exhausts Postgres. When the ceiling (DB `max_connections`, deployed replica count) is not in the diff, read repo config; still unknown, run the check anyway and state the assumption in the finding (`verify: max_connections unknown`), never silently skip it.
 - [ ] **Every goroutine ctx-bound or with a guaranteed exit** - a `go func()` doing I/O selects on `<-ctx.Done()` and has an owner (`errgroup`, `WaitGroup`, worker pool with shutdown). A leak retains the request `ctx`, `gin.Context`, and a pooled DB conn; at 100/sec sustained it compounds into unbounded growth.
 - [ ] **No unbounded per-request goroutine spawn** - a handler does not launch a goroutine per row / per item without a bound. Leak signature via `/debug/pprof/goroutine`: `chan send` = receiver gone; `chan receive` = sender never closes.
 - [ ] **Bounded channels and maps** - buffered channels sized deliberately; per-key maps (rate-limiter `clients`, dedup caches) swept / evicted, not grown forever.
@@ -167,7 +169,9 @@ Use skill: `go-data-access` for `database/sql` pool bounds. Use skill: `go-concu
 
 ### Step 11 - Recoverability and Crash-Safety
 
-Use skill: `go-gin-patterns` for graceful shutdown, recovery middleware, and readiness. Use skill: `architecture-data-consistency` for consistency under partial failure.
+Use skill: `go-gin-patterns` for graceful shutdown, recovery middleware, and readiness.
+
+Cross-aggregate consistency rule (inlined on purpose - do not re-delegate this to a separate consistency atomic; it overlaps the transaction atomic `go-data-access` already loaded in Step 8, and its one distinct rule is captured here): writes that cannot share one transaction (a charge + a separate provisioning record, a local write + a remote call) need a compensating action or a reconciliation job on partial failure - never a best-effort inline rollback that can itself fail. Prefer one transaction; when impossible, make the second step idempotent and retriable so a re-run converges.
 
 - [ ] **Graceful shutdown** - `signal.NotifyContext(SIGTERM / SIGINT)`; `http.Server.Shutdown(ctx)` with a bounded timeout drains in-flight requests; `Asynq.Server.Shutdown()` / Kafka `Close()` drain workers; `db.Close()` last. Never a bare `os.Exit` on the serving path.
 - [ ] **Panic safety** - Gin `Recovery()` middleware on the request path, AND a deferred `recover()` (or `sentry.Recover()`) at every goroutine boundary outside the request. A panic in a spawned goroutine crashes the whole process; Gin's recovery does not cover it.
@@ -197,7 +201,7 @@ Mark a line N/A when the diff has no matching surface (e.g. no messaging, no gor
 - [ ] Step 8: `backend-idempotency` + `go-data-access` + `go-messaging-patterns` consulted; idempotency keys, no in-tx dual write, idempotent consumers, DLQ checked
 - [ ] Step 9: fallback per critical dependency that logs; partial-failure fan-out; load shedding / channel backpressure verified
 - [ ] Step 10: `database/sql` pool bounded; every goroutine ctx-bound / owned; no unbounded spawn or channels; no I/O under lock or in tx
-- [ ] Step 11: `architecture-data-consistency` consulted; graceful shutdown, panic recovery at goroutine boundaries, crash-safety, readiness, migration rollout checked
+- [ ] Step 11: graceful shutdown, panic recovery at goroutine boundaries, crash-safety, readiness, migration rollout checked; cross-aggregate consistency (compensating action / reconciliation on partial failure) verified
 - [ ] Step 12: standalone: report written via `review-report-writer`, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding names the failure mode and blast radius, never just the missing pattern
 - [ ] Depth honored: `standard` ran all; `deep` filled the Failure-Mode and Blast-Radius Map

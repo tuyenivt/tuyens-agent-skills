@@ -75,7 +75,11 @@ Read every changed file in these categories plus any unchanged file the diff cal
 
 **Django:** external-client modules, service methods, `settings.py` (`DATABASES` `OPTIONS` `connect_timeout`, `CONN_MAX_AGE`, `CONN_HEALTH_CHECKS`, Celery broker config), Celery modules, `transaction.atomic` / `on_commit` / `select_for_update` sites.
 
-Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns.
+To fill the Summary's **Resilience Libraries** field, read the full dependency manifest (`pyproject.toml` / `requirements.txt`) here, not just the diff's added lines - a resilience library already present but unused is what the field reports.
+
+**Gate `ops-resiliency`:** use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns when the surface includes an external client, a fanning-out service, or breaker / retry / timeout config; skip it on a diff that is purely Celery-idempotency, transaction, or locking work with no synchronous dependency.
+
+**Gating vs. checklist:** gating skips atomic loads, never checklist rows. Every checklist row below runs on this skill's own text regardless of which atomics loaded; a row goes N/A only when the diff has no matching surface (the Self-Check rule).
 
 ### Step 4 - Timeouts and Deadlines
 
@@ -89,7 +93,7 @@ Canonical patterns: Use skill: `python-async-patterns`. Apply the review-scoped 
 
 ### Step 5 - Retries
 
-Use skill: `ops-resiliency` (retry-with-backoff). Celery-side retry is Step 7.
+Retry-with-backoff from `ops-resiliency` (already loaded in Step 3 when the gate opened it - reuse it; if the gate skipped it, this retry surface means an external dependency is present, so load it now). Celery-side retry is Step 7.
 
 - [ ] **`tenacity` with capped attempts, backoff, and jitter** - `@retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(), retry=retry_if_exception_type((httpx.TransportError, ...)))`. A bare `@retry` retries forever and retries programming errors.
 - [ ] **Transient errors only** - connection errors, timeouts, 5xx, 429. Never retry 4xx (won't succeed); never retry a non-idempotent operation without an idempotency key (Step 7).
@@ -123,7 +127,7 @@ Canonical patterns: Use skill: `python-celery-patterns`. Use skill: `backend-ide
 
 Canonical patterns: Use skill: `python-sqlalchemy-patterns` (pool) and `python-async-patterns` (concurrency).
 
-- [ ] **Async engine pool bounded** - `create_async_engine` `pool_size` + `max_overflow` <= DB `max_connections` / worker count; `pool_timeout` fails fast; `pool_pre_ping=True` drops dead connections; `pool_recycle` < DB idle timeout. Django: `CONN_MAX_AGE` + `CONN_HEALTH_CHECKS`.
+- [ ] **Async engine pool bounded** - `create_async_engine` `pool_size` + `max_overflow` <= DB `max_connections` / worker count; `pool_timeout` fails fast; `pool_pre_ping=True` drops dead connections; `pool_recycle` < DB idle timeout. Django: `CONN_MAX_AGE` + `CONN_HEALTH_CHECKS`. When the ceiling (DB `max_connections`, deployed worker / uvicorn concurrency) is not in the diff, read repo config; if still unknown, run the check anyway against the stated pool numbers and record the assumption in the finding (e.g. `verify: max_connections unknown`), never silently skip the row.
 - [ ] **No unbounded `asyncio.gather`** - fan-out over a user-sized collection is capped by `asyncio.Semaphore(N)` or chunked; an unbounded gather exhausts connections and memory. `TaskGroup` for structured bounded concurrency.
 - [ ] **No unbounded accumulation** - large reads stream (`stream_scalars` / `yield_per` + `StreamingResponse`), not fully buffered; queues bounded; caches have eviction / TTL.
 - [ ] **Worker limits + graceful shutdown** - uvicorn / gunicorn worker count matched to the pool; `timeout_graceful_shutdown` (uvicorn) / `graceful_timeout` (gunicorn) so in-flight requests drain on deploy instead of being cut; Celery `worker_max_tasks_per_child` to bound leaks.
@@ -131,7 +135,7 @@ Canonical patterns: Use skill: `python-sqlalchemy-patterns` (pool) and `python-a
 
 ### Step 10 - Recoverability and Consistency Under Partial Failure
 
-Use skill: `architecture-data-consistency`.
+Cross-aggregate consistency rule (inlined on purpose - do not re-delegate this to a separate consistency atomic; its one distinct rule is the compensation / reconciliation row below, and transaction correctness is the `transaction.atomic` + `select_for_update` row): writes that cannot share one transaction (a charge + a separate provisioning record, a local write + a remote call) need a compensating action or a reconciliation job on partial failure - never a best-effort inline rollback that can itself fail. Prefer one transaction; when impossible, make the second step idempotent and retriable so a re-run converges.
 
 - [ ] **Crash-safety** - a multi-step side effect interrupted mid-way leaves recoverable state (outbox pending, saga compensation, safe re-run), not a half-applied change.
 - [ ] **Compensation / saga** - cross-aggregate or cross-service writes that cannot be one transaction have a compensating action on partial failure.
@@ -205,14 +209,14 @@ Mark a line N/A when the diff has no matching surface (e.g. no Celery, no extern
 
 - [ ] Step 1: stack confirmed as Python (or accepted from parent); framework recorded
 - [ ] Step 2: `review-precondition-check` ran (or handle received); diff + log read once (or whole-service sweep taken on trunk)
-- [ ] Step 3: external clients, composing services, engine / pool config, Celery, lifespan clients, executor sites read; `ops-resiliency` consulted
+- [ ] Step 3: external clients, composing services, engine / pool config, Celery, lifespan clients, executor sites read; dependency manifest read for the Resilience Libraries field; `ops-resiliency` consulted when the surface has a synchronous dependency (gated - skipped on pure Celery-idempotency / transaction / locking diffs; gating never skips a checklist row)
 - [ ] Step 4: `python-async-patterns` consulted; `httpx.Timeout`, `asyncio.timeout` deadline, no blocking sync I/O in async, timeout budget, DB acquisition / statement timeout checked
 - [ ] Step 5: `tenacity` retries capped with backoff + jitter; transient-only; per-request retry budget verified
 - [ ] Step 6: circuit breaker per dependency; `Semaphore` / `httpx.Limits` bulkhead; fan-out isolation checked
 - [ ] Step 7: `python-celery-patterns` + `backend-idempotency` consulted; idempotency keys, `acks_late` + `task_reject_on_worker_lost`, bounded retry + DLQ, `BackgroundTasks` durability, no in-tx dual write, consumer idempotency checked
 - [ ] Step 8: fallback per critical dependency; fallbacks log; partial responses; load shedding / backpressure; no blanket swallow verified
 - [ ] Step 9: `python-sqlalchemy-patterns` consulted; async pool bounded, no unbounded `gather`, no unbounded accumulation, worker limits + graceful shutdown, GIL offload checked
-- [ ] Step 10: `architecture-data-consistency` consulted; crash-safety, compensation, cancellation-safe cleanup, readiness, migration rollout checked
+- [ ] Step 10: cross-aggregate compensation rule applied; crash-safety, compensation, cancellation-safe cleanup, readiness, migration rollout checked
 - [ ] Step 11: standalone: report written via `review-report-writer` with full checkpoint fields, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding names the failure mode and blast radius, never just the missing pattern
 - [ ] Depth honored: `standard` ran all; `deep` filled the Failure-Mode and Blast-Radius Map (via `failure-propagation-analysis`)

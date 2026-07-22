@@ -63,15 +63,19 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect`. Accept a pre-confirmed stack from a parent (`task-python-review`) and skip detection. If not Python, stop and route the user to `/task-code-review-api`.
 
-Detect the framework: FastAPI (`fastapi` import + `main.py`) vs Django (`manage.py` + `settings.py`) - record `Framework: FastAPI | Django | mixed`. Detect whether OpenAPI is published: **FastAPI always exposes it** (auto-generated at `/openapi.json` from the routes + Pydantic models), so drift is against `response_model` / `status_code` / hand-written dicts; **Django** publishes a schema only when **drf-spectacular** (or drf-yasg) is installed - record its presence. This gates Step 8.
+Detect the framework: FastAPI (`fastapi` import + `main.py`) vs Django (`manage.py` + `settings.py`) - record `Framework: FastAPI | Django | mixed`. Detect whether OpenAPI is published: **FastAPI always exposes it** (auto-generated at `/openapi.json` from the routes + Pydantic models), so drift is against `response_model` / `status_code` / hand-written dicts; **Django** publishes a schema only when **drf-spectacular** (or drf-yasg) is installed - record its presence. This gates Step 8. Serializer / response-model and spec detection is always this skill's own job even as a subagent - a pre-confirmed stack from a parent covers language / framework only, not the response-model surface or published-spec presence.
 
 ### Step 3 - Resolve the Diff
 
 Use skill: `review-precondition-check`. Read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip when running as a subagent with handle + artifacts pre-passed. Surface any fail-fast verbatim.
 
-Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
+Capture for the report checkpoint (standalone only - a subagent run writes no report, so skip the capture): `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
 
 ### Step 4 - Read the API Surface
+
+**Contract-change quick-scan gate.** Before loading any guideline atomic, scan the diff for a contract-change signal: a changed route registration (`APIRouter` / `urls.py` / DRF router), a changed request schema / `Field(...)` constraint / serializer input field, a changed / added / removed `response_model` or serializer, a changed response shape or `status_code`, an error-envelope change, a pagination change, or an OpenAPI / drf-spectacular schema edit. If NONE is present, emit `No contract change detected - API review skipped` and STOP before loading the guideline atomics - write no report (see the no-write rule below). The whole-service sweep skips this gate (it reviews current code, not a diff).
+
+**No-write-on-skip.** A skip writes NO report file: a prior `review-api-<branch>.md` (with its findings + round state) must stay byte-identical, mirroring the umbrella's no-op rule. Standalone prints the skip line; a subagent returns it to the parent. Nothing is written - do not introduce an `Overall: No contract change` report enum.
 
 Before applying checklists, read every changed file in these categories plus any unchanged file the diff calls into (a changed response model ripples to every route returning it). Checklists apply to the whole surface read: a pre-existing gap on a changed or rippled contract is a finding (note it as pre-existing), not out of scope.
 
@@ -151,9 +155,9 @@ Use skill: `review-report-writer` with `report_type: review-api` and every requi
 Mark a line N/A when the diff has no matching surface (e.g. no collection endpoint, no published Django schema).
 
 - [ ] Step 1: behavioral principles loaded
-- [ ] Step 2: stack confirmed Python 3.11+; framework recorded (FastAPI / Django / mixed); OpenAPI-spec presence recorded (FastAPI always-on; Django needs drf-spectacular)
-- [ ] Step 3: precondition check ran (or handle received); diff + log read once; `current_head_sha` and `current_base_sha` captured
-- [ ] Step 4: routes, request schemas, response models, error paths, pagination, and the OpenAPI surface read; `backend-api-guidelines` + `ops-backward-compatibility` consulted
+- [ ] Step 2: stack confirmed Python 3.11+; framework recorded (FastAPI / Django / mixed); OpenAPI-spec presence recorded (FastAPI always-on; Django needs drf-spectacular) - response-model + spec detection done here even as a subagent
+- [ ] Step 3: precondition check ran (or handle received); diff + log read once; `current_head_sha` / `current_base_sha` captured (standalone only)
+- [ ] Step 4: contract-change quick-scan gate ran (skip + no write when no contract signal); on a real change, routes, request schemas, response models, error paths, pagination, and the OpenAPI surface read; `backend-api-guidelines` + `ops-backward-compatibility` consulted
 - [ ] Step 5: every changed request / response contract judged from the consumer's view; breaking changes flagged with a version / expand-contract requirement; "no callers" proven by search
 - [ ] Step 6: resource naming, method semantics, status codes, sub-resource nesting checked
 - [ ] Step 7: Pydantic response model (no raw ORM row / no `"__all__"`), RFC 9457 errors, pagination, field-naming consistency checked
@@ -219,6 +223,7 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting - enforcement to s
 - Reporting a deviated convention without naming who breaks ("use a response model" vs "returning the `User` row exposes `hashed_password` and breaks every client when a column is renamed")
 - Returning a raw SQLAlchemy row with no `response_model`, or a DRF `ModelSerializer` with `"__all__"` (over-exposure + ORM-schema-to-wire coupling)
 - Leaking a Python traceback, a SQLAlchemy / `IntegrityError` string, or an internal ID in an error response
+- Writing any report file on a no-contract-change skip - a prior `review-api-<branch>.md` must stay byte-identical
 - Calling a change "additive" without a consumer-view check, or "no callers" without a search
 - Mutating `/v1/` in place for a breaking change instead of versioning
 - An unbounded `.all()` returned as a collection with no pagination

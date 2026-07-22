@@ -69,7 +69,11 @@ Before applying checklists, read every changed file in these categories plus any
 - `application.yml`: `resilience4j.*`, `spring.datasource.hikari.*`, `spring.kafka.*`, `spring.task.execution.pool.*`, `*.timeout` keys
 - Dependency adds: `resilience4j-spring-boot3`, `spring-retry`, outbox libraries
 
-Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns.
+Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns - load it when the surface includes an external client (`RestClient` / `WebClient` / Feign), a fanning-out `@Service`, or breaker / retry / timeout config; skip it on a diff that is purely Spring-async / messaging-idempotency, `@Transactional`, or locking work with no synchronous dependency.
+
+Read the full dependency manifest (`pom.xml` / `build.gradle`) here, not just diff adds, to fill the Summary's Resilience Library field (Resilience4j / Spring Retry detection).
+
+**Gating vs. checklist:** gating skips atomic loads, never checklist rows. Every checklist row below runs on this skill's own text regardless of which atomics loaded; a row goes N/A only when the diff has no matching surface (the Self-Check rule).
 
 ### Step 5 - Timeouts, Retries, Circuit Breakers
 
@@ -102,14 +106,14 @@ Use skill: `spring-messaging-patterns`. Use skill: `backend-idempotency` for key
 
 ### Step 8 - Resource Exhaustion and Saturation
 
-- [ ] **HikariCP bounded** - `maximumPoolSize` set and `< DB wait_timeout` on `maxLifetime`; `connectionTimeout` fails fast (1-3s) rather than blocking the caller indefinitely under exhaustion.
+- [ ] **HikariCP bounded** - `maximumPoolSize` set and `< DB wait_timeout` on `maxLifetime`; `connectionTimeout` fails fast (1-3s) rather than blocking the caller indefinitely under exhaustion. When the ceiling (DB `max_connections`, deployed instance count x pool size) is not in the diff, read repo config; still unknown -> run the check anyway and state the assumption in the finding (e.g. `verify: max_connections unknown`), never silently skip it.
 - [ ] **Executors bounded** - `@Async` / `spring.task.execution.pool.*` have a max size and a bounded queue with a defined rejection policy; no unbounded `queueCapacity`.
 - [ ] **No unbounded accumulation** - in-memory collections, caches, and buffers that grow with load have a bound or eviction; large payloads streamed, not fully buffered.
 - [ ] **`@Scheduled` overlap** - long jobs guard against overlapping runs (`ShedLock`, `fixedDelay`, or a running-flag) so a slow run does not stack.
 
 ### Step 9 - Recoverability and Consistency Under Failure
 
-Use skill: `architecture-data-consistency`. Use skill: `spring-transaction` for boundary correctness.
+Cross-aggregate consistency rule (inlined on purpose - do not re-delegate this to a separate consistency atomic; it overlaps the transaction atomic already loaded here, and its one distinct rule is captured below): writes that cannot share one transaction (a charge + a separate provisioning record, a local write + a remote call) need a compensating action or a reconciliation job on partial failure - never a best-effort inline rollback that can itself fail. Prefer one transaction; when impossible, make the second step idempotent and retriable so a re-run converges. Use skill: `spring-transaction` for boundary correctness.
 
 - [ ] **Crash-safety** - a multi-step side effect interrupted mid-way leaves recoverable state (outbox pending, saga compensation, or a safe re-run), not a half-applied change.
 - [ ] **Compensation / saga** - cross-aggregate or cross-service writes that cannot be one transaction have a compensating action on partial failure.
@@ -180,12 +184,12 @@ Mark a line N/A when the diff has no matching surface (e.g. no messaging, no sch
 - [ ] Step 1: behavioral principles loaded
 - [ ] Step 2: stack confirmed Spring Boot 3.5+ / Java 21+ (or pre-confirmed stack accepted from parent)
 - [ ] Step 3: precondition check ran (or handle received); diff + log read once
-- [ ] Step 4: external clients, composing services, listeners, scheduled/async, side-effecting flows, resilience/pool config read
-- [ ] Step 5: `ops-resiliency` consulted; timeouts, no in-tx external I/O, retry safety/budget, breaker, bulkhead checked
+- [ ] Step 4: external clients, composing services, listeners, scheduled/async, side-effecting flows, resilience/pool config read; full `pom.xml` / `build.gradle` read for the Resilience Library field
+- [ ] Step 5: `ops-resiliency` consulted when the gate loaded it; timeouts, no in-tx external I/O, retry safety/budget, breaker, bulkhead checked
 - [ ] Step 6: `backend-idempotency` + `spring-messaging-patterns` consulted; idempotency keys, no in-tx dual write, consumer idempotency, ack, DLT checked
 - [ ] Step 7: fallback per critical dependency; fallbacks log; partial responses; load shedding verified
 - [ ] Step 8: HikariCP + executors bounded; no unbounded accumulation; scheduled overlap guarded
-- [ ] Step 9: `architecture-data-consistency` consulted; crash-safety, compensation, readiness, migration rollout checked
+- [ ] Step 9: `spring-transaction` consulted; crash-safety, cross-aggregate compensation / reconciliation, readiness, migration rollout checked
 - [ ] Step 10: standalone: report written via `review-report-writer`, confirmation printed; subagent: findings returned to parent, no file written
 - [ ] Every finding names the failure mode and blast radius, never just the missing pattern
 - [ ] Depth honored: `standard` ran all; `deep` filled the Failure-Mode and Blast-Radius Map
