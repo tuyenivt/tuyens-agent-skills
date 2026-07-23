@@ -32,8 +32,9 @@ The consuming workflow passes these fields when invoking this skill:
 | `scope`           | yes               | `core-only` / `+perf` / `+sec` / `+obs` / `+rel` / `+api` / `full`                   |
 | `depth`           | yes               | `standard` / `deep`                                                                 |
 | `stack`           | yes               | Stack identifier from `stack-detect` (e.g., `java-spring-boot`, `unknown`)          |
+| `pr_url`          | no                | PR/MR URL if the review input carried one (e.g., a pasted GitHub PR link)           |
 
-Only the workflow that owns the report invokes this skill. Sub-agents spawned for extra scopes return findings to the parent and never write - the parent supplies every field above. No field is optional for any caller except `prior_head_sha` on round 1. A plain core review (workflows display `Scope: Core`, with or without the `core-only` user flag) passes `scope: core-only`; there is no separate `core` value.
+Only the workflow that owns the report invokes this skill. Sub-agents spawned for extra scopes return findings to the parent and never write - the parent supplies every field above. No field is optional for any caller except `prior_head_sha` on round 1 and `pr_url` (present only when the review input carried a PR/MR URL). A plain core review (workflows display `Scope: Core`, with or without the `core-only` user flag) passes `scope: core-only`; there is no separate `core` value.
 
 ## Rules
 
@@ -59,7 +60,7 @@ Only the workflow that owns the report invokes this skill. Sub-agents spawned fo
 
 ## Frontmatter Contract
 
-Emit exactly this block at the top of the file. Emit `prior_head_sha` whenever `round > 1`, independent of `mode` - a full re-review on round 2+ still records the prior round's head for chain continuity. `generated_at` is the writer's current UTC time (ISO 8601, `Z` suffix); the workflow does not pass it.
+Emit exactly this block at the top of the file. Emit `prior_head_sha` whenever `round > 1`, independent of `mode` - a full re-review on round 2+ still records the prior round's head for chain continuity. Emit `pr_url` only when the caller passed a non-empty value; omit the line entirely otherwise (never write `pr_url:` with a blank value). `generated_at` is the writer's current UTC time (ISO 8601, `Z` suffix); the workflow does not pass it.
 
 ```yaml
 ---
@@ -70,15 +71,16 @@ head_ref: <head_ref>
 head_sha: <full SHA>
 mode: full | incremental
 round: <N>
-prior_head_sha: <full SHA from prior round>   # omit on round 1; required on round 2+
+prior_head_sha: <full SHA from prior round>                     # omit on round 1; required on round 2+
 scope: core-only | +perf | +sec | +obs | +rel | +api | full
 depth: standard | deep
 stack: <stack identifier>
+pr_url: <PR/MR URL>                                             # omit unless the review input carried one
 generated_at: <ISO 8601 UTC timestamp>
 ---
 ```
 
-This frontmatter is the **checkpoint contract** consumed by `review-precondition-check` on the next round. Do not add, rename, or drop fields; downstream parsing depends on exact names.
+This frontmatter is the **checkpoint contract** consumed by `review-precondition-check` on the next round. Beyond the optional `pr_url` and `prior_head_sha` lines, do not add, rename, or drop fields; downstream parsing depends on exact names.
 
 ## Output Format
 
