@@ -227,7 +227,7 @@ Template locale: {code}   Supported: {codes}   RTL in scope: {yes | no}
 | Delete tooltip | deleteOrder | plain | - | semantic label |
 ```
 
-When invoked from a review workflow, emit one block per finding:
+When invoked from a review workflow or directly to diagnose a localization defect report, emit one block per finding:
 
 ```
 ### [Blocker | High | Medium | Low] file:line

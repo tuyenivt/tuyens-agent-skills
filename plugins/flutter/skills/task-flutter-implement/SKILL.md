@@ -98,7 +98,7 @@ Use skill: `flutter-riverpod-patterns`. State holders expose loading, error, and
 
 ### STEP 6 - UI
 
-Use skill: `flutter-widget-patterns`. Use skill: `flutter-adaptive-responsive` for layout across the target tiers. Use skill: `flutter-accessibility` for labels, touch targets, focus order, and text scaling. Use skill: `flutter-i18n` for all user-facing strings.
+Use skill: `flutter-widget-patterns`. Use skill: `flutter-adaptive-responsive` when more than one platform tier ships (same condition as STEP 2; mobile-only features still respect safe areas and text scaling via `flutter-widget-patterns` and `flutter-accessibility`). Use skill: `flutter-accessibility` for labels, touch targets, focus order, and text scaling. Use skill: `flutter-i18n` for all user-facing strings.
 
 Screens and widgets composed small and `const` where possible. Keys on list items whose identity matters. Routes wired per `flutter-navigation-patterns`. Every screen renders its loading, error, and empty states, not just the happy path.
 
@@ -156,6 +156,7 @@ If a command is unavailable in the environment, say which one and why rather tha
 
 ## Self-Check
 
+- [ ] `behavioral-principles` loaded before the workflow ran
 - [ ] Stack detected; non-Riverpod state management surfaced rather than converted
 - [ ] Requirements gathered; design approved before code
 - [ ] Deviations from the skill's defaults called out at the approval gate

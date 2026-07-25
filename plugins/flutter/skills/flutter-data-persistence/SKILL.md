@@ -131,7 +131,7 @@ Enumerate it once, in the repository layer: secure storage keys deleted, user-sc
 
 ### Platform tiers
 
-Mobile is the default assumption. On **desktop**, `dart:io` and the same stores are available, but files sit in user-accessible locations and secure storage maps to less uniform OS facilities. On **web**, `dart:io` is unavailable, SQLite requires drift's WASM setup (plain `sqflite` does not work), storage is browser-quota-bound and clearable by the user at any moment, and **no browser store offers secure-storage guarantees** - do not persist secrets on web.
+Mobile is the default assumption. On **desktop**, `dart:io` and the same stores are available, but files sit in user-accessible locations and secure storage maps to less uniform OS facilities. On **web**, `dart:io` is unavailable, SQLite requires drift's WASM setup (plain `sqflite` does not work), storage is browser-quota-bound and clearable by the user at any moment, and **no browser store offers secure-storage guarantees** - do not persist secrets on web; keep session secrets in memory and re-authenticate, or have the server manage the session via HttpOnly cookies.
 
 ## Output Format
 
@@ -145,14 +145,15 @@ When invoked from an implementation workflow, emit one row per persisted item:
 | theme mode | shared_preferences | Public | scalar, no query |
 ```
 
-`Sensitivity: {Secret | Personal | Internal | Public}`
+`Sensitivity: {Secret | Personal | Internal | Public}`. Secret = grants access (tokens, keys, credentials) -> secure storage. Personal = user content or identifying/financial/health data -> SQL store, SQLCipher when the dataset is regulated or high-harm. Internal = app-produced operational data. Public = display-only or config.
 
-When invoked from a review workflow:
+When invoked from a review workflow, emit one block per store the change touches:
 
 ```
 Store: {Drift | sqflite | Isar | Hive | shared_preferences | secure storage | filesystem | in-memory}
 Access Path: {repository at file:line | direct store access from <widget|notifier> (defect)}
 Sensitive Placement: {OK | VIOLATION: <what> in <store> at file:line}
+Model Shape: {screen projection | server-DTO mirror or queried JSON blob at file:line (defect) | N/A}
 Transaction Scope: {multi-table writes wrapped | unwrapped at file:line | N/A single-write}
 Schema Version: {<n> | unversioned}
 Migration: {handled - see flutter-local-db-migration | MISSING for a shipped shape change}

@@ -260,6 +260,8 @@ When invoked from an implementation workflow, emit the tree decisions:
 | TotalBar | Stateless (const) | none | ValueListenableBuilder | isolates the total |
 ```
 
+One row per widget where a decision was made; skip widgets with nothing to decide. Rebuild Scope names the boundary that limits the rebuild: `self`, `full`, or the builder/scoped-list widget doing the limiting.
+
 When invoked from a review workflow, emit one block per finding:
 
 ```
@@ -270,6 +272,10 @@ When invoked from a review workflow, emit one block per finding:
 - Issue: {the rule broken and the user-visible symptom it causes}
 - Recommendation: {concrete edit}
 ```
+
+`[Must]` when the violation crashes, leaks, or loses user-visible state (dead context, missing dispose, missing key on stateful list items, unbounded constraints, stale `initState` capture). `[Recommend]` for cost and clarity (const usage, composition, rebuild scope, `Container` vs `SizedBox`).
+
+When invoked directly to diagnose a symptom, emit the same finding block for the diagnosed cause, citing the pattern section that explains it.
 
 For each category with zero findings, emit exactly `No <category> findings.` using the category name from the enum, so the workflow knows the check ran. Omit that line for categories that have findings.
 

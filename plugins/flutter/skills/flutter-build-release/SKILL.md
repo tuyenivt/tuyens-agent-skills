@@ -146,7 +146,7 @@ Store Track: {internal | alpha | beta | production | TestFlight <group> | N/A}
 Rollout: {staged <n>%, gated on <signal> | 100% immediate (risk)}
 ```
 
-When invoked from a review workflow, emit one finding block per issue:
+When invoked from a review workflow or directly to diagnose a release-only failure, emit one finding block per issue:
 
 ```
 ### [Severity] file:line
@@ -157,7 +157,9 @@ When invoked from a review workflow, emit one finding block per issue:
 - Recommendation: {concrete edit}
 ```
 
-`Severity: {Critical | High | Medium | Low}`. Critical = a secret in a shippable artifact, a debug-signed or debug-mode release, or a release whose crashes can never be symbolicated. Low = naming, artifact paths.
+`Severity: {Critical | High | Medium | Low}`. Critical = a secret in a shippable artifact, a debug-signed or debug-mode release, or a release whose crashes can never be symbolicated. High = the release process breaks or misleads under normal operation (flavor missing on one platform, unpinned SDK, reused build numbers, no rollout gate). Medium = cost or drift without immediate breakage (unmeasured size, manual upload steps). Low = naming, artifact paths.
+
+If there are no findings, emit exactly `No build-release findings.` so the workflow knows the check ran.
 
 ## Avoid
 

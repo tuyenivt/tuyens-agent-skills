@@ -142,7 +142,7 @@ When invoked from an implementation workflow, emit the client contract:
 
 ```
 Client: {Dio | http | chopper | retrofit+Dio | mixed - needs consolidation}
-Instance: {file:line of the shared instance | constructed per call (defect)}
+Instance: {file:line of the shared instance | planned: <module/provider> | constructed per call (defect)}
 Timeouts: {connect=<d> receive=<d> send=<d> | PARTIAL: <missing> | MISSING}
 Cancellation: {CancelToken bound to <dispose site> | CancelToken unbound | NONE}
 Auth: {interceptor at file:line | per-call header | none}
@@ -158,9 +158,11 @@ When invoked from a review workflow, emit one block per finding:
 ### [Blocker | Major | Minor] file:line
 
 - Call: {endpoint and one-line citation}
-- Risk: {hang | leak | duplicate write | token invalidation | error leak to UI}
+- Risk: {hang | leak | duplicate write | token invalidation | secret exposure | error leak to UI}
 - Recommendation: {concrete edit}
 ```
+
+`Blocker` = the Risk fires under normal use (no timeouts, ungated refresh, retried POST, logged secrets). `Major` = fires under realistic failure or scale (unbound CancelToken, Retry-After ignored, raw errors to UI). `Minor` = cost or hygiene (missing cache validators, two stacks, hardcoded URL in a dev-only path). If there are no findings, emit exactly `No networking findings.` so the workflow knows the check ran.
 
 ## Avoid
 

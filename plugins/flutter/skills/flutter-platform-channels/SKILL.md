@@ -154,7 +154,7 @@ Platforms: {android | ios | macos | windows | linux | web} -> {implemented | uns
 Permissions: {<permission> declared at <file>, requested at file:line | none}
 ```
 
-When invoked from a review workflow, emit one finding block per issue:
+When invoked from a review workflow or directly to diagnose a channel symptom (`MissingPluginException`, hung call, frozen UI), emit one finding block per issue:
 
 ```
 ### [Severity] file:line
@@ -165,7 +165,9 @@ When invoked from a review workflow, emit one finding block per issue:
 - Recommendation: {concrete edit}
 ```
 
-`Severity: {Critical | High | Medium | Low}`. Critical = an unvalidated argument reaching a native sink, a native path that can crash the process, or a leaked subscription holding the camera, microphone, or location. Low = naming, channel-string placement.
+`Severity: {Critical | High | Medium | Low}`. Critical = an unvalidated argument reaching a native sink, a native path that can crash the process, or a leaked subscription holding the camera, microphone, or location. High = a hang or crash under realistic use (no timeout, unhandled MissingPluginException on a shipped platform, blocking main-thread work, unchecked casts). Medium = fragile but working (hand-rolled channel where Pigeon or a plugin fits, missing permission outcome handling). Low = naming, channel-string placement.
+
+If there are no findings, emit exactly `No platform-channel findings.` so the workflow knows the check ran.
 
 ## Avoid
 

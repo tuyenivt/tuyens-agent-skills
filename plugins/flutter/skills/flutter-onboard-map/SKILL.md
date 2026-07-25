@@ -108,7 +108,7 @@ Riskier: `main.dart` and bootstrap, router configuration (global), Dio intercept
 
 ## Output Format
 
-Inject into `task-onboard` as Markdown sections in this exact order and shape. Flag inferred items as `(inferred)` rather than fabricating values not visible in the tree.
+Inject into `task-onboard` as Markdown sections in this exact order and shape. Flag inferred items as `(inferred)` rather than fabricating values not visible in the tree. A section with nothing to report is kept with a single line (`- none observed`), never silently omitted. In a melos/workspace repo with several app packages, emit one map per app package and a shared `### Workspace Packages` list once; do not merge apps.
 
 ```markdown
 ### Stack and Tooling

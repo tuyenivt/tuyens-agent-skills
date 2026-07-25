@@ -181,6 +181,8 @@ When invoked from a review workflow, emit one block per finding:
 
 **Unknown platform targets:** emit the finding with `Platform: unconfirmed` and name the target it depends on. Do not drop it.
 
+If there are no findings, emit exactly `No security findings.` so the workflow knows the check ran.
+
 When invoked from an implementation workflow, emit a decision table:
 
 ```

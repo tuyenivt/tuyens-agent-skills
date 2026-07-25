@@ -224,7 +224,7 @@ Cancellation: {token bound to <dispose site> | unbound | none}
 Timeout Budget: {<total> across <n> steps | per-call only | none}
 Optimistic: {snapshot+rollback at file:line | no rollback (defect) | none}
 Write Queue: {durable + deduped + drains on <trigger> | in-memory | none}
-Conflict Policy: {Server-Wins | Last-Write-Wins | Field-Merge | User-Resolves | undefined}
+Conflict Policy: {Server-Wins | Last-Write-Wins | Field-Merge | User-Resolves | undefined} (one value per written entity: `notes=Field-Merge, tags=Server-Wins`)
 UI States: {sealed: loading/data/empty/error | AsyncValue + explicit empty | booleans (defect)}
 Background: {workmanager <task> - freshness only | correctness depends on it (defect) | none}
 Contract Tolerance: {unknown fields+enums tolerated | strict parse | version floor at file:line}
@@ -258,6 +258,8 @@ When invoked from a review workflow, emit one block per finding:
 | `Brittle-Parse` | unknown field or enum value crashes an installed build |
 
 Severity: `Blocker` = data loss, a duplicate write, or the app unusable in a common network state. `High` = a plausible condition leaves the user stuck with no path forward. `Medium` = degraded or confusing behaviour with a workaround. `Low` = polish on an already-correct path.
+
+If there are no findings, emit exactly `No reliability findings.` so the workflow knows the check ran.
 
 ## Avoid
 

@@ -202,6 +202,8 @@ When invoked from an implementation workflow, emit decisions per concern:
 | Feed decode | Isolate.run | 30-50ms payloads on the UI isolate |
 ```
 
+One row per shape decision the task actually forced; do not pad with concerns the task never raised.
+
 When invoked from a review workflow, emit one block per finding:
 
 ```
@@ -213,9 +215,11 @@ When invoked from a review workflow, emit one block per finding:
 - Recommendation: {concrete edit}
 ```
 
+`[Must]` when the violation produces a runtime failure or leak (a scheduled-crash `!` or `late`, disabled exhaustiveness, missing `cancel`/`close`, swallowed or unobserved errors, UI-thread jank). `[Recommend]` for shape and readability (type modeling, collection style, serialized independent awaits).
+
 For each category with zero findings, emit exactly `No <category> findings.` using the category name from the enum, so the workflow knows the check ran. Omit that line for categories that have findings.
 
-When the Dart SDK version is below 3.0, report `Dart 3 patterns unavailable: SDK <version>` once and restrict findings to null safety, async, and resource lifecycle.
+When the Dart SDK version is below 3.0, report `Dart 3 patterns unavailable: SDK <version>` once and restrict findings to null safety, async, and resource lifecycle. On 3.0-3.2, skip `extension type` recommendations (3.3+); below 3.2, treat private-final field promotion as unavailable.
 
 ## Avoid
 

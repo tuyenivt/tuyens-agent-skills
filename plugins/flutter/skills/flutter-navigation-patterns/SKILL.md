@@ -179,7 +179,7 @@ When invoked from an implementation workflow, emit the route table:
 | Login | /login | from (query) | none | no | redirect target |
 ```
 
-Followed by: `Shell: {none | ShellRoute | StatefulShellRoute}`, `Guard source: {provider | listenable | none}`, `Error route: {declared | missing}`, `Web URL strategy: {path | hash | n/a}`.
+Followed by: `Shell: {none | ShellRoute | StatefulShellRoute}`, `Guard source: {provider | listenable | none}`, `Error route: {declared | missing}`, `Web URL strategy: {path | hash | n/a}`. `Guard source` names what the guard reads: `provider` = DI/provider state (bridged to `refreshListenable`), `listenable` = a raw `Listenable`/`ChangeNotifier`, `none` = no guard.
 
 When invoked from a review workflow, emit one finding block per issue:
 
@@ -192,7 +192,11 @@ When invoked from a review workflow, emit one finding block per issue:
 - Recommendation: {concrete edit}
 ```
 
-`Severity: {Critical | High | Medium | Low}`. Critical = open redirect or unvalidated deep-link parameter, a guard that can be bypassed, or a redirect loop. Low = naming or route-ordering style.
+`Severity: {Critical | High | Medium | Low}`. Critical = open redirect or unvalidated deep-link parameter, a guard that can be bypassed, or a redirect loop. High = navigation that breaks under realistic use (router rebuilt in `build`, `extra`-dependent screens, missing error route, guard source that never notifies). Medium = works but fragile or misplaced (go/push misuse, param placement, missing web strategy on a web target). Low = naming or route-ordering style.
+
+For each rule in the enum with zero findings, emit exactly `No <rule> findings.` so the workflow knows the check ran; omit that line for rules with findings.
+
+When invoked directly to diagnose a navigation symptom, emit the same finding block for the diagnosed cause, citing the pattern section that explains it.
 
 ## Avoid
 

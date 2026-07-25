@@ -248,7 +248,7 @@ Follow the table with gaps, omitting the section when there are none:
 - {target} - Missing Layer: {Unit | Widget | Golden | Integration} - Risk: {High | Medium | Low} - {why it matters}
 ```
 
-When invoked from a review workflow, emit one finding block per defect:
+When invoked from a review workflow or directly to diagnose a flaky test, emit one finding block per defect:
 
 ```
 ### [Blocker | High | Medium | Low] test/path/file_test.dart:LINE
@@ -267,6 +267,8 @@ When invoked from a review workflow, emit one finding block per defect:
 | `Live-Dependency` | real network, real clock, real filesystem, or shared backend |
 | `Leaky-Double` | global or static swapped in `setUp`, or an undisposed `ProviderContainer` |
 | `Weak-Assertion` | asserts the double was configured, or only that the widget tree built |
+
+`Blocker` = the test lies (passes while the behavior is broken: Weak-Assertion on the only coverage, tolerance raised to green, regenerated golden). `High` = flaky or environment-dependent (Flaky-Pump, Unstable-Golden, Live-Dependency). `Medium` = order-dependence or maintenance drag (Leaky-Double, Wrong-Layer). `Low` = style. If there are no findings, emit exactly `No testing findings.` so the workflow knows the check ran.
 
 ## Avoid
 

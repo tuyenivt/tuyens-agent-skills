@@ -178,7 +178,7 @@ Surface decision in Summary; if escalated, append `auto-escalated from Core; sig
 
 Output risk level + blast radius before any findings.
 
-**Low-risk short-circuit:** if Risk is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (app entry point, router configuration, auth or session state, the network client, shared base widgets, the theme, on-device schema), skip Phases C-E. The streamlined report contains Summary, High-Impact Findings (Phase B), and Next Steps only; Step 7 still writes the checkpointed report.
+**Low-risk short-circuit:** if Risk is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (app entry point, router configuration, auth or session state, the network client, shared base widgets, the theme, on-device schema), skip Phases C-E. Escalated scopes still run (a Step 4 signal fired for a reason); their merged findings join High-Impact Findings. The streamlined report contains Summary, High-Impact Findings (Phase B + any subagent findings), and Next Steps only; Step 7 still writes the checkpointed report.
 
 ### Step 4.5 - Re-evaluate Depth After Phase A
 
@@ -198,7 +198,7 @@ Apply atomic skills; each owns canonical patterns:
 - Use skill: `flutter-networking` if the diff touches the network layer
 - Use skill: `flutter-local-db-migration` if the diff changes the on-device schema. Use skill: `ops-backward-compatibility` for installed-version impact
 
-**Additional checks (not owned by atomics):**
+**Named checks.** Several overlap the atomics above by design - they are the highest-recurrence Flutter defects and must not be lost in a long atomic report. Emit one finding per defect: when an atomic already raised it, keep that finding; never file the same defect twice.
 
 - **Test coverage finding (named, not buried).** PR adds logic without a matching test -> `[Recommend]`; escalate to `[Must]` when critical path: auth or session handling, money or purchase flows, on-device schema migration, data sync or conflict resolution, permission gating
 - **Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.

@@ -22,7 +22,7 @@ user-invocable: false
 
 ## Rules
 
-- Every shape change bumps `schemaVersion` by exactly one and adds exactly one step. Batching two shape changes into one version leaves no way to test them independently
+- One released schema revision = one `schemaVersion` bump = one step; ops developed and shipped together belong in that one step. Never fold a new change into a version that has already shipped - that edits a frozen step. Emit one implementation-contract block per step
 - **A step that has shipped is frozen.** Never edit, renumber, or reorder it - devices in the field have already run it, and their state is defined by what it did, not by what the file says now
 - Migration from **any shipped version** to current must work, not just from the previous one. Correctness is per-step and order-independent of the starting point
 - A migration is offline, unattended, and forward-only. No network calls, no reads of app state, no user prompts inside a step. It completes on the device's own resources or the install is bricked
@@ -30,7 +30,7 @@ user-invocable: false
 - Test **every** from -> to pair against a committed schema snapshot, with data seeded at the old version. Schema equality is not data correctness
 - Bundle SQLite (`sqlite3_flutter_libs`) rather than relying on the system library - Android's system SQLite version varies by OS release and vendor, so feature availability (`DROP COLUMN`, `ALTER TABLE RENAME COLUMN`) is not uniform across the installed base
 - `PRAGMA foreign_keys` cannot be changed inside a transaction; set it in `beforeOpen`, never inside a migration step
-- Handle `from > to` explicitly. A user can end up on an older build over newer data (sideload, reinstall, TestFlight downgrade); continuing silently corrupts
+- Handle `from > to` explicitly: refuse to open with an update-required screen (default), or open read-only if the product needs it. Never auto-delete, and never continue silently - a user can end up on an older build over newer data (sideload, reinstall, TestFlight downgrade), and continuing corrupts
 
 ## Patterns
 
@@ -161,7 +161,9 @@ When invoked from a review workflow, emit one finding block per issue:
 - Recommendation: {concrete edit}
 ```
 
-`Severity: {Critical | High | Medium | Low}`. Critical = crash on launch after update, a step unreachable from a shipped version, or silent loss of user-authored data. Low = dead columns, naming.
+`Severity: {Critical | High | Medium | Low}`. Critical = crash on launch after update, a step unreachable from a shipped version, or silent loss of user-authored data. High = will fail on part of the installed base or on realistic data (missing snapshot/tests, system-SQLite feature use, unhandled downgrade, unmeasured rebuild of a large table). Medium = fragile but currently working (newest-pair-only tests, shape-only verification). Low = dead columns, naming.
+
+For each rule in the enum with zero findings, emit exactly `No <rule> findings.` so the workflow knows the check ran; omit that line for rules with findings.
 
 ## Avoid
 

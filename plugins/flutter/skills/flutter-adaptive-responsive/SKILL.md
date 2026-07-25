@@ -236,7 +236,7 @@ Breakpoints: {file:line of the named constants | none defined}
 | FilterSheet | Mobile | none | showAdaptiveDialog on wide | viewInsets bottom | tap, keyboard |
 ```
 
-When invoked from a review workflow, emit one block per finding:
+When invoked from a review workflow or directly to diagnose a form-factor bug, emit one block per finding:
 
 ```
 ### [Blocker | High | Medium | Low] file:line

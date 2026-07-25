@@ -30,7 +30,7 @@ user-invocable: false
 - Reach for `Result` where nothing else forces the caller to consider failure: Dart has no checked exceptions, so a thrown error is invisible in the signature.
 - Every failure carries a stable variant, whether retry is meaningful, and the original cause plus stack for reporting.
 - User-facing text is derived from the failure variant in the presentation layer and localized. `e.toString()` is never shown to a user.
-- Cancellation is not a failure. Cancelled requests and post-dispose races are dropped, not surfaced as an error state.
+- Cancellation is not a failure. Map it to a dedicated `Cancelled` variant at the repository boundary; every presentation-layer switch renders nothing for it (no banner, no retry) and it is never reported as an error.
 
 ## Patterns
 
@@ -59,6 +59,8 @@ final class ServerFailure extends AppFailure {
 `sealed` restricts subtyping to this library, which is what makes downstream `switch` exhaustive. `final` on the variants stops feature code from adding a subclass the mapper has never seen.
 
 freezed unions generate the same shape plus `copyWith` and value equality. Prefer them when failures carry several fields. The class-modifier syntax freezed expects differs across its major versions - follow the version pinned in `pubspec.yaml` rather than a remembered snippet.
+
+One shared failure type for cross-cutting variants every feature meets (network, timeout, auth, parse); a feature declares its own sealed type only when its variants are meaningless outside it (validation rules, domain states), and may embed the shared type as a variant's field rather than duplicating transport variants.
 
 ### Exhaustive switch, no `default`
 
@@ -247,6 +249,9 @@ When invoked from a review workflow, emit one finding block per defect:
 | `Leaked` | a data-layer exception type is visible above the repository boundary |
 | `Stack-Lost` | `throw e` inside `catch`, or a conversion that drops the original stack |
 | `Raw-Message` | `e.toString()` or an untranslated string rendered to the user |
+| `Boundary-Config` | app-level handlers misconfigured: double reporting (`runZonedGuarded` + `onError`), missing `FlutterError.onError`/`PlatformDispatcher.onError`, an `ErrorWidget.builder` that can throw |
+
+`Blocker` = failure invisible or app unable to report (Swallowed, Boundary-Config with no reporting path). `High` = wrong handling on a user-facing path (Leaked, Raw-Message, Unmapped). `Medium` = degraded diagnostics or fragile typing (Stack-Lost, Untyped). `Low` = style. If there are no findings, emit exactly `No error-handling findings.` so the workflow knows the check ran.
 
 ## Avoid
 

@@ -100,7 +100,7 @@ Open the files that configure observability so findings cite real lines:
 | `FlutterError.onError` | throws inside framework callbacks - `build`, layout, paint, gesture handlers | every widget-lifecycle crash, including the red screen the user saw |
 | `PlatformDispatcher.instance.onError` | uncaught async errors in the root zone | unawaited futures, stream `onData` throws, timer callbacks |
 | A guarded zone (`runZonedGuarded`, or the SDK's `appRunner` argument) | errors raised inside that zone | required when an SDK owns the zone; without it that SDK sees nothing |
-| `Isolate.current.addErrorListener` | errors on a spawned isolate | anything under `compute()` or a background entry point |
+| `addErrorListener` on long-lived spawned isolates | errors on a worker the caller is not awaiting | any long-lived `Isolate.spawn` worker or fire-and-forget background entry point (`compute()` / `Isolate.run` errors complete the awaited future - no listener needed; mark `isolate=N/A` when no such workers exist) |
 
 - [ ] **Reporter initialized before `runApp`** - init after `runApp` loses startup crashes, which are the ones users cannot work around.
 - [ ] **Exactly one owner per surface** - when an SDK's `appRunner` already wraps the app, a hand-rolled `runZonedGuarded` reporting the same error doubles every crash count and corrupts trend data. Pick one.

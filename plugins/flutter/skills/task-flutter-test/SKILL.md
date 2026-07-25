@@ -39,7 +39,7 @@ If state management is not Riverpod, say so and use that library's own test seam
 Ground output in project conventions, not generic templates.
 
 - Read each target top-to-bottom: the screen's widget tree, its state holder, the repository it depends on, and the failure types it can surface
-- Glob `test/**/*_test.go`-equivalent (`test/**/*_test.dart`) and read one existing widget test, one unit test, one golden test, and any shared setup file - learn the project's finders, pump conventions, fake construction, and override style
+- Glob `test/**/*_test.dart` and read one existing widget test, one unit test, one golden test, and any shared setup file - learn the project's finders, pump conventions, fake construction, and override style
 - Read `test/flutter_test_config.dart` if present; it is where global golden and font setup usually lives
 - Read CI configuration for how tests run, whether goldens run in a separate job, and how failures surface
 - Read `integration_test/` for existing driver setup
@@ -146,6 +146,7 @@ Measure, do not guess: run the project's coverage command when the suite runs lo
 
 - "What tests are missing?" -> Coverage Assessment
 - "Write tests for X" / "scaffold" -> Test Scaffolds
+- "Why does this golden/test fail in CI?" -> the diagnosis finding block from `flutter-testing-patterns` (cause + fix); no strategy doc
 - "Test strategy" / "test plan", OR low coverage with no scaffolds requested -> Strategy Doc (optionally with Coverage Assessment)
 - 2+ deliverables -> in this order separated by `---`: Coverage Assessment -> Strategy Doc -> Test Scaffolds
 - Unclear -> default to Strategy Doc
@@ -207,6 +208,7 @@ Measure, do not guess: run the project's coverage command when the suite runs lo
 
 **Always:**
 
+- [ ] `behavioral-principles` loaded before the workflow ran
 - [ ] Stack confirmed; state management, mocking library, and codegen usage recorded
 - [ ] Code under test + existing tests + shared setup read directly
 - [ ] `flutter-testing-patterns` consulted

@@ -42,7 +42,7 @@ A device is not a scraped service. Nothing pulls metrics off a phone: the app **
 | `FlutterError.onError` | errors thrown inside framework callbacks - `build`, layout, paint, gesture handlers | every widget-lifecycle crash, including the red screen the user actually saw |
 | `PlatformDispatcher.instance.onError` | uncaught errors from async work in the root zone | unawaited futures, stream `onData` throws, timer callbacks |
 | A guarded zone (`runZonedGuarded`, or an SDK's `appRunner` argument) | errors raised inside that zone | required when an SDK owns the zone; without it that SDK sees nothing |
-| `Isolate.current.addErrorListener` | errors on a spawned isolate | anything under `compute()` or a background task entry point |
+| `addErrorListener` on long-lived spawned isolates | errors on a worker the caller is not awaiting | any long-lived `Isolate.spawn` worker or fire-and-forget background entry point. (`compute()` / `Isolate.run` errors complete the awaited future and are caught by ordinary handling - no listener needed) |
 
 Native crashes (Android ANRs, iOS signal crashes, plugin native code) are caught by the reporter's native layer, not by any Dart handler - which is why the native SDK must be initialised even in an app that is Dart-only in practice.
 
@@ -142,7 +142,8 @@ When invoked from an implementation workflow, emit the instrumentation contract:
 ```
 Reporter: {Crashlytics | Sentry | both (justify) | none}
 Init Site: {file:line, before runApp | after runApp (defect) | none}
-Error Surfaces: {framework=<Y|N> asyncRoot=<Y|N> zone=<Y|N|N/A> isolate=<Y|N>}
+Error Surfaces: {framework=<Y|N> asyncRoot=<Y|N> zone=<Y|N|N/A> isolate=<Y|N|N/A>}
+  (zone: N/A when no SDK wraps the app in its own zone; N when one does and the zone is unguarded. isolate: N/A when no long-lived spawned isolates exist)
 Symbols: {uploaded in CI at <job> | manual | NOT UPLOADED (obfuscated build)}
 Native Symbols: {mapping=<Y|N> dSYM=<Y|N> | N/A}
 Attribution: {version+build+flavor at file:line | PARTIAL: <missing> | none}
@@ -175,6 +176,8 @@ When invoked from a review workflow, emit one block per finding:
 | `Noise` | per-frame, per-item, or unsampled high-volume events |
 
 Severity: `Blocker` = a crash class is entirely invisible in production, or PII is shipped off-device. `High` = reports arrive but are unreadable or unattributable. `Medium` = a significant path is uninstrumented. `Low` = naming, cardinality, or verbosity.
+
+If there are no findings, emit exactly `No observability findings.` so the workflow knows the check ran.
 
 ## Avoid
 

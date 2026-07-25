@@ -242,6 +242,22 @@ Semantics(liveRegion: true, child: Text(_errorText))
 
 `liveRegion` re-announces the node when its content changes; `SemanticsService.announce` is for one-off events with no persistent node. Pass the direction from `Directionality.of(context)` when the app supports RTL. Announce meaningful transitions only - loading finished, save succeeded, validation failed - not every rebuild.
 
+### Gesture-only actions need a semantic alternative
+
+*Tiers: All.*
+
+A swipe, drag, or long-press is invisible to a screen-reader user - swipe gestures are captured for navigation. Every gesture-only action gets an equivalent on the node:
+
+```dart
+// Swipe-to-delete row: expose the action to assistive tech
+Semantics(
+  customSemanticsActions: {CustomSemanticsAction(label: l10n.deleteOrder): _delete},
+  child: Dismissible(...),
+)
+```
+
+Widgets like `Dismissible` announce nothing about the hidden action by themselves. The same applies to drag-to-reorder (expose move up/down actions) and long-press menus (expose the menu as an action or a visible affordance).
+
 ## Output Format
 
 When invoked from an implementation workflow, emit the accessibility plan:
@@ -254,13 +270,15 @@ When invoked from an implementation workflow, emit the accessibility plan:
 | Status dot | ExcludeSemantics (label on row) | n/a | 3:1 vs surface | - | - |
 ```
 
+Record text-scaling decisions (minHeight vs fixed, clamp scope) and gesture-alternative actions in the Semantics column of the affected row.
+
 When invoked from a review workflow, emit one block per finding:
 
 ```
 ### [Blocker | High | Medium | Low] file:line
 
 - Area: Accessibility
-- Check: {Semantic-Label | Screen-Reader-Output | Image-Alternative | Touch-Target | Text-Scaling | Contrast | Focus-Order | State-Announcement}
+- Check: {Semantic-Label | Screen-Reader-Output | Image-Alternative | Touch-Target | Text-Scaling | Contrast | Focus-Order | State-Announcement | Gesture-Alternative}
 - Tier: {Mobile | Desktop | Web | All}
 - Code: {one-line citation}
 - Impact: {what a user relying on the affected assistive path cannot do}

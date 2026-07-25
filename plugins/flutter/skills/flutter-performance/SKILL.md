@@ -189,7 +189,7 @@ The leak is rarely unfreed memory - it is a live object graph rooted in a still-
 
 ## Output Format
 
-When invoked from a review workflow, emit one block per finding:
+When invoked from a review workflow or directly for a jank/memory investigation, emit one block per finding:
 
 ```
 ### [Severity] file:line
@@ -207,6 +207,8 @@ When invoked from a review workflow, emit one block per finding:
 
 **No profile data:** emit `Evidence: estimated (no profile)` and cap severity at High. Never report a number you did not measure.
 
+If there are no findings, emit exactly `No performance findings.` so the workflow knows the check ran.
+
 When invoked from an implementation workflow, emit a budget table:
 
 ```
@@ -215,6 +217,8 @@ When invoked from an implementation workflow, emit a budget table:
 | Feed list | 16ms UI / 60Hz | 5k items, network images | builder + itemExtent, cacheWidth 240 |
 | Detail hero | 8ms raster / 120Hz | blur backdrop | drop BackdropFilter, precomposed asset |
 ```
+
+Budget defaults to 16ms per thread (60Hz); use 8ms for surfaces the product ships to high-refresh devices (ProMotion, 120Hz Android) - take the target from the project's stated device tier, not aspiration.
 
 ## Avoid
 
