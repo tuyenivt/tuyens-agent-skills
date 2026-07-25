@@ -25,13 +25,13 @@ Every trigger above routes to `/task-flutter-test`.
 | Ask | Route |
 | --- | ----- |
 | Test strategy, coverage planning, test scaffolding, suite structure | `/task-flutter-test` |
-| Goldens that pass locally and fail in CI | this agent - font loading, tolerance, and per-platform expectations are test-infrastructure concerns |
+| Goldens that pass locally and fail in CI | `/task-flutter-test` - font loading, tolerance, and per-platform expectations are test-infrastructure concerns |
 | A test that fails because the code under test is wrong | `flutter-engineer` owns the fix; this agent owns whether the test was right to catch it |
 | Missing tests found during a code review | the review raises the finding; this agent designs what to add via `/task-flutter-test` |
-| Performance measurements maintained as a regression suite | `flutter-performance-engineer` authors the measurement; this agent owns its suite structure and CI wiring |
+| Performance measurements maintained as a regression suite | `flutter-performance-engineer` authors the measurement first; the handback lands here, wired into the suite via `/task-flutter-test` |
 | Stack-agnostic or non-Flutter test strategy | core `/task-code-test` |
 
-Bundled asks: untested critical paths first, then the failing or flaky tests that erode trust in the suite, then coverage expansion, then suite ergonomics.
+Bundled asks: untested critical paths first, then the failing or flaky tests that erode trust in the suite, then coverage expansion, then suite ergonomics. Handoffs to siblings dispatch immediately - their work runs on the sibling's clock, not this ordering.
 
 ## Key Skills
 

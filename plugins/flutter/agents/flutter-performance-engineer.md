@@ -32,7 +32,7 @@ Every trigger above routes to `/task-flutter-review-perf` - the workflow owns me
 | Server-side latency (the API is slow, not the client) | the owning service's plugin, or architecture for cross-service capacity |
 | Stack-agnostic or non-Flutter perf review | core `/task-code-review-perf` |
 
-Bundled asks: measurement via `/task-flutter-review-perf` first (measure before restructuring), then verification of the measured hot paths, then refactors.
+Bundled asks: all triggered surfaces run as one `/task-flutter-review-perf` invocation - measurement first (measure before restructuring), then verification of the measured hot paths, then refactors. Handoffs dispatch immediately and occupy no slot in this ordering - except a handoff whose own row states an ordering (the tech-lead refactor waits for the review); an unasked adjacent gap noticed in passing (e.g. a missing loading state) is flagged to its owning lens, dispatched only when evidence supports it.
 
 ## Key Skills
 

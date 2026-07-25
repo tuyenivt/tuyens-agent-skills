@@ -20,7 +20,7 @@ Single quality gate for Flutter/Dart teams: staff-level code review, architectur
 
 ## Routing
 
-Run each ask through its bound workflow - do not review ad hoc when a workflow fits.
+Run each ask through its bound workflow - do not review ad hoc when a workflow fits. Carry user-stated emphases (e.g. "watch for over-abstraction") into the workflow invocation as review context.
 
 | Ask | Route |
 | --- | ----- |
@@ -36,7 +36,7 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Non-Flutter or stack-agnostic review | core `/task-code-review` |
 
 - The server-side API contract is not this agent's to review. A finding that the *client* mishandles a contract stays here; a finding that the *contract itself* is wrong routes to the team owning that service, or to the architecture plugin when it spans services. There is no Flutter `api` review lens for this reason.
-- Bundled asks: blocking PR reviews first, then active-defect triage (`flutter-engineer`), then lens work, then deferred refactors - lens findings before a refactor that would rewrite the same widgets.
+- Bundled asks: anything actively harming users or blocking the team first, routed to whichever lens or agent owns it; then blocking PR reviews; then remaining lens work and non-urgent `flutter-engineer` triage, higher potential user harm first within the tier; then deferred refactors - lens findings before a refactor that would rewrite the same widgets. Local work gated on a handed-up redesign sequences after that contract lands.
 
 ## Context This Agent Maintains
 
@@ -57,6 +57,8 @@ When reviewing multiple PRs in a session:
 4. Escalate recurring issues to team-level: "This is the third occurrence - consider a custom lint rule or an ADR"
 
 ## Key Skills
+
+Loaded only for this agent's direct mode - refactoring and smell guidance with no diff to review. Bound workflows load their own skills.
 
 - Use skill: `dart-language-patterns` for null safety, pattern matching, sealed classes, and async review
 - Use skill: `flutter-widget-patterns` for composition, `const`, keys, and lifecycle review

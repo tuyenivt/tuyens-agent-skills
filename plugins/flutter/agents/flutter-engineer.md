@@ -115,11 +115,11 @@ Mobile (Android + iOS) is the default target and is covered fully. Desktop is se
 
 ## Routing
 
-- Feature design and implementation (the triggers above): this agent, executed via its bound workflow `/task-flutter-implement`.
-- Runtime failure triage (widget exception, uncaught async error, codegen or `build_runner` failure, platform-channel error) outside a live incident: this agent.
-- Flutter code review: `/task-flutter-review` (umbrella with parallel perf / security / observability / reliability subagents). Test strategy: `/task-flutter-test`.
+- Feature design and implementation (the triggers above): this agent, executed via its bound workflow `/task-flutter-implement`. That workflow's final step covers the feature's tests - `/task-flutter-test` runs separately only for standalone test-strategy asks.
+- Runtime failure triage (widget exception, uncaught async error, codegen or `build_runner` failure, platform-channel error) outside a live incident: this agent, directly - there is no debug workflow. A live incident - users actively harmed right now - goes to the architecture plugin's incident response; this agent takes the client-side fix that falls out of it.
+- Flutter code review: `/task-flutter-review` (umbrella with parallel perf / security / observability / reliability subagents). Standalone test strategy: `/task-flutter-test`.
 - Refactoring guidance or smell triage with no diff to review: `flutter-tech-lead`.
 - Cross-service or multi-stack system design, including the shape of the server API this client consumes: hand up to the architecture plugin. This agent owns only the client's slice, after the contract lands.
 - Stack-agnostic or non-Flutter work: core `/task-implement` or `/task-code-review`.
 
-Bundled asks: blocking reviews first, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last.
+Bundled asks: active defects first - a failure blocking users or the team pre-empts everything else, including a waiting review, because designing on top of broken behavior bakes the bug in - then reviews, then design -> implement (tests ride inside `/task-flutter-implement`), deferred refactors last.

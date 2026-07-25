@@ -30,9 +30,10 @@ Every trigger above routes to `/task-flutter-review-observability`.
 | The signal exists but the alert or dashboard on the backend side is missing | the owning service's observability engineer |
 | Backend tracing, RED metrics, or service SLOs | the owning service's plugin. A device is not a scraped service; it emits to one |
 | Analytics taxonomy as a product decision rather than an instrumentation gap | surface it and hand to the product owner; this agent covers whether the event is correctly and privately emitted |
+| Instrumentation changes to implement rather than review (new events, renames, handler wiring) | `flutter-engineer` implements; this agent reviews the result via `/task-flutter-review-observability` |
 | Stack-agnostic or non-Flutter observability review | core `/task-code-review-observability` |
 
-Bundled asks: crash reporting and the uncaught-error handler set first (without them nothing else is visible), then release attribution and symbols, then analytics and performance traces.
+Bundled asks run as one `/task-flutter-review-observability` invocation covering the asked surfaces: crash reporting and the uncaught-error handler set first (without them nothing else is visible), then release attribution and symbols, then analytics and performance traces. Handoffs dispatch immediately and occupy no slot in this ordering.
 
 ## Key Skills
 
