@@ -134,6 +134,40 @@ How Claude reasons and acts in this repo, in addition to the technical rules abo
 - **Workflows compose every relevant atomic skill** via `Use skill:`.
 - **Consistent depth across stacks.** Equivalent skills (Python vs. Java) cover the same categories.
 
+#### Match the Form to the Failure
+
+Before writing a rule, classify the failure it fixes. The form must match, or the rule underperforms - a prohibition aimed at a shaping failure measurably produces *more* of the unwanted output than saying nothing at all.
+
+| Failure being fixed                                             | Right form                                                          | Wrong form                                     |
+| --------------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------- |
+| Agent knows the rule, skips it under pressure                    | Prohibition in `Rules` / `Avoid`                                    | Soft guidance ("prefer...", "consider...")     |
+| Output has the wrong shape (malformed, bloated, verdict buried)  | Positive recipe in `Output Format` - state what the output **is**, in order | Prohibition list ("don't restate", "never...") |
+| A required element is missing                                    | A required slot in the `Output Format` template                     | Prose reminder near the template               |
+| Behavior should vary by situation                                | Conditional keyed to something the agent can observe                | Unconditional rule plus exemption clauses      |
+
+**Routing rule.** Discipline failures go to `Rules` and `Avoid`. Shape failures go to `Output Format` as a positive contract - never to `Avoid`. This repo's recurring defects (enum truncation, missing writer fields, atomic-delegation dead ends, envelope conflicts) are shape failures; adding another `Avoid` bullet does not fix them.
+
+Two corollaries, both of which cost more than they look:
+
+- **No nuance clauses.** "Don't X unless it matters" reopens the negotiation. A single nuance clause appended to a working recipe degrades it from consistent to noisy.
+- **Exemption clauses don't scope.** "This limit doesn't apply to code blocks" still suppresses code blocks. Write the conditional as a predicate instead.
+
+Bad - a nine-item denylist for what is one enum rule:
+
+```
+## Avoid
+- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels
+```
+
+Good - the same rule as a contract, in `Output Format`:
+
+```
+## Output Format
+Every finding carries exactly one label: `[Must]` or `[Recommend]`. No other label is written.
+```
+
+This is a forward-looking convention. Retrofit opportunistically, when a skill is open for another reason.
+
 #### Authoring for Token Efficiency
 
 Skills load into context on every invocation - longer is not better. Optimize up front so skills ship close to their post-eval state.
