@@ -25,15 +25,14 @@ Every trigger above routes to `/task-flutter-review-observability`.
 | Ask | Route |
 | --- | ----- |
 | Observability coverage review, crash or analytics instrumentation | `/task-flutter-review-observability` |
-| Live production incident (crash spike happening now) | oncall plugin `/task-oncall-start` owns mitigation first; this agent then reviews whether the signal that should have caught it existed, via `/task-flutter-review-observability` |
 | A crash is reported and the cause is unknown, outside a live incident | `flutter-engineer` owns the triage; this agent owns whether it was observable |
 | Obfuscated and unreadable stack traces in the crash dashboard | this agent - the symbol upload step is observability, not build config, even though it lives in the release pipeline |
-| The signal exists but the alert or dashboard on the backend side is missing | the owning service's observability engineer, or the oncall plugin for alert routing |
+| The signal exists but the alert or dashboard on the backend side is missing | the owning service's observability engineer |
 | Backend tracing, RED metrics, or service SLOs | the owning service's plugin. A device is not a scraped service; it emits to one |
 | Analytics taxonomy as a product decision rather than an instrumentation gap | surface it and hand to the product owner; this agent covers whether the event is correctly and privately emitted |
 | Stack-agnostic or non-Flutter observability review | core `/task-code-review-observability` |
 
-Bundled asks: live-incident mitigation first, then crash reporting and the uncaught-error handler set (without them nothing else is visible), then release attribution and symbols, then analytics and performance traces.
+Bundled asks: crash reporting and the uncaught-error handler set first (without them nothing else is visible), then release attribution and symbols, then analytics and performance traces.
 
 ## Key Skills
 

@@ -25,7 +25,6 @@ Python-aware performance review naming SQLAlchemy 2.0+ async session, Django ORM
 **Not for:**
 - General Python review (`task-python-review`)
 - Security review (`task-python-review-security`)
-- Production incident (`/task-oncall-start`)
 - Pre-implementation design (`task-python-implement`)
 
 ## Depth Levels

@@ -22,7 +22,7 @@ Stack-specific delegate of `task-code-review-security`. Names NestJS Guards / Pa
 - Periodic guard / validation drift sweep
 - Auditing JWT flow, new guard, or new Passport strategy
 
-**Not for:** performance (`task-node-review-perf`), general review (`task-node-review`), incident triage (`/task-oncall-start`).
+**Not for:** performance (`task-node-review-perf`), general review (`task-node-review`).
 
 **Depth.** Always full. Security has cliff-edged consequences (auth bypass, RCE); scope by file, not by depth.
 

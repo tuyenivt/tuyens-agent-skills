@@ -18,7 +18,7 @@ Stack-specific delegate of `task-code-review-observability` for React. Library/S
 - Adopting `web-vitals` / Sentry / OpenTelemetry / RUM in a React app
 - Auditing error-boundary placement and crash-reporting paths
 
-**Not for:** general review (`task-react-review`), perf (`task-react-review-perf`), active incidents (`/task-oncall-start`), infra dashboards/alerts.
+**Not for:** general review (`task-react-review`), perf (`task-react-review-perf`), infra dashboards/alerts.
 
 ## Depth
 

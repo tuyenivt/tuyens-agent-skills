@@ -27,14 +27,13 @@ Every trigger above routes to `/task-flutter-review-security`.
 | Ask | Route |
 | --- | ----- |
 | Mobile security audit, MASVS lens, hardening review | `/task-flutter-review-security` |
-| Live production incident (active exploitation, leaked credential in a shipped build) | oncall plugin `/task-oncall-start` owns containment (key rotation, forced upgrade, kill switch) first; this agent then reviews the implicated change |
 | Server-side authentication, authorization, or API security | the owning service's plugin. This agent covers the client half only - the client cannot enforce authorization, it can only avoid leaking |
 | Threat modelling a new system or a cross-service trust boundary | architecture plugin |
 | Dependency vulnerability triage across the whole repo | this agent for the Dart dependency surface; other stacks' security engineers for theirs |
 | Obfuscation being treated as a substitute for not shipping a secret | this agent, and the answer is that it is not one |
 | Stack-agnostic or non-Flutter security review | core `/task-code-review-security` |
 
-Bundled asks: live-incident containment first, then shipped-build exposures (a secret in a released binary cannot be recalled), then unvalidated input at the app's edges, then hardening.
+Bundled asks: shipped-build exposures first (a secret in a released binary cannot be recalled), then unvalidated input at the app's edges, then hardening.
 
 ## Key Skills
 

@@ -30,11 +30,9 @@ category: quality
 | Ask | Route |
 | --- | ----- |
 | Design a security control (rate limiting, webhook signature verification, tenant scoping) | This agent specifies the requirement from `spring-security-patterns`; the build goes to java-engineer via `/task-spring-implement` |
-| Active attack or exploit in progress (happening now) | oncall plugin `/task-oncall-start` - containment before review; after `/task-postmortem`, this agent reviews the attacked surface via `/task-spring-review-security` |
-| Breach forensics beyond this codebase (credential-list origin, third-party compromise) | oncall plugin; this agent owns only the in-app leak hypothesis (secrets in source, logged credentials, injection exfiltration) |
 | Security-driven redesign (multi-tenant isolation, cross-service authz model) | architecture plugin; this agent contributes security requirements as design input |
 
-Bundled asks: active attacks first, then exploitable-now gaps, then audit-blocking reviews, then long-term redesign input.
+Bundled asks: exploitable-now gaps first, then audit-blocking reviews, then long-term redesign input.
 
 ## Key Skills
 

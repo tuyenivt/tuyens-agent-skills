@@ -24,7 +24,7 @@ Stack-specific delegate of `task-code-review-api` for Node.
 - Response-shape / error-envelope / status-code / pagination / resource-naming consistency pass
 - OpenAPI / `@nestjs/swagger` / swagger-jsdoc drift check against the DTOs
 
-**Not for:** general review (`task-node-review`), auth enforcement or validation bypass (`task-node-review-security`), idempotency-dedup correctness or behavior under a slow dependency (`task-node-review-reliability`), throughput (`task-node-review-perf`), an active incident (`/task-oncall-start` - mitigate first).
+**Not for:** general review (`task-node-review`), auth enforcement or validation bypass (`task-node-review-security`), idempotency-dedup correctness or behavior under a slow dependency (`task-node-review-reliability`), throughput (`task-node-review-perf`).
 
 ## Seam With Adjacent Lenses
 

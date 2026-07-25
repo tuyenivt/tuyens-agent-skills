@@ -26,7 +26,7 @@ Stack-specific delegate of `task-code-review-observability` for Flutter.
 - Post-incident review when a client-side failure was invisible or unreadable
 - Adopting Crashlytics / Sentry, an analytics SDK, or a logging facade
 
-**Not for:** general review (`task-flutter-review`), frame cost and startup time (`task-flutter-review-perf`), failure survival (`task-flutter-review-reliability`), secure storage and pinning (`task-flutter-review-security`), an active incident (`/task-oncall-start` - mitigate first), backend dashboards and alert routing.
+**Not for:** general review (`task-flutter-review`), frame cost and startup time (`task-flutter-review-perf`), failure survival (`task-flutter-review-reliability`), secure storage and pinning (`task-flutter-review-security`), backend dashboards and alert routing.
 
 ## Seam With Adjacent Lenses
 

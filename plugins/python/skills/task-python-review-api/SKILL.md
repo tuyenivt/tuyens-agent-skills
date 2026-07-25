@@ -24,7 +24,7 @@ Stack-specific delegate of `task-code-review-api` for Python.
 - Response-shape / error-envelope / status-code / pagination / resource-naming consistency pass
 - OpenAPI drift check against the routes and schemas
 
-**Not for:** general review (`task-python-review`), auth enforcement or validation bypass (`task-python-review-security`), idempotency-dedup correctness or behavior under a slow dependency (`task-python-review-reliability`), throughput (`task-python-review-perf`), an active incident (`/task-oncall-start` - mitigate first).
+**Not for:** general review (`task-python-review`), auth enforcement or validation bypass (`task-python-review-security`), idempotency-dedup correctness or behavior under a slow dependency (`task-python-review-reliability`), throughput (`task-python-review-perf`).
 
 ## Seam With Adjacent Lenses
 

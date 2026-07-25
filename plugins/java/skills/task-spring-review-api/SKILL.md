@@ -24,7 +24,7 @@ Stack-specific delegate of `task-code-review-api` for Java.
 - Response-shape / error-envelope / status-code / pagination / resource-naming consistency pass
 - springdoc-openapi drift check against the controllers and DTOs
 
-**Not for:** general review (`task-spring-review`), auth enforcement or validation bypass (`task-spring-review-security`), idempotency-dedup correctness or behavior under a slow dependency (`task-spring-review-reliability`), throughput (`task-spring-review-perf`), an active incident (`/task-oncall-start` - mitigate first).
+**Not for:** general review (`task-spring-review`), auth enforcement or validation bypass (`task-spring-review-security`), idempotency-dedup correctness or behavior under a slow dependency (`task-spring-review-reliability`), throughput (`task-spring-review-perf`).
 
 ## Seam With Adjacent Lenses
 

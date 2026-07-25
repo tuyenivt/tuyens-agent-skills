@@ -1,15 +1,16 @@
 # Tuyen's Agent Skills - Architecture
 
-Stack-agnostic architecture plugin for Claude Code, for architects and tech leads. Covers the pipeline from design through build planning to release: system design (bundling API contract design and C4 diagrams into the same workflow), re-architecture (monolith decomposition, microservices consolidation, legacy system modernization), database migration planning, dependency upgrade assessment, design-to-tasks breakdown, and release notes. Every design, re-architecture, and task-breakdown workflow doubles as a review workflow - pass an existing artifact and you get a severity-tagged review (Blocker / Major / Minor / Nit) with an Approve / Approve-with-changes / Needs-rework verdict.
+Stack-agnostic architecture plugin for Claude Code, for architects, tech leads, and on-call responders. Covers the pipeline from design through build planning to release, plus incident response: system design (bundling API contract design and C4 diagrams into the same workflow), re-architecture (monolith decomposition, microservices consolidation, legacy system modernization), database migration planning, dependency upgrade assessment, design-to-tasks breakdown, release notes, and the incident lifecycle (shift-start, triage, root-cause analysis, postmortem). Every design, re-architecture, and task-breakdown workflow doubles as a review workflow - pass an existing artifact and you get a severity-tagged review (Blocker / Major / Minor / Nit) with an Approve / Approve-with-changes / Needs-rework verdict.
 
 ## Agents
 
-Stack-agnostic by design - the agents name patterns and boundaries, never a framework. For stack-specific design, use the matching stack plugin's architect. The architect owns the system; the planner owns the plan to build and ship it.
+Stack-agnostic by design - the agents name patterns and boundaries, never a framework. For stack-specific design, use the matching stack plugin's architect. The architect owns the system; the planner owns the plan to build and ship it; the responder owns the incident lifecycle.
 
 | Agent                  | Description                                                                                                                                                     | Drives                                                                                     |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | architecture-architect | Design authority: system design, re-architecture (decomposition, consolidation, modernization), and zero-downtime DB migration - authoring and review.        | `task-design-architecture`, `task-decompose-monolith`, `task-consolidate-services`, `task-modernize-legacy`, `task-db-migration` |
 | architecture-planner   | Delivery planner: design-to-task-graph breakdown, dependency upgrade assessment (effort, Go/No-Go), and release notes with rollback and risk register - authoring and review. | `task-breakdown-design`, `task-dependency-upgrade`, `task-release-notes`                   |
+| oncall-responder       | Incident responder / SRE walking the incident lifecycle: shift-start health checks, alert triage and routing, and prevention-focused postmortems.              | `task-oncall-start`, `task-postmortem`                                                     |
 
 ## Workflow Skills
 
@@ -25,8 +26,10 @@ Workflow skills (`task-*`) for architecture design, re-architecture, and deliver
 | `task-dependency-upgrade`                 | Plan or review a library or platform upgrade - changelog analysis, breaking change detection, compatibility conflicts, effort estimate (S/M/L/XL), and Go/No-Go.                                                                                                                    |
 | `task-breakdown-design`             | Break a system design (HLD/LLD, ideally a `task-design-architecture` proposal) into an implementable task graph - phases, dependency order, critical path, sizing, scope-creep flags - or review a breakdown someone else authored (severity-tagged findings and a verdict).        |
 | `task-release-notes`                | Generate stakeholder-ready release notes from a commit range or PR list. Categorized changelog plus a folded-in rollback and risk register section for on-call.                                                                                                                     |
+| `task-oncall-start`                 | Oncall entry point for shift starts (rotation handoff, system health review) and incoming alert triage (classify and route to the right workflow).                                                                                                                                  |
+| `task-postmortem`                   | Staff-level postmortem for systemic learning. Supports `quick`, `standard`, and `deep` depth levels.                                                                                                                                                                               |
 
-The last two continue the design pipeline: `task-design-architecture` produces the design, `task-breakdown-design` turns it into a task graph (or, in review mode, critiques a graph someone else wrote), and `task-release-notes` communicates the shipped result. All target the architect or tech lead who owns the build.
+The design pipeline: `task-design-architecture` produces the design, `task-breakdown-design` turns it into a task graph (or, in review mode, critiques a graph someone else wrote), and `task-release-notes` communicates the shipped result. All target the architect or tech lead who owns the build. `task-oncall-start` and `task-postmortem` cover the incident lifecycle - triage and route live work, then convert resolved incidents into enforceable prevention.
 
 ## Atomic Skills
 
@@ -41,6 +44,13 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 | `architecture-capacity`         | Throughput estimation, scaling analysis, and bottleneck prediction                                                           | `task-design-architecture`                                                                   |
 | `backend-caching`               | Caching patterns, response optimization, and serialization efficiency. Adapts to detected ecosystem.                         | `task-design-architecture`                                                                   |
 | `architecture-review-lens`      | Review lens for architecture artifacts - severity taxonomy, completeness audit, consistency check, criteria scoring, verdict | All 6 authoring workflows in their Review Mode                                               |
+| `architecture-data-consistency` | Consistency strategy across data boundaries - strong vs eventual, outbox, saga, compensation, schema evolution               | `task-design-architecture`, `task-decompose-monolith`, `task-consolidate-services`, `task-modernize-legacy`, `incident-root-cause`, `task-postmortem` |
+| `oncall-investigate`            | Structured investigation for non-incident oncall work - support tickets, operational questions, unexpected behavior, performance concerns | `task-oncall-start`                                                              |
+| `incident-root-cause`           | Active production incident investigation with blast radius assessment and containment-first analysis                         | `task-oncall-start`                                                                          |
+| `log-analysis`                  | Structured log analysis - time-window isolation, correlation ID tracing, frequency analysis, and healthy/unhealthy comparison | `oncall-investigate`                                                                        |
+| `root-cause-hypothesis`         | Generate ranked root cause hypotheses with confidence levels and evidence                                                    | `incident-root-cause`                                                                        |
+| `review-gap-analysis`           | Analyze why existing review processes failed to catch a production failure                                                   | `task-postmortem`                                                                            |
+| `ops-observability-fetch`       | Fetch evidence (issues, metrics, logs, traces, deploys, monitors) from Sentry/Datadog/Honeycomb MCP; paste-mode fallback     | `task-oncall-start`, `oncall-investigate`, `incident-root-cause`, `log-analysis`             |
 
 ## Core Atomics Used
 
@@ -49,7 +59,6 @@ The architecture workflow skills compose with these core atomics via `Use skill:
 - `nfr-specification` - elicit and structure NFRs from business context into measurable SLOs and constraints
 - `tradeoff-analysis` - structured architectural decision and trade-off documentation
 - `architecture-guardrail` - layer violation and boundary erosion detection
-- `architecture-data-consistency` - consistency strategy across data boundaries
 - `ops-engineering-governance` - engineering process and guardrail evolution
 - `review-blast-radius` - failure propagation and change impact scope
 - `ops-failure-classification` - classify production failures by type and layer
@@ -67,6 +76,7 @@ The architecture workflow skills compose with these core atomics via `Use skill:
 - `backend-api-guidelines` - REST API design conventions (HTTP methods, RFC 9457 errors, pagination, idempotency)
 - `review-change-risk` - pre-implementation risk classification
 - `ops-feature-flags` - feature flag lifecycle, gradual rollout, and cleanup
+- `review-pr-risk` - score a triggering PR change during incident root-cause analysis
 
 ## Skill Dependency Index
 
@@ -82,6 +92,8 @@ The architecture workflow skills compose with these core atomics via `Use skill:
 | `task-dependency-upgrade`                 | `stack-detect`, `ops-backward-compatibility`, `review-blast-radius`, `ops-release-safety`, `dependency-impact-analysis`, `architecture-review-lens` (review mode)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `task-breakdown-design`             | `stack-detect`, `backend-db-migration`, `ops-backward-compatibility`, `dependency-impact-analysis`, `ops-feature-flags`, `review-blast-radius`, `review-change-risk` (breakdown mode); `stack-detect`, `review-blast-radius` (review mode)                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `task-release-notes`                | `stack-detect`, `backend-db-migration`, `ops-backward-compatibility`, `dependency-impact-analysis`, `ops-feature-flags`, `ops-release-safety`, `review-blast-radius`, `review-change-risk`                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `task-oncall-start`                 | `oncall-investigate`, `incident-root-cause`, `ops-observability-fetch`, `stack-detect`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `task-postmortem`                   | `review-gap-analysis`, `ops-failure-classification`, `architecture-concurrency`, `architecture-data-consistency`, `ops-resiliency`, `backend-db-indexing`, `review-blast-radius`, `architecture-guardrail`, `ops-engineering-governance`, `ops-observability`, `backend-idempotency`                                                                                                                                                                                                                                                                                                                                                               |
 
 ## Usage Examples
 
@@ -178,4 +190,21 @@ Upgrade: Spring Boot 3.3 -> 3.5
 Range: v1.4.0..HEAD
 Audience: both
 Deploy target: production
+```
+
+**Start an oncall rotation or triage an alert:**
+
+```
+/task-oncall-start
+Starting my oncall rotation for the payments team. What should I check first?
+
+/task-oncall-start
+[paste the alert, ticket, or Slack message to triage]
+```
+
+**Write a postmortem after resolution:**
+
+```
+/task-postmortem
+[paste incident timeline or reference incident-root-cause output]
 ```

@@ -22,7 +22,7 @@ Stack-specific delegate of `task-code-review-perf`.
 - Pre-merge pass on JPA queries, repositories, fetch graphs, `@Transactional`
 - Quarterly N+1 / query-plan / pool-sizing sweep
 
-**Not for:** general Spring review (`task-code-review`), security (`task-code-review-security`), incidents (`/task-oncall-start`), pre-implementation design (`task-spring-implement`).
+**Not for:** general Spring review (`task-code-review`), security (`task-code-review-security`), pre-implementation design (`task-spring-implement`).
 
 ## Depth
 

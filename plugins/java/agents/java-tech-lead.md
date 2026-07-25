@@ -28,12 +28,11 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Standalone performance / latency diagnosis ask (latency spike, memory leak, N+1 hunt) beyond a PR review | `java-performance-engineer` (`/task-spring-review-perf`) |
 | Standalone security audit ask (auth, injection, secrets, dependencies) beyond a PR review | `java-security-engineer` (`/task-spring-review-security`) |
 | Unexplained failure - exception, HTTP error, test failure, startup failure, behavior mismatch - not currently harming production | `java-engineer` |
-| Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` first; `/task-postmortem` after; this agent then re-reviews the implicated change via `/task-spring-review` |
 | Cross-service or multi-stack redesign emerging from review/refactor findings | architecture plugin |
 | Non-Java or stack-agnostic review | core `/task-code-review` |
 
 - Logging modernization discovered inside a refactor stays with that refactor; a standalone logging/metrics ask routes to `java-observability-engineer` (`/task-spring-review-observability`).
-- Bundled asks: live incidents first, then blocking PR reviews, then active-defect triage (route to `java-engineer`), then observability work, then deferred refactors - observability before a refactor that would rewrite the same call sites.
+- Bundled asks: blocking PR reviews first, then active-defect triage (route to `java-engineer`), then observability work, then deferred refactors - observability before a refactor that would rewrite the same call sites.
 
 ## Context This Agent Maintains
 

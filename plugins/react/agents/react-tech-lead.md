@@ -31,12 +31,11 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Standalone observability ask (web-vitals RUM, Sentry browser SDK, source maps, OTel browser tracing, client logging) beyond a PR review | `react-observability-engineer` via `/task-react-review-observability` |
 | Standalone resilience / failure-mode ask (error boundary placement, retry and backoff, offline and reconnect behavior, optimistic-update rollback, chunk-load failure after redeploy) beyond a PR review | `react-reliability-engineer` via `/task-react-review-reliability` (bare slowness stays with perf) |
 | Feature build, or an unexplained failure (hydration mismatch, render loop, hook error, failing test, build error) not currently harming production | `react-engineer` |
-| Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` first; `/task-postmortem` after; this agent then re-reviews the implicated change via `/task-react-review` |
 | Cross-service or multi-stack redesign emerging from review findings | architecture plugin |
 | Non-React or stack-agnostic review | core `/task-code-review` |
 
 - A logging/RUM ask named in the request routes to `react-observability-engineer` (`/task-react-review-observability`) even when a refactor of the same files is also planned; only instrumentation gaps discovered mid-refactor stay part of that refactor.
-- Bundled asks: live incidents first, then blocking PR reviews, then active-defect triage (`react-engineer`), then standalone single-scope reviews (security / perf / observability / reliability, in the order asked; observability before a refactor that would rewrite the same call sites), deferred refactors last.
+- Bundled asks: blocking PR reviews, then active-defect triage (`react-engineer`), then standalone single-scope reviews (security / perf / observability / reliability, in the order asked; observability before a refactor that would rewrite the same call sites), deferred refactors last.
 
 ## Context This Agent Maintains
 

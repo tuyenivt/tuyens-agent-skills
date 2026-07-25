@@ -21,7 +21,7 @@ Reliability = behavior under failure and saturation - the unhappy path. It owns 
 - Hardening after a near-miss or as recurring reliability debt review
 - Data-integrity-under-failure check (dual writes, outbox, idempotency)
 
-**Not for:** General review (`task-code-review`), performance optimization (`task-code-review-perf`), observability gaps (`task-code-review-observability`), security (`task-code-review-security`), a live incident happening now (oncall plugin `/task-oncall-start` - mitigate first).
+**Not for:** General review (`task-code-review`), performance optimization (`task-code-review-perf`), observability gaps (`task-code-review-observability`), security (`task-code-review-security`).
 
 ## Seam With Adjacent Lenses
 
@@ -81,7 +81,9 @@ Gating skips atomic loads, never checklist rows. Every category below runs on th
 
 **Resource exhaustion and saturation.** Connection, thread, and worker pools bounded and sized; queues, buffers, and in-memory accumulators bounded; no unbounded growth under load. Streaming for large payloads. When a pool's ceiling (DB max_connections, deployed concurrency) is not in the diff, read repo config; if still unknown, run the check anyway and state the assumption in the finding (e.g. `verify: max_connections unknown`) - never silently skip it.
 
-**Failure-mode and blast radius (deep, or when the change touches a shared resource).** For each new or changed dependency, state what happens when it is down or slow, and what contains the cascade. Use skill: `failure-propagation-analysis` to trace shared-resource coupling and amplification loops. Use skill: `architecture-data-consistency` for consistency under partial failure and safe replay / recovery.
+**Failure-mode and blast radius (deep, or when the change touches a shared resource).** For each new or changed dependency, state what happens when it is down or slow, and what contains the cascade. Use skill: `failure-propagation-analysis` to trace shared-resource coupling and amplification loops.
+
+**Consistency under partial failure.** For each cross-boundary write, confirm the failure path preserves integrity: no in-transaction dual write (DB-plus-broker) - use a transactional outbox or post-commit dispatch so a crash between the two cannot lose or duplicate the effect; every at-least-once consumer is idempotent on replay; each eventually-consistent boundary has a defined recovery path (DLQ with bounded retry, reconciliation, or safe re-run) rather than silent divergence. Flag any boundary whose staleness window or recovery path is undefined.
 
 Every finding names the failure mode it enables (not just the missing pattern) and states the blast radius. **Severity:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (untimed hot call, uncapped or non-idempotent retry, in-tx dual write, unbounded queue); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, non-idempotent consumer); Low = hardening with no immediate failure path. Next Steps map severity to intent: High -> `[Must]`, Medium -> `[Recommend]`, Low -> `[Recommend]`.
 
@@ -149,5 +151,4 @@ At `deep`, append a `## Failure-Mode and Blast-Radius Map` section before Next S
 - Recommending retries on non-idempotent operations without an idempotency key
 - Recommending a circuit breaker with no monitoring
 - Overlapping into perf (throughput) or observability (visibility) - name the failure-survival gap, not the speed or the metric
-- Mitigating a live incident here - route to the oncall plugin first
 - Emitting labels outside `[Must]` / `[Recommend]`

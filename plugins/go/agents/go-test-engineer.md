@@ -24,10 +24,9 @@ category: quality
 | Flaky test or data race | Diagnose under `go test -race` via `/task-go-test`. Race in test code (shared fixtures, unsynchronized state, `t.Parallel()` misuse): fix here. Race in production code: hand off to go-engineer with the repro and race report |
 | Benchmarking, load testing, or profiling driven by a latency/throughput goal | go-performance-engineer via `/task-go-review-perf`; this agent only reviews benchmark test structure |
 | Code too tangled to test - needs restructuring first | go-tech-lead, then resume test work |
-| Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` |
 | Stack-agnostic or non-Go test strategy | core `/task-code-test` |
 
-Bundled asks: live incidents first, then CI-blocking defects (flaky/race triage), then deadline-driven test scaffolding, then suite audits.
+Bundled asks: CI-blocking defects first (flaky/race triage), then deadline-driven test scaffolding, then suite audits.
 
 ## Key Skills
 

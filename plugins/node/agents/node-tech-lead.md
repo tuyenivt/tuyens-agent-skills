@@ -35,12 +35,11 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Standalone security audit ask (auth, injection, secrets, dependencies) beyond a PR review | `node-security-engineer` via `/task-node-review-security` |
 | Standalone resilience / failure-mode ask (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down, backpressure) beyond a PR review | `node-reliability-engineer` via `/task-node-review-reliability` (bare slowness stays with perf) |
 | Feature build, or an unexplained failure (exception / unhandled rejection, HTTP error, failing test, BullMQ job error) not currently harming production | `node-engineer` |
-| Live production incident (failing now, users or pagers impacted) | oncall plugin `/task-oncall-start` first; `/task-postmortem` after; this agent then re-reviews the implicated change via `/task-node-review` |
 | Cross-service or multi-stack redesign emerging from review/refactor findings | architecture plugin |
 | Non-Node or stack-agnostic review | core `/task-code-review` |
 
 - A logging/metrics ask named in the request routes to `node-observability-engineer` (`/task-node-review-observability`) even when a refactor of the same files is also planned; only logging gaps discovered mid-refactor stay part of that refactor.
-- Bundled asks: live incidents first, then blocking PR reviews, then active-defect triage (`node-engineer`), then standalone single-scope reviews (security / perf / observability / reliability, in the order asked; observability before a refactor that would rewrite the same call sites), deferred refactors last.
+- Bundled asks: blocking PR reviews first, then active-defect triage (`node-engineer`), then standalone single-scope reviews (security / perf / observability / reliability, in the order asked; observability before a refactor that would rewrite the same call sites), deferred refactors last.
 
 ## Context This Agent Maintains
 

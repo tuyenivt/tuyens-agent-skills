@@ -24,7 +24,7 @@ Stack-specific delegate of `task-code-review-security` for Go.
 - Periodic validation and middleware drift sweep
 - Auditing a JWT flow, new auth middleware, or new `crypto` usage
 
-**Not for:** perf review (`task-go-review-perf`), general review (`task-go-review`), production incident (`/task-oncall-start`).
+**Not for:** perf review (`task-go-review-perf`), general review (`task-go-review`).
 
 **Depth.** This workflow always runs full - security has cliff-edge consequences. Scope by file, not by depth.
 

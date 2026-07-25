@@ -24,7 +24,7 @@ Stack-specific delegate of `task-code-review-observability` for Go.
 - Post-incident review when diagnosis was slow
 - Adopting OpenTelemetry / slog / Prometheus
 
-**Not for:** general review (`task-go-review`), perf with known bottleneck (`task-go-review-perf`), active incident (`/task-oncall-start`), infra observability.
+**Not for:** general review (`task-go-review`), perf with known bottleneck (`task-go-review-perf`), infra observability.
 
 ## Depth
 

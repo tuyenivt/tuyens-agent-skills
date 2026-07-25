@@ -106,7 +106,6 @@ Background processing:
 - Runtime failure triage (panic, context/deadline error, data race, goroutine leak, GORM error) outside a live incident: this agent.
 - Go code review: `/task-go-review` (umbrella with parallel perf / security / observability subagents). Test strategy: `/task-go-test`.
 - Cross-service or multi-stack system design (sagas, cross-stack event contracts, service boundaries): hand up to the architecture plugin. This agent owns only the Go service's slice, after the system-level design lands - the messaging triggers above apply to Go-owned services only.
-- Live production incident (failing now, users impacted): oncall plugin `/task-oncall-start`; post-incident analysis: `/task-postmortem`.
 - Stack-agnostic or non-Go code review: core `/task-code-review`.
 
-Bundled asks: live incidents first, then blocking reviews, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last.
+Bundled asks: blocking reviews first, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last.

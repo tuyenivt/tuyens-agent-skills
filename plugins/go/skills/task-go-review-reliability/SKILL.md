@@ -24,7 +24,7 @@ Stack-specific delegate of `task-code-review-reliability` for Go.
 - Hardening after a near-miss; recurring resilience-debt sweep
 - New goroutine fan-out, channel pipeline, or worker pool reviewed for leaks and backpressure
 
-**Not for:** general review (`task-go-review`), throughput / latency (`task-go-review-perf`), instrumentation wiring (`task-go-review-observability`), security (`task-go-review-security`), an active incident (`/task-oncall-start` - mitigate first).
+**Not for:** general review (`task-go-review`), throughput / latency (`task-go-review-perf`), instrumentation wiring (`task-go-review-observability`), security (`task-go-review-security`).
 
 ## Seam With Adjacent Lenses
 
@@ -272,5 +272,4 @@ _Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra).
 - Approving an in-transaction `tx.Create` + `asynq.Enqueue` / `kafka.Produce` dual write
 - Ignoring a panic path in a spawned goroutine (crashes the process; Gin `Recovery()` does not cover it)
 - Overlapping into perf (throughput tuning) or observability (metric / log wiring) - name the failure-survival gap
-- Mitigating a live incident here - route to `/task-oncall-start` first
 - Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

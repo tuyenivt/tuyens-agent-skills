@@ -26,7 +26,7 @@ Stack-specific delegate of `task-code-review-perf` for Flutter.
 - Installed app size growth
 - Pre-release perf pass on scroll paths, image-heavy screens, or a new isolate
 
-**Not for:** general review (`task-flutter-review`), security (`task-flutter-review-security`), reliability and offline behaviour (`task-flutter-review-reliability`), instrumentation depth (`task-flutter-review-observability`), production incident (`/task-oncall-start`), pre-implementation design (`task-flutter-implement`).
+**Not for:** general review (`task-flutter-review`), security (`task-flutter-review-security`), reliability and offline behaviour (`task-flutter-review-reliability`), instrumentation depth (`task-flutter-review-observability`), pre-implementation design (`task-flutter-implement`).
 
 Perceived slowness that is actually a missing loading state or an unhandled offline path is a reliability finding, not a perf one - route it to `task-flutter-review-reliability`.
 

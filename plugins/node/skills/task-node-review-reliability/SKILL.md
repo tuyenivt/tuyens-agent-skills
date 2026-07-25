@@ -24,7 +24,7 @@ Stack-specific delegate of `task-code-review-reliability`.
 - Hardening after a near-miss; recurring resilience-debt sweep
 - Dual-write / outbox / consumer-retry correctness under failure
 
-**Not for:** general Node review (`task-node-review`), throughput / latency tuning (`task-node-review-perf`), telemetry wiring (`task-node-review-observability`), security (`task-node-review-security`), a live incident (`/task-oncall-start` - mitigate first).
+**Not for:** general Node review (`task-node-review`), throughput / latency tuning (`task-node-review-perf`), telemetry wiring (`task-node-review-observability`), security (`task-node-review-security`).
 
 ## Seam With Adjacent Lenses
 
@@ -209,5 +209,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no messaging, no sch
 - Approving `queue.add` / `stripe.charge` / `mailer.send` inside `$transaction` / `dataSource.transaction`
 - Approving `Promise.all` fan-out where one optional failure must not fail the batch (use `allSettled`), or an unbounded `Promise.all` over a large array (bound with `p-limit`)
 - Approving sync `fs.readFileSync` / `crypto.pbkdf2Sync` on request paths, or `setTimeout(..., 0)` as a way to "free" the event loop
-- Mitigating a live incident here - route to `/task-oncall-start` first
 - Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

@@ -22,7 +22,7 @@ Stack-specific delegate of `task-code-review-observability` for Python. Names `s
 - Post-incident review when Python diagnosis was slow or evidence missing
 - Adopting OpenTelemetry / structlog / Prometheus / Celery instrumentation
 
-**Not for:** general Python review (`task-python-review`), known-bottleneck perf (`task-python-review-perf`), active incidents (`/task-oncall-start`), infra observability config.
+**Not for:** general Python review (`task-python-review`), known-bottleneck perf (`task-python-review-perf`), infra observability config.
 
 ## Depth Levels
 

@@ -22,7 +22,7 @@ Stack-specific delegate of `task-code-review-security`. Names FastAPI `Depends`-
 - Periodic validation / permission-class drift sweep
 - Auditing OAuth2 / JWT flow, new DRF permission, or new FastAPI security dependency
 
-**Not for:** performance (`task-python-review-perf`), general review (`task-python-review`), incident triage (`/task-oncall-start`).
+**Not for:** performance (`task-python-review-perf`), general review (`task-python-review`).
 
 **Depth.** Always full. Security has cliff-edged consequences (auth bypass, RCE); scope by file, not by depth.
 

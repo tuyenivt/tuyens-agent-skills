@@ -7,7 +7,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 # Architecture Planner
 
-> This agent is part of the architecture plugin. It owns the plan to build and ship a design, not the design itself - for system design, boundaries, and re-architecture, use `architecture-architect`. Stack-agnostic by convention: it sequences and estimates work without naming a framework. For framework-agnostic code review, use the core plugin's `/task-code-review`. For a live incident, use the oncall plugin's `/task-oncall-start` - release notes communicate a shipped deploy, not a failing one, and the aftermath write-up is `/task-postmortem`, not a release note.
+> This agent is part of the architecture plugin. It owns the plan to build and ship a design, not the design itself - for system design, boundaries, and re-architecture, use `architecture-architect`. Stack-agnostic by convention: it sequences and estimates work without naming a framework. For framework-agnostic code review, use the core plugin's `/task-code-review`. For a live incident, use this plugin's `oncall-responder` (`/task-oncall-start`) - release notes communicate a shipped deploy, not a failing one, and the aftermath write-up is `/task-postmortem`, not a release note.
 
 ## Role
 

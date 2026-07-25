@@ -88,7 +88,6 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 | Skill                           | Description                                                                                              |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `architecture-concurrency`      | Concurrency patterns adapted to the detected stack - threading models, synchronization, safe concurrency |
-| `architecture-data-consistency` | Consistency strategy selection across data boundaries                                                    |
 | `nfr-specification`             | Elicit and structure NFRs from business context into measurable SLOs and constraints                     |
 | `tradeoff-analysis`             | Structured architectural decision and trade-off documentation                                            |
 
@@ -161,7 +160,7 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 | `task-code-review-perf`          | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `backend-db-indexing`, `ops-observability`, `architecture-concurrency`, `frontend-performance`, `review-report-writer`)_                                                                                                                                    |
 | `task-code-review-security`      | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `review-report-writer`)_                                                                                                                                                                                    |
 | `task-code-review-observability` | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `ops-observability`, `review-report-writer`)_                                                                                                                                                               |
-| `task-code-review-reliability`   | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `ops-resiliency`, `backend-idempotency`, `failure-propagation-analysis`, `architecture-data-consistency`, `review-report-writer`)_                                                                            |
+| `task-code-review-reliability`   | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `ops-resiliency`, `backend-idempotency`, `failure-propagation-analysis`, `review-report-writer`)_                                                                            |
 | `task-code-review-api`           | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `backend-api-guidelines`, `ops-backward-compatibility`, `review-report-writer`)_                                                                                                                             |
 | `task-code-test`                 | `stack-detect` _(dispatches; minimal generic test-pyramid fallback)_                                                                                                                                                                                                                        |
 

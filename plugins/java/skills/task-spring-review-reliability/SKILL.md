@@ -22,7 +22,7 @@ Stack-specific delegate of `task-code-review-reliability`.
 - Hardening after a near-miss; recurring resilience-debt sweep
 - Dual-write / outbox / consumer-retry correctness under failure
 
-**Not for:** general Spring review (`task-code-review`), perf optimization (`task-spring-review-perf`), observability wiring (`task-spring-review-observability`), security (`task-spring-review-security`), a live incident (`/task-oncall-start` - mitigate first).
+**Not for:** general Spring review (`task-code-review`), perf optimization (`task-spring-review-perf`), observability wiring (`task-spring-review-observability`), security (`task-spring-review-security`).
 
 ## Seam With Adjacent Lenses
 
@@ -203,5 +203,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no messaging, no sch
 - Recommending a circuit breaker with no monitoring
 - Treating broker retries as a substitute for consumer idempotency
 - Approving an in-transaction `save` + `kafkaTemplate.send` dual write
-- Mitigating a live incident here - route to `/task-oncall-start` first
 - Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

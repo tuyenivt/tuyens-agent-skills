@@ -32,12 +32,11 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Standalone adaptivity, accessibility, or localization ask | `flutter-engineer` - there is no UX review lens; these are implementation concerns carrying only a Phase E baseline check |
 | Refactoring guidance, smell triage, or architectural direction with no diff to review | this agent, directly - there is no refactor workflow |
 | Unexplained runtime failure - widget exception, build_runner or codegen failure, platform-channel error, uncaught async error - not currently harming users | `flutter-engineer` |
-| Live production incident (crash spike or broken release affecting users now) | oncall plugin `/task-oncall-start` first; `/task-postmortem` after; this agent then re-reviews the implicated change via `/task-flutter-review` |
 | Cross-service or multi-stack redesign emerging from review findings, including the server contract this client consumes | architecture plugin |
 | Non-Flutter or stack-agnostic review | core `/task-code-review` |
 
 - The server-side API contract is not this agent's to review. A finding that the *client* mishandles a contract stays here; a finding that the *contract itself* is wrong routes to the team owning that service, or to the architecture plugin when it spans services. There is no Flutter `api` review lens for this reason.
-- Bundled asks: live incidents first, then blocking PR reviews, then active-defect triage (`flutter-engineer`), then lens work, then deferred refactors - lens findings before a refactor that would rewrite the same widgets.
+- Bundled asks: blocking PR reviews first, then active-defect triage (`flutter-engineer`), then lens work, then deferred refactors - lens findings before a refactor that would rewrite the same widgets.
 
 ## Context This Agent Maintains
 

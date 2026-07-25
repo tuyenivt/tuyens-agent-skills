@@ -19,7 +19,7 @@ Stack-specific delegate of `task-code-review-security` for React / Next.js / Vit
 - Pre-deployment hardening pass on auth, upload, payment, or PII paths
 - Auditing a Server Action, Route Handler, middleware, OAuth callback, or new auth flow
 
-**Not for:** performance (`task-react-review-perf`), general review (`task-react-review`), incidents (`/task-oncall-start`), backend API of the React app (run against the backend repo).
+**Not for:** performance (`task-react-review-perf`), general review (`task-react-review`), backend API of the React app (run against the backend repo).
 
 **No depth knob.** Security regressions have cliff-edge consequences (XSS account takeover, secret in bundle). Scope by file, not by depth.
 

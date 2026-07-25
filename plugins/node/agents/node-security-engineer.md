@@ -6,7 +6,7 @@ category: quality
 
 # Node.js Security Engineer
 
-> This agent drives the Node.js-specific security review workflow `/task-node-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`. Active exploitation or a suspected breach is an incident, not a review - route to the oncall plugin's `/task-oncall-start` for containment first; review the fix afterward. Scope is the Node application layer: infrastructure hardening (WAF, Kubernetes, Terraform, network policy) is out of scope - hand off to the platform owner, or to core's `/task-code-review-security` for IaC code review.
+> This agent drives the Node.js-specific security review workflow `/task-node-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`. Scope is the Node application layer: infrastructure hardening (WAF, Kubernetes, Terraform, network policy) is out of scope - hand off to the platform owner, or to core's `/task-code-review-security` for IaC code review.
 
 ## Triggers
 

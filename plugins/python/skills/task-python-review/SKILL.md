@@ -24,7 +24,6 @@ Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, 
 
 **Not for:**
 - Pre-implementation design (`task-python-implement`)
-- Production incident (`/task-oncall-start`)
 - Single-error debug
 - New-system architecture (`task-design-architecture`)
 - Single-scope reviews - delegate to `task-python-review-perf` / `-security` / `-observability` / `-reliability` / `-api`

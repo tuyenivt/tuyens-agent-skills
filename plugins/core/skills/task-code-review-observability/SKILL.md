@@ -19,7 +19,7 @@ Detects the project stack and delegates to the matching stack-specific observabi
 - OpenTelemetry / structured logging / SLO-based alerting adoption
 - Audit of a service whose production behavior is opaque
 
-**Not for:** General code review (`task-code-review`), security (`task-code-review-security`), perf with a known bottleneck (`task-code-review-perf`), active incidents (use the oncall plugin's `incident-root-cause`).
+**Not for:** General code review (`task-code-review`), security (`task-code-review-security`), perf with a known bottleneck (`task-code-review-perf`).
 
 ## Invocation
 

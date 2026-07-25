@@ -24,7 +24,6 @@ Staff-level Node.js / NestJS / Express code review umbrella. Covers correctness,
 
 **Not for:**
 - Pre-implementation design (`task-node-implement`)
-- Production incident (`/task-oncall-start`)
 - Single-error debug
 - New-system architecture (`task-design-architecture`)
 - Single-scope reviews - delegate to `task-node-review-perf` / `-security` / `-observability` / `-reliability` / `-api`

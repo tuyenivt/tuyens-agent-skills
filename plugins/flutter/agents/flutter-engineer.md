@@ -120,7 +120,6 @@ Mobile (Android + iOS) is the default target and is covered fully. Desktop is se
 - Flutter code review: `/task-flutter-review` (umbrella with parallel perf / security / observability / reliability subagents). Test strategy: `/task-flutter-test`.
 - Refactoring guidance or smell triage with no diff to review: `flutter-tech-lead`.
 - Cross-service or multi-stack system design, including the shape of the server API this client consumes: hand up to the architecture plugin. This agent owns only the client's slice, after the contract lands.
-- Live production incident (crash spike or broken release affecting users now): oncall plugin `/task-oncall-start`; post-incident analysis: `/task-postmortem`.
 - Stack-agnostic or non-Flutter work: core `/task-implement` or `/task-code-review`.
 
-Bundled asks: live incidents first, then blocking reviews, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last.
+Bundled asks: blocking reviews first, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last.

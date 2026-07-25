@@ -24,7 +24,7 @@ Stack-specific delegate of `task-code-review-api` for Go.
 - Response-shape / error-envelope / status-code / pagination / resource-naming consistency pass
 - OpenAPI / swaggo drift check against the handlers
 
-**Not for:** general review (`task-go-review`), auth enforcement or validation bypass (`task-go-review-security`), idempotency-dedup correctness or behavior under a slow dependency (`task-go-review-reliability`), throughput (`task-go-review-perf`), an active incident (`/task-oncall-start` - mitigate first).
+**Not for:** general review (`task-go-review`), auth enforcement or validation bypass (`task-go-review-security`), idempotency-dedup correctness or behavior under a slow dependency (`task-go-review-reliability`), throughput (`task-go-review-perf`).
 
 ## Seam With Adjacent Lenses
 

@@ -22,7 +22,7 @@ Stack-specific delegate of `task-code-review-reliability`.
 - Hardening after a near-miss; recurring resilience-debt sweep
 - Dual-write / outbox / `after_commit` / consumer-retry correctness under failure
 
-**Not for:** general Rails review (`task-rails-review`), perf optimization (`task-rails-review-perf`), observability wiring (`task-rails-review-observability`), security (`task-rails-review-security`), a live incident (`/task-oncall-start` - mitigate first).
+**Not for:** general Rails review (`task-rails-review`), perf optimization (`task-rails-review-perf`), observability wiring (`task-rails-review-observability`), security (`task-rails-review-security`).
 
 ## Seam With Adjacent Lenses
 
@@ -220,5 +220,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no external clients,
 - Recommending retries on non-idempotent ops without an idempotency key
 - Recommending a `Stoplight` breaker with no monitoring, or on every low-volume integration
 - Approving `.perform_async` or an external write inside `Model.transaction`
-- Mitigating a live incident here - route to `/task-oncall-start` first
 - Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

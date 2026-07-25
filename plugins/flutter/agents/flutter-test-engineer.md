@@ -29,7 +29,6 @@ Every trigger above routes to `/task-flutter-test`.
 | A test that fails because the code under test is wrong | `flutter-engineer` owns the fix; this agent owns whether the test was right to catch it |
 | Missing tests found during a code review | the review raises the finding; this agent designs what to add via `/task-flutter-test` |
 | Performance measurements maintained as a regression suite | `flutter-performance-engineer` authors the measurement; this agent owns its suite structure and CI wiring |
-| Live production incident | oncall plugin `/task-oncall-start`; a regression test to close the gap comes back here afterwards |
 | Stack-agnostic or non-Flutter test strategy | core `/task-code-test` |
 
 Bundled asks: untested critical paths first, then the failing or flaky tests that erode trust in the suite, then coverage expansion, then suite ergonomics.

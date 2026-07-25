@@ -24,7 +24,6 @@ Stack-specific delegate of `task-code-review-perf` for React / Next.js / Vite. P
 
 - General review (`task-react-review`)
 - Security review (`task-react-review-security`)
-- Production incident (`/task-oncall-start`)
 - Pre-implementation design (`task-react-implement`)
 
 ## Severity Rubric

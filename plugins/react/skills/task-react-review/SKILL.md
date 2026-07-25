@@ -25,7 +25,6 @@ Staff-level React / Next.js / Vite code review umbrella. Covers correctness, arc
 **Not for:**
 
 - Pre-implementation design (`task-react-implement`)
-- Production incident (`/task-oncall-start`)
 - Single-error debug
 - New-system architecture (`task-design-architecture`)
 - Single-scope reviews - delegate to `task-react-review-perf` / `-security` / `-observability` / `-reliability`

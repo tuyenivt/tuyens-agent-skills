@@ -20,7 +20,7 @@ Stack-specific delegate of `task-code-test` for React / Next.js. Preserves the c
 - Scaffold tests for under-covered components, hooks, Server Actions, or routes
 - Review test pyramid balance for a React app
 
-**Not for:** test failure debugging, general code review (`task-react-review`), incident postmortems (`/task-oncall-postmortem`).
+**Not for:** test failure debugging, general code review (`task-react-review`).
 
 ## Workflow
 

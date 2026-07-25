@@ -22,7 +22,7 @@ Staff-level Flutter/Dart review umbrella. Covers correctness, architecture, AI q
 - Architecture drift detection
 - Pre-merge risk assessment
 
-**Not for:** pre-implementation design (`task-flutter-implement`), production incident (`/task-oncall-start`), single-error triage (`flutter-engineer`), new-system architecture (`task-design-architecture`), single-scope reviews (delegate to perf/security/observability/reliability).
+**Not for:** pre-implementation design (`task-flutter-implement`), single-error triage (`flutter-engineer`), new-system architecture (`task-design-architecture`), single-scope reviews (delegate to perf/security/observability/reliability).
 
 ## Depth
 

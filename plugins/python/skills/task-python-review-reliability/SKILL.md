@@ -28,7 +28,7 @@ Stack-specific delegate of `task-code-review-reliability` for Python. Reliabilit
 - Hardening after a near-miss; recurring resilience-debt sweep
 - Dual-write / outbox / Celery-consumer correctness under failure
 
-**Not for:** general Python review (`task-python-review`), throughput / N+1 tuning (`task-python-review-perf`), instrumentation wiring (`task-python-review-observability`), a live incident (`/task-oncall-start` - mitigate first).
+**Not for:** general Python review (`task-python-review`), throughput / N+1 tuning (`task-python-review-perf`), instrumentation wiring (`task-python-review-observability`).
 
 ## Depth Levels
 
@@ -232,5 +232,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no Celery, no extern
 - Approving `BackgroundTasks` for a durable / critical side effect - route it to Celery
 - Approving `.delay()` inside a transaction, or a `save` + publish dual write without an outbox
 - Wrapping `asyncio.timeout` around an outer `gather` for partial results (cancels completed work) - put the timeout inside each task
-- Mitigating a live incident here - route to `/task-oncall-start` first
 - Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

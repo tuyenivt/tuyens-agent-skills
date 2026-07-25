@@ -25,7 +25,6 @@ Node.js-aware performance review naming Prisma `include` / `select` / `findMany`
 **Not for:**
 - General Node review (`task-node-review`)
 - Security review (`task-node-review-security`)
-- Production incident (`/task-oncall-start`)
 - Pre-implementation design (`task-node-implement`)
 
 ## Depth Levels

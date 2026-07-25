@@ -29,7 +29,7 @@ Stack-specific delegate of `task-code-review-security` for Flutter.
 - Biometric or device-credential authentication
 - Pre-release hardening pass (obfuscation, backup flags, permissions, debug artifacts)
 
-**Not for:** perf review (`task-flutter-review-perf`), general review (`task-flutter-review`), production incident (`/task-oncall-start`), server-side auth or API security (the owning service's plugin).
+**Not for:** perf review (`task-flutter-review-perf`), general review (`task-flutter-review`), server-side auth or API security (the owning service's plugin).
 
 **Depth.** This workflow always runs full - security has cliff-edge consequences, and a shipped binary cannot be recalled. Scope by file, not by depth.
 

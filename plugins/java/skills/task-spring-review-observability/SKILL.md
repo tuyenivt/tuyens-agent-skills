@@ -26,7 +26,6 @@ Stack-specific delegate of `task-code-review-observability` for Java / Spring Bo
 **Not for:**
 - General Spring review (`task-spring-review`)
 - Perf with known bottleneck (`task-spring-review-perf`)
-- Active incident (`/task-oncall-start`)
 - Infra observability (Datadog dashboards, Grafana panels, alert rules) - not in source code
 
 ## Depth Levels

@@ -22,7 +22,7 @@ Staff-level Go/Gin/GORM/sqlx review umbrella. Covers correctness, architecture, 
 - Architecture drift detection
 - Pre-merge risk assessment
 
-**Not for:** pre-implementation design (`task-go-implement`), production incident (`/task-oncall-start`), single-error debug, new-system architecture (`task-design-architecture`), single-scope reviews (delegate to perf/security/observability/reliability/api).
+**Not for:** pre-implementation design (`task-go-implement`), single-error debug, new-system architecture (`task-design-architecture`), single-scope reviews (delegate to perf/security/observability/reliability/api).
 
 ## Depth
 

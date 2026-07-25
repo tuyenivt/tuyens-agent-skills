@@ -20,7 +20,7 @@ Spring-aware security review naming `SecurityFilterChain`, OAuth2 Resource Serve
 - Validation / method-security drift sweep across controllers
 - Auditing an OAuth2 / JWT flow or new `@PreAuthorize`
 
-**Not for:** performance (`task-code-review-perf`), general review (`task-code-review`), incident triage (`/task-oncall-start`).
+**Not for:** performance (`task-code-review-perf`), general review (`task-code-review`).
 
 ## Invocation
 

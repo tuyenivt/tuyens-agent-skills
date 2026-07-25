@@ -26,7 +26,7 @@ Stack-specific delegate of `task-code-review-reliability` for Flutter.
 - Offline behaviour, connectivity handling, retry, or background scheduling being added
 - Hardening after a hang, a stuck spinner, a lost write, or a crash on an old installed version
 
-**Not for:** general review (`task-flutter-review`), frame cost and jank (`task-flutter-review-perf`), instrumentation coverage (`task-flutter-review-observability`), secure storage and transport hardening (`task-flutter-review-security`), an active incident (`/task-oncall-start` - mitigate first), fixing the server's own unreliability (route to the owning service).
+**Not for:** general review (`task-flutter-review`), frame cost and jank (`task-flutter-review-perf`), instrumentation coverage (`task-flutter-review-observability`), secure storage and transport hardening (`task-flutter-review-security`), fixing the server's own unreliability (route to the owning service).
 
 ## Seam With Adjacent Lenses
 
@@ -307,5 +307,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no background tasks,
 - An exhaustive `switch` over a server-supplied enum with no fallback - the next server release crashes every installed build
 - Reviewing whether the server's contract is well designed - that belongs to the owning service or the architecture plugin
 - Duplicating perf depth (rebuild cost, frame budget) or observability depth (crash reporting, log fields)
-- Mitigating a live incident here - route to `/task-oncall-start` first
 - Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

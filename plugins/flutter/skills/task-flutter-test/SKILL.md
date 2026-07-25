@@ -24,7 +24,7 @@ Flutter-aware test strategy and scaffolding across unit, widget, golden, and `in
 - Adding failure-path tests to happy-path-only tests
 - Diagnosing goldens that pass locally and fail in CI
 
-**Not for:** debugging a failing test whose production code is wrong (`flutter-engineer`), general review (`task-flutter-review`), postmortems (`/task-oncall-postmortem`).
+**Not for:** debugging a failing test whose production code is wrong (`flutter-engineer`), general review (`task-flutter-review`).
 
 ## Workflow
 

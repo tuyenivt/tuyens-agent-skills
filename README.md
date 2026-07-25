@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `oncall`, `java`, `python`, `ruby`, `node`, `go`, `flutter`, and `react`.
+Single marketplace repository for Claude Code plugins: `architecture`, `java`, `python`, `ruby`, `node`, `go`, `flutter`, and `react`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -69,18 +69,11 @@ claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install react@tuyens-agent-skills --scope project
 ```
 
-**Architecture and delivery project:**
+**Architecture, delivery, and incident-response project:**
 
 ```bash
 claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install architecture@tuyens-agent-skills --scope project
-```
-
-**On-call / Incident project:**
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install oncall@tuyens-agent-skills --scope project
 ```
 
 > `core` is always required - it provides the stack-agnostic workflow and governance skills used by all other plugins.
@@ -108,8 +101,8 @@ I want to...
   design/review system, API, diagrams     -> /task-design-architecture [architecture]
   write tests                             -> /task-code-test
   create a PR description                 -> /task-pr-create
-  write a postmortem                      -> /task-postmortem (run after root-cause) [oncall]
-  hand off an on-call shift               -> /task-oncall-start [oncall]
+  write a postmortem                      -> /task-postmortem (run after root-cause) [architecture]
+  hand off an on-call shift               -> /task-oncall-start [architecture]
   onboard to a codebase                   -> /task-onboard
   plan/review a database migration        -> /task-db-migration [architecture]
   decompose monolith into services        -> /task-decompose-monolith [architecture]
@@ -213,8 +206,7 @@ React / Next.js (plugin: react)
 | Plugin                               | Focus                                                                                                                                                                               |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                                                                                                                     |
-| [architecture](plugins/architecture) | Stack-agnostic architecture, re-architecture, and delivery: unified system design (boundaries + API contracts + C4 diagrams), monolith decomposition, service consolidation, legacy modernization, DB migration, dependency upgrade, design-to-tasks breakdown (HLD/LLD -> task graph), task-breakdown review, and release notes with rollback risk register. Every design workflow doubles as a review workflow. |
-| [oncall](plugins/oncall)             | Incident response: triage, investigation, root cause analysis, and postmortem                                                                                                       |
+| [architecture](plugins/architecture) | Stack-agnostic architecture, re-architecture, delivery, and incident response: unified system design (boundaries + API contracts + C4 diagrams), monolith decomposition, service consolidation, legacy modernization, DB migration, dependency upgrade, design-to-tasks breakdown (HLD/LLD -> task graph), task-breakdown review, release notes with rollback risk register, and the incident lifecycle (triage, root cause, postmortem). Every design workflow doubles as a review workflow. |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         |
 | [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                                                                                                 |
 | [ruby](plugins/ruby)                 | Ruby on Rails 7.2+                                                                                                                                                                  |

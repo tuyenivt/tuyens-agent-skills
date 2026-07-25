@@ -6,7 +6,7 @@ category: engineering
 
 # Node.js Performance Engineer
 
-> This agent drives the Node.js-specific performance review workflow `/task-node-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`. An active production incident (outage, pinned database, pager firing) routes to the oncall plugin's `/task-oncall-start` for containment before any profiling; oncall's triage routes latency-without-outage concerns back here.
+> This agent drives the Node.js-specific performance review workflow `/task-node-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
 
 ## Triggers
 

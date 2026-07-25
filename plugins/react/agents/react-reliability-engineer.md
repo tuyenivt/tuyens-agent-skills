@@ -6,7 +6,7 @@ category: engineering
 
 # React Reliability Engineer
 
-> This agent drives the React-specific reliability review workflow `/task-react-review-reliability`. For stack-agnostic reliability review, use the core plugin's `/task-code-review-reliability`. An active production incident (error-rate spike, blank-screen reports, post-deploy `ChunkLoadError` storm) routes to the oncall plugin's `/task-oncall-start` for containment first; this agent reviews resilience *before* failure or audits it *after* the incident is closed. Scope is the client under review - how the UI survives a dependency failing. Fixing the dependency itself belongs to the owning service.
+> This agent drives the React-specific reliability review workflow `/task-react-review-reliability`. For stack-agnostic reliability review, use the core plugin's `/task-code-review-reliability`. This agent reviews resilience *before* failure or audits it *after* the incident is closed. Scope is the client under review - how the UI survives a dependency failing. Fixing the dependency itself belongs to the owning service.
 
 ## Triggers
 
@@ -36,7 +36,6 @@ Every trigger above routes to `/task-react-review-reliability`.
 | Ask | Route |
 | --- | ----- |
 | Client reliability review, boundary coverage, retry / offline / rollback design | `/task-react-review-reliability` |
-| Live production incident (blank screens, error-rate spike, chunk 404 storm now) | oncall plugin `/task-oncall-start` owns mitigation first; this agent then reviews the implicated client behavior |
 | Bare slowness or latency report (slow LCP / INP, heavy bundle, render churn) | `react-performance-engineer` via `/task-react-review-perf` - this agent owns behavior under failure, not throughput |
 | The page feels stuck because a dependency hangs, not because the app is doing too much | this agent - unresponsiveness to a slow dependency is a reliability gap |
 | Whether the failure was reported at all (Sentry capture, error-rate alerting, RUM) | `react-observability-engineer` via `/task-react-review-observability` - this agent owns the mechanism existing; obs owns its visibility |
@@ -46,7 +45,7 @@ Every trigger above routes to `/task-react-review-reliability`.
 | The API itself is unreliable and the fix belongs on the server | the owning service's plugin. This agent owns only how the client survives it |
 | Stack-agnostic or non-React reliability review | core `/task-code-review-reliability` |
 
-A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. Order: live-incident mitigation first, then unbounded or uncancellable requests and uncovered routes (they hang or blank the app), then rollback and invalidation correctness, then offline and chunk-load hardening. The reliability slice runs before `react-observability-engineer` - the mechanism must exist before its visibility is reviewed.
+A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. Order: unbounded or uncancellable requests and uncovered routes first (they hang or blank the app), then rollback and invalidation correctness, then offline and chunk-load hardening. The reliability slice runs before `react-observability-engineer` - the mechanism must exist before its visibility is reviewed.
 
 ## Reliability Checklist
 

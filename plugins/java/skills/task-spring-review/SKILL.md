@@ -16,7 +16,7 @@ Spring-aware staff-level review umbrella. Stack-specific delegate of `task-code-
 ## When to Use
 
 - Pre-merge Spring Boot PR review, post-AI-generation quality gate, architecture drift detection.
-- **Not for:** design (`task-spring-implement`), incidents (`/task-oncall-start`), debugging, new-system architecture (`task-design-architecture`), single-scope reviews (delegate to `task-spring-review-{perf,security,observability,reliability,api}`).
+- **Not for:** design (`task-spring-implement`), debugging, new-system architecture (`task-design-architecture`), single-scope reviews (delegate to `task-spring-review-{perf,security,observability,reliability,api}`).
 
 ## Depth and Scope
 

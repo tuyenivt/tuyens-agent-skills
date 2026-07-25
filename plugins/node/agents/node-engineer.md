@@ -63,7 +63,6 @@ The workflows compose these; consult them for design specifics:
 - Resilience / failure-mode review of existing code (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down): `node-reliability-engineer` via `/task-node-review-reliability` - this agent designs resilience into new code; reviewing existing failure behavior goes there.
 - Node.js code review / refactor: `/task-node-review` (umbrella with parallel perf / security / observability / reliability subagents). Test strategy: `/task-node-test`. Single-scope depth: the sibling `node-security-engineer`, `node-performance-engineer`, `node-observability-engineer`, or `node-reliability-engineer`.
 - Cross-service or multi-stack system design (cross-stack decomposition, service splitting, landscape-wide architecture): hand up to the architecture plugin's `architecture-architect`. This agent owns only the Node slice, after the system-level design lands.
-- Live production incident (failing now, users impacted): oncall plugin `/task-oncall-start`; post-incident analysis: `/task-postmortem`.
 - Stack-agnostic or non-Node code review: core `/task-code-review`.
 
-Bundled asks: live incidents first, then reviews that gate a merge or release, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last. Standalone diagnosis and review handoffs dispatch at split time and run in parallel with this sequence.
+Bundled asks: reviews that gate a merge or release first, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last. Standalone diagnosis and review handoffs dispatch at split time and run in parallel with this sequence.

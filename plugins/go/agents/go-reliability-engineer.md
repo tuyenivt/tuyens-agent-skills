@@ -6,7 +6,7 @@ category: engineering
 
 # Go Reliability Engineer
 
-> This agent drives the Go-specific reliability review workflow `/task-go-review-reliability`. For stack-agnostic reliability review, use the core plugin's `/task-code-review-reliability`. An active production incident (outage, crash-loop, pager firing) routes to the oncall plugin's `/task-oncall-start` for containment first; this agent reviews resilience *before* failure or audits it *after* an incident is closed. Cross-service resilience topology, multi-region failover, and capacity planning belong to the architecture plugin; this agent owns the reliability of the Go code under review.
+> This agent drives the Go-specific reliability review workflow `/task-go-review-reliability`. For stack-agnostic reliability review, use the core plugin's `/task-code-review-reliability`. This agent reviews resilience *before* failure or audits it *after* an incident is closed. Cross-service resilience topology, multi-region failover, and capacity planning belong to the architecture plugin; this agent owns the reliability of the Go code under review.
 
 ## Triggers
 
@@ -31,7 +31,6 @@ category: engineering
 
 | Ask | Route |
 | --- | ----- |
-| Live production incident (outage, crash-loop, pager firing now) | oncall plugin `/task-oncall-start` owns mitigation (rollback, limits, comms) first; this agent then reviews the implicated code via `/task-go-review-reliability` |
 | Make it faster under normal load (N+1, indexes, allocation, pool sizing for throughput) | `go-performance-engineer` - this agent owns behavior under failure and saturation, not throughput; a bare slowness report routes to perf unless the fix is bounding / shedding at saturation, which stays here |
 | Breaker-state metric, fallback log line, trace across a hop | `go-observability-engineer` - this agent owns the mechanism existing; obs owns its visibility |
 | Cross-service resilience topology, multi-region failover, capacity | architecture plugin |

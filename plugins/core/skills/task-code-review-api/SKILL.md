@@ -21,7 +21,7 @@ API review = the contract the service exposes - its shape, evolution, and honest
 - Pagination, error-envelope, status-code, or resource-naming consistency pass
 - OpenAPI / generated-client drift check against the implementation
 
-**Not for:** General review (`task-code-review`), endpoint auth / input-validation enforcement (`task-code-review-security`), handler behavior under failure (`task-code-review-reliability`), throughput (`task-code-review-perf`), a live incident (oncall plugin `/task-oncall-start`).
+**Not for:** General review (`task-code-review`), endpoint auth / input-validation enforcement (`task-code-review-security`), handler behavior under failure (`task-code-review-reliability`), throughput (`task-code-review-perf`).
 
 ## Seam With Adjacent Lenses
 

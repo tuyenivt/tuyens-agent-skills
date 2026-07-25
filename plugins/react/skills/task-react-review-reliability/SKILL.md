@@ -22,7 +22,7 @@ Client reliability: what the UI does when a request hangs, a mutation fails afte
 - Hardening after a blank screen, a stuck spinner, a lost write, or a post-deploy `ChunkLoadError` spike
 - Optimistic-update, cache-invalidation, or retry-policy correctness review
 
-**Not for:** general review (`task-react-review`), Core Web Vitals and bundle cost (`task-react-review-perf`), instrumentation coverage (`task-react-review-observability`), XSS / auth / CSP (`task-react-review-security`), a live incident (`/task-oncall-start` - mitigate first), fixing the API's own unreliability (route to the owning service).
+**Not for:** general review (`task-react-review`), Core Web Vitals and bundle cost (`task-react-review-perf`), instrumentation coverage (`task-react-review-observability`), XSS / auth / CSP (`task-react-review-security`), fixing the API's own unreliability (route to the owning service).
 
 ## Seam With Adjacent Lenses
 
@@ -289,5 +289,4 @@ Mark a line N/A when the diff has no matching surface (e.g. no mutations, no dyn
 - Shipping `next/dynamic` / `React.lazy` routes with no `ChunkLoadError` recovery - every redeploy breaks open tabs
 - Reviewing whether the API's contract is well designed - that belongs to the owning service or the architecture plugin
 - Duplicating perf depth (bundle size, render churn, Core Web Vitals) or observability depth (Sentry wiring, log fields)
-- Mitigating a live incident here - route to `/task-oncall-start` first
 - Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

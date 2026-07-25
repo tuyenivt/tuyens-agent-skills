@@ -27,7 +27,6 @@ Every trigger above routes to `/task-flutter-review-reliability`.
 | Ask | Route |
 | --- | ----- |
 | Client reliability review, offline or retry design, UI state completeness | `/task-flutter-review-reliability` |
-| Live production incident (users stuck, requests failing now) | oncall plugin `/task-oncall-start` owns mitigation first; this agent then reviews the implicated client behaviour |
 | The app feels slow but the work is actually being done efficiently | this agent - unresponsiveness to a slow dependency is a reliability gap, not a perf one |
 | The app is genuinely doing too much work or dropping frames | `flutter-performance-engineer` via `/task-flutter-review-perf` |
 | A missing loading state framed as a user-experience problem rather than a state-machine gap | this agent - there is no UX review lens, so the whole finding lands here |
@@ -36,7 +35,7 @@ Every trigger above routes to `/task-flutter-review-reliability`.
 | Whether the failure was observable at all | `flutter-observability-engineer` via `/task-flutter-review-observability` |
 | Stack-agnostic or non-Flutter reliability review | core `/task-code-review-reliability` |
 
-Bundled asks: live-incident mitigation first, then unbounded or uncancellable calls (they hang indefinitely), then missing UI states, then retry and offline behaviour, then background work.
+Bundled asks: unbounded or uncancellable calls first (they hang indefinitely), then missing UI states, then retry and offline behaviour, then background work.
 
 ## Key Skills
 

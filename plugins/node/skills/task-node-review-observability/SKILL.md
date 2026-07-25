@@ -22,7 +22,7 @@ Stack-specific delegate of `task-code-review-observability` for Node.js. Names `
 - Post-incident review when Node diagnosis was slow or evidence missing
 - Adopting OpenTelemetry / pino / Prometheus / BullMQ instrumentation
 
-**Not for:** general Node review (`task-node-review`), known-bottleneck perf (`task-node-review-perf`), active incidents (`/task-oncall-start`), infra observability config.
+**Not for:** general Node review (`task-node-review`), known-bottleneck perf (`task-node-review-perf`), infra observability config.
 
 ## Depth Levels
 

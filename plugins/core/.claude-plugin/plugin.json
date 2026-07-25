@@ -1,7 +1,7 @@
 {
   "name": "core",
   "version": "1.138.0",
-  "description": "Stack-agnostic core plugin: ops, governance, review, and framework-aware workflows for any tech stack. Auto-detects project stack. Architecture design, task breakdown, and release workflows live in the architecture plugin. Incident response workflows live in the oncall plugin.",
+  "description": "Stack-agnostic core plugin: ops, governance, review, and framework-aware workflows for any tech stack. Auto-detects project stack. Architecture design, task breakdown, release, and incident response workflows live in the architecture plugin.",
   "author": {
     "name": "Tuyen"
   },

@@ -24,7 +24,7 @@ Stack-specific delegate of `task-code-review-api` for Rails.
 - Response-shape / error-envelope / status-code / pagination / resource-naming consistency pass
 - OpenAPI / rswag drift check against the serializers
 
-**Not for:** general review (`task-rails-review`), auth enforcement, strong-params bypass, or mass assignment (`task-rails-review-security`), idempotency-dedup correctness or behavior under a slow dependency (`task-rails-review-reliability`), throughput (`task-rails-review-perf`), an active incident (`/task-oncall-start` - mitigate first).
+**Not for:** general review (`task-rails-review`), auth enforcement, strong-params bypass, or mass assignment (`task-rails-review-security`), idempotency-dedup correctness or behavior under a slow dependency (`task-rails-review-reliability`), throughput (`task-rails-review-perf`).
 
 ## Seam With Adjacent Lenses
 

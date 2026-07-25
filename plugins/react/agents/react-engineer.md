@@ -87,7 +87,6 @@ category: engineering
 - Resilience / failure-mode review of existing code (error boundary placement, retry and backoff, offline and reconnect behavior, optimistic-update rollback, behavior when an API is down): `react-reliability-engineer` via `/task-react-review-reliability` - this agent designs resilience into new code; reviewing existing failure behavior goes there.
 - React code review / refactor: `/task-react-review` (umbrella with parallel perf / security / observability / reliability subagents). Test strategy: `/task-react-test`. Single-scope depth: the sibling `react-security-engineer`, `react-performance-engineer`, `react-observability-engineer`, or `react-reliability-engineer`.
 - Cross-service or multi-stack system design (API contract ownership, service splitting, landscape-wide architecture): hand up to the architecture plugin's `architecture-architect`. This agent owns only the React slice, after the system-level design lands.
-- Live production incident (failing now, users impacted): oncall plugin `/task-oncall-start`; post-incident analysis: `/task-postmortem`.
 - Stack-agnostic or non-React code review: core `/task-code-review`.
 
-Bundled asks: live incidents first, then reviews that gate a merge or release, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last. Standalone diagnosis and review handoffs dispatch at split time and run in parallel with this sequence.
+Bundled asks: reviews that gate a merge or release, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last. Standalone diagnosis and review handoffs dispatch at split time and run in parallel with this sequence.

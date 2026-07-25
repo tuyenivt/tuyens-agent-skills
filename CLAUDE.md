@@ -11,8 +11,7 @@ A **Claude Code plugin marketplace repository** - agent skills and agents for Cl
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-  architecture/  # Stack-agnostic architecture design, re-architecture, task breakdown, and release notes
-  oncall/        # Incident response workflows
+  architecture/  # Stack-agnostic architecture design, re-architecture, task breakdown, release notes, and incident response
   java/          # Java 21+ / Spring Boot 3.5+
   python/        # Python 3.11+ / FastAPI (primary), Django (secondary)
   ruby/          # Ruby 3.4+ / Ruby on Rails 7.2+
@@ -25,6 +24,8 @@ plugins/
 Each plugin folder has a `README.md`. Each skill lives in its own directory as `SKILL.md`. Agent files are plain Markdown in `plugins/<stack>/agents/`.
 
 `core` is required by all other plugins.
+
+**Plugin dependency rule: every plugin depends only on `core`, nothing else.** A plugin is installed with `core` and itself - never alongside another stack or domain plugin - so no plugin may reference skills, agents, or slash commands from a sibling plugin (a stack plugin must not point at `architecture`, `core` must not point at `architecture`, and so on). Cross-references like that never resolve at install time and must not be authored. Shared behavior belongs in `core`; if two plugins need the same atomic, it lives in `core` (see Skill Placement). The only permitted upward reference is any plugin -> `core`.
 
 **`flutter` and `react` are the marketplace's client/UI plugins**; every other stack plugin is server-side. Two consequences: their skills are authored fresh rather than adapted from a backend plugin (transactions, connection pools, and server middleware do not map to a client), and neither carries an `api` review lens - a client consumes API contracts rather than designing them, so `task-code-review-api` has no `flutter` or `react` row. In `react`, Server Action and Route Handler input validation is owned by `task-react-review-security`, not an api lens. Accessibility is a client-only concern with no universal lens; it is handled in `task-<stack>-implement` and checked at baseline depth in the umbrella's Phase E, alongside adaptivity and localization for `flutter`.
 
@@ -54,11 +55,11 @@ user-invocable: true # false = atomic skill, hidden from slash menu
 A skill belongs in `core` when **all** hold:
 
 1. It is atomic (`user-invocable: false`), not a workflow.
-2. It is referenced by skills/agents in two or more other plugins, OR is needed by a `core` workflow.
+2. It is needed by two or more other plugins, OR is needed by a `core` workflow. Because no plugin may reference a sibling (see the Plugin dependency rule), a skill shared by multiple plugins must live in `core` - that is the only place all of them can reach it.
 3. It is stack-agnostic.
-4. It does not encode a single plugin's domain identity (ADRs and release plans are architecture's; postmortems are oncall's).
+4. It does not encode a single plugin's domain identity (ADRs, release plans, incident response, and postmortems are architecture's).
 
-Workflow skills stay in their domain plugin. Skills are resolved by name, not path, so moving a skill is a directory rename - `Use skill: <name>` references continue to work.
+Workflow skills stay in their domain plugin. Skills are resolved by name, not path, so moving a skill is a directory rename - `Use skill: <name>` references continue to work, provided both skills ship in the same installed plugin set (in practice: the referencing plugin and `core`).
 
 ## Environment
 

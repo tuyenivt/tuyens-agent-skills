@@ -22,7 +22,7 @@ Go-aware review naming GORM `Preload` / `Joins` / `Select`, sqlx `In` / `NamedEx
 - Pre-merge perf pass on ORM queries, goroutine fan-out, channels, allocation paths
 - Quarterly N+1 / pool / leak sweep
 
-**Not for:** general review (`task-go-review`), security (`task-go-review-security`), production incident (`/task-oncall-start`), pre-implementation (`task-go-implement`).
+**Not for:** general review (`task-go-review`), security (`task-go-review-security`), pre-implementation (`task-go-implement`).
 
 ## Depth
 
