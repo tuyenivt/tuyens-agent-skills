@@ -32,12 +32,14 @@ When `findings` is empty, return the empty table and the tally `0 verified, 0 re
 ## Rules
 
 - **Verify against code, not against the diff summary.** Read the cited `file:line` at `head_ref` (`git show <head_ref>:<path>`). A finding whose claim does not match what the code actually does is a false positive - drop it. Cited code the diff itself deletes is also `Dropped` (evidence: `resolved by diff`) - removed code is not a false positive, but it is nothing to report either. No other verdict removes a finding.
+- **Absence claims are verified by reading the definition, not by a failed search.** A finding that something is missing - no validation, no guard, a field that does not exist, a case not handled - is confirmed only by reading the construct that would hold it: the DTO or model where the field would be declared, the middleware chain the route passes through, the switch that would carry the case. "I searched for the name and found nothing" is not evidence; the symbol may be generated, inherited, injected, or named differently. When the defining construct cannot be located, the claim is unsettled, not false - it takes `(unverified: absence not confirmed at a definition)` under the uncertainty rule below, never a bare `Confirmed`.
 - **Attribution is not validity.** Whether the diff introduced a problem and whether the problem is real are separate questions, resolved in that order: confirm the claim first, then attribute. Never drop a confirmed finding solely because the diff did not introduce it.
 - **Attribute from evidence, not impression.** A finding is `Confirmed` (introduced by this diff) only when the cited construct appears in the diff's added lines. When the construct is unchanged, confirm with `git blame -L <line>,<line> <base_ref> -- <path>`; a commit older than the diff means `Pre-existing`, and blame that cannot resolve the path or line at `base_ref` means the construct postdates the base - `Confirmed`. `base_ref` is always the PR's original base, on incremental rounds too - code this PR added in an earlier round is `Confirmed`, never `Pre-existing`. Read-only git commands only.
 - **Reachability changes severity, not existence.** A pre-existing defect the diff makes newly reachable, newly exploitable, or newly load-bearing stays at its original label and is attributed `Pre-existing (newly reachable)`. Name what the diff changed about its reachability.
 - **De-escalate untouched pre-existing findings once, never below `[Recommend]`.** A `Pre-existing` finding on code the diff neither changed nor made newly reachable drops `[Must]` -> `[Recommend]`. It is context for the author, not a merge blocker for this PR. `[Recommend]` findings keep their label.
 - **One verdict per finding.** Verdicts are `Confirmed`, `Pre-existing`, `Pre-existing (newly reachable)`, and `Dropped`. Preserve the original claim wording; this skill re-labels and annotates, it does not rewrite findings. Correcting a stale `file:line` (Step 1) is the one exception.
-- **Uncertainty does not delete.** When the cited code cannot be read (path not in the repo, vendored, generated) or the claim cannot be settled either way, keep the finding at its drafted label with verdict `Confirmed` - the conservative default: what cannot be read is never de-escalated or dropped - and append `(unverified: <reason>)` both to its Evidence and to the published finding's inline annotation. Silence is not a false positive.
+- **Uncertainty does not delete.** When the cited code cannot be read (path not in the repo, generated, or readable but governed by configuration the repo does not contain) or the claim cannot be settled either way, keep the finding at its drafted label with verdict `Confirmed` - the conservative default: what cannot be settled is never de-escalated or dropped - and append `(unverified: <reason>)` both to its Evidence and to the published finding's inline annotation. `(unverified: <reason>)` is a qualifier on a verdict, not a verdict; every row still carries one of the four. Silence is not a false positive.
+- **A claim about something the repo does not contain is unverified, not confirmed.** When the construct that would settle the claim lives outside the tree - a schema or migration for a missing index, an infra manifest for a missing limit, a gem or package the repo only depends on - the finding takes `(unverified: <construct> not in repo)`. Blame on a related line attributes the code that *is* present; it does not confirm the absence.
 
 ## Pattern
 
@@ -96,6 +98,21 @@ Annotate every surviving non-`Confirmed` finding - and every unverified one - in
 ```
 
 `N` counts `Confirmed` rows, `M` both `Pre-existing` verdicts, `K` `Dropped`. Consuming workflows publish only rows whose Verdict is not `Dropped`, carrying the `Label` column as the finding's label. The tally line goes in the report Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`.
+
+The table holds one row per finding received, `Dropped` rows included - it is the audit trail of what was ruled on, and a drop with its disproving evidence is the most useful row in it. Every finding received appears exactly once: two findings that resolve to the same `file:line` stay separate rows when they make different claims. When every finding drops, emit the full table and the tally with `N` and `M` at zero; that is a complete result, not an empty one.
+
+**Evidence is quoted code plus what it settles.** Every row cites source read at the relevant ref: the verbatim line the finding turns on, or - for an absence claim - the construct that would hold the missing thing, quoted at the point where it is absent. Then one clause on what that text settles. The two exceptions are `resolved by diff` and `(unverified: <reason>)`, which stand alone.
+
+The angle brackets below mark where the real path goes - write `internal/handler/search.go:19`, never `<handler>:19`.
+
+```
+Confirmed      | `<path>:42  query built by string interpolation of req.filter` - no validation between bind and query
+Confirmed      | `<path>:8-14  field declared, no validation annotation` - absence read at the definition, not by search
+Pre-existing   | blame `a1b2c3d` (2 releases before base) - construct unchanged, diff adds no new caller
+Dropped        | `<path>:12  validation middleware registered on this route` - claim false, input validated before the handler
+```
+
+A row whose Evidence only restates the claim in other words has not been verified. Re-read the code, or record it under the uncertainty rule as `(unverified: <reason>)`.
 
 ## Avoid
 
