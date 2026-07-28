@@ -38,7 +38,7 @@ Apply in order. A step that does not fit the artifact (e.g., Section 6 scoring o
 
 ### 1. Intake
 
-State in one sentence each: the problem (per the artifact), stated scope and non-goals, stated NFRs/constraints, the author's recommendation. For multiple artifacts on the same problem - or a single artifact with three or more considered alternatives (an ADR) - run `architecture-proposal-compare` first, then apply the rest of the lens to the recommended option.
+State in one sentence each: the problem (per the artifact), stated scope and non-goals, stated NFRs/constraints, the author's recommendation. For multiple artifacts on the same problem - or a single artifact with three or more considered alternatives (an ADR) - compare them first (see `task-design-architecture` Review Mode), then apply the rest of the lens to the recommended option.
 
 ### 2. Completeness Audit
 

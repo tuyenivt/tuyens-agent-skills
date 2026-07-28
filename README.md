@@ -101,13 +101,10 @@ I want to...
   design/review system, API, diagrams     -> /task-design-architecture [architecture]
   write tests                             -> /task-code-test
   create a PR description                 -> /task-pr-create
-  write a postmortem                      -> /task-postmortem (run after root-cause) [architecture]
   hand off an on-call shift               -> /task-oncall-start [architecture]
   onboard to a codebase                   -> /task-onboard
-  plan/review a database migration        -> /task-db-migration [architecture]
-  decompose monolith into services        -> /task-decompose-monolith [architecture]
-  consolidate over-split services         -> /task-consolidate-services [architecture]
-  modernize a legacy system               -> /task-modernize-legacy [architecture]
+  plan a migration (decompose / consolidate /
+    modernize / schema change)             -> /task-migrate-architecture [architecture]
   assess risk on a PR / change            -> /task-code-review
   check for security issues               -> /task-code-review-security
   check for performance issues            -> /task-code-review-perf
@@ -115,7 +112,6 @@ I want to...
   check for reliability gaps              -> /task-code-review-reliability
   check API contract / compatibility      -> /task-code-review-api
   assess a version upgrade                -> /task-dependency-upgrade [architecture]
-  draft release notes from a diff         -> /task-release-notes [architecture]
 ```
 
 ### Stack-Specific Skills (language plugins)
@@ -195,7 +191,7 @@ React / Next.js (plugin: react)
 **Common decision points:**
 
 - "Universal entry points vs stack-specific" - most `task-code-*` skills (`review`, `review-perf`, `review-security`, `review-observability`, `review-reliability`, `test`) are **thin routers**: they auto-detect your stack and dispatch to `/task-<stack>-<verb>`. Use the universal entry point if unsure; for installed language plugins, calling the stack-specific skill directly skips the routing layer. `/task-onboard` is a **composing workflow**: it remains a direct entry point and weaves a stack-specific atomic into a single output. `/task-implement` is a router (delegates to `/task-<stack>-implement`).
-- "Review code" vs "Review a design" - `/task-code-review` (and stack-specific reviews) target source code and PRs, and also handle pre-merge risk analysis of a change. Architecture workflows (`/task-design-architecture`, `/task-db-migration`, `/task-dependency-upgrade`, `/task-decompose-monolith`, `/task-consolidate-services`, `/task-modernize-legacy`, `/task-breakdown-design`) each double as a review workflow for the corresponding artifact - paste an existing artifact instead of authoring requirements.
+- "Review code" vs "Review a design" - `/task-code-review` (and stack-specific reviews) target source code and PRs, and also handle pre-merge risk analysis of a change. Architecture workflows (`/task-design-architecture`, `/task-migrate-architecture`, `/task-dependency-upgrade`, `/task-breakdown-design`) each double as a review workflow for the corresponding artifact - paste an existing artifact instead of authoring requirements.
 - "Design-to-tasks breakdown" vs "Architecture" - `/task-breakdown-design` turns an approved design into a phased, dependency-ordered task graph with effort sizing (or, in review mode, critiques a breakdown someone else authored). Architecture produces the design proposal itself (boundaries, failure modes). Run architecture first, then break the resulting design into tasks.
 - "Root cause" vs "Postmortem" - root cause runs during or immediately after an incident. Postmortem runs after resolution to extract systemic improvements.
 - "PR conflict analysis" vs "Code review" - conflict analysis detects semantic conflicts across concurrent PRs (shared schema, API, shared code). Code review evaluates a single PR for quality. Run conflict analysis before batch-merging a sprint.

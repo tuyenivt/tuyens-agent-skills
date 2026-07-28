@@ -91,7 +91,7 @@ How Claude reasons and acts in this repo, in addition to the technical rules abo
 ### Composition Contracts
 
 - **Workflow skills must load `Use skill: behavioral-principles` as Step 1**, before any other delegation including `stack-detect`. Universal and unconditional - the behavioral rules must be in effect for every subsequent step.
-- Workflows that adapt output to the project's stack load `Use skill: stack-detect` immediately after behavioral-principles, as Step 2 (the shipped convention in core and stack routers). Workflows that don't depend on stack (e.g. `task-db-migration`) skip it entirely.
+- Workflows that adapt output to the project's stack load `Use skill: stack-detect` immediately after behavioral-principles, as Step 2 (the shipped convention in core and stack routers). Workflows that don't depend on stack skip it entirely, as do stack-independent branches within a workflow (e.g. `task-migrate-architecture` skips it for Shape: Schema, which is engine-driven rather than stack-driven).
 - Atomic skills that consume `stack-detect` output declare it at the top of the body with a blockquote: `> Load `Use skill: stack-detect` first to determine the project stack.` The consuming workflow loads `stack-detect`, not the atomic skill itself.
 
 ### Skill Content Standards

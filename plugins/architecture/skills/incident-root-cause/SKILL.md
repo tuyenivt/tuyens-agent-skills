@@ -85,7 +85,7 @@ Use skill: `ops-observability`. For each gap: missing signal → diagnostic ques
 
 ### Step 6 - Immediate Prevention Notes
 
-Capture 1-3 items the on-call team can start within the next hour that prevent recurrence in the current incident window (e.g., shipping the per-attempt timeout, enabling the breaker flag). Each: addresses the failure class, has an ETA, states blast radius reduction. Longer-horizon prevention belongs in `task-postmortem` Step 7 - do not produce a guardrail/persistence table here.
+Capture 1-3 items the on-call team can start within the next hour that prevent recurrence in the current incident window (e.g., shipping the per-attempt timeout, enabling the breaker flag). Each: addresses the failure class, has an ETA, states blast radius reduction. Longer-horizon prevention belongs in the team's own post-incident write-up - do not produce a guardrail/persistence table here.
 
 ## Output
 

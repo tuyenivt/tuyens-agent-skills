@@ -34,7 +34,13 @@ Run the Design Model sections the chosen depth produces (all 12 at `standard`).
 
 ### Review Mode
 
-For 2+ proposals on the same problem: use `architecture-proposal-compare` first, then apply Review Mode to the recommended proposal.
+For 2+ proposals on the same problem, compare first, then apply Review Mode to the winner.
+
+**Comparing proposals.** Score every proposal on the six criteria from `architecture-review-lens` Section 6 (Boundary clarity, Failure containment, Consistency model, Operability, Reversibility, Cost and complexity) at **Strong / Adequate / Weak / Not addressed / N/A**, each with a one-clause evidence citation; longer reasoning goes in a per-proposal profile naming its strongest and weakest criterion plus any assumption conflicting with the problem's constraints. Apply the same criteria to all - missing information scores Not addressed, and the omission itself is the citation. Score stated mechanisms and their direct implications; a performance promise without a mechanism is an assertion. More than three candidates: pre-screen to the strongest three against the binding constraints, recording each elimination in one line.
+
+State the shared problem and its binding constraints (NFRs, team capacity, volume, timeline) before the matrix, and flag scope mismatch (proposals solving different problems) separately from coverage gap (a proposal omitting criteria) - on mismatch, compare against the full underlying problem. Complementary proposals each solving a real problem resolve to which to fund first, with the other recorded as follow-up.
+
+Close with a named winner - a tie is not a valid output. The recommendation names the decisive criteria (those the stated constraints make non-negotiable), the key trade-off accepted, any gaps the winner must close before adoption, and anything worth carrying over from rejected proposals. When the artifact contains an explicit author recommendation (e.g., an ADR author's pick), explicitly agree with or overturn it with reasoning; a proposal advocating itself is not a recommendation. Do not recommend a hybrid when one proposal is clearly stronger, and do not mistake more detail or better polish for more substance.
 
 For a single proposal:
 

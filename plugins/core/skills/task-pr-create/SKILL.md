@@ -18,7 +18,7 @@ Turns a git diff into a reviewer-ready PR description: title, summary, risk, tes
 - When the diff is large and reviewers need a clear summary
 - When you want a consistent format without writing it by hand
 
-**Not for:** code-quality review (`task-code-review`), release notes (`task-release-notes`).
+**Not for:** code-quality review (`task-code-review`).
 
 ## Inputs
 

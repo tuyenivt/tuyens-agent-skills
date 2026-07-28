@@ -9,7 +9,7 @@ user-invocable: false
 
 # Strangler Fig Pattern
 
-> Load `Use skill: stack-detect` first. Primary consumers: `task-decompose-monolith` Section 4, `task-modernize-legacy` Section 5.
+> Load `Use skill: stack-detect` first. Primary consumer: `task-migrate-architecture` Section 5 (Phasing and Cutover).
 
 ## When to Use
 
