@@ -163,10 +163,10 @@ Checks:
 
 **API contract PRs** - run when the diff carries a contract-change signal: a removed / renamed / retyped serializer attribute, a changed rendered status code, a newly `permit`-ted required field or tightened validation, a new public route in a `/v1/`-versioned or external API namespace, a `render json:` on a raw AR model with no serializer, or an rswag / `openapi.yaml` edit. Use skills `backend-api-guidelines`, `ops-backward-compatibility`:
 
-- [ ] Breaking change (removed/renamed/retyped attribute, tightened validation, newly required param, changed status or error shape) carries a version bump or expand-contract plan; "no external callers" backed by a search
+- [ ] Breaking change (removed/renamed/retyped attribute, tightened validation, newly required param, changed status or error shape) carries a version bump or expand-contract plan; "no external callers" backed by a search; when consumption is unknown, treat a `/v1/`-versioned or spec-published surface as externally consumed
 - [ ] Responses rendered through serializers, never a raw AR model; errors follow RFC 9457; collections paginated
 - [ ] rswag / `openapi.yaml` matches the code - changed endpoints, schemas, status codes, and error shapes present and accurate
-- [ ] Each finding names who breaks and how. High = unversioned breaking change to an externally consumed contract or a leaked AR model; Medium = internal breaking change with no coordinated-deploy note, inconsistent status/error envelope, unpaginated unbounded collection; Low = naming drift with no consumer impact
+- [ ] Each finding names who breaks and how (for a leaked AR model: what it exposes and who couples to it). Severity maps to labels: High -> `[Must]` = unversioned breaking change to an externally consumed contract, or a raw AR model rendered on an externally consumed / versioned surface - a contract-shape finding this gate files itself (the Step 10 merge dedups with +Sec, per the dual-natured rule); Medium -> `[Recommend]` = internal breaking change with no coordinated-deploy note, inconsistent status/error envelope, unpaginated unbounded collection, rswag / `openapi.yaml` out of sync with the code; Low = naming drift with no consumer impact - below the reporting bar, write nothing. A raw AR model on an internal-only surface follows the Step 5 security carve-out instead ([Recommend] + verify note when +Sec is absent; core silent when +Sec runs); one finding per `file:line` either way
 
 ### Step 6 - Architecture
 
