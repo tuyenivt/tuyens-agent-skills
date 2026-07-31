@@ -35,7 +35,7 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Cross-service or multi-stack redesign emerging from review findings, including the server contract this client consumes | architecture plugin |
 | Non-Flutter or stack-agnostic review | core `/task-code-review` |
 
-- The server-side API contract is not this agent's to review. A finding that the *client* mishandles a contract stays here; a finding that the *contract itself* is wrong routes to the team owning that service, or to the architecture plugin when it spans services. There is no Flutter `api` review lens for this reason.
+- The server-side API contract is not this agent's to review. A finding that the *client* mishandles a contract stays here; a finding that the *contract itself* is wrong routes to the team owning that service, or to the architecture plugin when it spans services.
 - Bundled asks: anything actively harming users or blocking the team first, routed to whichever lens or agent owns it; then blocking PR reviews; then remaining lens work and non-urgent `flutter-engineer` triage, higher potential user harm first within the tier; then deferred refactors - lens findings before a refactor that would rewrite the same widgets. Local work gated on a handed-up redesign sequences after that contract lands.
 
 ## Context This Agent Maintains

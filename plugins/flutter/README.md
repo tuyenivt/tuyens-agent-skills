@@ -50,7 +50,7 @@ Guidance degrades predictably rather than exploding into a full platform matrix.
 | `task-flutter-review-reliability`     | `flutter-reliability-engineer`   | Reliability review for timeouts and cancellation, offline behaviour, retry and backoff, optimistic-update rollback, UI state completeness, background tasks. |
 | `task-flutter-test`                   | `flutter-test-engineer`          | Test strategy and scaffolding across unit, widget, golden, and `integration_test` layers, with mocktail, provider overrides, and golden stability. |
 
-> There is no `task-flutter-review-api`. A client consumes API contracts rather than designing them, so the universal `/task-code-review-api` router has no Flutter row. The concern that does reach clients - installed old app versions must survive server contract changes - is covered by core's `ops-backward-compatibility`.
+> Flutter does not review API contract design - a client consumes API contracts rather than designing them. The concern that does reach clients - installed old app versions must survive server contract changes - is covered by core's `ops-backward-compatibility`.
 
 > Adaptivity, accessibility, and localization have no dedicated review lens. They are designed in `task-flutter-implement` and checked at baseline depth in `task-flutter-review` Phase E.
 

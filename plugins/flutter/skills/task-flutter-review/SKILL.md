@@ -46,7 +46,7 @@ Staff-level Flutter/Dart review umbrella. Covers correctness, architecture, AI q
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
-There is no `+Api` scope. This client consumes API contracts rather than designing them; a finding that the client mishandles a contract belongs to Core or +Rel, and a finding that the contract itself is wrong routes to the owning service or the architecture plugin.
+This client consumes API contracts rather than designing them: a finding that the client mishandles a contract belongs to Core or +Rel, and a finding that the contract itself is wrong routes to the owning service or the architecture plugin.
 
 **Auto-escalation signals:**
 

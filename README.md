@@ -110,7 +110,6 @@ I want to...
   check for performance issues            -> /task-code-review-perf
   check for observability gaps            -> /task-code-review-observability
   check for reliability gaps              -> /task-code-review-reliability
-  check API contract / compatibility      -> /task-code-review-api
   assess a version upgrade                -> /task-dependency-upgrade [architecture]
 ```
 
@@ -124,7 +123,6 @@ Java / Spring Boot (plugin: java)
   security review                      -> /task-spring-review-security
   observability review                 -> /task-spring-review-observability
   reliability review                   -> /task-spring-review-reliability
-  API-contract review                  -> /task-spring-review-api
   test strategy / scaffolds            -> /task-spring-test
 
 Python / FastAPI / Django (plugin: python)
@@ -134,7 +132,6 @@ Python / FastAPI / Django (plugin: python)
   security review                      -> /task-python-review-security
   observability review                 -> /task-python-review-observability
   reliability review                   -> /task-python-review-reliability
-  API-contract review                  -> /task-python-review-api
   test strategy / scaffolds            -> /task-python-test
 
 Ruby on Rails (plugin: ruby)
@@ -144,7 +141,6 @@ Ruby on Rails (plugin: ruby)
   security review                      -> /task-rails-review-security
   observability review                 -> /task-rails-review-observability
   reliability review                   -> /task-rails-review-reliability
-  API-contract review                  -> /task-rails-review-api
   test strategy / scaffolds            -> /task-rails-test
 
 Node.js / TypeScript / NestJS (plugin: node)
@@ -154,7 +150,6 @@ Node.js / TypeScript / NestJS (plugin: node)
   security review                      -> /task-node-review-security
   observability review                 -> /task-node-review-observability
   reliability review                   -> /task-node-review-reliability
-  API-contract review                  -> /task-node-review-api
   test strategy / scaffolds            -> /task-node-test
 
 Go / Gin (plugin: go)
@@ -164,7 +159,6 @@ Go / Gin (plugin: go)
   security review                      -> /task-go-review-security
   observability review                 -> /task-go-review-observability
   reliability review                   -> /task-go-review-reliability
-  API-contract review                  -> /task-go-review-api
   test strategy / scaffolds            -> /task-go-test
 
 Flutter / Dart (plugin: flutter)
@@ -186,7 +180,7 @@ React / Next.js (plugin: react)
   test strategy / scaffolds            -> /task-react-test
 ```
 
-> The client plugins (`flutter`, `react`) have no `review-api` counterpart: a client consumes API contracts rather than designing them. In `react`, Server Action and Route Handler input validation is covered by `/task-react-review-security`. Accessibility is handled during `/task-<stack>-implement` and checked at baseline depth inside the stack umbrella review, alongside adaptivity and localization for `flutter`.
+> API contract and compatibility review runs inside the general review (`/task-code-review` and each stack umbrella), gated on changes to routes, controllers, DTOs, serializers, or a published spec. In `react`, Server Action and Route Handler input validation is covered by `/task-react-review-security`. Accessibility is handled during `/task-<stack>-implement` and checked at baseline depth inside the stack umbrella review, alongside adaptivity and localization for `flutter`.
 
 **Common decision points:**
 

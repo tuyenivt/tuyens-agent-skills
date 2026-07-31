@@ -1,6 +1,6 @@
 ---
 name: task-python-review
-description: "Python / FastAPI / Django code review: async pitfalls, blocking I/O, ORM leaks, Pydantic v2, auth; spawns perf/security/obs/reliability/api subagents."
+description: "Python / FastAPI / Django code review: async pitfalls, blocking I/O, ORM leaks, Pydantic v2, auth; spawns perf/security/obs/reliability subagents."
 agent: python-tech-lead
 metadata:
   category: backend
@@ -13,7 +13,7 @@ user-invocable: true
 
 # Python Code Review
 
-Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability / reliability / api subagents in parallel for extra scopes. Runs standalone with full PR/branch resolution.
+Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability / reliability subagents in parallel for extra scopes. Runs standalone with full PR/branch resolution.
 
 ## When to Use
 
@@ -26,7 +26,7 @@ Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, 
 - Pre-implementation design (`task-python-implement`)
 - Single-error debug
 - New-system architecture (`task-design-architecture`)
-- Single-scope reviews - delegate to `task-python-review-perf` / `-security` / `-observability` / `-reliability` / `-api`
+- Single-scope reviews - delegate to `task-python-review-perf` / `-security` / `-observability` / `-reliability`
 
 ## Depth Levels
 
@@ -46,8 +46,7 @@ Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, 
 | + Sec | Core + `task-python-review-security` subagent |
 | + Obs | Core + `task-python-review-observability` subagent |
 | + Rel | Core + `task-python-review-reliability` subagent |
-| + Api | Core + `task-python-review-api` subagent |
-| Full | Core + all five subagents in parallel |
+| Full | Core + all four subagents in parallel |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
@@ -57,7 +56,6 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 - **+Perf:** new Alembic / Django migration, new ORM query (`select(...)` / `.filter(...)`), new `selectinload` / `prefetch_related`, new pagination, new endpoints with payloads, loops calling DB or HTTP, new `@cache` / `@lru_cache` / Redis read paths
 - **+Obs:** new service module, new external client (`httpx.AsyncClient`, `requests.Session`), new Celery task or `@shared_task`, logging config change (`LOGGING` dict / `structlog`), new Prometheus metric, new `@app.on_event` / lifespan handler, new Django signal
 - **+Rel:** new `httpx` / external client without an explicit `Timeout`, new `tenacity` / retry config, new Celery task without `acks_late` / an idempotency guard, `BackgroundTasks` for a critical side effect (payment, email), unbounded `asyncio.gather`, `save` + publish dual write or `.delay()` inside a transaction
-- **+Api:** a *contract-change* signal (not merely a new internal endpoint) - a removed / renamed / retyped response-model field, a changed `status_code`, a new **required** request field or tightened validator (`Field(...)`, `pattern`, `extra="forbid"`), a new public route on a `/v1/`-versioned or externally consumed API, a route returning a raw SQLAlchemy / ORM row with no `response_model` (or a DRF `ModelSerializer` with `"__all__"`), or a drf-spectacular schema edit
 - **2+ categories → Full**
 
 ## Invocation
@@ -188,6 +186,7 @@ Apply atomic skills. Each owns the canonical patterns; this phase flags deviatio
 - Use skill: `python-async-patterns` for any new or modified `async def` / event-loop code
 - Use skill: `python-celery-patterns` if diff touches Celery tasks or `@shared_task`
 - Use skill: `python-migration-safety` if diff touches `migrations/versions/` or `<app>/migrations/`. Also use skill: `ops-backward-compatibility` for client/in-flight impact
+- **API contract change** - when the diff carries a contract-change signal (a removed / renamed / retyped response-model field, a changed `status_code`, a new **required** request field or tightened validator (`Field(...)`, `pattern`, `extra="forbid"`), a new public route on a `/v1/`-versioned or externally consumed API, a route returning a raw SQLAlchemy / ORM row with no `response_model` or a DRF `ModelSerializer` with `"__all__"`, or a drf-spectacular schema edit), use skills `backend-api-guidelines` and `ops-backward-compatibility`. Judge breakage from the consumer's view ("no external callers" needs a search); responses go through a `response_model` / serializer, never a raw ORM row; errors follow RFC 9457; collections paginated; the drf-spectacular / OpenAPI schema matches the code. Each finding names who breaks and how. High = unversioned breaking change to an externally consumed contract or a leaked ORM row; Medium = internal breaking change with no coordinated-deploy note, inconsistent status / error envelope, unpaginated unbounded collection; Low = naming drift with no consumer impact
 
 **Additional Python-specific checks the atomics don't own:**
 
@@ -267,9 +266,8 @@ If scope is **Core only**, skip. For each selected scope, spawn one independent 
 | + Sec  | `task-python-review-security`      | `python-security-engineer`      |
 | + Obs  | `task-python-review-observability` | `python-observability-engineer` |
 | + Rel  | `task-python-review-reliability`   | `python-reliability-engineer`   |
-| + Api  | `task-python-review-api`           | `python-api-engineer`           |
 
-`Full` = 5 subagents.
+`Full` = 4 subagents.
 
 **Subagent prompt contract** - each must include:
 
@@ -316,7 +314,7 @@ Use skill: `review-report-writer` with `report_type: review` and these checkpoin
 
 - `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
 - `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Perf` -> `+perf`, `+Sec` -> `+sec`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `+Api` -> `+api`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = python-<framework>` (e.g., `python-fastapi`, `python-django`)
+- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Perf` -> `+perf`, `+Sec` -> `+sec`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = python-<framework>` (e.g., `python-fastapi`, `python-django`)
 
 Write before ending; print the confirmation line.
 
@@ -341,7 +339,7 @@ The fence below delimits the template for display only - it is not part of the r
 **Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Python <version>
 **Framework:** FastAPI <version> | Django <version> | mixed
-**Scope:** Core | +Sec | +Perf | +Obs | +Rel | +Api | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
+**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
 **Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
@@ -409,7 +407,7 @@ _Omit if no actionable findings._
 - Apply Python conventions, not generic backend conventions
 - Provide actionable feedback with Python code examples
 - Default Core; auto-escalate; honor `core-only`
-- Delegate perf / security / observability / reliability / api depth to subagents
+- Delegate perf / security / observability / reliability depth to subagents
 
 ## Self-Check
 
@@ -421,7 +419,7 @@ _Omit if no actionable findings._
 - [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical
 - [ ] Risk level + blast radius stated before any finding
 - [ ] Phase B: applied atomic skills; checked test coverage, async discipline, Pydantic/DRF rules, authorization, response model hygiene, Idempotency-Key, race safety
-- [ ] Phase B migration safety delegated to `python-migration-safety` when migrations changed
+- [ ] Phase B migration safety delegated to `python-migration-safety` when migrations changed; API contract checks ran when a route, response model, serializer, or schema changed
 - [ ] Phase C: layering, DI, settings discipline, signal/listener discipline, package boundaries, multi-tenant
 - [ ] Phase D: `complexity-review` + the framework-matching necessity skill applied; Python AI smells covered
 - [ ] Phase E: naming, magic numbers, function length, logging hygiene
@@ -444,7 +442,7 @@ _Omit if no actionable findings._
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
 - Generic backend conventions when a Python idiom exists ("extract to a service module", not "extract to a helper class")
 - Vague feedback ("this could be better"); blocking on personal preference
-- Duplicating perf / security / observability / reliability / api depth here when the dedicated subagent owns them
+- Duplicating perf / security / observability / reliability depth here when the dedicated subagent owns them
 - Sequential extra scopes that could parallelize
 - Appending raw subagent reports instead of merging
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).

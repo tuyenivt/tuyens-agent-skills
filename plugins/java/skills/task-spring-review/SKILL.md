@@ -1,6 +1,6 @@
 ---
 name: task-spring-review
-description: "Spring Boot PR review: layering, fat controllers, JPA leaks, @Transactional misuse, VT pinning; parallel perf/security/obs/reliability/api subagents."
+description: "Spring Boot PR review: layering, fat controllers, JPA leaks, @Transactional misuse, VT pinning; parallel perf/security/obs/reliability subagents."
 agent: java-tech-lead
 metadata:
   category: backend
@@ -11,12 +11,12 @@ user-invocable: true
 
 # Spring Boot Code Review
 
-Spring-aware staff-level review umbrella. Stack-specific delegate of `task-code-review`. Runs standalone with full PR/branch resolution. Coordinates Spring perf / security / observability / reliability / api subagents in parallel.
+Spring-aware staff-level review umbrella. Stack-specific delegate of `task-code-review`. Runs standalone with full PR/branch resolution. Coordinates Spring perf / security / observability / reliability subagents in parallel.
 
 ## When to Use
 
 - Pre-merge Spring Boot PR review, post-AI-generation quality gate, architecture drift detection.
-- **Not for:** design (`task-spring-implement`), debugging, new-system architecture (`task-design-architecture`), single-scope reviews (delegate to `task-spring-review-{perf,security,observability,reliability,api}`).
+- **Not for:** design (`task-spring-implement`), debugging, new-system architecture (`task-design-architecture`), single-scope reviews (delegate to `task-spring-review-{perf,security,observability,reliability}`).
 
 ## Depth and Scope
 
@@ -34,8 +34,7 @@ Spring-aware staff-level review umbrella. Stack-specific delegate of `task-code-
 | + Sec             | `task-spring-review-security` subagent      |
 | + Obs             | `task-spring-review-observability` subagent |
 | + Rel             | `task-spring-review-reliability` subagent   |
-| + Api             | `task-spring-review-api` subagent           |
-| Full              | All five in parallel                        |
+| Full              | All four in parallel                        |
 
 **Auto-escalation signals** (Step 4 evaluates them; pass `core-only` to suppress):
 
@@ -43,7 +42,6 @@ Spring-aware staff-level review umbrella. Stack-specific delegate of `task-code-
 - **Perf:** new Flyway/Liquibase migration, new `@Query`/`@EntityGraph`, new `Pageable` endpoint, loop hitting DB/HTTP, new `@Cacheable`.
 - **Obs:** new `@Service`/external client (`RestClient`/`WebClient`/Feign), new `@Async`/`@Scheduled`, logging or actuator change, new Micrometer `Timer`/`Counter`, new `@TransactionalEventListener`.
 - **Reliability:** external client without an explicit timeout or breaker, new `@Retryable`/Resilience4j config, `save` + `kafkaTemplate.send` in one `@Transactional`, new `@KafkaListener`/`@RabbitListener`, new `@Async`/`@Scheduled` with an unbounded executor or queue, new idempotency-key or outbox flow.
-- **Api:** a *contract-change* signal (not merely a new internal endpoint) - a removed / renamed / retyped response-DTO field, a changed status code, a new **required** request field or tightened `@Valid` constraint (`@NotNull`, `@Size`), a new public route on a `/v1/`-versioned or externally consumed API, a `@RestController` returning a JPA `@Entity` directly, or an edit to a springdoc/OpenAPI spec.
 
 Two-plus categories -> Full. User-passed scope wins but signals are still recorded so the Summary documents what was deferred.
 
@@ -184,6 +182,13 @@ Logical correctness, error handling, backward compatibility, transaction boundar
 - [ ] Long backfills isolated from DDL, not inline in Flyway/Liquibase.
 - [ ] Rollback path documented.
 
+**API contract PRs** - run when the diff carries a contract-change signal: a removed / renamed / retyped response-DTO field, a changed status code, a new **required** request field or tightened `@Valid` constraint (`@NotNull`, `@Size`), a new public route on a `/v1/`-versioned or externally consumed API, a `@RestController` returning a JPA `@Entity` directly, or an edit to a springdoc/OpenAPI spec. Use skills `backend-api-guidelines`, `ops-backward-compatibility`:
+
+- [ ] Breaking change (removed/renamed/retyped field, tightened constraint, new required request field, changed status or error shape) carries a version bump or expand-contract plan; "no external callers" backed by a search, not an assumption.
+- [ ] Responses returned through DTOs/records/projections, never a raw `@Entity`; errors follow RFC 9457 via `@RestControllerAdvice`; collections paginated.
+- [ ] springdoc/OpenAPI spec matches the code - changed endpoints, schemas, status codes, and error shapes present and accurate.
+- [ ] Each finding names who breaks and how. High = unversioned breaking change to an externally consumed contract or a leaked `@Entity`; Medium = internal breaking change with no coordinated-deploy note, inconsistent status/error envelope, unpaginated unbounded collection; Low = naming drift with no consumer impact.
+
 ### Phase C - Spring Architecture Guardrails
 
 Use skill: `architecture-guardrail`.
@@ -232,9 +237,8 @@ Skip if Core only. Spawn the subagents the resolved scope requires immediately a
 | +Sec  | `task-spring-review-security`      | `java-security-engineer`      |
 | +Obs  | `task-spring-review-observability` | `java-observability-engineer` |
 | +Rel  | `task-spring-review-reliability`   | `java-reliability-engineer`   |
-| +Api  | `task-spring-review-api`           | `java-api-engineer`           |
 
-`Full` = 5 subagents.
+`Full` = 4 subagents.
 
 **Subagent prompt contract:** pass the resolved `base_ref`/`head_ref`, the already-read diff and commit log, depth level, and pre-confirmed stack. Subagent skips `review-precondition-check` and re-reading the diff. Return findings using its own Output Format.
 
@@ -274,7 +278,7 @@ Use skill: `review-report-writer` with `report_type: review` and these checkpoin
 
 - `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
 - `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `+Api` -> `+api`, `Full` -> `full` - the writer rejects unmapped values), `depth` (resolved/auto-promoted in Phase A), `stack = java-spring-boot`
+- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full` - the writer rejects unmapped values), `depth` (resolved/auto-promoted in Phase A), `stack = java-spring-boot`
 
 The report writer owns label semantics (`[Must]` / `[Recommend]` - no severity-mixed `[Blocker]`/`[High]`/`[Suggestion]`, no `[Nit]`/`[Consider]`/`[Praise]`).
 
@@ -289,7 +293,7 @@ The fence below delimits the template for display only - it is not part of the r
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Java <version> / Spring Boot <version>
-**Scope:** Core | +Sec | +Perf | +Obs | +Rel | +Api | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
+**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
 **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
@@ -352,7 +356,7 @@ Omit empty sections.
 - [ ] Step 3.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report
 - [ ] Step 4 - scope decision recorded with firing signals; user-pinned conflicts surfaced; scope expansion vs. prior round noted when applicable
 - [ ] Phase A - Risk and Blast Radius stated before findings; depth auto-promoted on Wide/Critical
-- [ ] Phase B - Spring idioms applied (transactions, JPA-in-API, authz coverage, exception advice, VT pinning, dual-write); migration safety where applicable; missing tests raised as named finding
+- [ ] Phase B - Spring idioms applied (transactions, JPA-in-API, authz coverage, exception advice, VT pinning, dual-write); migration safety where applicable; API contract checks ran when a route, controller, DTO, or springdoc spec changed; missing tests raised as named finding
 - [ ] Phase C - layering, anemic domain, constructor injection, configuration, boundaries, multi-tenant (skipped under the Phase A low-risk short-circuit)
 - [ ] Phase D - `complexity-review` + `spring-overengineering-review` invoked; remaining AI smells covered (skipped under the Phase A low-risk short-circuit)
 - [ ] Phase E - maintainability applied (skipped under the Phase A low-risk short-circuit)
@@ -373,7 +377,7 @@ Omit empty sections.
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
 - Generic backend phrasing when a Spring idiom exists ("extract to a `@Service`", not "helper class").
 - Vague feedback without a concrete Spring fix; blocking on personal preference; nitpicking absent project standard.
-- Running perf/security/observability/reliability/api when user passed `core-only`; sequential subagent runs when they could be parallel.
+- Running perf/security/observability/reliability when user passed `core-only`; sequential subagent runs when they could be parallel.
 - Appending raw subagent reports instead of one severity-ordered list.
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
 - Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

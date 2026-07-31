@@ -34,7 +34,7 @@ Stack-specific delegate of `task-code-review-reliability` for Flutter.
 - **vs. Observability:** obs owns whether the failure was reported; this lens owns whether the retry, timeout, and fallback exist. A retry with no log line is obs; a retry with no cap is reliability.
 - **vs. core Phase B:** `task-flutter-review` Phase B owns happy-path correctness, disposal, and `BuildContext` across async gaps; this lens owns partial failure, offline, and staleness. Disposal sits at the seam - a `CancelToken` never cancelled on dispose belongs here; a `StreamSubscription` never cancelled is a Phase B leak. The umbrella dedups.
 - **There is no UX lens.** A missing loading, error, or empty state is a reliability finding here - it is a hole in the screen's state machine and has no other home.
-- **There is no `+api` scope.** This client consumes contracts it does not own. How the client survives a contract it did not expect is this lens; whether the contract is well designed belongs to the owning service or the architecture plugin.
+- **This client consumes contracts it does not own.** How the client survives a contract it did not expect is this lens; whether the contract is well designed belongs to the owning service or the architecture plugin.
 
 ## Depth
 

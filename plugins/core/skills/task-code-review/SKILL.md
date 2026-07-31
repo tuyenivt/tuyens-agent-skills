@@ -16,11 +16,11 @@ Detects the project stack and delegates to the matching stack-specific review wo
 
 - PR review, pre-merge risk assessment, post-AI-generation quality gate.
 
-**Not for:** New-system architecture, security-only audits (`task-code-review-security`), perf-only (`task-code-review-perf`), observability-only (`task-code-review-observability`), reliability-only (`task-code-review-reliability`), API-contract-only (`task-code-review-api`).
+**Not for:** New-system architecture, security-only audits (`task-code-review-security`), perf-only (`task-code-review-perf`), observability-only (`task-code-review-observability`), reliability-only (`task-code-review-reliability`).
 
 ## Invocation
 
-`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | +rel | +api | full | core-only] [standard | deep] [--base <branch>]`
+`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | +rel | full | core-only] [standard | deep] [--base <branch>]`
 
 All flags are forwarded to the dispatched stack workflow.
 
@@ -71,7 +71,9 @@ Use skill: `review-precondition-check` with the user's target argument and any `
 
 **Phase A - Risk Snapshot.** Use skill: `review-pr-risk`. Use skill: `review-blast-radius`. State Risk Level (Low/Medium/High/Critical) and Blast Radius (Narrow/Moderate/Wide/Critical) before any line-level finding. If both are Low/Narrow and the diff touches no architecture-sensitive files (auth, middleware, API contracts, shared libs), produce Phase B findings only and skip C-E.
 
-**Phase B - Correctness and Safety.** Logical correctness, error handling, edge cases, transaction boundaries, unsafe shared-state mutation. Use skill: `ops-resiliency` for fault tolerance. Use skill: `backend-api-guidelines` when API contracts change. Use skill: `architecture-concurrency` when concurrency is present. Use skill: `ops-backward-compatibility` for migrations or contract changes. **Raise an explicit named finding when logic was added or modified without tests** ([Recommend] minimum; [Must] for critical paths).
+**Phase B - Correctness and Safety.** Logical correctness, error handling, edge cases, transaction boundaries, unsafe shared-state mutation. Use skill: `ops-resiliency` for fault tolerance. Use skill: `architecture-concurrency` when concurrency is present. **Raise an explicit named finding when logic was added or modified without tests** ([Recommend] minimum; [Must] for critical paths).
+
+**API contract gate (mandatory).** When the diff touches a route/handler registration, a controller, a request/response DTO or params schema, a serializer or response model, or a published spec file, Use skill: `backend-api-guidelines` and Use skill: `ops-backward-compatibility`. Both run - the first judges design, the second judges consumer breakage. Cover: contract compatibility from the consumer's view (removed/renamed/retyped field, tightened constraint, new required request field, changed status code or error shape is breaking until proven otherwise; "no callers" requires a search); response honesty (DTOs never raw ORM entities, RFC 9457 errors, collections paginated); versioning on breaking change; and **OpenAPI drift** - when the project publishes a spec or generated client, changed endpoints, schemas, status codes, and error shapes match the code. Each finding names who breaks and how, not just the deviated convention. Severity: High = unversioned breaking change to an externally consumed contract, or a leaked internal shape; Medium = breaking change to an internal contract without a coordinated-deploy note, inconsistent status code or error envelope, unpaginated unbounded collection; Low = naming drift with no consumer impact. When consumption is unknown, treat a published or versioned surface (`/v1/`, OpenAPI-documented) as externally consumed. Migrations and non-API contract changes still load `ops-backward-compatibility` on their own.
 
 **Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
 
@@ -81,7 +83,7 @@ Use skill: `review-precondition-check` with the user's target argument and any `
 
 **Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
-**Extra scopes.** If `+perf`, `+sec`, `+obs`, `+rel`, or `+api` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all five) with the read-once diff/log and the detected stack handle. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend; highest wins on duplicates); preserve `file:line` citations. At the API/security and API/reliability seams a single defect can surface in two scopes (a payment endpoint missing `Idempotency-Key`): keep the contract finding under `+api` and the enforcement/correctness finding under its lens, deduped to one line at the strongest intent.
+**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `+rel` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all four) with the read-once diff/log and the detected stack handle. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend; highest wins on duplicates); preserve `file:line` citations. A single defect can surface in both the Phase B contract gate and a sub-scope (a payment endpoint missing `Idempotency-Key` is a contract gap here and a dedup-correctness gap under `+rel`): keep each under its own lens, deduped to one line at the strongest intent.
 
 **Verify findings.** Use skill: `review-finding-verify` with the assembled findings (including any merged from sub-scopes), the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`.
 
@@ -163,7 +165,7 @@ _Omit sections with no findings._
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran
 - [ ] Step 3: if matched and available, stack workflow ran with all flags forwarded, Steps 4-5 skipped; if matched but unavailable, missing plugin named and fallback ran
-- [ ] Step 4: if no dispatch, SHAs captured; mode/round decided from `prior_checkpoint`; prior findings reconciled on incremental rounds; Phase A risk stated before line findings; missing tests raised as named finding; extra scopes spawned in parallel and merged without writing their own reports; `review-finding-verify` ran on the assembled findings with Dropped rows excluded; findings ordered Must > Recommend
+- [ ] Step 4: if no dispatch, SHAs captured; mode/round decided from `prior_checkpoint`; prior findings reconciled on incremental rounds; Phase A risk stated before line findings; the Phase B API contract gate ran when the diff touched a route, controller, DTO, serializer, or spec file; missing tests raised as named finding; extra scopes spawned in parallel and merged without writing their own reports; `review-finding-verify` ran on the assembled findings with Dropped rows excluded; findings ordered Must > Recommend
 - [ ] Step 5: report written via `review-report-writer` with all required inputs (fallback path only)
 
 ## Avoid

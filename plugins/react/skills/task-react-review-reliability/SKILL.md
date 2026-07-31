@@ -30,7 +30,7 @@ Client reliability: what the UI does when a request hangs, a mutation fails afte
 - **vs. Observability:** obs owns whether the failure was reported (`Sentry.captureException` in `error.tsx`, error-rate alerting); this lens owns whether the boundary, retry, and fallback exist at all. A boundary with no capture is obs; a route with no boundary is reliability.
 - **vs. Security:** a `fetch` retried against an auth-expired session is reliability; the session handling itself is security.
 - **vs. umbrella Phase B:** `task-react-review` Phase B owns happy-path correctness, hook rules, and cleanup; this lens owns partial failure, staleness, and offline. Cleanup sits at the seam - an in-flight request not aborted on unmount belongs here; a `setInterval` never cleared is a Phase B leak. The umbrella dedups.
-- **There is no `+api` scope for a client.** How the UI survives a response it did not expect is this lens; whether the contract is well designed belongs to the owning service or the architecture plugin.
+- **A client consumes contracts it does not own.** How the UI survives a response it did not expect is this lens; whether the contract is well designed belongs to the owning service or the architecture plugin.
 
 ## Depth
 
