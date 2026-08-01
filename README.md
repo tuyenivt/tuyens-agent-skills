@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `java`, `python`, `ruby`, `node`, `go`, `flutter`, and `react`.
+Single marketplace repository for Claude Code plugins: `architecture`, `java`, `python`, `ruby`, `node`, `go`, and `react`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -53,13 +53,6 @@ claude plugin install node@tuyens-agent-skills --scope project
 ```bash
 claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install go@tuyens-agent-skills --scope project
-```
-
-**Flutter / Dart project:**
-
-```bash
-claude plugin install core@tuyens-agent-skills --scope project
-claude plugin install flutter@tuyens-agent-skills --scope project
 ```
 
 **React / Next.js project:**
@@ -161,15 +154,6 @@ Go / Gin (plugin: go)
   reliability review                   -> /task-go-review-reliability
   test strategy / scaffolds            -> /task-go-test
 
-Flutter / Dart (plugin: flutter)
-  implement a new feature              -> /task-flutter-implement
-  staff-level code review              -> /task-flutter-review
-  performance review                   -> /task-flutter-review-perf
-  security review                      -> /task-flutter-review-security
-  observability review                 -> /task-flutter-review-observability
-  reliability review                   -> /task-flutter-review-reliability
-  test strategy / scaffolds            -> /task-flutter-test
-
 React / Next.js (plugin: react)
   implement a new feature              -> /task-react-implement
   staff-level code review              -> /task-react-review
@@ -180,7 +164,7 @@ React / Next.js (plugin: react)
   test strategy / scaffolds            -> /task-react-test
 ```
 
-> API contract and compatibility review runs inside the general review (`/task-code-review` and each stack umbrella), gated on changes to routes, controllers, DTOs, serializers, or a published spec. In `react`, Server Action and Route Handler input validation is covered by `/task-react-review-security`. Accessibility is handled during `/task-<stack>-implement` and checked at baseline depth inside the stack umbrella review, alongside adaptivity and localization for `flutter`.
+> API contract and compatibility review runs inside the general review (`/task-code-review` and each stack umbrella), gated on changes to routes, controllers, DTOs, serializers, or a published spec. In `react`, Server Action and Route Handler input validation is covered by `/task-react-review-security`. Accessibility is handled during `/task-<stack>-implement` and checked at baseline depth inside the stack umbrella review.
 
 **Common decision points:**
 
@@ -202,7 +186,6 @@ React / Next.js (plugin: react)
 | [ruby](plugins/ruby)                 | Ruby on Rails 7.2+                                                                                                                                                                  |
 | [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                                                                                                           |
 | [go](plugins/go)                     | Go 1.25+ / Gin                                                                                                                                                                      |
-| [flutter](plugins/flutter)           | Flutter / Dart 3.x client apps - Riverpod, go_router, Dio, Drift. Mobile primary, desktop secondary, web tertiary                                                                    |
 | [react](plugins/react)               | React 19 / TypeScript client apps - Next.js App Router (primary), Vite (secondary). Server Components, TanStack Query, Zustand, Tailwind                                             |
 
 ## Notes

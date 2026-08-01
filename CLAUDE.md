@@ -17,7 +17,6 @@ plugins/
   ruby/          # Ruby 3.4+ / Ruby on Rails 7.2+
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
   go/            # Go 1.25+ / Gin / GORM+sqlx
-  flutter/       # Flutter / Dart 3.x - client plugin (mobile primary, desktop secondary, web tertiary)
   react/         # React 19 / TypeScript - client plugin (Next.js App Router primary, Vite secondary)
 ```
 
@@ -27,7 +26,7 @@ Each plugin folder has a `README.md`. Each skill lives in its own directory as `
 
 **Plugin dependency rule: every plugin depends only on `core`, nothing else.** A plugin is installed with `core` and itself - never alongside another stack or domain plugin - so no plugin may reference skills, agents, or slash commands from a sibling plugin (a stack plugin must not point at `architecture`, `core` must not point at `architecture`, and so on). Cross-references like that never resolve at install time and must not be authored. Shared behavior belongs in `core`; if two plugins need the same atomic, it lives in `core` (see Skill Placement). The only permitted upward reference is any plugin -> `core`.
 
-**`flutter` and `react` are the marketplace's client/UI plugins**; every other stack plugin is server-side. Two consequences: their skills are authored fresh rather than adapted from a backend plugin (transactions, connection pools, and server middleware do not map to a client), and neither reviews API contract design - a client consumes API contracts rather than designing them. API contract and compatibility review lives inside the general review (core Phase B and each server stack's umbrella), gated on changes to routes, controllers, DTOs, serializers, or a published spec. In `react`, Server Action and Route Handler input validation is owned by `task-react-review-security`. Accessibility is a client-only concern with no universal lens; it is handled in `task-<stack>-implement` and checked at baseline depth in the umbrella's Phase E, alongside adaptivity and localization for `flutter`.
+**`react` is the marketplace's client/UI plugin**; every other stack plugin is server-side. Two consequences: its skills are authored fresh rather than adapted from a backend plugin (transactions, connection pools, and server middleware do not map to a client), and it does not review API contract design - a client consumes API contracts rather than designing them. API contract and compatibility review lives inside the general review (core Phase B and each server stack's umbrella), gated on changes to routes, controllers, DTOs, serializers, or a published spec. In `react`, Server Action and Route Handler input validation is owned by `task-react-review-security`. Accessibility is a client-only concern with no universal lens; it is handled in `task-react-implement` and checked at baseline depth in the umbrella's Phase E.
 
 ## Skill File Format
 

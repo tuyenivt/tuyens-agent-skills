@@ -45,7 +45,6 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review-perf`   |
 | Node.js / TypeScript | `task-node-review-perf`    |
 | Go / Gin             | `task-go-review-perf`      |
-| Flutter / Dart       | `task-flutter-review-perf` |
 | React / Next.js      | `task-react-review-perf`   |
 
 A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow is unavailable (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5.
@@ -54,7 +53,7 @@ A row matches only when the detected framework matches it (Java / Micronaut does
 
 Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full.
 
-Determine `Scope` (`backend` / `frontend` / `fullstack` / `mobile`) from `stack-detect`'s `Stack Type` field, then cover the applicable categories:
+Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field, then cover the applicable categories:
 
 **Database (backend / fullstack).** N+1 detection (recommend the ORM's eager-load mechanism), missing indexes on WHERE/ORDER BY, over-fetching, no leading-wildcard LIKE on large tables, pagination, query timeouts, connection-pool sizing. Use skill: `backend-db-indexing`.
 
@@ -65,8 +64,6 @@ Determine `Scope` (`backend` / `frontend` / `fullstack` / `mobile`) from `stack-
 **Memory and I/O.** Streaming for large payloads, timeouts and circuit breakers on external calls, reused HTTP clients.
 
 **Frontend (frontend / fullstack).** Unnecessary re-renders / change-detection cycles, heavy computation in render path, virtualization for long lists (>100), client-side caching, image optimization, lazy loading, route-level code splitting. Use skill: `frontend-performance`.
-
-**Mobile (mobile).** Frame budget (16ms at 60Hz, 8ms at 120Hz) and dropped frames, rebuild/re-render scoping, list virtualization for long or unbounded lists, image decode and cache limits, work moved off the UI thread, startup time to first interaction, installed app size, and leaked subscriptions/controllers/timers. Network and persistence findings use the Memory and I/O category, not the Database one - the device talks to a server, it does not own the schema.
 
 **Observability cross-check.** RED metrics on critical paths, correlation IDs propagated, latency histograms. Use skill: `ops-observability`.
 
@@ -88,7 +85,7 @@ When Step 3 dispatched: the stack workflow owns the output. Subagent runs return
 ## Performance Review Summary
 
 **Stack Detected:** [detected stack, or unknown] (generic fallback applied)
-**Scope:** Backend | Frontend | Fullstack | Mobile
+**Scope:** Backend | Frontend | Fullstack
 **Overall:** Clean | Issues Found - [High/Medium/Low counts]
 
 ## Findings
