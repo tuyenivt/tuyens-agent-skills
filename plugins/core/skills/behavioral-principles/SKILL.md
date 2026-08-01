@@ -11,9 +11,9 @@ user-invocable: false
 
 ## When to Use
 
-- Step 1 of any `task-*` workflow, before stack-detect.
+- Step 1 of any `task-*` workflow, before stack-detect. Loading is unconditional - a workflow never omits Step 1.
 - Apply throughout the workflow, not as one-shot checks.
-- Skip for purely conversational requests with no file edits or consequential recommendations.
+- Individual rules no-op when nothing triggers them: a purely conversational request with no file edits and no consequential recommendation exercises none of them. That is the rules finding nothing to apply to, not the workflow skipping the load.
 
 ## Rules
 
@@ -27,9 +27,10 @@ Non-negotiable. Apply in addition to stack-specific or workflow-specific rules.
 6. **Push back on likely-wrong requests.** If a request would break a documented convention, introduce a known anti-pattern, or contradict a stated goal, say so before acting. Push back once; if the user insists, comply and state what you're giving up.
 7. **Goal-driven execution with verification.** Convert each task into verifiable success criteria. For multi-step work, state a brief plan with a verify check per step. Work is not done until verified.
 
-**Proportionality and disposition.** Apply rigor in proportion to blast radius. When an ambiguity, tradeoff, or conflict surfaces, the default disposition is: state the assumption or chosen default inline ("Assuming X since Y") and proceed. Stop and wait for confirmation only when the goal itself is unclear or the change is high blast radius (irreversible, or touches security, data integrity, or money). Verification always applies, even if the check is "re-read the changed line."
+**Proportionality and disposition.** Apply rigor in proportion to blast radius. When an ambiguity, tradeoff, or conflict surfaces, the default disposition is: state the assumption or chosen default inline ("Assuming X since Y") and proceed. Stop and wait for confirmation only when the goal itself is unclear or the change is high blast radius (irreversible, or touches security, data integrity, or money). Verification always applies, even if the check is "re-read the changed line." When the change cannot be verified before it ships - no reproducing environment, or the broken system is the only one exhibiting the bug - that is not an exemption: state the check you could not run, name the post-deploy signal that will stand in for it, and say how long you need to watch it.
 
 **Rule interactions.**
+- Rule 1 vs Rule 5: when the assumption you are stating and the tradeoff you are naming are the same decision, write one sentence, not two - the assumption is the chosen option and the tradeoff is the alternative ("Assuming X since Y; the alternative is Z").
 - Rule 3 vs Rule 4: surface pre-existing inconsistencies you notice; do not fix them unless asked.
 - Rule 5 vs Rule 6: when a request is actively harmful (not just suboptimal), lead with the objection, then offer alternatives.
 

@@ -53,7 +53,7 @@ A detected frontend stack other than React (Vue, Angular, Svelte) has no dedicat
 
 **Fullstack (`Stack Type: fullstack`):** decide which side the feature belongs to from the user's description. Delegate the backend side to the table workflow first for the API contract; build the frontend side via the Step 4 frontend path. If parallel work is required, fix the API contract up front and mock data on the frontend until the backend lands. Include an integration test from UI action to DB persistence. Ask the user when the split is ambiguous.
 
-On match: delegate, passing the feature description and any Inputs gathered. Stop; skip Step 4. If the matched workflow's plugin is not installed (skill does not resolve), say so and run Step 4 instead.
+On a single-stack match: delegate, passing the feature description and any Inputs gathered. Stop; skip Step 4. A fullstack detection follows the fullstack rule above instead - backend delegation plus the Step 4 frontend path. If the matched workflow's plugin is not installed (skill does not resolve), say so and run Step 4 instead.
 
 ### Step 4 - Universal Fallback (no matching stack workflow)
 
@@ -79,7 +79,7 @@ Runs when the stack is unknown, unsupported by any table row, or the matched plu
 
 **VALIDATE:**
 
-- Run the project test suite; all pass.
+- Run the project test suite; all pass. If no runner is configured or the suite cannot run, state that in the output with the command(s) attempted - do not claim validation.
 - Implementation matches the approved design.
 - *Backend:* list endpoints paginated.
 - *Frontend:* keyboard navigable, labels present, correct heading hierarchy.
@@ -87,9 +87,9 @@ Runs when the stack is unknown, unsupported by any table row, or the matched plu
 
 ## Output Format
 
-When dispatched (Step 3): the stack workflow owns the output.
+When dispatched (Step 3): the stack workflow owns the output. On a fullstack hybrid, the stack workflow reports the backend side; the Step 4 output below covers only the frontend side.
 
-When fallback runs (Step 4), output adapts to Stack Type:
+When fallback runs (Step 4), emit only the block(s) matching the Stack Type:
 
 ```markdown
 ## Generated Files

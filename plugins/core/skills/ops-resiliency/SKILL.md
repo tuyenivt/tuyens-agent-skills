@@ -21,7 +21,8 @@ user-invocable: false
 
 - Every external call has a timeout; no unbounded waits.
 - Retries use exponential backoff with jitter, max attempts capped (typically 3).
-- Retry only transient errors (5xx, timeouts, connection errors). Never retry 4xx (won't succeed) or non-idempotent operations without an idempotency key.
+- Retry only transient errors: 5xx, timeouts, connection errors, and the two retryable 4xx - `429 Too Many Requests` and `408 Request Timeout`. Other 4xx are client errors that will fail identically on retry. Never retry a non-idempotent operation without an idempotency key.
+- When a `Retry-After` header is present, it overrides computed backoff - the server is telling you when it will serve you, and retrying sooner burns the budget for nothing.
 - One circuit breaker per external dependency, with explicit thresholds (failure rate, open duration, half-open probes) and monitoring - a silent or shared breaker is useless.
 - Independent failure domains use bulkhead isolation (separate pools per downstream).
 - Every dependency has a defined fallback. Every fallback logs the original failure at WARN; silent fallbacks hide degradation until it compounds.
@@ -118,7 +119,7 @@ Consuming workflow skills parse this structure to surface resilience gaps.
 {State explicitly if resilience is adequate - do not omit silently.}
 ```
 
-A pattern that is present but misconfigured (e.g., retry with no cap or backoff) counts as missing.
+A pattern that is present but misconfigured (e.g., retry with no cap or backoff) counts as missing. Rate it by what the configuration actually permits, not by the value written down: a 5s budget whose downstream timeouts sum to 12s is High, because 12s is what a caller can wait.
 
 **Severity** - judge by the worst plausible failure mode the gap enables, not by which pattern is absent:
 
@@ -128,10 +129,12 @@ A pattern that is present but misconfigured (e.g., retry with no cap or backoff)
 
 Omit "No Gaps Found" if gaps were listed.
 
+For design tasks (no implementation yet), use the same format: list the proposed design's unaddressed failure modes as Gaps, omitting {integration point} where none exists yet.
+
 ## Avoid
 
 - Retrying non-idempotent ops without idempotency keys.
-- Retrying on 4xx (won't succeed on retry).
+- Retrying client-error 4xx (won't succeed on retry) - 429 and 408 are the exceptions.
 - Circuit breakers with no monitoring - you cannot react to a trip you cannot see.
 - Fallbacks that swallow errors silently.
 - Chained retries with no per-request retry budget (amplification).

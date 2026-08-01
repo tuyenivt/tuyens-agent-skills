@@ -21,7 +21,7 @@ user-invocable: false
 
 - Logs are structured (JSON), with mandatory fields `level`, `service`, `trace_id`, `span_id`.
 - Trace context propagates across every service boundary using a standard header; receiving services create child spans, never new trace IDs.
-- Never log secrets or PII (passwords, tokens, personal data).
+- Never log secrets or PII (passwords, tokens, personal data). Deliberate logging is rarely the leak - check the indirect carriers: full URLs with query strings, request/response body dumps in error handlers, exception messages quoting the offending value, and header dumps carrying `Authorization` or `Cookie`. Log the route template (`/users/search`), not the resolved URL.
 - Every entry point (API endpoint, queue consumer, scheduled job) has RED metrics: **R**ate, **E**rrors, **D**uration - measured per unit of work.
 - Log levels carry meaning: `info` for state changes, `debug` for per-item detail. Never log per-iteration at `info` in hot loops - aggregate or sample.
 - Every critical service has an SLO; alerting thresholds without an SLO are arbitrary.
@@ -107,6 +107,7 @@ Alert on:
 - **Error rate** - SLO burn rate over multi-window (reduces false positives), not individual errors
 - **Latency** - sustained p99 breach (e.g., > 500ms for 5 min)
 - **Saturation** - resources that hard-fail requests when exhausted (connection pool > 80%, disk > 90%, FD limit). CPU/memory degrade gradually and page poorly - they are the "causes" the symptom rule excludes.
+- **Absence** - for scheduled and event-driven work, the failure is silence: alert when a job has not completed within its expected interval, or when throughput drops to zero on a stream that normally flows. Rate and latency alerts cannot fire for work that never started, so a job with only RED metrics is unmonitored against its most likely failure. The signal is a heartbeat or last-success timestamp with a staleness threshold set above the normal interval plus expected runtime.
 
 ### Stack Adaptation
 
@@ -124,7 +125,7 @@ Consuming workflow skills parse this structure to surface observability gaps.
 ### Gaps
 
 - [Severity: High | Medium | Low] {component or layer} - {description of gap}
-  - Missing: {signal absent - log field, metric, trace span, SLO}
+  - Missing: {signal absent - log field | metric | trace span | context propagation | alert | SLO}
   - Impact: {what becomes invisible or undetectable}
   - Recommendation: {concrete addition with library/mechanism for the detected stack}
 
@@ -135,11 +136,13 @@ Consuming workflow skills parse this structure to surface observability gaps.
 
 **Severity:**
 
-- **High**: gap prevents detecting a production failure (no error rate on critical path, no SLO on critical service, missing trace propagation across boundary).
+- **High**: gap prevents detecting a production failure (no error rate on critical path, no SLO on critical service, an SLO with no burn-rate alerting, no absence alert on scheduled work, missing trace propagation across boundary). An SLO nobody alerts on detects nothing, so it rates with the missing-SLO case rather than below it.
 - **Medium**: gap slows diagnosis (missing correlation ID on internal calls, no business metric on key flow).
 - **Low**: nice-to-have signal with no current blind spot.
 
 Omit "No Gaps Found" if gaps were listed.
+
+In definition mode (designing SLOs or alerting rather than reviewing), output the SLI / SLO target / error budget / alert rules per critical path instead of the Gaps block; use Gaps only for signals the design still lacks.
 
 ## Avoid
 

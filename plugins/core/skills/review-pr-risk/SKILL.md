@@ -24,7 +24,7 @@ If no diff exists yet (architecture proposal, migration plan), use `review-chang
 - Heuristic, not a guarantee. Use as framing, not a gate.
 - Run before line-by-line review.
 - Spend at most 30 seconds.
-- When in doubt, round up.
+- When unsure whether a signal fired, count it as fired. This resolves borderline triggers (a 480-line diff against the >500 threshold), not the level itself - the ladder is deterministic once the signals are fixed.
 
 ## Patterns
 
@@ -44,12 +44,12 @@ If no diff exists yet (architecture proposal, migration plan), use `review-chang
 | PR size (lines changed)        | Medium | > 500 lines increases miss rate                             |
 | Missing test changes           | Medium | High-risk change with no corresponding tests                |
 | Author unfamiliarity           | Low    | Author's first PR to these modules or the repo              |
-| No production code             | Low    | Only tests, docs, or comments modified (any mix)            |
 
 ### Classification
 
-Count triggered signals from the table, then apply top-down - first match wins. Same signals in, same level out.
+Signals are counted over production files only - a change confined to tests, docs, or comments cannot trigger size, cross-module, or any High signal, since none of it reaches production behavior. Then apply top-down - first match wins. Same signals in, same level out.
 
+- **Low** - no production files modified (tests, docs, comments in any mix and any size)
 - **Critical** - 2+ High signals, OR a destructive migration (drop, rename, type change, or backfill) on an existing table
 - **High** - exactly one High signal
 - **Medium** - 1+ Medium signals, no High signals

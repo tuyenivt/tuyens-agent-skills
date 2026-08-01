@@ -11,7 +11,7 @@ user-invocable: false
 
 ## When to Use
 
-- Round 2+ of a `task-*-review*` workflow when the prior `review-<branch>.md` report has valid checkpoint frontmatter.
+- Round 2+ of a `task-*-review*` workflow when the prior `review-<head>.md` report has valid checkpoint frontmatter.
 - After the workflow has loaded the prior report content and computed the incremental diff range (`prior_head_sha...head_sha`).
 
 Not for round 1 (no prior findings exist) or when `prior_checkpoint: legacy` (no parseable findings to reconcile).
@@ -22,7 +22,7 @@ The consuming workflow passes:
 
 | Field            | Source                                                                  |
 | ---------------- | ----------------------------------------------------------------------- |
-| `prior_report`   | Full Markdown body of `review-<branch>.md` (frontmatter already parsed) |
+| `prior_report`   | Full Markdown body of `review-<head>.md` (frontmatter already parsed) |
 | `incremental_diff` | Output of `git diff <prior_head_sha>...<head_sha>` (already read)      |
 | `name_status`    | Output of `git diff --name-status <prior_head_sha>...<head_sha>`        |
 | `head_files`     | Optional. File list at the new head: output of `git ls-tree -r --name-only <head_ref>`. Cross-check deleted/renamed paths; when absent, `name_status` alone decides touch state. |
@@ -42,7 +42,7 @@ To read file content at the new head (Steps 3-4), use `git show <head_sha>:<path
 
 ### Step 1 - Extract prior findings
 
-Parse the prior report's `## High-Impact Findings` section. Each finding has a heading like `### [<Label>] file:line`. Accept both label vocabularies:
+Parse the prior report's `## High-Impact Findings` section, matching the heading by prefix so decorations like a count suffix (`## High-Impact Findings (3)`) still match - an exact-string match would silently discard every prior finding over a cosmetic difference. Each finding has a heading like `### [<Label>] file:line`. Accept both label vocabularies:
 
 - **Current (intent-based):** `[Must]`, `[Recommend]`
 - **Legacy (severity-based):** `[Blocker]`, `[High]`, `[Suggestion]`, `[Nitpick]`, `[Praise]`
@@ -50,7 +50,7 @@ Parse the prior report's `## High-Impact Findings` section. Each finding has a h
 
 Collect `(label, file, line, smell_summary)` where `label` is preserved **verbatim** as it appeared in the prior report (do not translate `[Blocker]` to `[Must]` - the reconciliation table reflects what was actually written). `smell_summary` is the first sentence of the `Issue:` or `Improvement:` line.
 
-If the section is empty or absent, return an empty reconciliation table and stop.
+If the section is present but empty, return an empty reconciliation table and stop. If no heading matches at all, return the empty table with the note `Prior report has no High-Impact Findings section; nothing reconciled` - a report that should have had findings and a report that genuinely had none look identical otherwise.
 
 ### Step 2 - Determine file touch state
 
@@ -93,9 +93,14 @@ Emit a single Markdown table - this is what the workflow inserts under `## Prior
 | [Recommend] N+1 in listAll                 | ProductRepo.java:88      | Still open     | File untouched.                |
 | [Blocker] Hardcoded credential             | Legacy.java:12           | Addressed      | Legacy label preserved verbatim from round 1. |
 | [Recommend] Race on counter                | TallyService.java:31     | Needs re-check | File restructured; verify manually. |
+| [Must] Missing rate limit                  | api/Gateway.java:60 -> edge/Gateway.java:60 | Still open | Renamed since round 1. |
 ```
 
 Status column is one of exactly: `Addressed`, `Still open`, `Obsolete`, `Needs re-check`. Notes column is optional per row; keep to one short sentence.
+
+A renamed file's cell carries `<prior path>:<line> -> <new path>:<line>`, preserving the prior path verbatim on the left so rounds stay comparable while the reader sees where the code lives now.
+
+`Still open` and `Needs re-check` rows are unresolved: the workflow carries them into the round's `## High-Impact Findings` so the next round reconciles them again. `Addressed` and `Obsolete` rows are settled and appear only in this table.
 
 Labels in the first column appear **exactly as they were in the prior report**. If round 1 used a retired label (`[Blocker]`, `[High]`, `[Suggestion]`, `[Question]`), those rows keep those labels; round-2 *new* findings use the current intent vocabulary (`[Must]`, `[Recommend]`). Mixing in one report during the transition is expected and correct.
 

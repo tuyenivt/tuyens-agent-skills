@@ -107,18 +107,22 @@ When the answer is phased (e.g. "sync now, async in Q3") record each phase as it
 | {chosen}   | {benefits}       | {costs}       | Easy / Moderate / Hard | {what makes it wrong} |
 | {rejected} | {benefits}       | {costs}       | {level}                | {risk}                |
 
+A phased decision makes each phase a row (`Phase 1: {option} (chosen)`, `Phase 2: {option} (chosen)`), each with its own reversibility and risk - the `(chosen)` suffix marks them because first-row position cannot mark two rows.
+
 ### Rationale
 
 {Why the chosen option over alternatives - specific, evidence-based, not preference}
 
 ### Trade-Off Accepted
 
-{What is sacrificed - the specific negative consequence}
+{The single consequence you would most want a future reader to know you accepted knowingly - drawn from the chosen row's costs, stated as what it means for the system rather than restated as a cost}
 
 ### Review Trigger
 
 Revisit this decision if: {specific observable condition}
 ```
+
+A phased decision emits one `Revisit` line per phase, each naming its phase - the trigger that ends Phase 1 is usually what starts Phase 2.
 
 ## Avoid
 

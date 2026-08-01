@@ -22,7 +22,7 @@ Detects the project stack and delegates to the matching stack-specific review wo
 
 `/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | +rel | full | core-only] [standard | deep] [--base <branch>]`
 
-All flags are forwarded to the dispatched stack workflow.
+Scope flags combine (`+sec +perf`); `full` expands to all four. All flags are forwarded to the dispatched stack workflow.
 
 ## Workflow
 
@@ -46,7 +46,7 @@ Use skill: `stack-detect`.
 | Flutter / Dart       | `task-flutter-review` |
 | React / Next.js      | `task-react-review`   |
 
-Forward the user's invocation verbatim (target ref, `--base`, scope, depth). The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 4-5.**
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Dispatch keys on the detection's primary `Language`/`Framework` pair; a secondary stack in `Additional` never dispatches. Forward the user's invocation verbatim (target ref, `--base`, scope, depth). The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 4-5.**
 
 If a row matches but the target skill does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5 as a degraded generic review and note the degradation in the report.
 
@@ -63,7 +63,7 @@ Use skill: `review-precondition-check` with the user's target argument and any `
 | Absent, or `prior_checkpoint: legacy`                                    | `mode: full`, `round: 1` (legacy report is overwritten)            |
 | `prior head_sha == head_sha`                                             | Print `No new commits since prior review.` and stop - no report    |
 | `git merge-base --is-ancestor <prior_head_sha> <head_sha>` fails, OR prior `base_sha`/`base_ref` differs | `mode: full`, `round: prior + 1` |
-| Otherwise                                                                | `mode: incremental`, `round: prior + 1`; re-read diff/log scoped to `<prior_head_sha>...<head_ref>` |
+| Otherwise                                                                | `mode: incremental`, `round: prior + 1`; re-read diff/log scoped to `<prior_head_sha>...<head_ref>` - all phases, the Phase A risk snapshot, and sub-scope spawns run on this scoped diff |
 
 **Incremental reconciliation.** When `mode: incremental`, Use skill: `review-prior-findings-reconcile` with the prior report body, the incremental diff, and `git diff --name-status <prior_head_sha>...<head_ref>`; its table goes under `## Prior Round Reconciliation` in the report. Full-mode rounds skip it (fresh pass). Run this after the phases below and after **Verify findings**, so reconciliation matches against the verified set - the mode decision is made here, but the reconciliation pass is not executed until findings exist.
 
@@ -105,6 +105,8 @@ No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
 When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
+
+**Assessment** derives from the verified findings: any `[Must]` -> Request Changes; no `[Must]` but at least one `[Recommend]` -> Discuss; none -> Approve.
 
 ```markdown
 ## Summary

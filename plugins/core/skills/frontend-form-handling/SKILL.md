@@ -104,6 +104,14 @@ Form-level (server errors):
 </button>
 ```
 
+### Field Arrays and Cross-Field Rules
+
+Repeating groups (line items, contacts) use the library's array primitive - RHF `useFieldArray`, VeeValidate `FieldArray`, Angular `FormArray` - so each row keeps a stable key. Never index rows by array position for React keys: removing row 1 re-indexes everything below and the wrong inputs keep the wrong errors.
+
+A rule spanning fields (totals against a cap, end date after start date, "at least one contact") has no single owning input, so it needs a home that is neither the field slot nor the server-error summary: render it at the boundary it constrains - under the array for a total, under the pair for a date range - with `role="alert"`, and validate it at the schema level (Zod `.refine`/`.superRefine`) so client and server agree.
+
+Server errors on array paths (`items[3].amount`) map back by index to that row's input; when the index no longer exists because the user removed the row, the error goes to the summary.
+
 ### Multi-Step Forms
 
 - Single form-state object across steps (not per-step state)
@@ -119,6 +127,25 @@ Payment, identity, PCI data require extra care:
 - **Tokenize**: use provider widgets (Stripe Elements, Braintree Drop-in) so raw card data stays in their iframe, never in your form state or server
 - **Never persist**: exclude sensitive fields from any draft persistence; clear them from form state on navigation
 - **Use proper `autocomplete`**: `cc-number`, `cc-exp`, `cc-csc` so browsers autofill securely; never prefill from your own storage
+
+### File Uploads
+
+Decide when the bytes move, because everything else follows from it:
+
+- **Upload on selection** (recommended for large or multiple files): each file uploads immediately to its own progress bar with cancel and remove; the form field then holds a returned file id, so a failed submit costs nothing and re-submitting does not re-upload. Orphaned uploads need a server-side sweep for files whose form was never submitted.
+- **Upload on submit** (fine for one small file): simpler, but submit now takes as long as the transfer, and any validation failure discards every byte the user just waited for.
+
+Validate size and type client-side before the transfer starts - it is the one validation that saves the user real time - and again on the server, since the client check is a courtesy, not a control. Accept the `accept` attribute's limits as a hint only; browsers do not enforce it.
+
+### Progressive Enhancement
+
+A form that must work before hydration (Server Actions, plain `<form action>`) cannot rely on client JS, so the client-side rules become enhancements layered on a working baseline rather than requirements:
+
+- Double submission is prevented server-side, by an idempotency key or a one-time form token; `useFormStatus`/`isSubmitting` disables the button once hydrated.
+- Validation is server-authoritative and re-rendered with the response; client validation only shortens the round trip.
+- Dirty-navigation warnings simply do not exist pre-hydration - that is acceptable, not a defect.
+
+Review such a form against the baseline first: it should submit, validate, and report errors with JS disabled. Findings that amount to "no client-side guard before hydration" are not defects.
 
 ### Dirty Tracking
 
@@ -194,7 +221,7 @@ Consuming workflow skills depend on this structure.
 {State explicitly if form handling is adequate - do not omit this section silently}
 ```
 
-Severity: High = data loss, security exposure, or blocked/duplicate submission; Medium = broken validation or error-display UX; Low = polish (timing, focus, copy).
+Severity: High = data loss, security exposure, or blocked/duplicate submission; Medium = broken validation timing or error-display UX (including per-keystroke validation); Low = polish (debounce values, focus order, copy).
 
 ---
 

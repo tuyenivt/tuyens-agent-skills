@@ -41,6 +41,7 @@ user-invocable: false
 | Deployment / config drift            | Works in staging not prod, recent deploy correlates with failure                     |
 | Architectural boundary violation     | Unexpected coupling, layer bypass causing cascading failure                          |
 | Resource contention / noisy neighbor | Two workloads competing on shared pool (batch vs OLTP, new feature vs main traffic)  |
+| Silent contract loss                 | No error anywhere: empty results, zero-record polls, dropped messages, a consumer subscribed to a topic or endpoint that no longer exists. Detected by absence - throughput that went to zero, a job that stopped producing output |
 
 ### Failure Scope
 
@@ -86,9 +87,14 @@ Failure Type: {one or more types from the table, root first, comma-separated}
 Scope: {Total | Partial X%} + {Isolated | Cascading}
 Layer: {Infrastructure | Platform | Application | Integration | Configuration} ({1-sentence rationale})
 Evidence: {observable signals - metrics, log lines, error messages}
+Missing Evidence: {what would discriminate the candidates - only when any type is marked (candidate)}
 ```
 
-Never omit Evidence; unsupported classifications mislead investigation.
+When triaging multiple concurrent failures, emit one block per independent failure; failures whose evidence points at one shared root share a single block listing that root type first.
+
+Never omit Evidence; unsupported classifications mislead investigation. For a silent failure, Evidence cites the absent signal and when it stopped (`zero records polled since 03-14 09:00, previously ~4k/hour`) - absence is observable.
+
+Scope measures the blast radius across components, not across time: a failure rolling through replicas of one service is `Isolated`, however many replicas it eventually reaches, and `Cascading` requires a *different* component to fail. Rate the request axis at the incident's peak.
 
 ## Avoid
 

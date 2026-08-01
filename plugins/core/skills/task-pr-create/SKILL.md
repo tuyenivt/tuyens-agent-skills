@@ -43,18 +43,17 @@ Use skill: `behavioral-principles`.
 Establish `(base_ref, head_ref)` before any diff is read. PR creation runs against the current feature branch only.
 
 1. **Resolve head:** `head_ref = HEAD`; `current_branch = git rev-parse --abbrev-ref HEAD`.
-2. **Reject trunk heads:** if `current_branch` is `main`, `master`, `develop`, or `trunk` (case-insensitive), stop:
+2. **Reject trunk and detached heads:** if `current_branch` is `main`, `master`, `develop`, or `trunk` (case-insensitive), stop:
 
    ```text
    You are on `<current_branch>`, a trunk branch. Nothing scoped to describe.
    Switch to your feature branch and re-run.
    ```
 
-3. **Detect base** in order; first that succeeds wins:
-   1. `git symbolic-ref refs/remotes/origin/HEAD`
-   2. `git rev-parse --verify origin/main`, then `origin/master`, then `origin/develop`
-   3. `git rev-parse --verify main`, then `master`, then `develop`
-4. **Ask only if ambiguous:** if none resolve - or `origin/HEAD` is unset and more than one trunk candidate resolves (e.g., gitflow with both `main` and `develop`) - ask the user. Do not pick silently; the wrong base pulls unrelated commits into the diff.
+   A detached `HEAD` (`current_branch` prints `HEAD`) also stops - check out the feature branch first.
+
+3. **Detect base:** if `git symbolic-ref refs/remotes/origin/HEAD` resolves, use it. Otherwise probe every trunk name (`main`, `master`, `develop`) via `git rev-parse --verify`, remote (`origin/<name>`) then local; a name resolving in both forms counts once, remote form preferred.
+4. **Use or ask:** exactly one distinct trunk name resolved -> use it. More than one (e.g., gitflow with both `main` and `develop`), or none -> ask the user. Do not pick silently; the wrong base pulls unrelated commits into the diff.
 
 Record `base_ref` for Step 4.
 

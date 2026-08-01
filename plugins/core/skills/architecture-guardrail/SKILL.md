@@ -24,6 +24,7 @@ user-invocable: false
 - Distinguish intentional refactor from accidental drift - check commit message and adjacent code
 - One structural violation outweighs many cosmetic issues
 - Use the conventions already present in the codebase as the baseline, not a generic ideal
+- When no baseline exists yet (greenfield, first files of a module), the Layer Violations list *is* the baseline: flag against universal layering, since the first files set the convention every later one inherits. `Drift:` reads "none observed - establishing the pattern."
 
 ## Patterns
 
@@ -47,7 +48,7 @@ Flag when the change:
 
 After `stack-detect`, translate these into the detected ecosystem's vocabulary - controllers, handlers, actions, resolvers, route functions, components. Framework-specific patterns (fat controllers, fat models, business logic in callbacks or migrations, queries in templates) are concrete instances of these violations.
 
-If the stack is unfamiliar, apply the universal layering above and recommend the user verify against the framework's documentation.
+If the stack is unfamiliar, apply the universal layering above and append `- unfamiliar stack, verify against framework docs` to the **Stack:** line.
 
 ### Module Coupling
 
@@ -94,11 +95,13 @@ Bad - vague:
 
 ### Violations
 
-#### [Must | Recommend] {file:line}
+#### [Must | Recommend] {file:line, or the module/edge the violation belongs to}
 
 - Issue: {what boundary or layer was violated}
 - Impact: {coupling or drift consequence}
 - Drift: {how this diverges from the established pattern; "none observed" when no baseline is visible}
+
+A violation that is a property of a module or a pair of modules - utils accumulation, a circular dependency, mixed styles - anchors there (`common/utils/ (21 files)`, `orders -> billing -> orders`), not on whichever file the diff happened to touch. The file that crossed the threshold is not the defect.
 
 ### No Violations Found
 
@@ -113,7 +116,7 @@ Intent:
 
 A finding matching patterns in multiple sections takes the highest intent (Must > Recommend).
 
-Stated intent (commit message, ADR) downgrades only the `Drift:` line, never the violation: an intentional layer violation is still [Must] - record the stated rationale in the finding.
+Stated intent (commit message, ADR) downgrades only the `Drift:` line, never the violation: an intentional layer violation is still [Must] - record the stated rationale in the finding. Give it something to act on, since the code itself may be correct as written: the action is to make the exception explicit and bounded (name the ADR in the code, scope it to this path, state what would end it), not to undo the change.
 
 Emit exactly one of `### Violations` and `### No Violations Found` - consuming skills use the presence of one of them to confirm the check ran.
 

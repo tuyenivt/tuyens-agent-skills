@@ -21,7 +21,7 @@ The consuming workflow passes these fields when invoking this skill:
 | ----------------- | ----------------- | ----------------------------------------------------------------------------------- |
 | `report_type`     | yes               | `review` / `review-perf` / `review-security` / `review-observability` / `review-reliability` |
 | `report_body`     | yes               | The full assembled Markdown report (no frontmatter)                                 |
-| `branch`          | yes               | Resolved current branch name (or `detached`)                                        |
+| `branch`          | yes               | Head short name from the `review-precondition-check` handle - the review target, which is also the checkpoint lookup key. Equals the current branch in the usual self-review case. |
 | `base_ref`        | yes               | From `review-precondition-check` handle                                             |
 | `base_sha`        | yes               | `git rev-parse <base_ref>` output captured by the workflow                          |
 | `head_ref`        | yes               | From `review-precondition-check` handle                                             |
@@ -38,9 +38,11 @@ Only the workflow that owns the report invokes this skill. Sub-agents spawned fo
 
 ## Rules
 
-- If any required input from the Inputs table is missing or empty, halt and return `Missing required input: <field>` to the caller. Do not write a partial file, do not invent a default, do not blank the field.
-- If a value-set field (`report_type`, `mode`, `scope`, `depth`) holds a value outside its set in the Inputs table, halt and return `Invalid input: <field>: <value>`. Do not coerce (`Core` does not auto-map to `core-only`) - mapping display values to enum values is the caller's job.
-- **`report_body` is raw Markdown, never fenced.** The consuming workflow's Output Format section shows its template inside a ` ```markdown ` fence for display only; that fence is not part of the report. The written body must render as Markdown - real headings, tables, and lists, not one monospace block. If the received `report_body` is wrapped in a single outer fence that opens at the start and closes at the very end, strip that outer fence before writing. Fenced blocks *inside* the body (a code sample on a Fix line) are content - keep them.
+- Validate every input before writing anything, and report all failures at once - one line per bad field, so the caller fixes them in a single pass instead of rediscovering them one re-run at a time:
+  - Missing or empty required field -> `Missing required input: <field>`
+  - Value-set field (`report_type`, `mode`, `scope`, `depth`) holding a value outside its set -> `Invalid input: <field>: <value>`
+- Do not write a partial file, invent a default, or blank a field. Value sets are matched exactly, case included: `Core` and `Deep` are invalid, not variants of `core-only` and `deep` - mapping display values to enum values is the caller's job.
+- **`report_body` is raw Markdown, never fenced.** The consuming workflow's Output Format section shows its template inside a ` ```markdown ` fence for display only; that fence is not part of the report. The written body must render as Markdown - real headings, tables, and lists, not one monospace block. If the received `report_body` opens with a fence on its first line, that fence is the workflow's display wrapper - strip it and its matching closer before writing. Match by fence length: a wrapper opened with more backticks than any fence it contains (```` ```markdown ```` around a body whose samples use ```` ``` ````) closes at its own backtick count, which disambiguates a body that ends with a code sample. When the opener and an inner fence are the same length, the wrapper's closer is the last fence in the body. Fenced blocks *inside* the body (a code sample on a Fix line) are content - keep them.
 - Sanitize `branch` for the filename: replace `/` and any character outside `[A-Za-z0-9_-]` with `-`, collapse consecutive `-`, strip leading/trailing `-`. The frontmatter `branch` field keeps the raw value; only the filename is sanitized.
 - Build the filename from `report_type`:
   - `review` -> `review-<branch>.md`

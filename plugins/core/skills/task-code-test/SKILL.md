@@ -45,7 +45,7 @@ Use skill: `stack-detect` to identify language, framework, and `Stack Type`.
 | Flutter / Dart       | `task-flutter-test` |
 | React / Next.js      | `task-react-test`   |
 
-Forward the user's invocation. The dispatched workflow owns the output. **If matched and available, stop. Skip Step 4.** If the matched workflow is unavailable (plugin not installed), name the plugin that provides it, then run Step 4 using the detected stack's idioms.
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Forward the user's invocation. The dispatched workflow owns the output. **If matched and available, stop. Skip Step 4.** If the matched workflow is unavailable (plugin not installed), name the plugin that provides it, then run Step 4 using the detected stack's idioms.
 
 ### Step 4 - Generic Fallback (no dispatch match)
 
@@ -66,7 +66,7 @@ For test scaffolds, use the project's existing test framework if detectable, els
 
 ## Output Format
 
-When Step 3 dispatched: the stack workflow owns the output. When fallback ran, produce the section matching the user's ask. For scaffolding asks, output the test files themselves plus a line `**Assumed framework:** <language> / <test framework>`.
+When Step 3 dispatched: the stack workflow owns the output. When fallback ran, produce the section matching the user's ask; when the ask names no deliverable, produce both sections. For scaffolding asks, output the test files themselves plus a line `**Assumed framework:** <language> / <test framework>`.
 
 ```markdown
 ## Test Coverage Assessment
@@ -79,7 +79,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran, p
 ## Test Strategy
 
 **Objective:** [what this strategy achieves]
-**Pyramid balance:** Unit {x}% / Integration {y}% / E2E {z}%
+**Pyramid balance (target):** Unit {x}% / Integration {y}% / E2E {z}%
 **Contract testing:** [required / not required - rationale]
 **Gaps to close (prioritized):**
 

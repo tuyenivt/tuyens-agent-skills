@@ -47,6 +47,8 @@ Classify each piece of state before choosing a tool:
 
 Persistence (reload survival) and cross-browser-tab sync are layers on an existing owner, not new owners: keep the state in its category's home and attach a persist plugin / storage adapter, with BroadcastChannel or storage events for cross-tab sync.
 
+URL is the one owner the user can write directly - back button, pasted link, bookmark. Treat navigation as an inbound mutation: read from the URL on every render rather than seeding a copy on mount, or a bookmark opens the app with the wrong state and the back button silently desyncs.
+
 ### When to Lift State
 
 Lift only when:
@@ -134,6 +136,14 @@ store.theme = "dark"
 const { data: users, isLoading } = useQuery({ queryKey: ["users"], queryFn: fetchUsers })
 ```
 
+**Optimistic updates** look like an exception to one-owner - a client prediction of server state - but they are not: the owner stays the query cache, and the prediction is written *into* it, then rolled back or reconciled on the response. Use the data layer's own mechanism (TanStack Query `onMutate` with a snapshot for rollback, SWR `optimisticData`, Apollo `optimisticResponse`). A parallel `optimisticItems` array in a UI store creates the second owner the rule forbids, and every rendering component then has to merge two sources in the right order.
+
+### Migrating Between Approaches
+
+First decide what actually hurts. Boilerplate, devtools, and bundle size are library problems a migration fixes; duplicated owners, stored derivations, and server data in a UI store are architecture problems that survive any migration - porting reducers one-for-one into a new library reproduces every one of them.
+
+Migrate by slice, never wholesale: move server state out to a query library first (usually the largest win and independent of which store you keep), then move one feature's slice at a time, running both stores during the transition with each piece of state owned by exactly one of them. A slice is done when nothing reads it from the old store.
+
 ## Stack-Specific Guidance
 
 After `stack-detect`, apply patterns using ecosystem idioms:
@@ -177,7 +187,7 @@ Consuming workflow skills depend on this structure.
 {State explicitly if state management is adequate - do not omit this section silently}
 ```
 
-Include exactly one of `Issues Found` / `No Issues Found`. In review mode, `Owner` is the current owner; the recommended owner goes in the issue's Fix. Severity calibration: High = correctness or staleness bugs (duplicated server state, stored derived values, multiple owners); Medium = performance or maintainability (form drafts in global store, whole-store subscriptions, missing memoization of expensive derivations); Low = style and minor structure.
+Include exactly one of `Issues Found` / `No Issues Found`. In review mode, `Owner` is the current owner; the recommended owner goes in the issue's Fix. In migration mode, write `Owner` as `{current} -> {target}` so the table is the migration map. Severity calibration: High = correctness or staleness bugs (duplicated server state, stored derived values, multiple owners); Medium = performance or maintainability (form drafts in global store, whole-store subscriptions, missing memoization of expensive derivations); Low = style and minor structure.
 
 ---
 

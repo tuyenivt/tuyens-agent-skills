@@ -124,7 +124,7 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 | `architecture-guardrail`     | Layer violation and boundary erosion detection. Adapts to detected ecosystem.                                                                                                                                                                         |
 | `review-blast-radius`        | Failure propagation and change impact scope assessment                                                                                                                                                                                                |
 | `review-change-risk`         | Pre-implementation risk domain classification for proposed changes                                                                                                                                                                                    |
-| `review-precondition-check`  | Gate code-review workflows: verify clean tree, non-trunk head, locally-resolvable head ref, confirm head vs current branch when they differ, surface prior-round checkpoint (frontmatter of `review-<branch>.md`) so the workflow can decide incremental re-review. Local git only. |
+| `review-precondition-check`  | Gate code-review workflows: verify clean tree, non-trunk head, locally-resolvable head ref, confirm head vs current branch when they differ, surface prior-round checkpoint (frontmatter of `review-<head>.md`) so the workflow can decide incremental re-review. Local git only. |
 | `backend-coding-standards`   | Coding conventions adapted to the detected stack - naming, structure, anti-patterns                                                                                                                                                                   |
 | `complexity-review`          | Complexity assessment - cyclomatic complexity, cognitive load, abstraction depth                                                                                                                                                                      |
 | `ops-engineering-governance` | Engineering process, governance improvement, and guardrail evolution for incident prevention                                                                                                                                                          |
@@ -205,7 +205,7 @@ Scope options - asks interactively if not specified:
 
 **Re-review (round 2+)** is auto-detected. Rerunning the same command after the commenter pushes fixes will:
 
-1. Look for `review-<branch>.md` from the prior round, parse its YAML checkpoint frontmatter (head_sha, base_sha, mode, round).
+1. Look for `review-<head>.md` from the prior round, parse its YAML checkpoint frontmatter (head_sha, base_sha, mode, round).
 2. Fetch the head branch via its upstream tracking ref (no checkout). Skip silently if no upstream.
 3. If the new head equals the prior head, exit with `No new commits...` - the report file is left byte-identical.
 4. Otherwise scope analysis to `<prior_head_sha>...<current_head_sha>` and reconcile prior High-Impact Findings as Addressed / Still open / Obsolete / Needs re-check. Open items fold into Next Steps with `(open since round <N>)`.

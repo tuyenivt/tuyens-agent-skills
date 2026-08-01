@@ -17,6 +17,8 @@ user-invocable: false
 - Reviewing API contracts for consistency
 - Planning backward-compatible API evolution
 
+For a GraphQL or gRPC API, the transport rules (paths, methods, status codes, pagination params) do not apply - reviewing against them manufactures violations from design choices the paradigm made. What carries over is boundary validation, error-shape consistency, no ORM entities on the wire, idempotency on non-idempotent mutations, and versioning on breaking change. Review that subset and append the assessed paradigm to the **Stack:** line (e.g. `Node.js/NestJS - GraphQL`).
+
 ## Rules
 
 - Resource paths are plural nouns, lowercase, hyphen-separated (`/order-items`). No verbs in paths.
@@ -72,6 +74,8 @@ GET /events?cursor=eyJpZCI6MTIzNDV9&limit=20
 -> { "items": [...], "next_cursor": "eyJpZCI6MTIzNjV9" }
 ```
 
+A cursor is correct only when it encodes the full sort key and that sort is total. Sorting by a non-unique column (`created_at DESC`) with a cursor on a different one (`id`) skips or repeats rows whenever values tie - append a unique tiebreaker and encode both (`ORDER BY created_at DESC, id DESC`, cursor `{created_at, id}`). A well-shaped cursor API with a partial sort key is the common silent defect here.
+
 ### Idempotent POST
 
 ```
@@ -90,7 +94,7 @@ After stack-detect, apply these patterns using the detected ecosystem's idioms: 
 
 ## Output Format
 
-Consuming workflows parse this structure. In design mode (no existing code to review), apply Rules as constraints and output the proposed endpoint table (method, path, status codes, pagination) instead of the assessment block.
+Consuming workflows parse this structure. In design mode (no existing code to review), apply Rules as constraints and output the proposed endpoint table (method, path, status codes, pagination, idempotency) instead of the assessment block.
 
 ```
 ## API Guidelines Assessment
@@ -115,6 +119,8 @@ Consuming workflows parse this structure. In design mode (no existing code to re
 - **Low**: Field naming drift, missing version header, missing `Sunset` on deprecated endpoint
 
 These are examples, not a closed list. For unlisted violations, classify by impact: data exposure or unsafe retries = High, wrong semantics or scalability (verbs in paths, missing pagination) = Medium, naming and metadata hygiene = Low. When a finding matches multiple tiers, report the highest. One finding per rule violated.
+
+A convention the project has documented and built clients against (a response envelope, a field-naming scheme) is the baseline for consistency findings, not a violation - report deviation *from it*, and raise the convention itself only once, as Low, with the migration cost named. Correctness and safety rules (validation, error leakage, idempotency, ORM exposure) hold regardless of local convention.
 
 Omit "No Violations Found" if violations were listed.
 

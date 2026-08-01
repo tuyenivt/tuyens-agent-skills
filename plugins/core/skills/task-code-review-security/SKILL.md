@@ -26,7 +26,7 @@ Scope is the resolved branch diff vs base (PR-shaped, per `review-precondition-c
 
 `/task-code-review-security [<branch> | pr-<N>] [standard | deep] [--base <branch>]`
 
-When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return findings per Output Format, and skip Step 5 - the parent owns the report.
+When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return the subagent envelope defined in Output Format, and skip Step 5 - the parent owns the report.
 
 ## Workflow
 
@@ -65,7 +65,7 @@ Use skill: `review-precondition-check` when running standalone (skip if the pare
 | Injection                     | Parameterized queries; no SQL string concat; no shell-out with user input; ORM query builders                           |
 | Insecure Design               | Authorization model defined; threat model considered; rate limiting on sensitive endpoints                              |
 | Security Misconfiguration     | Secure headers (CORS, CSP, HSTS); admin/debug endpoints disabled or auth-gated in prod; error responses do not leak     |
-| Vulnerable Components         | Dependencies scanned for known CVEs                                                                                     |
+| Vulnerable Components         | Dependency manifest/lockfile changes in the diff checked against known CVEs; no dependency changes -> `No issues found` |
 | Identification and Auth       | JWT/session validation (signature, expiry, audience); CSRF protection for session-based auth; no credentials in VCS     |
 | Data Integrity Failures       | Deserialization inputs validated; CI/CD pipeline integrity; signed artifacts where applicable                           |
 | Logging and Monitoring        | Auth failures and access-denied events logged; no sensitive data in logs                                                |
@@ -89,7 +89,7 @@ Standalone only - subagent runs return findings to the parent instead. Use skill
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
-When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
+When Step 3 dispatched: the stack workflow owns the output. Subagent runs return only the `## OWASP Coverage` list and the `## Findings` severity sections, each finding carrying its severity's label (Critical/High -> `[Must]`, Medium/Low -> `[Recommend]`) - Summary, Next Steps, and the report file are standalone-only. When fallback ran standalone:
 
 ```markdown
 ## Security Review Summary

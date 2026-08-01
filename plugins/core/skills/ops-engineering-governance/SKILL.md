@@ -57,7 +57,7 @@ Prefer higher-tier enforcement. If only manual is feasible, pair it with a plan 
 | Field                   | Description                                              |
 | ----------------------- | -------------------------------------------------------- |
 | Rule                    | Specific, enforceable constraint                         |
-| Scope                   | Where it applies (code review, CI, deployment, runtime)  |
+| Scope                   | Where it applies (code review, CI, deployment, runtime, or vendor/procurement when the control governs a third party rather than our code) |
 | Enforcement             | How it is checked (lint rule, CI gate, alert, checklist) |
 | Failure class prevented | Category of failure this guards against                  |
 | Priority                | immediate / next sprint / quarterly                      |
@@ -109,7 +109,7 @@ Consuming workflow skills parse this structure to surface actionable, prioritize
 
 | Rule | Scope | Enforcement | Failure Class Prevented | Priority |
 | ---- | ----- | ----------- | ----------------------- | -------- |
-| {specific enforceable constraint} | {code review / CI / deployment / runtime} | {lint rule / CI gate / alert / checklist} | {failure category} | immediate / next sprint / quarterly |
+| {specific enforceable constraint} | {code review / CI / deployment / runtime / vendor} | {lint rule / CI gate / alert / checklist / contract term} | {failure category} | immediate / next sprint / quarterly |
 
 ### Process Improvements
 
@@ -118,12 +118,18 @@ Consuming workflow skills parse this structure to surface actionable, prioritize
   - Trigger: {when this process activates}
   - Owner: {role responsible}
 
+### Guardrails That Held
+
+- {existing control that caught or bounded this failure, and what it prevented, or "none"}
+
 ### No Recommendations
 
 {State explicitly if no governance improvements are needed - do not omit silently.}
 ```
 
-Every guardrail needs an enforcement mechanism. Every process improvement needs a trigger and owner. Omit "No Recommendations" if recommendations were listed.
+Every guardrail needs an enforcement mechanism. Every process improvement needs a trigger and owner. Omit "No Recommendations" if recommendations were listed; when it is emitted, omit the empty New Guardrails and Process Improvements sections.
+
+`Guardrails That Held` is never omitted: a control that stopped a failure is the only evidence that it earns its cost, and `retire` decisions are otherwise made from friction complaints alone. An incident with no recommendations still produces this section - that is its whole finding.
 
 ## Avoid
 

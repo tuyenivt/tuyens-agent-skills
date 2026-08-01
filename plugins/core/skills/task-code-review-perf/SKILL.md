@@ -24,7 +24,7 @@ Detects the project stack and delegates to the matching stack-specific perf revi
 
 `/task-code-review-perf [<branch> | pr-<N>] [standard | deep] [--base <branch>]`
 
-When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return findings per Output Format, and skip Step 5 - the parent owns the report.
+When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return the subagent envelope defined in Output Format, and skip Step 5 - the parent owns the report.
 
 ## Workflow
 
@@ -48,7 +48,7 @@ Use skill: `stack-detect`.
 | Flutter / Dart       | `task-flutter-review-perf` |
 | React / Next.js      | `task-react-review-perf`   |
 
-Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow is unavailable (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5.
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow is unavailable (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5.
 
 ### Step 4 - Generic Fallback (no dispatch)
 
@@ -82,13 +82,13 @@ Standalone only - subagent runs return findings to the parent instead. Use skill
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
-When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
+When Step 3 dispatched: the stack workflow owns the output. Subagent runs return only the `## Findings` impact sections, each finding carrying its impact's label (High -> `[Must]`, Medium/Low -> `[Recommend]`) - Summary, Next Steps, and the report file are standalone-only. When fallback ran standalone:
 
 ```markdown
 ## Performance Review Summary
 
 **Stack Detected:** [detected stack, or unknown] (generic fallback applied)
-**Scope:** Backend | Frontend | Fullstack
+**Scope:** Backend | Frontend | Fullstack | Mobile
 **Overall:** Clean | Issues Found - [High/Medium/Low counts]
 
 ## Findings

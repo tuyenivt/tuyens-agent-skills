@@ -22,7 +22,7 @@ user-invocable: false
 - Every deployment ships with a rollback plan, defined before merge.
 - Code must run against both the previous and the new schema during rolling deploy.
 - Changes with wide blast radius use canary or progressive rollout, not big-bang.
-- Rollback triggers are observable thresholds (error rate, latency, saturation), not judgement calls.
+- Rollback triggers are observable thresholds (error rate, latency, saturation), not judgement calls. A rate threshold needs enough traffic in its window to mean anything: check that the canary slice will receive a few hundred requests during the bake time, and where it will not - internal tools, low-traffic services - trigger on absolute counts (`>= 3 errors`) and extend the window or the slice until the sample exists. A 5% canary on a service serving 40 requests an hour proves nothing.
 - Destructive migrations (DROP / RENAME) deploy **after** the code that stops reading the column is live and verified.
 - Code that requires populated data in a new column deploys **after** the backfill is verified complete.
 - One risky change per deploy. Do not bundle schema migrations, config changes, and features in a single release - split so a triggered rollback is attributable and each piece reverts independently.
@@ -107,6 +107,8 @@ Consuming workflow skills parse this structure to produce actionable rollout and
 
 1. {step} - {data safety note if applicable}
 2. {mark irreversible steps "Point of no return" and give the roll-forward action instead}
+
+State per layer what is reverted and what is deliberately left in place - an additive migration usually stays while the code reverts, and a plan that reads as one list invites undoing the schema too. Write `Leave in place: {what}` for each layer you are not touching, with the reason.
 
 ### Risks
 

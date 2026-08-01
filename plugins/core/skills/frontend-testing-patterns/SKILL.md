@@ -29,6 +29,15 @@ user-invocable: false
 
 Module-level mocking is acceptable only for third-party SDKs that render in iframes (Stripe, Maps, reCAPTCHA) and browser APIs without test equivalents (IntersectionObserver, ResizeObserver, geolocation).
 
+### Server-rendered components
+
+A component that runs only on the server (React Server Components, Nuxt server components) has no client lifecycle to render into and often no network boundary to intercept - it calls the database or filesystem directly. The client-side rules do not transfer:
+
+- Extract the data access and unit-test it directly against a test database or a fake repository; the component's own job is then shaped from that data.
+- Test the rendered result through the framework's server-render path or E2E, not Testing Library's `render()`.
+- MSW intercepts HTTP, so it applies only where the server component actually makes an HTTP call to another service.
+- The Client Components beneath it follow every rule above - the boundary between them is where normal component testing resumes.
+
 ---
 
 ## Patterns
@@ -174,6 +183,8 @@ For unknown stacks, apply universal patterns and point the user to the framework
 
 Consuming workflow skills depend on this structure. Include exactly one of `Issues Found` / `No Issues Found`. When the project defines no coverage norms, default targets to 80% for unit and component, key flows for integration, critical paths for e2e.
 
+On a codebase far below those targets, a global number is a wish, not a plan: state the target as a ratchet on changed files ("80% on files this PR touches, current baseline 12%") and order `Tests to Write` as an adoption sequence - E2E over the one or two revenue-critical journeys first (largest safety net per test), then component tests at the files that change most often, then backfill. Say which step the project is on rather than listing 400 components.
+
 ```
 ## Frontend Testing Assessment
 
@@ -186,7 +197,7 @@ Consuming workflow skills depend on this structure. Include exactly one of `Issu
 | ----------- | ---------------- | ------ |
 | Unit        | {target %}       | {tool} |
 | Component   | {target %}       | {tool} |
-| Integration | {target %}       | {tool} |
+| Integration | {target % or key flows} | {tool} |
 | E2E         | {critical paths} | {tool} |
 
 ### Tests to Write

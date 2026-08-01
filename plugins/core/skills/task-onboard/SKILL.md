@@ -43,7 +43,7 @@ If known pain points are given, investigate each: trace the implicated flow (Ste
 | `architect-survey` | Senior engineer / due diligence       | Architecture, patterns, tech debt, structural risk                                             |
 | `full` (default)   | Anyone wanting the complete picture   | All sections at equal weight                                                                   |
 
-Weight shift: section order never changes and no section is dropped; write the mode's emphasized sections at full depth and compress the rest to their tables plus one-line notes. If the user's stated goal implies a mode, confirm rather than defaulting silently.
+Weight shift: section order never changes and no section is dropped; write the mode's emphasized sections at full depth and compress the rest - keep their tables and command blocks, reduce prose to one-line notes. If the user's stated goal implies a mode, confirm rather than defaulting silently.
 
 ## Workflow
 
@@ -396,7 +396,7 @@ Areas to study before broader work: why it matters; suggested reading path.
 - [ ] Step 4: architecture pattern classified with cited evidence
 - [ ] Step 5: modules table; primary flow traced (pain-point or scope flow when given)
 - [ ] Step 6: patterns table cites real paths; Domain Knowledge tables capped at 5, each cited
-- [ ] Step 7: tech debt findings ordered High -> Medium -> Low with concrete locations; pitfalls flagged with markers and paths; each known pain point given a verdict (or n/a)
+- [ ] Step 7: tech debt findings ordered High -> Medium -> Low with concrete locations; pitfalls flagged with markers and paths; each known pain point given a verdict from the enum (table omitted when none given)
 - [ ] Step 8: Operational Context populated
 - [ ] Step 9: Local Quickstart commands cited from real files; missing prerequisites flagged as documentation gaps
 - [ ] Step 10: ecosystem unknowns marked, not invented

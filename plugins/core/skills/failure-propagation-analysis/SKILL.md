@@ -107,7 +107,13 @@ All services have issues.
 {What stopped propagation, or what would have stopped it earlier. Name the loop-breaker if a cycle was found.}
 ```
 
-Always produce all sections. Annotate each cascading component with its impact mode: `(failed)` or `(degraded: <fallback>)`. When the failure fans out, branch path steps as 2a/2b instead of forcing a false linear order. Use "none" for Cascading only when the failure is demonstrably contained. Never skip Shared Resources - they are the containment levers.
+Always produce all sections. Annotate each cascading component with its impact mode: `(failed)` or `(degraded: <fallback>)`. When the failure fans out, branch path steps as 2a/2b instead of forcing a false linear order. Write a cycle as a final step `-> loops to step N`, so the loop is visible in the path itself.
+
+Components that absorbed the failure through a working fallback are listed and annotated `(degraded: <fallback>)` - containment is visible in the annotations, not in an empty list. Reserve `none - failure is contained` for a failure no other component observed at all.
+
+Shared Resources lists every resource on the path; write `none on path - failure did not cross a shared resource` when there is genuinely none, since that absence is itself the finding: the failure had no amplification lever.
+
+When propagation depends on a configuration you cannot read (rate limiter fail-open vs fail-closed, retry budget on or off), both outcomes are real - branch the path and give Containment a line per branch, naming the config that decides it. A single path would assert a fact you do not have.
 
 ## Avoid
 

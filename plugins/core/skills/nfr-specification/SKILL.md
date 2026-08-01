@@ -70,7 +70,9 @@ Elicit across all six. For each, extract from context or ask the requester. When
 
 ### Distinguish SLO from SLA
 
-SLOs are internal targets that drive design and alerting. SLAs are contractual obligations to customers with penalties. Record them as separate rows when both exist.
+SLOs are internal targets that drive design and alerting. SLAs are contractual obligations to customers with penalties. Record them as separate rows when both exist, labelled `Uptime SLO` and `Uptime SLA (contractual)` so the contractual one is identifiable.
+
+An SLO must be at least as strict as the SLA it sits behind - the gap is the margin that lets you detect and fix a breach before it costs money. An SLO looser than its SLA is a conflict; record it as one.
 
 ## Output Format
 
@@ -109,7 +111,7 @@ Compliance: {standards or "none identified"}
 ### Operability
 
 Deployment: {zero-downtime / maintenance window allowed}
-MTTR target: {minutes}
+MTTR target: {minutes, alert to resolved}
 Log retention: {days}
 Tracing coverage: {percentage of requests or specific services}
 Metrics granularity: {per-second / per-minute / per-5-minute}
@@ -130,6 +132,10 @@ Volume growth: {estimate}
 ```
 
 Always produce all six sections plus Conflicts and Gaps. If a category has no business signal, state "not specified" and list it in Gaps.
+
+`(assumed: basis)` goes in the Notes column where a table has one, and directly after the value everywhere else (`RTO: < 15 min (assumed: no DR target stated)`). Every tag anywhere gets its confirmation question in Gaps.
+
+An infeasible target is not a conflict between two stated NFRs - no choice between them makes it attainable. Record it in Conflicts, but instead of resolution options give the achievable frontier and what it would cost to approach it: "p99 50ms with global strong consistency is below cross-continent round-trip time (~70-90ms US-EU): the floor is ~120ms globally consistent, or 50ms per-region with eventual cross-region convergence."
 
 ## Avoid
 

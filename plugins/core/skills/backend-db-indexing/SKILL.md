@@ -42,6 +42,8 @@ WHERE created_at >= '2024-01-01' AND created_at < '2024-01-02'
 CREATE INDEX idx_users_email_lower ON users(LOWER(email));
 ```
 
+Expression indexes need PostgreSQL, SQLite, or MySQL 8.0.13+; on older MySQL the rewrite is the only option, or store the normalized value in its own indexed column.
+
 ### Composite column order
 
 A composite index is traversed left-to-right. Only the leading column(s) can be used in isolation.
@@ -125,12 +127,16 @@ Consuming workflows parse this structure. When reviewing a diff, report problema
 
 - [Severity: High | Medium | Low] {table.column(s)} - {gap description}
   - Query pattern: {WHERE / JOIN / ORDER BY needing the index}
-  - Recommended index: {CREATE INDEX statement or ORM equivalent}
+  - Recommended index: {CREATE INDEX statement, ORM equivalent, or the query rewrite when no index can fix it}
   - Lock risk: {Low - additive online | Medium - large table, use CONCURRENTLY | High - blocks writes}
 
 ### Existing Index Issues
 
 - {table.index_name} - {over-indexed | low-cardinality | unused | duplicate} - {recommendation}
+
+### Indexes Not Recommended
+
+- {table.column(s)} - {why the index costs more than it returns, and what to do instead, or "none"}
 
 ### No Issues Found
 
@@ -144,6 +150,8 @@ Consuming workflows parse this structure. When reviewing a diff, report problema
 - **Low**: Low-cardinality index with write cost and no read benefit
 
 Lock risk is mandatory on every recommendation.
+
+`Indexes Not Recommended` holds indexes declined in design mode - requested or considered, never shipped - such as a write-heavy table where the read benefit does not repay the ingest cost, or one already covered by a composite. Declining is a valid result (the write-tax rule). A problematic index the diff under review adds is a defect in the schema being shipped: it stays under `Existing Index Issues`.
 
 ## Avoid
 

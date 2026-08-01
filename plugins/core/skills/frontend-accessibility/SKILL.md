@@ -54,7 +54,10 @@ ARIA only when no native element provides the semantics. Never duplicate native 
 | Custom select      | `<select>`   | `role="listbox"` + `role="option"`                  |
 | Autocomplete       | `<datalist>` | `role="combobox"` + `aria-expanded` + `aria-controls` + `aria-activedescendant` |
 | Tabs               | (none)       | `role="tablist"` + `role="tab"` + `role="tabpanel"` |
+| Data grid          | `<table>`    | `role="grid"` + `role="row"` + `role="gridcell"`, roving `tabindex`, arrows in two dimensions |
 | Live update        | (none)       | `aria-live="polite"` or `"assertive"`               |
+
+**Virtualized collections** (windowed grids, infinite lists) render a fraction of their rows, so the DOM count contradicts the real one. Declare the logical size - `aria-rowcount` / `aria-colcount` on the grid with `aria-rowindex` per row, or `aria-setsize` / `aria-posinset` on list items - or assistive technology announces "3 of 30" for a 50,000-row collection. Keep focus valid when the window scrolls: move focus with the item, never leave it on a recycled node.
 
 Key rules:
 - `aria-label` overrides visible text; prefer `aria-labelledby` referencing the visible label
@@ -70,6 +73,7 @@ Key rules:
 | Dialog           | Escape to close, Tab trapped within                          |
 | Tabs             | Arrows to switch, Tab to enter/exit                          |
 | Listbox          | Arrows, Enter, Escape, type-ahead                            |
+| Grid             | Arrows in both axes, Home/End for row ends, Ctrl+Home/End for grid ends; one Tab stop for the whole grid |
 
 ### Focus Management
 
@@ -87,6 +91,7 @@ Provide a "Skip to main content" link as the first focusable element.
 
 - Text contrast: 4.5:1 normal, 3:1 large - large means 18pt/24px+, or 14pt/18.66px+ bold (1.4.3)
 - UI component contrast: 3:1 against adjacent colors (1.4.11)
+- Over an image, gradient, or translucent overlay there is no single background color: measure the worst pixel behind the text box - the lightest for dark text, the darkest for light text - after compositing the overlay. Passing against the overlay's nominal color while failing over the photo behind it is the usual way a hero section ships broken; a solid scrim or a text-shaped backdrop fixes it.
 - Never use color alone for state - pair with text/icon (1.4.1)
 
 ```jsx
@@ -133,7 +138,7 @@ Severity: Critical = blocks task completion for keyboard or assistive-technology
 ```
 ## Accessibility Assessment
 
-**Stack:** {detected language / framework}
+**Stack:** {detected language / framework, or "unknown - universal patterns applied"}
 **Standard:** WCAG 2.1 AA
 
 ### Audit Results
@@ -151,7 +156,7 @@ Severity: Critical = blocks task completion for keyboard or assistive-technology
 {If no issues: state explicitly that accessibility is adequate. If issues found: "See Audit Results." Never omit this section silently}
 ```
 
-Design-phase requests (no code yet): keep the same structure; Audit Results rows list required behaviors for the planned component, with Element/Component naming the planned element.
+Design-phase requests (no code yet): keep the same structure; Audit Results rows list required behaviors for the planned component, with Element/Component naming the planned element. Severity then rates the impact of shipping without that behavior, which makes most rows Critical or Major - order the rows by severity and put the ones a framework primitive gives you for free last, so the column still separates what needs design attention from what comes with the library.
 
 ---
 

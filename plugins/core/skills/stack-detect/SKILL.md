@@ -22,7 +22,7 @@ user-invocable: false
 - **Pass through, do not validate.** Any value is valid; no fixed enum of allowed languages or frameworks.
 - **Precedence: explicit declarations beat inference.** When both an instruction file's `## Tech Stack` and marker-file inference provide the same field, the instruction file wins (it carries author intent and specificity like "Java 21" vs generic "Java ecosystem"). Marker files fill fields the instruction file omits.
 - **Degrade gracefully.** If detection is inconclusive, emit `unknown` and let consumers proceed; do not fail loudly.
-- **Read narrowly.** Check only marker files and the `## Tech Stack` section of one instruction file. Do not scan the whole project.
+- **Read narrowly.** Check only marker files and the `## Tech Stack` section of one instruction file. Do not scan the whole project. When the root has no manifest or a monorepo layout is evident (`apps/`, `packages/`, `services/`), check those directories' immediate children for manifests too - one level down, no deeper.
 
 ## Patterns
 
@@ -75,7 +75,7 @@ File-based detection can determine Language, Build tool, sometimes Framework and
 
 ### Step 2 - Instruction file (supplemental detail)
 
-Read the first file found, in this order:
+Read the first file that has a matching section, in this order - a file without one does not end the search, so a `CLAUDE.md` with no stack section falls through to `AGENTS.md`:
 
 1. `./CLAUDE.md` or `.claude/CLAUDE.md`
 2. `./AGENTS.md`
@@ -115,7 +115,9 @@ Fullstack triggers:
 - Nuxt with `server/`.
 - Monorepo containing both a client marker (`package.json` with React/Vue/Angular, or `pubspec.yaml` with Flutter) and a backend marker (`build.gradle`, `go.mod`, etc.).
 
-For fullstack from two stacks (monorepo), set `Language` and `Framework` to the primary stack and describe the secondary in `Additional` (e.g., `Frontend: TypeScript (React)`). For fullstack from a single meta-framework (Next.js, Nuxt), keep the meta-framework as `Framework`; there is no secondary entry.
+When more than one trigger fires, the monorepo rule wins: two separate manifests are a stronger signal than one meta-framework's server capability.
+
+For fullstack from two stacks (monorepo), set `Language` and `Framework` to the primary stack - the one whose manifest sits at the repo root, or when all manifests are nested equally, the one serving HTTP to end users - and describe the secondary in `Additional` (e.g., `Frontend: TypeScript (React)`). For fullstack from a single meta-framework (Next.js, Nuxt) with no second manifest, keep the meta-framework as `Framework`; there is no secondary entry.
 
 ## Output Format
 
@@ -137,7 +139,7 @@ Source: {context-file | file-detection | mixed | unknown}
 Contract:
 - `Stack Type`, `Language`, `Framework`, `Source` are always present.
 - `Source`: a source contributes only if at least one of its values survives into the output (fully overridden inference does not count). `context-file` when only the instruction file contributed; `file-detection` when only marker files contributed; `mixed` when both did.
-- Fields beyond the required four may be omitted when neither source declared them.
+- `ORM` and `Additional` are omitted when neither source declared them; `Build tool`, `Database`, and `Test framework` are always present, written as `unknown` when undeclared.
 - `unknown` for Language means consumers must fall back to language-agnostic guidance.
 
 ## Avoid

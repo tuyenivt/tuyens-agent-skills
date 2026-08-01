@@ -23,7 +23,7 @@ user-invocable: false
 - Idempotency state lives in the database (not memory, not cache alone).
 - Database-local side effects: the idempotency check and the business operation run in a single transaction. External side effects (gateway, email): commit `processing` first - see Record schema and lifecycle.
 - Use database-level uniqueness for atomicity (`INSERT ... ON CONFLICT`, `INSERT IGNORE`, or advisory locks). Never check-then-act.
-- Set a TTL on stored idempotency records (typically 24-48h) to bound growth.
+- Set a TTL on stored idempotency records (typically 24-48h). It bounds growth, but it also bounds the guarantee: once a record expires the same key executes again as new. Set it longer than the longest retry window any client or broker can produce (delayed queues and manual replays are the long tail), not to whatever keeps the table small.
 - Prefer natural business keys when one exists - they prevent duplicates across client sessions. Client-generated UUIDs are the fallback.
 
 ## Patterns
@@ -57,7 +57,7 @@ ON CONFLICT (key) DO NOTHING;
 Store enough to replay the original response: `key`, `status` (`processing | completed | failed`), `response_code`, `response_body`, `request_hash`, `expires_at`. If the same key arrives with a different `request_hash`, reject with `422` - never replay a response for a different payload.
 
 - Side effects inside the database: dedup insert and business operation in one transaction. A crash rolls everything back, so a retry re-executes cleanly; `processing` is never observed by others.
-- Side effects outside the database (payment gateway, email): commit `processing` first, execute, then commit `completed` with the response. A row stuck in `processing` past the operation timeout means outcome unknown - surface it for reconciliation, never silently re-execute.
+- Side effects outside the database (payment gateway, email): commit `processing` first, execute, then commit `completed` with the response. A row stuck in `processing` past the operation timeout means outcome unknown - never silently re-execute. Reconciliation is a designed component, not a note: a periodic sweeper queries rows in `processing` older than the timeout and resolves each against the provider (query the gateway by the idempotency key you sent it), alerting on any it cannot settle. The timeout is the provider's own maximum response time plus a margin - shorter and you sweep live operations, longer and money sits unreconciled. An endpoint with external side effects and no sweeper is an incomplete implementation.
 - `completed` and `failed` both replay the stored response. `failed` records deterministic business failures (e.g., insufficient funds); transient errors roll back and leave no row, so retries re-execute.
 
 ### In-flight duplicate
@@ -108,7 +108,7 @@ Consuming workflows parse this structure.
 ### Gaps
 
 - [Severity: High | Medium | Low] {operation or endpoint} - {gap description}
-  - Missing: {idempotency key | dedup table | transactional check | TTL}
+  - Missing: {idempotency key | dedup table | transactional check | reconciliation sweeper | entity-state guard | TTL}
   - Risk: {duplicate side effect - e.g., double charge, double publish, double insert}
   - Recommendation: {concrete pattern and mechanism for the detected stack}
 

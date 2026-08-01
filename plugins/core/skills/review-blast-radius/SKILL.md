@@ -49,7 +49,7 @@ Wide data scope on a core model implies code scope expansion across every API th
 
 ### Overall Classification
 
-- **Critical** - Wide data with no rollback, OR a break in an externally consumed contract (public API, published events, exports)
+- **Critical** - Wide data with no rollback, OR a break in a contract you cannot fix in one deploy: anything consumed outside this repository (public API, published events, exports, and internal libraries or shared schemas whose callers ship on their own schedule)
 - **Wide** - any single dimension is Wide
 - **Moderate** - any single dimension is Moderate
 - **Narrow** - all dimensions Narrow
@@ -90,11 +90,13 @@ Callers parse the `Blast Radius:` line.
 
 ```
 Blast Radius: {Narrow | Moderate | Wide | Critical}
-Code: {Narrow | Moderate | Wide} ({1-sentence rationale})
-Data: {Narrow | Moderate | Wide} ({1-sentence rationale})
-User: {Narrow | Moderate | Wide} ({1-sentence rationale})
+Code: {Narrow | Moderate | Wide | N/A} ({1-sentence rationale})
+Data: {Narrow | Moderate | Wide | N/A} ({1-sentence rationale})
+User: {Narrow | Moderate | Wide | N/A} ({1-sentence rationale})
 Reversibility: {Recoverable | Conditional | Irreversible} ({1-sentence rationale})
 ```
+
+`N/A` dimensions are skipped when taking the maximum; when every dimension is `N/A`, the overall line is `Narrow`.
 
 When a mitigation materially changes the level, rewrite the affected lines in that same block and append a `Mitigation:` line naming the existing safeguard or the single action that achieves the mitigated level:
 

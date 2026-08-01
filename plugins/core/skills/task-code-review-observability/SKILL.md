@@ -25,7 +25,7 @@ Detects the project stack and delegates to the matching stack-specific observabi
 
 `/task-code-review-observability [<branch> | pr-<N>] [standard | deep] [--base <branch>]`
 
-When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return findings per Output Format, and skip Step 5 - the parent owns the report.
+When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return the subagent envelope defined in Output Format, and skip Step 5 - the parent owns the report.
 
 ## Workflow
 
@@ -49,7 +49,7 @@ Use skill: `stack-detect`.
 | Flutter / Dart       | `task-flutter-review-observability` |
 | React / Next.js      | `task-react-review-observability`   |
 
-Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5 as fallback.
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5 as fallback.
 
 ### Step 4 - Generic Fallback (no dispatch match)
 
@@ -67,7 +67,7 @@ Use skill: `ops-observability`. This is the primary source of findings - it cove
 | Mobile observability      | mobile           | Crash reporting with symbol upload, uncaught-error handlers covering every async entry point, release/build attribution, analytics consent and no PII |
 | SLO and alerting          | deep depth only  | SLI per critical service, SLO target + window, burn-rate alerts on symptoms not causes |
 
-Determine `Scope` (`backend` / `frontend` / `fullstack` / `mobile`) from `stack-detect`'s `Stack Type` field. Flag services with no SLO as **Recommend** at deep depth. On `mobile`, skip Metrics and Distributed tracing (the device is not a traced service) and treat the SLO category as client-side success/latency targets for the flows the app owns. Every finding states what becomes invisible without the missing signal. Next Steps map severity to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`.
+Determine `Scope` (`backend` / `frontend` / `fullstack` / `mobile`) from `stack-detect`'s `Stack Type` field; `fullstack` activates both the backend- and frontend-scoped rows. Flag services with no SLO as **Recommend** at deep depth. On `mobile`, skip Metrics and Distributed tracing (the device is not a traced service) and treat the SLO category as client-side success/latency targets for the flows the app owns. Every finding states what becomes invisible without the missing signal. Next Steps map severity to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`.
 
 If the diff touches no instrumentable code (docs, tests, comments only), skip the category review and report `Overall: Adequate` with the note "diff contains no instrumentable surface" - still write the report in Step 5.
 
@@ -81,13 +81,13 @@ Standalone only - subagent runs return findings to the parent instead. Use skill
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
-When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
+When Step 3 dispatched: the stack workflow owns the output. Subagent runs return only the `## Findings` severity sections, each finding carrying its severity's label (High -> `[Must]`, Medium/Low -> `[Recommend]`) - Summary, Next Steps, and the report file are standalone-only. When fallback ran standalone:
 
 ```markdown
 ## Observability Review Summary
 
 **Stack Detected:** [detected stack, or unknown] (generic fallback applied)
-**Scope:** Backend | Frontend | Fullstack
+**Scope:** Backend | Frontend | Fullstack | Mobile
 **Overall:** Adequate | Gaps Found - [High/Medium/Low counts]
 
 ## Findings

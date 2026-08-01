@@ -19,9 +19,9 @@ user-invocable: false
 
 ## Rules
 
-- Apply the detected language's naming convention (camelCase, snake_case, PascalCase, kebab-case). Do not mix styles within a codebase.
+- Apply the detected language's naming convention (camelCase, snake_case, PascalCase, kebab-case). Do not mix styles within a codebase. Where an established codebase-wide convention already differs from the language norm, consistency with the codebase wins - new code matches what is there. Raise the divergence once, as `[Recommend]`, against the convention rather than the file that followed it.
 - Short names in small scopes; descriptive names in larger scopes.
-- One responsibility per file/class/module. Functions/methods over 50 lines must be decomposed (up to 80 for verbose languages - calibrate to stack norms).
+- One responsibility per file/class/module. Functions/methods over 50 lines must be decomposed (up to 80 for verbose languages - calibrate to stack norms). Length measures responsibility, not lines: a flat exhaustive dispatch (uniform short branches, no nesting, no shared state) is one responsibility at any length, and splitting it scatters a table across functions.
 - Files live in directories matching their architectural role (no service classes in `controllers/`).
 - Presentation layer stays thin - business logic belongs in the service or domain layer.
 - Responses use DTOs / serializers / response structs, never data-layer entities.
@@ -99,7 +99,11 @@ Consuming workflows parse this structure.
 - **[Recommend]**: Structural drift that compounds (mixed naming, magic numbers, file placed in the wrong layer directory)
 - **[Recommend]**: Ambiguous case where the rule may or may not apply - state the assumption and ask the author to confirm in the same finding
 
-Omit Anti-Patterns if none. Omit "No Issues Found" if violations were listed.
+A defect matching both a Rule and an anti-pattern category is one entry under Violations with its intent label; Anti-Patterns holds only ecosystem-scan findings no Rule covers.
+
+Omit Anti-Patterns only when the scan ran and found none. When the stack is unfamiliar and the ecosystem-specific scan could not run, keep the section and write `not assessed - {stack} anti-patterns require ecosystem knowledge; verify with the stack's linter`. An omitted section reads as a clean result, which is a stronger claim than "not checked."
+
+Omit "No Issues Found" if violations were listed.
 
 ## Avoid
 

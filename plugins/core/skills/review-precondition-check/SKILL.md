@@ -156,13 +156,15 @@ Wait for explicit affirmative (`y` / `yes`). On `n` or no response, stop with `R
 
 This step enables flag-free re-review. It only **reads and reports** - it does not decide mode. The consuming workflow decides.
 
-Compute the prior-report filename from the resolved current branch (sanitization rules per `review-report-writer`: replace `/` and chars outside `[A-Za-z0-9_-]` with `-`, collapse, strip):
+Compute the prior-report filename from the **head** short name (sanitization rules per `review-report-writer`: replace `/` and chars outside `[A-Za-z0-9_-]` with `-`, collapse, strip):
 
 ```
-review-<sanitized-branch>.md
+review-<sanitized-head>.md
 ```
 
-The lookup is keyed to the current branch - the same key `review-report-writer` writes under - so rounds chain only when re-run from the same checked-out branch.
+The key is the thing being reviewed, not the branch you happen to stand on, so a cross-branch review of `pr-123` chains with the last review of `pr-123` rather than colliding with the checkpoint of whatever branch is checked out. In the common self-review case head and current branch are the same name, so this is the same file either way.
+
+Skip the lookup and omit `prior_checkpoint` when `head_ref` is `HEAD` under a detached `current_branch` - there is no stable name to chain on, and every detached review would otherwise share one file.
 
 If the file does not exist in the current working directory, omit `prior_checkpoint` from the handle and continue.
 
@@ -180,6 +182,7 @@ If the file exists, read the leading YAML frontmatter (delimited by `---` lines 
 | `scope`          | yes                                                            |
 | `depth`          | yes                                                            |
 | `stack`          | yes                                                            |
+| `prior_head_sha` | no - copy through when present (absent on a round-1 checkpoint) |
 
 If the file lacks a frontmatter block, lacks `---` delimiters, or any required field is missing or unparseable, treat as legacy: emit `prior_checkpoint: legacy` (a single literal value) and continue. The workflow uses this signal to overwrite the legacy report with a fresh round-1 run.
 
@@ -213,7 +216,8 @@ prior_checkpoint:                       # omit entirely if no prior report file;
   scope: <from prior report>
   depth: <from prior report>
   stack: <from prior report>
-  report_path: review-<sanitized-branch>.md
+  prior_head_sha: <from prior report; omit if absent>
+  report_path: review-<sanitized-head>.md
 ```
 
 When a precondition fails, emit only the stop message from the relevant step. Do not emit a partial handle.

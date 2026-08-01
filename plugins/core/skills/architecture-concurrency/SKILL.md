@@ -21,7 +21,7 @@ user-invocable: false
 ## Rules
 
 - Use the concurrency primitive native to the detected stack; do not mix paradigms inside a module without cause
-- Bound every concurrent workload - pool size, semaphore, or queue. Unbounded fan-out is a resource leak
+- Bound every concurrent workload - pool size, semaphore, or queue. Unbounded fan-out is a resource leak. The bound must sit at the point of *creation*: a semaphore that throttles the work while every unit is still allocated up front bounds throughput, not memory, and an attacker-sized input still exhausts the process
 - Every concurrent unit must have a cancellation or timeout boundary
 - Minimize shared mutable state; when unavoidable, protect it with the ecosystem's idiomatic mechanism
 - In-process locks do not coordinate across instances - use database or distributed locks for cross-process races
@@ -99,10 +99,12 @@ Concurrency bugs surface only under contention:
 ## Concurrency Assessment
 
 **Stack:** {detected language / framework | unknown}
-**Concurrency model:** {Thread-based | Coroutine/Lightweight | Process/Actor}
-**Primary primitive:** {thread | goroutine | coroutine | process | task | fiber}
+**Concurrency model:** {Thread-based | Coroutine/Lightweight | Process/Actor | not yet chosen}
+**Primary primitive:** {thread | goroutine | coroutine | process | task | fiber | not yet chosen}
 
 ### Issues
+
+One entry per defect, not per symptom: when several rules fail on the same construct and one restructure resolves them all, that is one Issue at the highest severity with every Risk listed. Repeating the same Fix under two entries reads as two problems.
 
 - [Severity: High | Medium | Low] {file:line if available} - {description}
   - Risk: {data race | lost update | deadlock | resource leak | blocking in async context | cross-instance race | etc.}
@@ -116,7 +118,7 @@ Concurrency bugs surface only under contention:
 Severity:
 
 - **High**: data race, lost update across a suspension point, deadlock risk, unbounded concurrency, in-process lock used for a cross-instance race
-- **Medium**: blocking call in cooperative context, missing cancellation or timeout, distributed lock without TTL
+- **Medium**: blocking call in cooperative context, missing cancellation or timeout, fire-and-forget without an error path, distributed lock without TTL
 - **Low**: idiomatic drift from the detected stack's conventions
 
 Omit "No Issues Found" only when issues were listed.

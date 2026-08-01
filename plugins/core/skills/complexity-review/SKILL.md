@@ -45,13 +45,15 @@ user-invocable: false
 
 Cognitive complexity: +1 per control-flow structure, +1 extra per nesting level it sits under, +1 per sequence of mixed boolean operators. A flat switch/match or top-level guard-clause sequence counts +1 total - branch count does not multiply the score.
 
+Indirection depth is the one cross-file signal: follow the call chain from the entry point until a hop does real work (a branch, a transform, an I/O call), and count the hops that only forward arguments. Stop at 5 hops or at a repository/client boundary - if nothing has done work by then, that is the finding; anchor its row at the chain's entry point and name the hops.
+
 ### Severity
 
 - **High**: any signal at or beyond ~1.5x its threshold (cyclomatic > 15, cognitive > 22, file > 400 lines, nesting > 4), or any signal blocking comprehension
 - **Medium**: over threshold but below ~1.5x
 - **Low**: approaching threshold but not yet a maintenance burden
 
-Downgrade rule: a flat exhaustive mapping (uniform one-line branches, no shared mutable state) is at most Low regardless of branch count; suggest a data table only when branches duplicate logic.
+Downgrade rule: a flat exhaustive mapping (uniform one-line branches, no shared mutable state) is at most Low regardless of branch count; suggest a data table only when branches duplicate logic. Drop the row entirely when the downgrade leaves nothing to act on - a readable lookup table reported as Low is an invitation to a refactor that makes the code worse.
 
 ### Refactor Priority
 
@@ -70,6 +72,8 @@ After `stack-detect`, adjust thresholds to ecosystem norms and prefer the stack'
 
 ### Issues
 
+One row per unit, not per signal - a unit firing three signals is one row carrying three Signal lines, severity set by its worst signal, so the reader sees one place to fix rather than three reports of the same method.
+
 - [Severity: High | Medium | Low] {file:line or symbol} - {one-line description}
   - Signal: {signal name from table}
   - Measured: {e.g., "cyclomatic 18, threshold 10"}
@@ -77,7 +81,7 @@ After `stack-detect`, adjust thresholds to ecosystem norms and prefer the stack'
 
 ### No Issues Found
 
-{Include only when no issues were listed. State that complexity is within thresholds.}
+{Include only when no issues were listed. State that no actionable complexity was found - covers both clean code and downgraded rows that were dropped.}
 ```
 
 ## Avoid

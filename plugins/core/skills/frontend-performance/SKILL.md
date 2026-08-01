@@ -39,6 +39,8 @@ user-invocable: false
 | INP    | Interaction to Next Paint | < 200ms | > 500ms |
 | CLS    | Cumulative Layout Shift   | < 0.1   | > 0.25  |
 
+LCP is TTFB + resource load delay + load time + render delay, so check TTFB before optimizing images: a 2.8s TTFB caps LCP above target no matter how the hero image is served. Server-side causes need server-side fixes - parallelize the sequential awaits in the data path, cache what is stable, and stream so the shell paints before data resolves (Suspense boundaries in React/Next, `<Suspense>` in Nuxt, `@defer` in Angular). Optimize the resource half only once TTFB is under roughly 800ms.
+
 ### Bundle Optimization
 
 Route-level code splitting is mandatory:
@@ -54,6 +56,17 @@ const AdminPanel = lazy(() => import("./pages/AdminPanel"))
 ```
 
 Bundle analysis: run an analyzer (webpack-bundle-analyzer, rollup-plugin-visualizer, `vite-bundle-visualizer`). Investigate any dep > 50KB gzipped, check for duplicates (multiple versions of the same lib), verify tree-shaking works.
+
+**Third-party scripts usually outweigh your own** - analytics, chat, ads, tag managers - and an analyzer never shows them because they are not in your bundle. Audit them from the network panel, not the build:
+
+- Nothing third-party blocks parsing: `async`/`defer`, or the framework's loading strategy (`next/script` with `afterInteractive`/`lazyOnload`, Nuxt `useHead` with `defer`).
+- Replace heavy embedded widgets with a facade - a static preview that loads the real chat, map, or video player on click. This is usually the single largest INP win on a marketing site.
+- Audit what a tag manager actually ships; a container grows without any code change of yours.
+- Consider moving tags off the main thread (Partytown) when they cannot be removed.
+
+### Performance Budgets
+
+Finding a regression after it ships is the slow path. Set budgets and enforce them in CI - `size-limit` or `bundlesize` for bundle bytes, Lighthouse CI assertions for vitals, Angular CLI `budgets` where the framework supplies them - so a PR that crosses the line fails rather than merges. Budget the routes users actually load, not the total build, and pair the lab check with field RUM: CI catches what you built, RUM catches what your users experience on their devices and networks.
 
 ### Image Optimization
 
@@ -145,8 +158,8 @@ Consuming workflow skills depend on this structure.
 ```
 ## Frontend Performance Assessment
 
-**Stack:** {detected language / framework}
-**Build tool:** {detected build tool}
+**Stack:** {detected language / framework, or "unknown - universal patterns applied"}
+**Build tool:** {detected build tool, or "none detected"}
 
 ### Core Web Vitals Estimate
 

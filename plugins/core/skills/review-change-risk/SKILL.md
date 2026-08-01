@@ -26,6 +26,7 @@ If a diff exists, use `review-pr-risk` instead; use both when both apply.
 - Every domain triggered must cite the evidence that triggered it.
 - Classify Low only when no domain is triggered.
 - Underspecified proposal: classify from stated facts, mark inferred domains "(assumed)" in their evidence, and record unknowns that could change the level under Open Questions. Never fail silently into a confident classification.
+- When assumed domains outnumber the evidenced ones, the classification is a prompt for information, not a verdict: keep the level (an alarming level on a vague proposal is the useful signal) and open the Evidence line with `Provisional - N of M domains assumed;` so the reader knows answering the Open Questions is what settles it.
 
 ## Patterns
 
@@ -58,7 +59,7 @@ If a diff exists, use `review-pr-risk` instead; use both when both apply.
 | One or two medium domains                          | Medium        |
 | No domain triggered                                | Low           |
 
-4. Amplify: if a shared mutable resource is written by two or more flows touched by the change, raise the level one tier (caps at Critical). Count shared state once - skip amplification when that resource is the sole reason Concurrency triggered.
+4. Amplify: if a shared mutable resource is written by two or more flows touched by the change, raise the level one tier (caps at Critical). Amplify at most once, however many resources qualify. Evaluate each shared resource in turn and amplify on the first one that is not already the sole reason Concurrency triggered - that carve-out prevents counting one resource twice, not amplification itself, so a second qualifying resource still amplifies.
 5. Assess reversibility: Irreversible when any triggered domain includes a destructive or non-reversible step (data loss, irreversible migration); Partially reversible when rollback needs manual or multi-step action; Reversible otherwise.
 
 ### Good

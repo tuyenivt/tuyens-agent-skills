@@ -21,7 +21,7 @@ user-invocable: false
 ## Rules
 
 - Every flag has a single, named owner. Release flags also get a cleanup target set at creation; permanent flags (kill switch, ops, permission) get documented valid states instead.
-- Name flags positively for the new behavior (`pricing_v2_enabled`); never negations or double negatives (`disable_legacy_pricing_off`).
+- Name flags positively for the new behavior (`pricing_v2_enabled`); never negations or double negatives (`disable_legacy_pricing_off`). A kill switch names the thing it stops, with `true` meaning stopped (`payments_v2_killed`) - the rule bans names that require a double negative to read, not the kill switch's inherent polarity.
 - Every high-risk feature has a **kill switch** that disables it without redeploy - the rollout flag itself when turning it off fully reverts behavior; a separate kill-switch flag only when the risky path must be disabled independently of rollout state.
 - Promotion to the next stage requires meeting promotion criteria; rollback triggers fire on any breach.
 - One flag controls one behavior. Flags that gate multiple behaviors cannot be rolled back cleanly.
@@ -73,10 +73,13 @@ Four stages; skipping any creates technical debt.
 
 1. Disable the flag (instant, no redeploy).
 2. Verify error rate returns to baseline within 2-3 min.
-3. Investigate root cause before re-enabling.
-4. If the flag will not disable cleanly, escalate to code rollback.
+3. Reconcile anything the flagged branch wrote while it was on - disabling stops new writes but does not undo those already made. Identify the affected rows (a flag-version column or the rollout window's timestamps), then correct or quarantine them.
+4. Investigate root cause before re-enabling.
+5. If the flag will not disable cleanly, escalate to code rollback.
 
 Test the disable procedure in staging before production rollout.
+
+Design step 3 out of existence where you can: a branch that writes both the old and new shapes, or that computes into a shadow column read only when the flag is on, leaves nothing to reconcile. A flag whose writes cannot be reversed is not a flag - it is a one-way deploy with a toggle on the read path.
 
 ### Flag Interactions
 
@@ -143,13 +146,24 @@ Use this template when designing or reviewing a flag.
 - [ ] Changelog entry added
 ```
 
+A permanent flag (kill switch, ops, permission) has no rollout progression and no end state, so it drops the Rollout Plan and Cleanup Checklist and replaces `Cleanup target` with the states it is allowed to hold:
+
+```
+**Flag name**: {name}
+**Type**: {kill-switch | ops | permission}
+**Default**: {on | off}
+**Owner**: {team or engineer}
+**Valid states**: {each state, what it does, and who may set it}
+**Review cadence**: {when someone re-confirms this flag is still needed}
+```
+
 When reviewing existing flags rather than designing one, output findings instead:
 
 ```
 ## Flag Review Findings
 
 - [Severity: High | Medium | Low] {flag name} - {violation}
-  - Fix: {rename | cleanup | split | assign owner | add kill switch}
+  - Fix: {rename | cleanup | split | assign owner | add kill switch | add dual-write so disable is reversible}
 ```
 
 Severity: High = auth/security bypass or un-rollback-able data writes; Medium = stale at 100%, multi-behavior flag, missing owner or kill switch; Low = naming, missing cleanup target.

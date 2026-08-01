@@ -79,6 +79,8 @@ Use for low-latency, high-success actions (favorite, comment). Avoid for payment
 
 The snapshot-rollback-settle sequence is library-agnostic: with framework-native fetchers (e.g., Nuxt `useFetch`), patch the `data` ref directly, restore the snapshot on error, and `refresh()` on settle.
 
+When the server computes the authoritative result rather than echoing yours - reordering a list, assigning a position, resolving a conflict - the response is the truth and must replace the prediction, not merge with it. Take the server's value on success rather than keeping the optimistic one, and let `onSettled` reconcile. Track in-flight mutations so a settling refetch does not overwrite a newer optimistic change the user has already made: while any mutation for that key is pending, apply the refetch result under the still-pending predictions.
+
 ### Pagination
 
 | Pattern         | When to Use                    | Tradeoff                         |
@@ -121,6 +123,8 @@ Uncapped retries cascade into backend overload. Defaults:
 - **4xx:** no retry (exception: 429 honors `Retry-After`)
 - **5xx and network:** retry with backoff
 
+Scale retries down as request cost rises: three retries of a 90-second call is six minutes of backend load and six minutes before the user sees an error. Past a few seconds of work, stop holding the connection - have the endpoint return a job id immediately, then poll its status (backing off as it runs) or subscribe over SSE/WebSocket, so the browser is not betting on one long request surviving proxies, timeouts, and sleeping laptops.
+
 ### Caching and Deduplication
 
 Data-fetching libraries deduplicate by query key. Configure:
@@ -141,6 +145,8 @@ Data-fetching libraries deduplicate by query key. Configure:
 | Network | Offline indicator with retry                 |
 
 Centralize in an HTTP interceptor or wrapper; allow component-level overrides.
+
+**Token refresh is single-flight.** When several requests get a 401 at once, they must await one shared refresh promise, not start one each - with rotating refresh tokens, concurrent refreshes invalidate each other and log the user out spuriously. Hold a module-level promise: the first 401 starts the refresh, the rest await it, then all retry once with the new token. A second 401 after a completed refresh is a real auth failure - go to the 401 row above rather than looping.
 
 ### Request Cancellation
 
@@ -190,6 +196,8 @@ Consuming workflow skills depend on this structure.
 ```
 
 Include either `Issues Found` or `No Issues Found`, never both. Severity anchor: High = correctness or data integrity (silent failures, stale data after writes, races); Medium = degraded UX or performance (waterfalls, missing empty state); Low = polish.
+
+In implement or design mode (writing new integration, not reviewing), the Endpoints table documents what was built or planned, and Issues Found carries only residual risks knowingly accepted.
 
 ---
 

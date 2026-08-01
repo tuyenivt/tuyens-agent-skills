@@ -24,7 +24,7 @@ user-invocable: false
 - Application code is backward compatible with both schemas across the transition window.
 - Rollback plan is designed before the migration runs.
 - Never deploy a migration and the code that depends on it in the same release - rolling deploys leave old instances running against the new schema.
-- Flag any migration requiring a database restore to roll back - those are go/no-go decisions.
+- Flag any migration requiring a database restore to roll back - those are go/no-go decisions. Before accepting one, try to demote it: copying the data to an archive table in the expand phase turns a restore into a re-copy, and a drop whose data exists nowhere else is rarely worth its irreversibility.
 - Lock risk must be stated for every recommendation.
 - Engine or version unknown: assume worst-case locking (table rewrite, exclusive lock) and state the assumption in the output.
 
@@ -75,7 +75,20 @@ ALTER TABLE orders ADD CONSTRAINT orders_tenant_id_not_null
 ALTER TABLE orders VALIDATE CONSTRAINT orders_tenant_id_not_null;
 ```
 
-Use `NOT VALID` + `VALIDATE CONSTRAINT` whenever adding NOT NULL, CHECK, or FK to a large PostgreSQL table. MySQL and SQL Server have different online DDL mechanisms - check the detected database.
+Use `NOT VALID` + `VALIDATE CONSTRAINT` whenever adding NOT NULL, CHECK, or FK to a large PostgreSQL table.
+
+### Engine equivalents
+
+The phasing above is engine-independent; only the mechanism changes. Examples elsewhere in this skill are PostgreSQL - translate before recommending:
+
+| Technique                  | PostgreSQL                          | MySQL 8.0+                                              | SQL Server                              |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------- | --------------------------------------- |
+| Non-blocking index build   | `CREATE INDEX CONCURRENTLY`         | `ALTER TABLE ... ADD INDEX, ALGORITHM=INPLACE, LOCK=NONE` | `CREATE INDEX ... WITH (ONLINE = ON)`   |
+| Add defaulted column       | metadata-only (11+)                 | instant DDL (8.0+, `ALGORITHM=INSTANT`)                  | metadata-only (2012+, NOT NULL + default) |
+| Constraint without rewrite | `NOT VALID` then `VALIDATE CONSTRAINT` | `ALTER TABLE ... ADD CONSTRAINT ... NOT ENFORCED`, then enforce | `WITH NOCHECK` then `CHECK CONSTRAINT`  |
+| Online table rewrite       | `pg_repack`                         | `pt-online-schema-change` / `gh-ost`                     | online index rebuild                     |
+
+Verify the operation is online for the exact engine version before recommending it - MySQL instant DDL in particular has version-dependent conditions. When the version is unknown, the unknown-engine rule applies: assume a rewrite and say so.
 
 ### Backfill: bounded batches
 
@@ -88,7 +101,7 @@ UPDATE large_table SET new_col = old_col
 WHERE id > :last_id AND id <= :last_id + 1000 AND new_col IS NULL;
 ```
 
-For tables > 100K rows, prefer a background job over an in-migration script. On replicated databases, sleep between batches and pause when replica lag exceeds threshold - replication replays every backfilled row on each replica.
+For tables > 100K rows, prefer a background job over an in-migration script. On replicated databases, sleep between batches and pause when replica lag exceeds threshold - replication replays every backfilled row on each replica. Set the pause threshold below the staleness the read path already tolerates (a second or two where reads are replica-routed, more where replicas only serve analytics) and resume at half of it, so the backfill does not oscillate.
 
 ### Unique constraint without blocking
 
@@ -144,18 +157,21 @@ ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE USING INDEX idx_users
 ### Phase 2: Migrate (if applicable)
 
 - Backfill: {batch size, estimated duration, idempotent: yes/no}
+- Throttle: {pause condition and resume threshold, or "none - no replicas"}
 - Rollback: {how to undo}
 
 ### Phase 3: Contract (if applicable)
 
 - Action: {what to drop}
 - Pre-condition: {readers/writers removed and verified}
-- Rollback: {restore from backup | not needed}
+- Rollback: {archive copy | restore from backup | not needed}
 
 ## Risks
 
 - {high-risk operations called out explicitly}
 ```
+
+Single-phase migrations emit one `### Phase 1: Apply` section with the same fields. The header `Lock risk` is the highest across phases.
 
 ## Avoid
 

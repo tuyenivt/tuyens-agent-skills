@@ -33,7 +33,7 @@ Reliability = behavior under failure and saturation - the unhappy path. It owns 
 
 `/task-code-review-reliability [<branch> | pr-<N>] [standard | deep] [--base <branch>]`
 
-When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return findings per Output Format, and skip Step 5 - the parent owns the report.
+When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return the subagent envelope defined in Output Format, and skip Step 5 - the parent owns the report.
 
 ## Workflow
 
@@ -57,13 +57,13 @@ Use skill: `stack-detect`.
 | Flutter / Dart       | `task-flutter-review-reliability` |
 | React / Next.js      | `task-react-review-reliability`   |
 
-Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow is unavailable (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5. Stacks with no matching plugin fall through to the Step 4 generic fallback.
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow is unavailable (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5. Stacks with no matching plugin fall through to the Step 4 generic fallback.
 
 ### Step 4 - Generic Fallback (no dispatch)
 
 Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full and trace failure paths across service boundaries.
 
-**Whole-service sweep** (reliability-debt pass with no feature branch): when the precondition check fails fast on trunk, do not stop - skip the diff gate and review the reliability surface repo-wide at `HEAD`; findings cite current code; checkpoint `base_sha` = `head_sha` = `HEAD`.
+**Whole-service sweep** (reliability-debt pass with no feature branch): when the precondition check fails fast on trunk, do not stop - skip the diff gate and review the reliability surface repo-wide at `HEAD`; findings cite current code. The failed check emits no handle, so assemble the writer fields directly: `branch` = current branch short name, `base_ref` = `head_ref` = that name, `base_sha` = `head_sha` = `git rev-parse HEAD`.
 
 Cover the applicable categories. Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns and the per-stack resilience library (for stacks it does not list, apply the same patterns with the ecosystem's standard resilience libraries). Gate it: load `ops-resiliency` when the surface includes an external client, a fanning-out service, or breaker / retry / timeout config; skip it on a diff that is purely queue-system idempotency, transaction, or locking work with no synchronous dependency.
 
@@ -97,7 +97,7 @@ Standalone only - subagent runs return findings to the parent instead. Use skill
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
-When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
+When Step 3 dispatched: the stack workflow owns the output. Subagent runs return only the `## Findings` impact sections, each finding carrying its severity's label (High -> `[Must]`, Medium/Low -> `[Recommend]`) - Summary, Next Steps, the deep Failure-Mode Map, and the report file are standalone-only. When fallback ran standalone:
 
 ```markdown
 ## Reliability Review Summary

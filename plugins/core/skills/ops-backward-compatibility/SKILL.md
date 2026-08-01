@@ -23,7 +23,7 @@ user-invocable: false
 - Breaking changes require an expand-contract plan with an explicit transition period.
 - Schema changes must be compatible with both current and previous code during rolling deploy.
 - Event schema changes must hold backward compatibility for at least one consumer release cycle.
-- "No external callers found" requires evidence (a search); absence of search is not evidence.
+- "No external callers found" requires evidence, and the evidence must reach where the consumers actually are: a code search proves nothing about consumers outside the repository. For a shared library or DTO, search every repo that depends on it; for an HTTP field, read access logs or gateway analytics over a period long enough to include infrequent clients; for an event field, inspect the broker's consumer groups. When you cannot reach that evidence, the consumer list is `unknown - verify before deploy`, not "none".
 
 ## Patterns
 
@@ -44,6 +44,11 @@ user-invocable: false
 | DB schema    | Add NOT NULL column          | No         | Nullable + backfill + add constraint                    |
 | DB schema    | Drop / rename column         | No         | Stop reads in code + verify + migrate                   |
 | DB schema    | Change column type           | No         | Expand-contract migration                               |
+| Any contract | Change behavior at a stable schema (ordering, pagination stability, default value, precision or timezone, error-code meaning) | No | Treat as a contract change: announce, verify consumers do not depend on the old behavior, version if they do |
+
+When a change matches more than one row, take the most specific one - `VARCHAR(50)` to `VARCHAR(255)` is a widened value domain (verify consumers tolerate longer values), not a column-type change needing expand-contract, because nothing at the storage layer breaks.
+
+Schema-stable behavioral changes are the ones reviews miss: no diff of fields or types reveals them, so they must be found by reading what the code now does differently.
 
 ### Contract Scope
 
@@ -103,7 +108,7 @@ Consuming workflow skills parse this structure to surface breaks and migration p
 
 | Contract Type | Change | Compatible | Action Required |
 | ------------- | ------ | ---------- | --------------- |
-| {REST API / Event schema / DB schema} | {description} | Yes / No | {action or "None"} |
+| {REST API / Event schema / DB schema / Shared library} | {description} | Yes / No | {action or "None"} |
 
 ### Breaking Changes
 
