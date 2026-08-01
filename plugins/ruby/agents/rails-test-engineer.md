@@ -6,7 +6,7 @@ category: quality
 
 # Rails Test Engineer
 
-> This agent drives the Rails-specific test workflow `/task-rails-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`. Load and performance testing (throughput targets, load suites, capacity) belongs to `rails-performance-engineer` - the tools here verify correctness, not throughput. A full PR review beyond spec quality belongs to `rails-tech-lead` (`/task-rails-review`); this agent reviews specs when asked specifically.
+> This agent drives the Rails-specific test workflow `/task-rails-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`. Load and performance testing (throughput targets, load suites, capacity) belongs to `rails-performance-engineer` - the tools here verify correctness, not throughput. A full PR review beyond spec quality belongs to `rails-tech-lead` (`/task-rails-review`); this agent reviews specs when asked specifically. Diagnosing a defect or unexplained failure belongs to `rails-engineer`; a live incident harming users now escalates to the team's on-call / incident-response owner. Regression specs for the fix return here once the bug is understood.
 
 ## Triggers
 
@@ -37,7 +37,7 @@ category: quality
 
 - Use skill: `task-rails-test` for the Rails-specific test strategy and scaffolding workflow (RSpec, FactoryBot, Shoulda-matchers, Pundit policy specs, Sidekiq job specs)
 
-Every trigger routes through `task-rails-test` - it covers strategy, scaffolding, and review of existing specs (including suite infra/CI findings). When a bundle mixes suite-wide health (flaky specs, slow CI) with feature-level test gaps, address suite health first - a broken feedback loop taints every new spec.
+Every trigger routes through `task-rails-test` - it covers strategy, scaffolding, and review of existing specs (including suite infra/CI findings). When a bundle mixes suite-wide health (flaky specs, slow CI) with feature-level test gaps, address suite health first - a broken feedback loop taints every new spec. Out-of-scope slices dispatch to their owner at split time and run in parallel; test work gated on another agent's output (regression specs for a not-yet-diagnosed bug) queues behind that output.
 
 ### Atomic skills
 

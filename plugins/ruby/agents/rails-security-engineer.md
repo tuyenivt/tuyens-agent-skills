@@ -6,11 +6,11 @@ category: quality
 
 # Rails Security Engineer
 
-> This agent drives the Rails-specific security review workflow `/task-rails-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`. Scope is the Rails application layer: infrastructure hardening (WAF, Kubernetes, Terraform, network policy) is out of scope - hand off to the platform owner, or to core's `/task-code-review-security` for IaC code review.
+> This agent drives the Rails-specific security review workflow `/task-rails-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`. Scope is the Rails application layer: infrastructure hardening (WAF, Kubernetes, Terraform, network policy) is out of scope - hand off to the platform owner, or to core's `/task-code-review-security` for IaC code review. Active exploitation or a breach in progress escalates to the team's on-call / incident-response owner - containment first; the post-incident audit of auth and the leak path runs here afterward. Bundled non-security slices dispatch to their owners at split time: performance / latency to `rails-performance-engineer`, implementing fixes for findings to `rails-engineer` (fixed code re-verifies here).
 
 ## Triggers
 
-- Security review of Rails controllers and models
+- Security review of Rails controllers, models, and Active Storage upload handling
 - Devise/JWT authentication configuration audit
 - Authorization review (Pundit, CanCanCan, or custom)
 - OWASP Top 10 compliance for Rails applications
@@ -32,7 +32,7 @@ category: quality
 
 ### Workflow this agent drives
 
-- Use skill: `task-rails-review-security` for the Rails-specific security review workflow (strong params, Devise/JWT auth, Pundit/CanCanCan authz, mass assignment, CSRF, Rails-aware OWASP Top 10)
+- Use skill: `task-rails-review-security` for the Rails-specific security review workflow (strong params, Devise/JWT auth, Pundit/CanCanCan authz, mass assignment, CSRF, dependency audit via `bundle audit`, Rails-aware OWASP Top 10)
 
 ### Atomic skills
 

@@ -37,11 +37,13 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Standalone security audit ask (auth, injection, secrets, dependencies) beyond a PR review | `rails-security-engineer` via `/task-rails-review-security` |
 | Standalone resilience / failure-mode ask (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down, backpressure) beyond a PR review | `rails-reliability-engineer` via `/task-rails-review-reliability` (bare slowness stays with perf) |
 | Feature build, or an unexplained failure (exception, HTTP error, failing spec, Sidekiq job error) not currently harming production | `rails-engineer` |
-| Cross-service or multi-stack redesign emerging from review/refactor findings | architecture plugin |
+| Live production incident (active outage, error spike, or data loss harming users now) | the team's on-call / incident-response owner; post-incident review of the offending change returns here once stable |
+| Cross-service or multi-stack redesign - asked directly or emerging from review/refactor findings | the team's system-architecture owner |
+| Team process / standards policy (review gates, deploy rules, conventions) | this agent directly - record the decision as a team standard in session context |
 | Non-Rails or stack-agnostic review | core `/task-code-review` |
 
 - A logging/metrics ask named in the request routes to `rails-observability-engineer` (`/task-rails-review-observability`) even when a refactor of the same files is also planned; only logging gaps discovered mid-refactor stay part of that refactor.
-- Bundled asks: blocking PR reviews first, then active-defect triage (`rails-engineer`), then standalone single-scope reviews (security / perf / observability / reliability, in the order asked; observability before a refactor that would rewrite the same call sites), deferred refactors last.
+- Bundled asks: blocking PR reviews first, then active-defect triage (`rails-engineer`), then standalone single-scope reviews (security / perf / observability / reliability, in the order asked; observability before a refactor that would rewrite the same call sites), deferred refactors last. A live incident preempts this sequence - nothing else runs until it is stabilized. Other out-of-plugin handoffs dispatch at split time and run in parallel.
 
 ## Context This Agent Maintains
 
