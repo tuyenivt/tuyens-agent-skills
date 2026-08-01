@@ -32,6 +32,8 @@ Rails PR security regression check; pre-deploy hardening on auth/authz/upload/pa
 
 `/task-rails-review-security [<branch>|pr-<N>]` - current branch vs base; fails fast on trunk. Subagent invocation with pre-read artifacts skips Steps 1-3.
 
+**Audit mode** (no PR/diff: Pundit / strong-params drift sweep, Devise/JWT flow audit): skip Step 3. Scope = the named surface; none named = `app/controllers` + `app/policies` for an authz sweep, auth config + custom auth controllers for a flow audit. Run Steps 4-9 against current code (skip axes with no matching surface, state the skip). Verify: skip `review-finding-verify` (it requires a diff) - instead re-read each cited `file:line` at `HEAD`, drop findings the code does not support, and report `Findings verified: inline (no diff)`. Report `**Target:** <surface>` in the Summary instead of checkpoint fields; skip `review-report-writer` checkpointing and write the report body directly.
+
 ## Workflow
 
 ### Step 1 - Load Behavioral Rules
@@ -110,7 +112,7 @@ Run only the detected flavor's bullets.
 
 ### Step 10 - Write Report
 
-Standalone runs: use skill `review-report-writer` with `report_type: review-security` (checkpoint fields come from Step 3); print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report. Security-adjacent correctness bugs found en route (double `body.read`, broken comparisons) stay in the report - they weaken the security posture even when the category is "bug".
+Standalone runs: use skill `review-report-writer` with `report_type: review-security`. Assemble every checkpoint field the writer requires: `scope: +sec`, `depth: deep` (this skill always runs full depth; `deep` is its writer value), `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-security-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report. Security-adjacent correctness bugs found en route (double `body.read`, broken comparisons) stay in the report - they weaken the security posture even when the category is "bug".
 
 ## Output Format
 

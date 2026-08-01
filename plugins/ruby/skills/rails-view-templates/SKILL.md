@@ -186,7 +186,7 @@ Fragment Caching: {Russian-doll on X | Low-level | None}
 Logic Moves: {helper -> presenter/component verdicts | None}
 ```
 
-Reviewing - one block per finding, fixed template after the blocks:
+Reviewing - one block per finding in the format below; after all blocks, emit the corrected template code for each affected file:
 
 ```
 Severity: {Critical (XSS, JS-context injection) | High (broken cache, logic/indentation bug, frame collision) | Medium (attribute injection, helper/presenter misplacement) | Low (style, partial contract)}

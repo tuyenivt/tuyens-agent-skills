@@ -45,7 +45,7 @@ A multi-model service with an external call follows one ordering:
 
 ```ruby
 def call
-  return Result.failure(:invalid) unless valid?
+  return Result.failure(["invalid"], code: :invalid) unless valid?
 
   payment = Stripe::Charge.create(charge_params)  # outside transaction
 
@@ -57,7 +57,7 @@ def call
   ShipmentNotificationJob.perform_async(@order.id)  # post-commit
   Result.success(@order.reload)
 rescue Stripe::CardError => e
-  Result.failure(:payment_declined, e.message)
+  Result.failure([e.message], code: :payment_declined)
 end
 ```
 

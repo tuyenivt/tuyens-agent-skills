@@ -41,7 +41,7 @@ At `deep`, use skill: `failure-propagation-analysis` to trace each new or change
 
 Invocation forms (`/task-rails-review-reliability [<branch>|pr-<N>] [standard|deep] [--base <branch>]`) follow `task-code-review-reliability` - current branch vs base; fails fast on trunk. When invoked as subagent, the parent passes the pre-confirmed stack, the precondition handle, and pre-read diff and commit log; Steps 2-3 consume those instead of re-running.
 
-**Whole-service sweep** (resilience-debt pass with no feature branch): when Step 3 fails fast on trunk, do not stop - skip the diff gate and sweep. Scope = the named path(s) plus the clients, jobs, services, and config they touch; no path named = the whole `app/` + `config/` surface. Run Steps 4-10 against current code at `HEAD` (Step 4's categories read in full, not per changed file), then Step 11. Report `**Target:** <path>` in the Summary instead of checkpoint fields; skip `review-report-writer` checkpointing and write the report body directly.
+**Whole-service sweep** (resilience-debt pass with no feature branch): when Step 3 fails fast on trunk AND the invocation asked for a sweep or named a path, do not stop - skip the diff gate and sweep. On a bare trunk invocation (no sweep intent stated, no path), surface the fail-fast and ask whether to sweep - a wrong-branch mistake should not trigger a whole-app pass. Scope = the named path(s) plus the clients, jobs, services, and config they touch; no path named = the whole `app/` + `config/` surface. Run Steps 4-10 against current code at `HEAD` (Step 4's categories read in full, not per changed file), then Step 11. Report `**Target:** <path>` in the Summary instead of checkpoint fields; skip `review-report-writer` checkpointing and write the report body directly.
 
 ## Workflow
 
@@ -135,7 +135,7 @@ Use skill: `rails-transaction-patterns`, `rails-db-locking-patterns`. Cross-aggr
 - [ ] **Post-commit dispatch** - jobs, email, cache invalidation fire from `after_commit`, so a rolled-back transaction never acts on state that did not persist.
 - [ ] **Migration rollout safety** - write-path migrations are expand-then-contract so a rollback does not corrupt in-flight writes (use skill: `rails-postgresql-migration-safety` or `rails-migration-safety` per detected DB).
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once. Whole-service sweeps also skip it (the skill requires a diff; there is none): instead re-read each cited `file:line` at `HEAD`, drop findings the code does not support, and report `Findings verified: inline (no diff)`.
 
 ### Step 11 - Write Report
 

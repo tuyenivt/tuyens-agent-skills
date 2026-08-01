@@ -58,6 +58,8 @@ sidekiq_options lock: :until_executed, on_conflict: :log,
 Sidekiq.redis { |r| r.set("sync_customer:#{id}", "1", nx: true, ex: 60) } or return  # SET NX fence
 ```
 
+Give every `until_executed` lock a `lock_ttl` - a worker killed without the graceful path (OOM, SIGKILL) orphans the lock, silently blocking all future enqueues for those args until it expires. Size the TTL above worst-case runtime plus retry window.
+
 ### Post-Commit Dispatch
 
 ```ruby

@@ -256,7 +256,7 @@ One block per operation, in execution order (multi-step plans emit a numbered se
 Migration: {file name}
 Operation: {Create Table | Add Column | Change Column | Add Index | Add FK | Validate Constraint | Backfill | Remove Column | Drop/Recreate View}
 Table: {name}
-Algorithm: {standard | CONCURRENTLY | NOT VALID + VALIDATE}
+Algorithm: {standard | CONCURRENTLY | NOT VALID + VALIDATE | batched rake}
 Lock window: {none | brief lock | requires maintenance}
 Safety: {Zero-Downtime | Maintenance Window | Batched Backfill | Reject - rewrite required}
 Notes: {partial-index conditions, validate: false, etc.}

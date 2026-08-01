@@ -168,6 +168,7 @@ Reserved (CLI + ops): {N}
 Available for app: {value}
 
 Web tier: {pods} x {workers} x {threads} = {total}, pool = {N}
+Executor / Cable extras: {pods x workers x (pool - threads)}   # 0 when pool == threads
 Worker tier: {pods} x {processes} x {concurrency} = {total}, pool = {N}
 Cron / rake: {peak parallel scheduled app processes} = {total}   # ad-hoc console/ops live in Reserved
 

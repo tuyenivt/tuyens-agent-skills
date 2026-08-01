@@ -84,7 +84,7 @@ Two matching rules: when a "Consider if" symptom matches a flag *already in effe
 
 ## Output Format
 
-When the request includes symptoms ("update fires N queries", "callbacks run out of order"), open with a Diagnosis section before Findings - one line per symptom naming the finding(s) that explain it. The synthesis line may span models when behaviours on several models converge on one symptom.
+When the request includes symptoms ("update fires N queries", "callbacks run out of order"), open with a Diagnosis section before Findings - one line per symptom naming the finding(s) that explain it. Every section appears in the report: an examined section with zero entries reads `none found`; an unexamined one reads `not provided` (Rules) - the two are never conflated. The synthesis line may span models when behaviours on several models converge on one symptom.
 
 ```
 ## Implicit Configuration Audit

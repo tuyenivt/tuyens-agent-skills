@@ -231,6 +231,7 @@ Arguments: {positional args and ENV with defaults}
 Idempotency: {state-column | checkpoint | natural}
 Dry-run: {DRY_RUN=1 supported | n/a (read-only)}
 Production gate: {CONFIRM=yes | none (scheduled) | n/a (read-only)}
+Audit trail: {row in mutation txn (compliance/GDPR) | logs only (no durable-proof need)}
 Service delegated to: {ServiceClassName | "trivial wiring only"}
 Exit behavior: {raises on failure | abort on precondition fail}
 ```

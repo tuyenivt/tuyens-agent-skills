@@ -94,16 +94,19 @@ class BalanceReconciler
   end
 end
 
-# Controller takes the same lock around the write
+# Controller takes the same lock around the write - and handles non-acquisition:
+# with_advisory_lock returns false without running the block, silently dropping the write otherwise
 class LedgerEntriesController < ApplicationController
   def create
-    ApplicationRecord.with_advisory_lock("reconcile:tenant:#{current_tenant.id}", timeout_seconds: 3) do
+    acquired = ApplicationRecord.with_advisory_lock("reconcile:tenant:#{current_tenant.id}", timeout_seconds: 3) do
       ApplicationRecord.transaction(isolation: :read_committed) do
         Ledger.create!(ledger_params)
         Account.where(id: ledger_params[:account_id]).lock("FOR UPDATE").first
                .increment!(:balance, ledger_params[:amount])
       end
+      true
     end
+    head :conflict unless acquired   # client retries; never swallow the miss
   end
 end
 ```

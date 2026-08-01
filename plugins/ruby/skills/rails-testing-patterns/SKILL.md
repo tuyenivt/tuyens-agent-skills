@@ -97,6 +97,8 @@ end
 
 ### Pundit Policy Specs
 
+`permit_action` comes from the `pundit-matchers` gem (add to `:test` group):
+
 ```ruby
 RSpec.describe OrderPolicy do
   subject { described_class.new(user, order) }

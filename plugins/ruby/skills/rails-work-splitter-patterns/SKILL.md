@@ -228,7 +228,7 @@ In review mode, precede the block with numbered findings citing the violated rul
 ```
 Workload: {static backfill | streaming queue | per-tenant batch | one-shot migration}
 Volume: {row count, expected runtime}
-Pattern: {modulo | SKIP LOCKED cursor | shards table}
+Pattern: {modulo | SKIP LOCKED cursor (row or per-key lease) | shards table | single-worker queue (strict ordering)}
 Parallelism: {N workers, capped by {DB connections | replication lag | rate limit}}
 Coordination: {leader lock for fan-out | row lock per claim | none}
 Cursor / state: {where progress is persisted}

@@ -70,6 +70,8 @@ end
 
 Options chain: a `:destroy` cascade halts when a grandchild association uses `:restrict_with_error` (deleting Customer destroys Subscriptions - which fails if any Subscription has Invoices). Trace the full cascade before choosing; `:nullify` on the restricting level is the usual escape.
 
+`counter_cache` is declared on the `belongs_to` side (`belongs_to :user, counter_cache: true`) with an integer column on the parent (`users.orders_count`, `null: false, default: 0`). Backfill existing rows with `User.reset_counters(id, :orders)` in a data migration; from then on `user.orders.size` reads the column with no query.
+
 ### Normalization (Rails 7.1+)
 
 Replaces hand-rolled `before_validation` for trim/downcase; also applied to lookup values in `find_by` / `where`.
@@ -197,7 +199,7 @@ Pattern: {N+1 Fix | Scope | Enum | Association | Normalization | Callback | Batc
 Model: {name}
 Adapter: {MySQL | PostgreSQL}
 Change: {description}
-Queries: {before} -> {after}   # query counts or formulas, e.g. "1 + 4N -> 4"; "n/a" for greenfield
+Queries: {before} -> {after}   # query counts or formulas, e.g. "1 + 4N -> 4"; "n/a" for greenfield or non-query-shaped patterns (Locking, DB Feature)
 ```
 
 ## Avoid

@@ -65,9 +65,10 @@ app/
   components/order_card_component.rb        # server-rendered, reusable UI
   policies/order_policy.rb
   jobs/shipment_notification_job.rb         # if needed
+  mailers/order_mailer.rb                   # if emails sent
   clients/shipment_api_client.rb            # if external API
 config/routes.rb                            # routes diff
-spec/{models,services,policies,requests,jobs,components}/...
+spec/{models,services,policies,requests,jobs,mailers,components}/...
 db/migrate/<ts>_create_orders.rb
 ```
 
@@ -104,7 +105,9 @@ When externals enter the flow, `rails-service-objects`' ordering arbitrates: abo
 
 Cross-row invariants (per-user caps, quotas): enforce in the service under a row lock, with a DB backstop where expressible - a model validation alone races.
 
-Time-based behavior (expiry, retention windows): owned here too - a cron-invoked rake task (`rails-rake-task-patterns`) or scheduled job; name the trigger in the design.
+Mailers: generate under `app/mailers`; dispatch with `deliver_later` post-commit, exactly like Sidekiq jobs - never inside the transaction.
+
+Time-based behavior (expiry, eligibility windows, retention): owned here. If the deadline is only checked at request time, a predicate on the timestamp (guard or scope) is the whole design - no scheduler. Add a cron-invoked rake task (`rails-rake-task-patterns`) or scheduled job only when something must happen at the deadline without a request (notify, purge, flip visible state); name the trigger in the design.
 
 ### Step 8 - External HTTP Clients
 
@@ -126,7 +129,7 @@ Strong params; pagination on list endpoints; delegate business logic to services
 
 **API versioning:** new APIs under `/api/v1/...`; for existing apps, match the convention.
 
-**Idempotency keys** for non-GET write endpoints whose effect must not duplicate on retry (payments, orders, refunds). Two valid mechanisms: row-creating endpoints forward the `Idempotency-Key` header backed by a unique index; state transitions on existing rows are replay-safe via a status guard under row lock (no header needed - there's no row to key). See `rails-service-objects`.
+**Idempotency keys** for non-GET write endpoints whose effect must not duplicate on retry (payments, orders, refunds). Two valid mechanisms: row-creating endpoints forward the `Idempotency-Key` header backed by a unique index; state transitions on existing rows are replay-safe via a status guard under row lock (no header needed - there's no row to key). An endpoint that does both (creates a row and transitions its parent) applies both: header-backed unique index on the new row, status guard on the parent. See `rails-service-objects`.
 
 ### Step 10 - Serializers (API only)
 
@@ -147,13 +150,15 @@ Public/token endpoints (shared links): the token *is* the capability - generate 
 
 ### Step 13 - Tests
 
-Use skill: `rails-testing-patterns`. Cover:
+Use skill: `rails-testing-patterns`. Minimum coverage - add rows the feature's behavior demands beyond this list:
 - Model: associations, validations, scopes, enums
 - Service: one example per `Result` outcome; side effects asserted
 - Policy: per `(role, action)`
 - Request: happy + unauthorized + validation-error per action
 - Job: idempotency + bounded retry (if applicable)
+- Mailer: per email action; enqueued via `deliver_later` (if emails sent)
 - ViewComponent (server-rendered): `render_inline` per state
+- Turbo Stream / broadcast (server-rendered live updates): response format + `have_broadcasted_to`
 - Factories: traits per status/state
 
 ### Step 14 - Validate
@@ -201,7 +206,7 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presentin
 - [ ] Step 10: serializer per resource (or skipped for server-rendered)
 - [ ] Step 11: views in existing engine via `rails-view-templates` (or skipped for API)
 - [ ] Step 12: Pundit policies + `rescue_from` ladder; Active Storage / ActionCable patterns when applicable
-- [ ] Step 13: model + service + policy + request + job + component specs; factory traits
+- [ ] Step 13: model + service + policy + request + job + mailer + component + broadcast specs as applicable; factory traits
 - [ ] Step 14: `rspec` and `rubocop` pass (or reported "written, not executed" when the environment can't run them)
 
 ## Avoid

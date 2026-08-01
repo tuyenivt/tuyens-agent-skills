@@ -136,6 +136,8 @@ Non-image previews (PDF first page, video frame): `attachment.preview(resize_to_
 | `dependent: :purge_later`    | On parent destroy, enqueue purge jobs      | All model attachments                 |
 | `dependent: :purge`          | On parent destroy, sync purge (blocks)     | Avoid in request path                 |
 
+Replacing a `has_one_attached` file destroys the old attachment and purges its blob via `purge_later` automatically - no manual cleanup on re-attach.
+
 Orphan cleanup - direct uploads abandoned before form submit accumulate as unattached blobs:
 
 ```ruby
@@ -176,7 +178,7 @@ Variants: <list with sizes | none>
 Variant warming: <lazy | background job | preview job>
 Processor: <vips | mini_magick - reason>
 Purge: <purge_later (default) | purge (justified)>
-Orphan cleanup: <scheduled rake | none (GAP)>
+Orphan cleanup: <scheduled rake | none - GAP when direct upload is Yes | n/a (no direct upload)>
 Retention: <business rule + scheduled job | indefinite (stated) | none (GAP for regulated data)>
 Access: <signed URL default | controller-gated + short expiry (sensitive) | proxy mode behind CDN (public high-traffic)>
 ```

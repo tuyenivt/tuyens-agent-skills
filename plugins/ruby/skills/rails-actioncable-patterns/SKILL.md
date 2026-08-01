@@ -163,13 +163,13 @@ end
 
 ## Output Format
 
-In review mode, precede the block with numbered findings citing the violated rule; any field may carry `- GAP` with the observed non-compliant value (`Broadcast adapter: async - GAP`).
+In review mode, precede the block with numbered findings citing the violated rule; any field may carry `- GAP` with the observed non-compliant value (`Broadcast adapter: async - GAP`). Emit one block per channel. Pure `turbo_stream_from` flows have no custom channel: write `Channel: Turbo::StreamsChannel (turbo_stream_from)` and pick the signed-scope authorization value.
 
 ```
-Channel: <name>
+Channel: <name | Turbo::StreamsChannel (turbo_stream_from)>
 Identified by: <current_user | session token | JWT (transport)>
 Stream scope: <per-user | per-resource | global - reason>
-Authorization in subscribed: <Yes - policy/ownership check | No - GAP>
+Authorization in subscribed: <Yes - policy/ownership check | Signed scope + controller gate (turbo_stream_from) | No - GAP>
 Broadcast adapter: <redis | postgresql | async>
 Broadcast hook: <after_commit | service explicit | broadcast_later_to>
 Fan-out volume: <recipients per event - sync or batched>

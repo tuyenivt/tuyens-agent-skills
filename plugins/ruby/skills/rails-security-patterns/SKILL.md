@@ -197,7 +197,7 @@ Existing inline scripts: migrate via nonces (`javascript_tag nonce: true`) rathe
 
 ## Output Format
 
-One block per finding (reviews and audits emit several):
+One block per finding (reviews and audits emit several) or per pattern applied (build mode - Severity then rates the risk the change closes, not a current exposure):
 
 ```
 Pattern: {Strong Params | Authentication | Pundit | CSRF | Rate Limit | Credentials | SQLi | IDOR | Open Redirect | Cookies | CSP | Host Auth | Transport | Webhook Signature}

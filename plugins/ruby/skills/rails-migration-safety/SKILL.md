@@ -259,7 +259,7 @@ One block per operation, in execution order (a multi-step plan emits a numbered 
 Migration: {file name}
 Operation: {Create Table | Add Column | Change Column | Add Index | Add FK | Backfill | Remove Column | Drop/Recreate View}
 Table: {name}
-Adapter: MySQL {version}
+Adapter: {MySQL | MariaDB} {version}
 Algorithm: {INSTANT | INPLACE | COPY | gh-ost | pt-online-schema-change | batched rake}
 Lock window: {none (online) | brief metadata lock | maintenance required}
 Safety: {Zero-Downtime | Maintenance Window | Batched Backfill | Reject - rewrite required}

@@ -59,6 +59,8 @@ end
 
 `rescue_from` handlers are searched bottom-up: the **last-declared** handler whose class matches wins. So declare broad classes at the top, narrow ones at the bottom. Every domain error in the taxonomy gets a ladder entry and an HTTP status; include `request_id` so users can quote it in reports. Malformed JSON (`ActionDispatch::Http::Parameters::ParseError`) raises before controllers - handle via `config.action_dispatch.rescue_responses` or middleware, not `rescue_from`.
 
+Server-rendered apps keep the identical ladder; handlers render an error template or `redirect_back` with a flash instead of JSON (`render "errors/not_found", status: :not_found`), and the `request_id` goes in the page footer rather than the payload.
+
 The 4xx handlers above intentionally do NOT report to Sentry - they are expected outcomes. The unexpected-bug path (500) is reported once by Rails/Sentry middleware *after* controllers, so don't `rescue_from StandardError` to render a friendly 500 - it hides bugs from the middleware unless you report-then-re-render yourself; prefer leaving it unrescued.
 
 ### Domain Error Taxonomy
@@ -93,14 +95,14 @@ Group by **how the caller responds**, not where the error originated. `BillingEr
 ```ruby
 class FulfillOrder
   def call
-    return Result.failure(:not_found)       unless @order
-    return Result.failure(:already_shipped) if @order.shipped?
+    return Result.failure(["order not found"], code: :not_found)       unless @order
+    return Result.failure(["already shipped"], code: :already_shipped) if @order.shipped?
 
     Billing::Client.capture!(@order.charge_id)   # raises BillingError::Declined
     @order.update!(status: :shipped)
     Result.success(@order)
   rescue BillingError::Declined => e
-    Result.failure(:payment_declined, e.message)
+    Result.failure([e.message], code: :payment_declined)
   end
 end
 ```
@@ -120,14 +122,14 @@ class FulfillOrderJob
     result = FulfillOrder.new(order_id: order_id).call
     return if result.success?
 
-    case result.error_code
+    case result.code
     when :not_found, :already_shipped
       # idempotent skip - do not retry
     when :payment_declined
       OrderMailer.payment_failed(order_id).deliver_later
       # business-level failure - do not retry
     else
-      raise ApplicationError::ExternalUnavailable, result.error_message  # typed - sidekiq_retry_in can match the class
+      raise ApplicationError::ExternalUnavailable, result.errors.join(", ")  # typed - sidekiq_retry_in can match the class
     end
   end
 end

@@ -137,6 +137,10 @@ When several rows match, produce the most comprehensive (Strategy Doc subsumes A
 - **Job:** [Sidekiq jobs without idempotency specs]
 - **System:** [critical journeys not covered]
 
+**Close first (Step 6 risk order):**
+1. [highest-risk gap - typically authorization or data integrity]
+2. [...]
+
 **Pyramid target:** Unit {x}% / Request {y}% / System {z}%
 ```
 
@@ -151,6 +155,8 @@ When several rows match, produce the most comprehensive (Strategy Doc subsumes A
 - Policy: every `(role, action)` pair
 - Job: idempotency + retry behavior
 - Inline comments only for non-obvious setup
+
+Run `bundle exec rspec <scaffolded files>` and fix failures before presenting. If the environment can't execute, say so, list the command for the user, and report "[N] specs written, not executed" - never claim passes.
 
 **Strategy Doc:**
 

@@ -56,7 +56,7 @@ For N+1 on `update`/`save` paths (not list/index), also use skill: `rails-implic
 
 ### Step 5 - Migration Safety
 
-Use skill: `rails-postgresql-migration-safety` **or** `rails-migration-safety` (MySQL) per detected DB - do not apply both.
+Skip when nothing under `db/migrate/` changed (investigation mode: skip unless a named path includes a migration - never audit migration history). Use skill: `rails-postgresql-migration-safety` **or** `rails-migration-safety` (MySQL) per detected DB - do not apply both.
 
 - [ ] Large-table indexes built non-blocking for the detected DB (PG: `algorithm: :concurrently` + `disable_ddl_transaction!`; MySQL: `algorithm: :inplace` or `INSTANT`)
 - [ ] Unique constraints at DB level, not just `validates :uniqueness`
@@ -109,11 +109,11 @@ If a new hot path lands without instrumentation, flag it:
 
 Depth owned by `task-rails-review-observability`; do not duplicate.
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once. Investigation mode also skips it (the skill requires a diff; there is none): instead re-read each cited `file:line` at `HEAD`, drop findings the code does not support, and report `Findings verified: inline (no diff)`.
 
 ### Step 10 - Write Report
 
-Standalone runs: use skill `review-report-writer` with `report_type: review-perf` (checkpoint fields come from Step 3); print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report.
+Standalone runs: use skill `review-report-writer` with `report_type: review-perf`. Assemble every checkpoint field the writer requires: `scope: +perf`, `depth` as invoked, `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report.
 
 ## Output Format
 

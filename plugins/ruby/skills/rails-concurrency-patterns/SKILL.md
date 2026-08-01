@@ -134,7 +134,7 @@ In review mode, precede the block with numbered findings citing the violated rul
 
 ```
 Workload: <I/O-bound | CPU-bound | mixed>
-Primitive: <load_async | Concurrent::Promises | async gem | Ractor | Sidekiq fan-out>
+Primitive: <load_async | Concurrent::Promises | async gem | Ractor | Sidekiq fan-out - list each one used, in kickoff order>
 Server: <Puma threads N | Falcon fibers | Sidekiq>
 Connection budget: <queries x connections, vs pool size>
 Risks: <GVL serialization | pool exhaustion | Ractor sharing | scheduler gaps>

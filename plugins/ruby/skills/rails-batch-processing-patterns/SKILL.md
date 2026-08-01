@@ -56,7 +56,7 @@ Order.where(state: "stale").in_batches(of: 1_000) do |batch|
 end
 ```
 
-`update_all` / `insert_all` / `upsert_all` are already one SQL statement, so one transaction. Wrapping `in_batches { |b| b.update_all(...) }` in an outer `Model.transaction` recreates Mode A.
+`update_all` / `insert_all` / `upsert_all` are already one SQL statement, so one transaction. Wrapping `in_batches { |b| b.update_all(...) }` in an outer `Model.transaction` recreates Shape A.
 
 ### Chunk Sizing
 
@@ -206,18 +206,18 @@ Transaction shape: {chunked / per-statement / none}
 Idempotency: {state column | cursor | progress table | natural}
 External side effects: {none | per-chunk call with completion flag | post-commit only}
 Throttle: {none | per-chunk sleep | replica-lag poll @ {threshold}s}
-Memory mitigations: {jemalloc | MALLOC_ARENA_MAX | pluck cursor | WorkerKiller@N MB}
+Memory mitigations: {jemalloc | MALLOC_ARENA_MAX | pluck cursor | WorkerKiller@N MB | none (short run, bounded RSS)}
 Concurrency cap: {Sidekiq queue concurrency, if relevant}
 Telemetry: {RSS log every N batches | Prometheus | none}
 ```
 
 ## Avoid
 
-- Single outer `Model.transaction` around `find_each` / `in_batches` (Mode A)
-- Per-row `Model.transaction { row.update! }` on hot paths (Mode B)
-- Multi-statement related updates without any transaction (Mode C)
+- Single outer `Model.transaction` around `find_each` / `in_batches` (Shape A)
+- Per-row `Model.transaction { row.update! }` on hot paths (Shape B)
+- Multi-statement related updates without any transaction (Shape C)
 - HTTP / Redis / S3 inside an open chunk transaction
 - Loading full AR objects when only IDs are needed
-- Tuning `innodb_flush_log_at_trx_commit` away from 1 to mask Mode B
+- Tuning `innodb_flush_log_at_trx_commit` away from 1 to mask Shape B
 - Container memory limit at observed peak with no `WorkerKiller` headroom
 - `GC.start` without jemalloc expecting RSS to shrink
