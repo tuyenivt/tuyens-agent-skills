@@ -35,7 +35,7 @@ user-invocable: false
 1. **Intercept** - place a routing layer (proxy, gateway, facade) in front of legacy. All traffic still flows to legacy. Establish baseline metrics (latency, error rate, throughput) per capability and verify the routing layer adds no observable degradation.
 2. **Build** - implement the target capability in the new system alongside legacy with no production traffic. Validate with tests and shadow traffic if possible - shadow non-idempotent writes only into a side-effect-free target (stubbed providers or isolated environment); a shadowed write that reaches a real provider is a duplicate side effect. Establish dual-write or data-sync if data ownership is migrating. If existing consumers cannot change (contractual notice periods, clients you do not control), preserve the legacy contract behind a facade at the routing layer and freeze it until those consumers migrate.
 3. **Route** - shift traffic gradually with a bake period at each step (e.g., 5% -> 25% -> 100%; default one week per step at production-representative load, shorter only with explicit justification). Start with the lowest-risk segment (internal users, read-only operations, low-volume endpoints). Routing methods compose - per-tenant migration is typically data-based partitioning plus a feature-flag registry. Compare responses (shadow or canary).
-4. **Verify** - the verification gate (below) is the promotion criterion at every traffic step; Route and Verify alternate until 100%. A capability that fails the gate holds or reduces its traffic share until remediated - reduce when the failure harms users (data inconsistency, errors), hold when it is performance-only within tolerances; reduce means falling back to the last share that passed the gate; go to 0% when none has or the failure corrupts data. Schedule pressure never overrides the gate. Only after the capability is stable at 100% does the next capability enter Route.
+4. **Verify** - the verification gate (below) is the promotion criterion at every traffic step; Route and Verify alternate until 100%. A capability that fails the gate holds or reduces its traffic share until remediated - reduce when the failure harms users (data inconsistency, errors), hold when it is performance-only within tolerances; reduce means falling back to the last share that passed the gate; go to 0% when none has or the failure corrupts data (corrupts = writes bad state a fallback cannot repair; repairable divergence reduces instead). Schedule pressure never overrides the gate. Only after the capability is stable at 100% does the next capability enter Route.
 5. **Decommission** - verify zero traffic to legacy for migrated capabilities. Remove legacy code paths, data sync jobs, compatibility shims, routing rules, and feature flags. Archive legacy documentation.
 
 ### Routing Strategy
@@ -103,14 +103,14 @@ Rollback: gateway config flip, <1 min to 100% legacy
 | Legacy system     | {name, stack}                                                     |
 | Target system     | {name, stack}                                                     |
 | Routing layer     | {gateway, proxy, or facade - chosen from Routing Strategy table}  |
-| Data strategy     | {chosen from Data Migration Strategy table}                       |
+| Data strategy     | {chosen from Data Migration Strategy table; "mixed - see sequence table" when capabilities differ} |
 | Capabilities      | {count} ({n} not started / {n} in flight / {n} done)              |
 
 ### Capability Migration Sequence
 
 | #   | Capability   | Phase                                     | Routing Method | Data Strategy | Verification Status     | Rollback Method |
 | --- | ------------ | ----------------------------------------- | -------------- | ------------- | ----------------------- | --------------- |
-| 1   | {capability} | Intercept/Build/Route/Verify/Decommission | {every composed method} | {strategy} | {gate checklist status} | {how to revert} |
+| 1   | {capability} | Intercept/Build/Route/Verify/Decommission | {every composed method} | {strategy} | {gate checklist status; "not started" before the first Route step} | {how to revert} |
 
 ### Capability Phase Entries
 

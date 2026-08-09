@@ -199,8 +199,8 @@ Use skill: `backend-idempotency` to keep the backfill safe to re-run.
 | ADD COLUMN with DEFAULT (PG11+)   | Metadata only - safe                            | INSTANT on 8.0.12+ (any position 8.0.29+); table copy older |
 | ADD COLUMN with DEFAULT (< PG11)  | Full table rewrite - dangerous                  | -                                                           |
 | CREATE INDEX                      | Full scan; use CONCURRENTLY (cannot run in txn) | Online DDL in InnoDB                                        |
-| ADD CONSTRAINT NOT NULL / FK      | Full table scan to validate                     | Full table copy                                             |
-| DROP COLUMN                       | Brief lock; NOT VALID can defer FK validation   | Online DDL                                                  |
+| ADD CONSTRAINT NOT NULL / FK      | Full table scan to validate; NOT VALID defers it | Full table copy                                             |
+| DROP COLUMN                       | Brief lock - safe                               | Online DDL                                                  |
 
 Flag any step whose exclusive lock duration scales with table size above 1M rows as high risk. Brief metadata-only exclusive locks pass, but set a `lock_timeout` with retry so they cannot queue behind long transactions. This table shows each operation's naive form; the sequences below avoid the worst cases.
 
@@ -225,7 +225,7 @@ Per unit: current layout, target layout, migration strategy, consistency guarant
 **Strategy by case:**
 
 - *Already shared DB* (Consolidate): no data migration - schema cleanup, remove artificial boundaries, merge models. Do not apply the full phase template.
-- *Same engine, separate DBs:* schema merge with migration scripts.
+- *Same engine, separate DBs:* schema merge with migration scripts; reintroduce the FKs and constraints the original split dropped, validating existing data first.
 - *Different engines:* pick the target, migrate data.
 - *Event-sourced:* merge event stores, or project to a unified store.
 - *Splitting out* (Decompose): shared DB -> schema separation -> separate DB, with CDC or dual-write for sync and a reconciliation job to detect drift.

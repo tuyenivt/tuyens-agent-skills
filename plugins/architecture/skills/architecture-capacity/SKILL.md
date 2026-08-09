@@ -20,7 +20,7 @@ user-invocable: false
 
 ## Rules
 
-- State traffic assumptions explicitly (steady-state and peak). When no numbers exist, derive them from business facts (seats x active share x actions per active user-hour, plus a burst factor; e.g., B2B: 10-20% of seats active per hour; burst default when no data: 2-4x for working-hours B2B, 5-10x for consumer or event-driven traffic - name the pick) and attach a validation action to every derived number. When infra specs are missing, state a baseline configuration as an assumption and validate it the same way
+- State traffic assumptions explicitly (steady-state and peak). When no numbers exist, derive them from business facts (seats x active share x actions per active user-hour, plus a burst factor; defaults when no data: B2B 10-20% of seats active per hour; 2-5 actions per active user-hour; burst 2-4x for working-hours B2B, 5-10x for consumer or event-driven traffic - name each pick). Convert actions to requests via a fan-out factor (HTTP calls + queries per action - measure it, or state it as an assumption) and attach a validation action to every derived number. When infra specs are missing, state a baseline configuration as an assumption and validate it the same way
 - Identify the bottleneck (lowest saturation point) - it sets system capacity. If it saturates below current (or projected, when pre-launch) steady traffic, lead with that: the system is already over capacity
 - Usable capacity is ~75% of theoretical saturation; queueing effects dominate above that
 - Plan headroom at 2-3x peak: 2x minimum, 3x when growth is expected - name the multiplier used. For queue-absorbed workloads, apply the multiplier to long-run average demand, not the instantaneous burst peak
@@ -57,7 +57,7 @@ Consuming workflow skills depend on this structure. Always produce all fields.
 ```
 ## Capacity Model
 
-**Traffic profile:** {steady-state RPS} steady / {peak RPS} peak ({burst factor}x) {- mark derived numbers "(derived)"}
+**Traffic profile:** {steady-state RPS} steady / {peak RPS} peak ({burst factor}x) {- mark derived numbers "(derived)"; for queue-absorbed workloads add: / {long-run average demand} long-run avg}
 **Bottleneck component:** {name} - saturates at {N} RPS/TPS; usable ~{0.75 x N}
 **Next bottleneck once mitigated:** {name} - saturates at {N}
 **Headroom target:** {2 or 3}x peak = {N} RPS vs usable capacity {N} RPS
@@ -89,7 +89,7 @@ Repeat the block for the recommended configuration when the recommendation chang
 - {assumption} - validate by: {measurement or source}
 ```
 
-Omit "Queue Depth" only when the entire flow is synchronous.
+Omit "Queue Depth" only when the entire flow - current and recommended - is synchronous.
 
 ## Avoid
 

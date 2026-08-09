@@ -40,12 +40,10 @@ When input is a thin sketch rather than a real design, say so, list the design s
 
 Review the plan as written, not the plan you would have authored. Facts you know that the plan omits (a hidden consumer, a compliance deadline) enter as reviewer assumptions in Review Context and may ground findings - cite them as "reviewer context". When neither a design nor a stated scope is present, say so and review only internal soundness (dependencies, sizing, structure).
 
-When the prompt names a stack and `stack-detect` returns `unknown`, trust the prompt and record the assumption.
-
 ## Setup (both modes)
 
 Use skill: `behavioral-principles`.
-Use skill: `stack-detect`. Stack output picks which deep-dive atomics fire and names stack-specific tooling (test frameworks, migration tools); in Review Mode it also grounds sizing sanity and the stack-specific tasks a complete plan should contain. If unknown, proceed stack-agnostic.
+Use skill: `stack-detect`. Stack output picks which deep-dive atomics fire and names stack-specific tooling (test frameworks, migration tools); in Review Mode it also grounds sizing sanity and the stack-specific tasks a complete plan should contain. If unknown, proceed stack-agnostic; when the prompt names a stack and detect returns `unknown`, trust the prompt and record the assumption.
 
 ---
 
@@ -63,6 +61,7 @@ Read the design and extract the work it implies. Match the design's content to t
 | **Communication Model** (S3) | Integration tasks - events, queues, sync calls between components |
 | **Failure and Risk Analysis** (S5) | Ops-Readiness tasks - circuit breakers, retries, idempotency |
 | **Observability Plan** (S6) | Ops-Readiness tasks - metrics, traces, alerts, SLO wiring |
+| **Performance and Capacity** (S7) | Validation tasks - load/burst tests against stated targets; infrastructure tasks for the stated scaling model |
 | **Deployment Strategy** (S8) | Ops-Readiness tasks - rollout mechanism, migration order, rollback drill, flag config |
 | **Guardrails** (S10) | Validation tasks - lint/arch-test rules that enforce each guardrail |
 | **Trade-Off / Significant Decisions** (S9) | Spikes where a decision is deferred or an ADR is still open |
@@ -244,6 +243,7 @@ Does the plan cover the work the design (or stated scope) implies? For each area
 | Communication / events | Integration tasks for each cross-component call, queue, consumer |
 | Failure and risk analysis | Ops-readiness tasks for the design's mitigations (breakers, retries, idempotency) |
 | Observability | Metrics/traces/alerts/SLO tasks |
+| Performance / capacity | Load-test tasks against stated targets; scaling-config tasks when the design states a scaling model |
 | Deployment and rollback | Rollout, migration-order, rollback-drill, flag-config tasks |
 | Guardrails | Validation tasks that enforce each guardrail |
 

@@ -9,7 +9,7 @@ user-invocable: false
 
 # Architecture Review Lens
 
-> Composed by workflow skills in review mode; not invoked directly. The workflow supplies the **artifact-specific factor list**; this skill supplies the **lens** (how to audit, score, judge). When a workflow names atomic skills for deeper checks and they are unavailable (standalone use), proceed on the lens's own judgment and say so in Review Context.
+> Composed by workflow skills in review mode; not invoked directly. The workflow supplies the **artifact-specific factor list**; this skill supplies the **lens** (how to audit, score, judge). When a referenced skill or workflow mode is unavailable (standalone use), proceed on the lens's own judgment and say so in Review Context.
 
 ## Rules
 
@@ -70,7 +70,7 @@ Audit categories to consider: traffic volume and growth; dependency availability
 
 ### 5. Per-Factor Findings
 
-For each factor marked Present or Under-specified, evaluate quality - one or more findings per factor. The workflow names the atomic skills to compose for deeper checks (e.g., `architecture-guardrail` for boundary rigor, `ops-backward-compatibility` for contract evolution). If a supplied factor names the same axis as a Section 6 criterion (Reversibility = Reversibility; partial overlap does not count), evaluate it once - in Section 6, or here when Section 6 is skipped - and reference it from the other.
+For each factor marked Present or Under-specified, evaluate quality - one or more findings per factor. The workflow names the atomic skills to compose for deeper checks (e.g., `architecture-guardrail` for boundary rigor, `ops-backward-compatibility` for contract evolution). If a supplied factor names the same axis as a Section 6 criterion (Reversibility = Reversibility; partial overlap does not count), evaluate it once - in Section 6, or here when Section 6 is skipped - and reference it from the other. Standalone (factor list = the Section 6 criteria), this collapses Section 5: attach findings in this section's format under each scored criterion in Section 6 and leave Section 5 as a one-line pointer.
 
 Format (repeat per finding):
 

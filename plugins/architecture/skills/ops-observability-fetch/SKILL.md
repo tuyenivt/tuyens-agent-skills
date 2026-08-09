@@ -15,7 +15,7 @@ Transport-agnostic evidence gathering for oncall workflows. Detects available MC
 
 | Capability      | Emits block     | Inputs                              | URL pattern (auto-fetch trigger)                                                          |
 | --------------- | --------------- | ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `fetch_issue`   | `error_event`   | issue ID or URL                     | `*.sentry.io/.../issues/{id}` (numeric or short-ID - the URL host carries the org); a bare short-ID like `PROJ-123` with no URL needs org+project slugs |
+| `fetch_issue`   | `error_event`   | issue ID or URL                     | `*.sentry.io/.../issues/{id}` (numeric or short-ID - the URL host carries the org); a bare short-ID like `PROJ-123` with no URL needs org+project slugs - emit the block unavailable and ask for the slugs in the trailing notes; fetch once answered |
 | `fetch_monitor` | `monitor_state` | monitor ID or URL                   | `app.datadoghq.*/monitors/{id}`                                                           |
 | `fetch_trace`   | `trace`         | trace ID or URL                     | `app.datadoghq.*/apm/trace/{id}` (or vendor equivalent)                                   |
 | `query_logs`    | `log_window`    | service, window, filters / corr. ID | `app.datadoghq.*/logs?query=...&from_ts=...&to_ts=...` (extract query + window)           |
@@ -55,7 +55,7 @@ When a capability has no transport, emit the block with `Source: unavailable`, a
 | `monitor_state` | name, status, threshold, current value, last triggered                            |
 | `trace`         | trace ID, services traversed, error span count, slowest span                      |
 
-Derived fields (`Baseline delta`, `Anomaly`) are computed, never requested from the user.
+Derived fields (`Baseline delta`, `Anomaly`) are computed, never requested from the user: when a transport is available, fetch the prior-baseline series to compute them; otherwise write `no baseline`.
 
 Example:
 

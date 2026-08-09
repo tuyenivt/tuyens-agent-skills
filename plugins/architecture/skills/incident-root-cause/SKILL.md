@@ -34,7 +34,7 @@ Extract: symptom onset (timestamp, or relative like "~40 min ago"), duration, af
 | Medium   | Partial degradation <10%, single service, no data risk                  |
 | Low      | Non-user-facing, minimal impact                                         |
 
-**Thin evidence** (all three missing: metrics, deploy data, scope): assign severity from the worst plausible reading and recommend containment by error class in Step 2. Whenever any of the three is missing - fully thin or not - list the 3-5 evidence items that would raise confidence in the output's `Evidence Needed` section.
+**Thin evidence** (all three missing: metrics, deploy data, scope): assign severity from the worst reading the error class and affected surface support, and recommend containment by error class in Step 2. Whenever any of the three is missing - fully thin or not - list the 3-5 evidence items that would raise confidence in the output's `Evidence Needed` section.
 
 ### Step 2 - Recommend Containment
 
@@ -89,7 +89,7 @@ Capture 1-3 items the on-call team can start within the next hour that prevent r
 
 ## Output
 
-Populate Summary fields as steps complete (blast radius arrives in Step 3); section order is presentation order, not execution order. Reproduce the `root-cause-hypothesis` output block verbatim; synthesize all other sub-skill outputs into the sections below rather than pasting their raw blocks - the blast radius classification and propagation path land in the Incident Summary (Blast Radius line + Affected Services), and the propagation path also feeds Step 4. Omit empty sections, including `Evidence Needed` when evidence was sufficient.
+Populate Summary fields as steps complete (blast radius arrives in Step 3); section order is presentation order, not execution order. Reproduce the `root-cause-hypothesis` output block verbatim; synthesize all other sub-skill outputs into the sections below rather than pasting their raw blocks - the blast radius classification lands in the Incident Summary's Blast Radius line, the propagation path in its Propagation line, and the propagation path also feeds Step 4. Omit empty sections, including `Evidence Needed` when evidence was sufficient.
 
 ```markdown
 ## Incident Summary
@@ -101,6 +101,7 @@ Onset: {timestamp | "~N min ago" | "unknown"}
 Duration:
 Affected Services:
 - {service}: {degraded (N% when known) | down | healthy}
+Propagation: {origin -> affected, via {call | shared resource (name it)}; omit when single-service}
 
 ## Immediate Containment
 

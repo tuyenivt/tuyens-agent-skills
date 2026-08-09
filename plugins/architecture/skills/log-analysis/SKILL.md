@@ -39,7 +39,7 @@ Good: "Errors started 14:23:22 UTC (8 min before alert). 47 timeouts in 3 min on
 - **Failure end**: when logs returned to baseline (if resolved)
 - **Comparison window**: equivalent healthy period (same time of day, same day of week). If none was provided and none can be fetched, set `Comparison Window: unavailable`, skip Step 5, and record the absence in Log Gaps - do not invent a baseline.
 
-Default window: 5-10 min around onset. If either threshold is met (>2000 lines, or span >10 min), sample strategically: first 30s of anomaly (root signal), peak (saturation pattern), last 30s before recovery (resolution pattern).
+Default window: 5-10 min around onset. If either threshold is met (>2000 lines, or span >10 min), sample strategically: first 30s of anomaly (root signal), peak (saturation pattern), last 30s before recovery - or the most recent 30s while ongoing (resolution or current-state pattern).
 
 When `query_logs` is available, run two passes: full window for the comparison baseline (Step 5), then the narrowed anomaly window for detail. Server-side filtering beats fetching everything and grepping.
 
@@ -96,6 +96,7 @@ Comparison Window: {healthy period | "unavailable"}
 {Traced path, or "No correlation IDs - observability gap"}
 
 ### Error Distribution
+(single-request investigations: write "n/a - single-request investigation" for Rate and keep Scope/Classes for the one request)
 - Rate: {errors/minute, spike pattern}
 - Scope: {users (or "unknown") / endpoints / services}
 - Classes: {type and count for each}

@@ -55,7 +55,7 @@ Tiebreaker: **Data** when the symptom is a wrong value persisted or served for a
 Narrow first, then verify it is not silently affecting others.
 
 - One entity or many? Reproducible or intermittent? Specific endpoint/feature/data subset? Started at a specific time?
-- **Blast radius probe**: query for other entities with the same symptom (e.g., other users with the same status filter); check error logs/metrics for the same code path - elevated rates suggest wider impact; if traceable to a deploy/config/migration, assume all users on that code path may be affected until proven otherwise. When you cannot run the probe (no DB/log access), mark it `Not run` in the output and name the recommended query as an action item.
+- **Blast radius probe**: query for other entities with the same symptom (e.g., other users with the same status filter); for operational failures, the impact set is other runs of the same job plus downstream consumers of its output; check error logs/metrics for the same code path - elevated rates suggest wider impact; if traceable to a deploy/config/migration, assume all users on that code path may be affected until proven otherwise. When you cannot run the probe (no DB/log access), mark it `Not run` in the output and name the recommended query as an action item.
 
 **Escalate to `incident-root-cause` if any of:** ≥3 distinct users affected within an hour, error rate on the affected path >2x baseline, OR a revenue/auth/data-integrity path shows confirmed multi-user impact or active error rate elevation.
 

@@ -15,9 +15,9 @@ Whenever ranked hypotheses with calibrated confidence are needed; typically afte
 
 ## Rules
 
-- Produce Primary + Secondary by default. Primary alone is allowed when all evidence supports one mechanism and nothing contradicts it. Add a Tertiary only when a third candidate is mechanistically distinct and scores ≥15%; otherwise fold it into Remaining.
+- Produce Primary + Secondary by default. Primary alone is allowed when all evidence supports one mechanism and nothing contradicts it. Add a Tertiary only when a third candidate is mechanistically distinct and scores ≥15%; otherwise fold its mass into Remaining and name the candidate there in one clause.
 - Hypotheses may share a triggering change when the mechanisms differ (e.g., two distinct failure modes of the same upgrade) - rank them independently.
-- Score each hypothesis independently with the scoring procedure, then reduce non-primary scores proportionally until hypotheses + Remaining (min 5%) sum to 100%; never reduce the primary. Round to 5%.
+- Score each hypothesis independently with the scoring procedure, then reduce non-primary scores proportionally until hypotheses + Remaining (min 5%) sum to 100%; never reduce the primary; when the sum falls below 100%, Remaining absorbs the difference. Round to 5%.
 - For intermittent failures, the mechanism must explain why the failure only sometimes occurs (threshold, race, load-dependent trigger, cache expiry, replication lag accumulation)
 - A contributing factor is a condition that amplified the failure; if removing the condition alone would have prevented the incident, it is part of the mechanism, not a contributing factor
 - Timeline field is required whenever trigger and symptom are not simultaneous - state the lag and why, or "lag unknown"
@@ -26,7 +26,7 @@ Whenever ranked hypotheses with calibrated confidence are needed; typically afte
 
 ### Confidence Scoring
 
-Score each hypothesis with this procedure; the table below is a sanity band, not a second method, and is checked against the raw score before normalization.
+Score each hypothesis with this procedure; the table below is a sanity band, not a second method, and is checked against the raw score before normalization. On a mismatch, re-examine the evidence classification and re-score - never average the two.
 
 - Start at 50% for observed correlation + plausible mechanism; start at 25% when either is speculative (pattern-match without observed linkage) - this is how scores reach the 15-39% band
 - +15 for direct evidence at the failure point (stack trace there, or resource metric showing saturation)

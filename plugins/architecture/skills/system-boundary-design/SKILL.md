@@ -87,14 +87,14 @@ This table is the canonical Pattern enum for the Communication Map.
 | {module} | {module} | Sync API / Async event / Shared cache / Data replication  | {what crosses} | {coupling, latency, consistency} |
 ```
 
-In a partially decomposed system, monolith-resident boundaries get rows too - note "in monolith" under Hidden Internals so the migration seam stays visible. Failure Isolation holds one clause per inbound dependent; move overflow to a note under the table. A boundary with no runtime communication writes "none (shared-nothing)" in Exposed Contract and appears in no Communication Map row.
+In a partially decomposed system, monolith-resident boundaries get rows too - note "in monolith" under Hidden Internals so the migration seam stays visible. Failure Isolation holds one clause per inbound dependent; move overflow to a note under the table. A boundary with no runtime communication writes "none (shared-nothing)" in Exposed Contract and appears in no Communication Map row. The map holds one row per From -> To pair - an event with N consumers yields N rows.
 
 When the task is a split/merge or placement decision, prepend this section:
 
 ```markdown
 ### Boundary Decision
 
-**Recommendation:** {Split | Merge | New module | Extend {module}}
+**Recommendation:** {Split | Merge | Keep as is | New module | Extend {module}}
 
 | Signal                  | Evidence        | Points To                                    |
 | ----------------------- | --------------- | -------------------------------------------- |

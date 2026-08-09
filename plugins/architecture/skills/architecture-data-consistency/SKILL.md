@@ -34,7 +34,7 @@ user-invocable: false
 | Scenario                         | Model            | Pattern                              |
 | -------------------------------- | ---------------- | ------------------------------------ |
 | Single DB, single service        | Strong           | Database transaction                 |
-| Cross-module, same DB            | Strong (careful) | Shared transaction                   |
+| Cross-module, same DB            | Strong (couples modules - flag as future split cost) | Shared transaction |
 | Cross-service, separate DBs      | Eventual         | Outbox + events                      |
 | Long-running multi-step process  | Eventual         | Saga (orchestrated or choreographed) |
 | Read-heavy, staleness acceptable | Eventual         | CQRS + async sync                    |
@@ -104,7 +104,7 @@ For each eventually consistent boundary, name the tolerated anomaly and bound th
 ### Schema Evolution
 
 - Additive only during rolling deploys (new columns nullable, new fields optional)
-- Rename = add new + dual-write/migrate + remove old (three-phase)
+- Rename = add new + dual-write/migrate + remove old - three phases, each a separate deploy verified before the next
 - Never remove a column or field active code reads
 - Event consumers tolerate unknown fields; producers never reuse field IDs
 
@@ -125,7 +125,7 @@ For each eventually consistent boundary, name the tolerated anomaly and bound th
 
 | Step | Forward Action | Compensation | Idempotency Key |
 | ---- | -------------- | ------------ | --------------- |
-| {1. name} | {action} | {action, or "pivot - forward-only after this"} | {key} |
+| {1. name} | {action} | {pre-pivot: action | pivot step: "pivot - forward-only after this" | post-pivot: "none - retry until success"} | {key} |
 
 ### Risks
 

@@ -38,7 +38,7 @@ user-invocable: false
 
 When a popular key expires, many concurrent requests miss together and stampede the backend.
 
-**Risk rubric:** High = expensive recompute (>100ms) AND hot enough for concurrent misses (tens of requests per TTL window on one key); Medium = one of the two; Low = neither.
+**Risk rubric:** High = expensive recompute (>100ms) AND hot enough for concurrent misses (multiple requests expected within one recompute duration when the key expires); Medium = one of the two; Low = neither.
 
 - **Lock-based (singleflight)** - one fetcher; others wait and reuse. Use the ecosystem primitive: Go `golang.org/x/sync/singleflight`, Java `ConcurrentHashMap.computeIfAbsent`, Rails `race_condition_ttl`, Redis `SET NX` for distributed coordination. Choose for correctness-critical data.
 - **Probabilistic early expiry (XFetch)** - randomly refresh before expiry with probability rising as TTL approaches zero (`random() < fetch_cost / remaining_ttl`). No locking. Choose for read-heavy, staleness-tolerant data.
@@ -99,7 +99,7 @@ Use the framework's cache abstraction (Spring Cache annotations, Rails.cache, Dj
 ```
 ## Caching Assessment
 
-**Stack:** {detected language / framework}
+**Stack:** {detected language / framework, or "unknown - universal guidance" when detection is inconclusive}
 
 ### Opportunities
 

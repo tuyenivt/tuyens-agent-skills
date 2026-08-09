@@ -119,7 +119,7 @@ Use skill: `review-blast-radius` for upgrade risk: affected features/flows, blas
 | Rollback complexity | Easy/Hard         | Whether rollback requires data changes    |
 | Blast radius        | Narrow/Wide       | Scope of affected functionality (review-blast-radius Moderate or above maps to Wide) |
 
-Summary Risk Level: High when 2+ factors sit at their worst level (High/Poor/Hard/Wide), Medium when exactly one does, Low otherwise. Partial or Poor test coverage on an upgrade with behavior changes adds a prerequisite (backfill tests on affected flows) to Recommended Next Steps.
+Summary Risk Level: High when 2+ factors sit at their worst level (High/Poor/Hard/Wide), Medium when exactly one does, Low otherwise. Test coverage unverifiable from the given context is Partial, recorded in Assumptions. Partial or Poor test coverage on an upgrade with behavior changes adds a prerequisite (backfill tests on affected flows) to Recommended Next Steps.
 
 ### Step 7 - Rollback Plan
 
@@ -141,7 +141,7 @@ Produce a clear recommendation:
 | No-Go - Defer  | Benefit does not justify disruption at this time; reassess in N months           |
 | No-Go - Block  | Compatibility blockers, unresolved conflicts, or critical breaking changes       |
 
-State the primary reason, weighing stated constraints (deadlines, freeze windows, team rotation) - name them in it. A stated deadline or window counts as "asked" for calendar time: map the PR sequence to the window. For multi-dependency requests, give a per-dependency verdict plus a batch verdict; when the batch is rejected but a sequenced plan works, the Summary Recommendation reads "No-Go - Block (batch); Go - sequenced PRs".
+State the primary reason, weighing stated constraints (deadlines, freeze windows, team rotation) - name them in it. A stated deadline or window counts as "asked" for calendar time: map the PR sequence to the window. For multi-dependency requests, give a per-dependency verdict plus a batch verdict; when the batch is rejected but a sequenced plan works, the Summary Recommendation reads "No-Go - Block (batch); Go - sequenced PRs". The Risk Assessment table covers the batch; the Rollback Plan follows the shipped shape - one plan for a batched upgrade, per-PR trigger and procedure rows when sequenced.
 
 ## Review Mode
 

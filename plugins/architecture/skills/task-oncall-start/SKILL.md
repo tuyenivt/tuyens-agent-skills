@@ -76,7 +76,7 @@ Previous Oncall: {name | "unnamed handoff" | "no handoff"}
 - Scheduled changes (this window): {list, or "None known" / unknown}
 
 ### Known Risks
-Ordered by likelihood of paging during this shift; 3-5 items.
+Ordered by likelihood of paging during this shift; up to 5, each citing its evidence (a handoff item or health row).
 1. {Risk - e.g., "v2.4.1 deployed 6h ago, not yet validated under peak (per handoff)"}
 2. {Risk - include known-flaky alerts expected to fire, with the expected window}
 ```
