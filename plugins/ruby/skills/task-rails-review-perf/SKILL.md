@@ -125,6 +125,7 @@ The fence below delimits the template for display only - it is not part of the r
 **Stack Detected:** Ruby <version> / Rails <version> / <database>
 **Scope:** Backend (Rails)
 **Overall:** Clean | Issues Found - [High/Medium/Low count]
+**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped _(standalone runs; investigation mode: `inline (no diff)`; omit on subagent runs - the parent verifies)_
 
 ## Findings
 
@@ -147,7 +148,7 @@ _Omit sections with no findings._
 
 ## Next Steps
 
-Prioritized. Each `[Implement]` (localized) or `[Delegate]` (cross-cutting refactor, schema migration, load-test). Order: Must > Recommend. Intent per finding: High Impact -> [Must]; Medium/Low/Quick Win -> [Recommend].
+Prioritized. Each `[Implement]` (localized) or `[Delegate]` (cross-cutting refactor, schema migration, load-test). Order: Must > Recommend. Intent per finding: High Impact -> [Must]; Medium/Low/Quick Win -> [Recommend]; when the verify pass de-escalated a finding, its verified `Label` wins over this mapping.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]

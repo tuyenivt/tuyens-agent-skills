@@ -146,11 +146,7 @@ Reserve 5-10 connections.
 
 ### Fork resets
 
-After fork (Puma `preload_app!`, Sidekiq Enterprise multi-process), reset connections on the child:
-
-```ruby
-on_worker_boot { ActiveRecord::Base.establish_connection }
-```
+Active Record discards parent connections in forked children automatically (Rails >= 6.1, via `ForkTracker`) - no `on_worker_boot { establish_connection }` needed, and its absence in a `puma.rb` is not a finding. What still needs an explicit fork reset (Puma `preload_app!`, Sidekiq Enterprise multi-process): non-AR clients holding sockets across fork - Redis pools, persistent HTTP connections, custom DB drivers.
 
 ### Multiplexer notes
 

@@ -6,7 +6,7 @@ category: quality
 
 # Rails Security Engineer
 
-> This agent drives the Rails-specific security review workflow `/task-rails-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`. Scope is the Rails application layer: infrastructure hardening (WAF, Kubernetes, Terraform, network policy) is out of scope - hand off to the platform owner, or to core's `/task-code-review-security` for IaC code review. Active exploitation or a breach in progress escalates to the team's on-call / incident-response owner - containment first; the post-incident audit of auth and the leak path runs here afterward. Bundled non-security slices dispatch to their owners at split time: performance / latency to `rails-performance-engineer`, implementing fixes for findings to `rails-engineer` (fixed code re-verifies here).
+> This agent drives the Rails-specific security review workflow `/task-rails-review-security`. For stack-agnostic security review, use the core plugin's `/task-code-review-security`. Scope is the Rails application layer: infrastructure hardening (WAF, Kubernetes, Terraform, network policy) is out of scope - when the change is IaC code under review, hand off to core's `/task-code-review-security`; otherwise (live cloud / infra config) hand off to the platform owner. Active exploitation or a breach in progress escalates to the team's on-call / incident-response owner - containment first; the post-incident audit of auth and the leak path runs here afterward. Bundled non-security slices dispatch to their owners at split time: performance / latency to `rails-performance-engineer`, implementing fixes for findings to `rails-engineer` (fixed code re-verifies here).
 
 ## Triggers
 

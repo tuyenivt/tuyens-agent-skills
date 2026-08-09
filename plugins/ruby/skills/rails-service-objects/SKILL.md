@@ -18,7 +18,7 @@ user-invocable: false
 
 ## Rules
 
-- One service, one responsibility, verb-named (`FulfillOrder`, `ChargeCustomer`); place in `app/services/`, nest by domain when count grows. Entrypoint is instance `.call` - not class-method `run`/`execute`.
+- One service, one responsibility, verb-named (`FulfillOrder`, `ChargeCustomer`); place in `app/services/`, nest by domain when count grows. Entrypoint is instance `.call` - not class-method `run`/`execute`; a `def self.call(...) = new(...).call` shim is compliant (naming is the rule, not the shim).
 - `call` returns `Result` for expected failures; raise only for programmer errors / unexpected state. `RecordNotFound` on user-supplied IDs is expected (Result); on internal IDs it's a bug (raise).
 - Validate inputs in `initialize` (`ArgumentError` on invariants); authorization stays in controllers (Pundit).
 - DB writes inside `ActiveRecord::Base.transaction`; external API calls outside; Sidekiq dispatch after commit.
@@ -89,7 +89,7 @@ end
 Network calls inside a transaction hold the DB connection across the round-trip and invert failure modes. Correct order: validate -> charge (outside txn) -> open transaction with the payment ID -> commit -> dispatch jobs.
 
 - Multiple external systems: the call whose failure must abort the flow (charge, refund) goes before the transaction; deferrable or flaky systems (ERP sync, notifications) go after commit as Sidekiq jobs. A post-commit external failure degrades to its reconciliation path - it never fails the Result.
-- Contended resource (slot, seat, stock): the canonical order above assumes the mutation isn't claiming a contended resource. When it is, prefer the two-transaction variant: txn 1 claims under row lock (pending state) -> charge -> txn 2 finalizes. On charge failure, releasing your own pending claim is normal rollback, not the forbidden inline undo (which refers to reversing a *succeeded* external call).
+- Contended resource (slot, seat, stock): the canonical order above assumes the mutation isn't claiming a contended resource. When it is, prefer the two-transaction variant: txn 1 claims under row lock (pending state) -> charge -> txn 2 finalizes. On charge failure, releasing your own pending claim is normal rollback, not the forbidden inline undo (which refers to reversing a *succeeded* external call). Pending claims also need an expiry: a crash between claim and finalize orphans the resource, so pair the variant with a scheduled sweep (or claim TTL) releasing pending claims older than the charge timeout.
 - Orchestrators are replay-safe at the top: first line of `call` returns `Result.success` if the operation already completed (`order.cancelled?`). Result stays binary - deferred post-commit work pending is still Success, with the job listed in the output block.
 - A reconciliation job re-checks ground truth (was the charge captured? does the row exist?) and completes or reverses; it alerts after exhausting retries.
 

@@ -45,7 +45,7 @@ Project has `Gemfile` + `config/application.rb` and the host workflow needs Rail
 ### Bootstrap path
 
 1. Toolchain (rbenv/asdf/chruby) from `.ruby-version`
-2. `bundle install`; `yarn install` if `package.json` present
+2. `bundle install`; if `package.json` present, install with the manager the lockfile names (`yarn.lock` -> yarn, `package-lock.json` -> npm, `pnpm-lock.yaml` -> pnpm, `bun.lockb` -> bun)
 3. `bin/setup` or `bin/rails db:create db:migrate db:seed`
 4. Local services from `compose.yml` (DB, Redis, MailCatcher)
 5. Run `bin/dev` (7+) or `bin/rails server`

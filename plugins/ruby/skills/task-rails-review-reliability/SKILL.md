@@ -147,7 +147,7 @@ Subagent runs (parent passed pre-read artifacts): skip the writer and return the
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
-**Severity assignment:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (missing `Net::HTTP` timeout on a hot call, uncapped retry, non-idempotent Sidekiq job, `.perform_async` inside a transaction, unbounded `.all.each` on a hot path, enqueue-before-commit); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, missing timeout / retry budget on a chained path, cron task with no overlap guard, missing `checkout_timeout`); Low = hardening with no immediate failure path (no dedicated queue / bulkhead, fail-fast where stale data would serve). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]`.
+**Severity assignment:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (missing `Net::HTTP` timeout on a hot call, uncapped retry, non-idempotent Sidekiq job, `.perform_async` inside a transaction, unbounded `.all.each` on a hot path, enqueue-before-commit); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, missing timeout / retry budget on a chained path, cron task with no overlap guard, missing `checkout_timeout`); Low = hardening with no immediate failure path (no dedicated queue / bulkhead, fail-fast where stale data would serve). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]`. When the verify pass de-escalated a finding, its verified `Label` wins over this mapping.
 
 ```markdown
 ## Rails Reliability Review Summary
@@ -156,6 +156,7 @@ The fence below delimits the template for display only - it is not part of the r
 **Background Runtime:** Sidekiq | ActiveJob (<adapter>) | none detected
 **Resilience Gems:** Stoplight | Retriable | faraday-retry | sidekiq-unique-jobs | none detected
 **Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
+**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped _(standalone runs; whole-service sweep: `inline (no diff)`; omit on subagent runs - the parent verifies)_
 
 ## Findings
 

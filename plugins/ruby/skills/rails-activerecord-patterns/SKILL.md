@@ -103,12 +103,14 @@ Index endpoints computing per-row aggregates (`sum`, `count` per parent) at scal
 
 ### Bulk inserts and upserts
 
-`create!` in a loop fires one INSERT plus all callbacks per row. `insert_all` / `upsert_all` issue one multi-row statement and run 50-100x faster - but skip callbacks/validations, don't auto-set timestamps, and don't coerce serialized columns. Untrusted input (CSV, API payloads) must be validated/coerced before the call - DB constraints are the only remaining guard. Slice into batches of 1-5K rows to bound statement size and undo-log growth.
+`create!` in a loop fires one INSERT plus all callbacks per row. `insert_all` / `upsert_all` issue one multi-row statement and run 50-100x faster - but skip callbacks/validations and don't coerce serialized columns (timestamps are set: `record_timestamps` follows the model config, on by default). Untrusted input (CSV, API payloads) must be validated/coerced before the call - DB constraints are the only remaining guard. Slice into batches of 1-5K rows to bound statement size and undo-log growth.
 
 ```ruby
 rows.each_slice(2_000) { |batch| OrderRollup.insert_all(batch, returning: %w[id]) }
 OrderRollup.upsert_all(rows, unique_by: :order_id, update_only: %i[total_cents updated_at])
 ```
+
+`unique_by:` is PostgreSQL/SQLite-only - on MySQL it raises; drop it and MySQL upserts via `ON DUPLICATE KEY` against the table's unique indexes. `returning:` is likewise PG-only.
 
 ### Pessimistic locking
 

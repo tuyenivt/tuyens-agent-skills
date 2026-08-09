@@ -166,7 +166,7 @@ ProcessOrderJob.perform_async(order.id, ProcessOrderJob::CURRENT_VERSION)
 
 ## Output Format
 
-One block per job class (fan-out designs emit one per job):
+One block per job class (fan-out designs emit one per job). In review or diagnosis mode, precede the blocks with numbered findings citing the violated rule; blocks describe the corrected jobs.
 
 ```
 Job: {class name}

@@ -97,6 +97,8 @@ WorkItem.where(state: "claimed").where("claimed_at < ?", 10.minutes.ago)
         .update_all(state: "ready", claimed_at: nil)   # cron, or head of each drain loop
 ```
 
+Size the staleness threshold above worst-case single-item time (plus the heartbeat interval, when leases heartbeat `claimed_at`) - a threshold shorter than a slow-but-live worker reaps it mid-work, and on the ordered per-key shape that breaks ordering.
+
 ### (c) Shards Table
 
 For very large tables, pre-compute id ranges. Each shard tracks its own cursor and retry count.

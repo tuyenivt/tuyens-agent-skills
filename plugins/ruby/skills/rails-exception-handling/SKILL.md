@@ -173,7 +173,7 @@ One block per layer touched (a feature spanning client + service + job emits thr
 
 ```
 Layer: <controller | service | job | client | rake>
-Rescue strategy: <Result on expected | raise on unexpected | mixed (justified)>
+Rescue strategy: <rescue_from ladder (controller) | Result on expected | raise on unexpected | mixed (justified)>
 Domain errors: <ApplicationError::X | framework only>
 SDK translation: <at boundary | leaked into service (FIX) | N/A>
 rescue_from coverage: <listed classes | missing: ...>

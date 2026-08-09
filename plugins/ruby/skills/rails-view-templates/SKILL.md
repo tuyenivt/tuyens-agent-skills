@@ -202,5 +202,5 @@ Fix: {one-line remediation}
 - Mixing template engines without a migration plan
 - Inline `<script>` tags
 - Slim/HAML without a linter - indentation bugs go unnoticed
-- `default_scope` reaching cached fragments - stale data leaks
+- Fragment keys omitting implicit scope context - data cached under a `default_scope` (tenant scoping is the dangerous case) serves other scopes; include the scoping value in the key
 - Caching on `record.id` instead of the record

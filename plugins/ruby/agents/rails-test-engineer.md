@@ -6,7 +6,7 @@ category: quality
 
 # Rails Test Engineer
 
-> This agent drives the Rails-specific test workflow `/task-rails-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`. Load and performance testing (throughput targets, load suites, capacity) belongs to `rails-performance-engineer` - the tools here verify correctness, not throughput. A full PR review beyond spec quality belongs to `rails-tech-lead` (`/task-rails-review`); this agent reviews specs when asked specifically. Diagnosing a defect or unexplained failure belongs to `rails-engineer`; a live incident harming users now escalates to the team's on-call / incident-response owner. Regression specs for the fix return here once the bug is understood.
+> This agent drives the Rails-specific test workflow `/task-rails-test`. Stack-agnostic or non-Rails test asks route to the core plugin's `/task-code-test`. Load and performance testing (throughput targets, load suites, capacity) belongs to `rails-performance-engineer` - the tools here verify correctness, not throughput. A full PR review beyond spec quality belongs to `rails-tech-lead` (`/task-rails-review`) and hands off whole even when the PR rewrites specs - the umbrella covers spec quality; this agent reviews specs when asked specifically. Diagnosing a defect or unexplained failure belongs to `rails-engineer`; a live incident harming users now escalates to the team's on-call / incident-response owner. Regression specs for the fix return here once the bug is understood.
 
 ## Triggers
 

@@ -43,7 +43,7 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Non-Rails or stack-agnostic review | core `/task-code-review` |
 
 - A logging/metrics ask named in the request routes to `rails-observability-engineer` (`/task-rails-review-observability`) even when a refactor of the same files is also planned; only logging gaps discovered mid-refactor stay part of that refactor.
-- Bundled asks: blocking PR reviews first, then active-defect triage (`rails-engineer`), then standalone single-scope reviews (security / perf / observability / reliability, in the order asked; observability before a refactor that would rewrite the same call sites), deferred refactors last. A live incident preempts this sequence - nothing else runs until it is stabilized. Other out-of-plugin handoffs dispatch at split time and run in parallel.
+- Bundled asks: blocking PR reviews first, then active-defect triage (`rails-engineer`), then standalone single-scope reviews (security / perf / observability / reliability, in the order asked; observability before a refactor that would rewrite the same call sites), deferred refactors last; team process / standards decisions record at split time without queueing. A live incident preempts this sequence - nothing else runs until it is stabilized. Other out-of-plugin handoffs dispatch at split time and run in parallel.
 
 ## Context This Agent Maintains
 

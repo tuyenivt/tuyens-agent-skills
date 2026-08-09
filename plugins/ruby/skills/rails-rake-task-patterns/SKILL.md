@@ -95,13 +95,13 @@ namespace :sessions do
     scope  = Session.where("last_seen_at < ?", cutoff)
     count  = scope.count
 
-    if Rails.env.production? && ENV["CONFIRM"] != "yes"
-      abort "Refusing to purge #{count} sessions in production without CONFIRM=yes"
-    end
-
-    if ENV["DRY_RUN"] == "1"
+    if ENV["DRY_RUN"] == "1"   # dry run first: read-only, so no CONFIRM gate
       Rails.logger.info(task: "sessions:purge_stale", dry_run: true, would_delete: count)
       next
+    end
+
+    if Rails.env.production? && ENV["CONFIRM"] != "yes"
+      abort "Refusing to purge #{count} sessions in production without CONFIRM=yes"
     end
 
     deleted = scope.in_batches(of: 5_000).delete_all

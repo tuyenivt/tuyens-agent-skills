@@ -111,7 +111,7 @@ Time-based behavior (expiry, eligibility windows, retention): owned here. If the
 
 ### Step 8 - External HTTP Clients
 
-Skip if no external APIs. Otherwise: use skill `rails-http-client-patterns`. Generate a dedicated `app/clients/<name>_client.rb` with explicit timeouts, JSON middleware + `:raise_error`, idempotency-aware retries (cap 2-3; Sidekiq handles longer waits), a domain error taxonomy translated from Faraday/HTTP errors. Services rescue **domain** errors only; tests stub at the boundary (WebMock unit / VCR integration).
+Skip if no external APIs. Otherwise: use skill `rails-http-client-patterns`. Generate a dedicated `app/clients/<name>_client.rb` with explicit timeouts, JSON middleware + `:raise_error`, idempotency-aware retries (cap 2-3; Sidekiq handles longer waits), a domain error taxonomy translated from Faraday/HTTP errors. Provider ships an official Ruby SDK (`stripe`, `aws-sdk-*`): the client class wraps the SDK instead of Faraday - configure timeouts/retries through the SDK and translate its errors into the same domain taxonomy. Services rescue **domain** errors only; tests stub at the boundary (WebMock unit / VCR integration).
 
 If the feature fans out across two or more external services on the same request or job, use skill `rails-concurrency-patterns` to pick the primitive (`load_async`, `Concurrent::Promises`, `async` gem, or Sidekiq fan-out).
 
@@ -143,7 +143,7 @@ Skip for API-only. Use skill `rails-view-templates`. **Match the existing engine
 
 Use skill: `rails-security-patterns` (Pundit policies per resource, `verify_authorized` / `verify_policy_scoped`, strong params). Use skill: `rails-exception-handling` for the `ApplicationController#rescue_from` ladder and domain error taxonomy.
 
-Public/token endpoints (shared links): the token *is* the capability - generate with `has_secure_token` (unguessable), serve through a read-only serializer, and skip Pundit with an explicit `skip_after_action :verify_authorized` + stated rationale.
+Public/token endpoints (shared links): the token *is* the capability - generate with `has_secure_token` (unguessable), route by token outside the authenticated resource namespace, serve through a read-only serializer, and skip Pundit with an explicit `skip_after_action :verify_authorized` + stated rationale.
 
 - File uploads: `rails-active-storage-patterns` was loaded at Step 6; apply its serving/security rules here
 - For ActionCable channels (custom channels, connection auth): use skill `rails-actioncable-patterns`

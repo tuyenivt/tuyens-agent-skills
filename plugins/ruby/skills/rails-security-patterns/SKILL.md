@@ -39,7 +39,7 @@ params.require(:order).permit(:total, :user_id)
 Order.new(order_params)
 
 # Good - ownership server-side
-params.require(:order).permit(:total, tag_ids: [], items: [[:product_id, :quantity]])
+params.require(:order).permit(:total, tag_ids: [], items: [:product_id, :quantity])
 current_user.orders.new(order_params)
 ```
 
@@ -122,7 +122,7 @@ Rack::Attack.throttle("logins/email_ip", limit: 5, period: 20.seconds) do |req|
 end
 ```
 
-Login throttles must key on IP **and** submitted email - IP-only is bypassed by credential stuffing via rotating proxies. Back the counters with a shared store (`Rack::Attack.cache.store = Redis`) - the in-memory default resets per process and undercounts under multi-process Puma.
+Login throttles must key on IP **and** submitted email - IP-only is bypassed by credential stuffing via rotating proxies. JSON login bodies: `req.params` sees only query/form data, so parse the body yourself (`JSON.parse(req.body.read) rescue {}`, then `req.body.rewind`) or the email dimension silently drops out. Back the counters with a shared store (`Rack::Attack.cache.store = Redis`) - the in-memory default resets per process and undercounts under multi-process Puma.
 
 ### Open Redirect
 

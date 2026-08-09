@@ -64,7 +64,7 @@ Assert each behavior at the lowest layer that can catch it; upper layers verify 
 
 ### Step 6 - Prioritize by Risk (coverage < ~50%)
 
-Run **before scaffolding**. Alphabetical is wrong when authorization holes go unspec'd while plumbing gets full coverage.
+Run **before scaffolding**. Coverage for this trigger: SimpleCov's line-coverage figure when configured; otherwise the per-layer ratio of specced to total files (models, actions, services, policies, jobs) - state which basis was used. Alphabetical is wrong when authorization holes go unspec'd while plumbing gets full coverage.
 
 1. **Authorization/authentication** - Pundit policy specs for every API-exposed model; request specs asserting 403/404 on every protected action; Devise/JWT flow specs; inbound webhook signature verification (invalid/missing signature -> 401)
 2. **Data integrity** - model validations + unique-constraint enforcement; write services (one happy + one failure); Sidekiq mutating jobs (idempotency + retry)

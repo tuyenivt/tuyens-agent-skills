@@ -125,6 +125,7 @@ The fence below delimits the template for display only - it is not part of the r
 **Auth:** Devise | JWT | Custom | Hybrid
 **Authorization:** Pundit | CanCanCan | Custom
 **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
+**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped _(standalone runs; audit mode: `inline (no diff)`; omit on subagent runs - the parent verifies)_
 
 [2-3 sentence assessment; call out Rails-specific risks.]
 
@@ -152,7 +153,7 @@ _Omit empty severity sections. If all empty, state "No security issues found."_
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
 
-`[Implement]` = localized fix. `[Delegate]` = cross-cutting hardening / dependency upgrade / threat-model. Order Must > Recommend. Intent per finding: Critical/High -> [Must]; Medium/Low -> [Recommend]. Omit if no issues.
+`[Implement]` = localized fix. `[Delegate]` = cross-cutting hardening / dependency upgrade / threat-model. Order Must > Recommend. Intent per finding: Critical/High -> [Must]; Medium/Low -> [Recommend]; when the verify pass de-escalated a finding, its verified `Label` wins over this mapping. Omit if no issues.
 ```
 
 ## Self-Check

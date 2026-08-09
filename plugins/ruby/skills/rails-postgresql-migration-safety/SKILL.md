@@ -55,17 +55,12 @@ add_foreign_key :events, :accounts, validate: false               # 3. then vali
 ### Adding a NOT NULL column
 
 ```ruby
-add_column :orders, :status, :string, default: "pending"                   # 1. nullable + default
-
-disable_ddl_transaction!                                                   # 2. backfill (rake)
-def up
-  Order.in_batches(of: 10_000) { |b| b.where(status: nil).update_all(status: "pending") }
-end
-
-change_column_null :orders, :status, false                                 # 3. enforce
+add_column :orders, :status, :string, default: "pending"                                  # 1. nullable + default
+Order.in_batches(of: 10_000) { |b| b.where(status: nil).update_all(status: "pending") }   # 2. backfill (rake)
+change_column_null :orders, :status, false                                                # 3. enforce
 ```
 
-**Large tables (>1M rows): NOT VALID + VALIDATE.** Direct `change_column_null` rewrites the table holding `ACCESS EXCLUSIVE`. NOT VALID validates new rows immediately and lets existing rows validate without blocking writes - so the app must already write the column on every insert *before* the NOT VALID constraint ships, and existing NULL rows must be audited/backfilled before `VALIDATE` (it fails on the first NULL).
+**Large tables (>1M rows): NOT VALID + VALIDATE.** Direct `change_column_null` scans the whole table holding `ACCESS EXCLUSIVE`. NOT VALID validates new rows immediately and lets existing rows validate without blocking writes - so the app must already write the column on every insert *before* the NOT VALID constraint ships, and existing NULL rows must be audited/backfilled before `VALIDATE` (it fails on the first NULL).
 
 ```ruby
 # Migration 1

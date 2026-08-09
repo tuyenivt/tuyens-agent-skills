@@ -131,9 +131,9 @@ ApplicationRecord.transaction(isolation: :read_committed) do
 end
 ```
 
-### Nested isolation is silently ignored
+### Nested `isolation:` raises
 
-`transaction(isolation: :read_committed) do ... transaction(isolation: ...) end` - the inner `isolation:` is dropped (the inner becomes a savepoint or no-op). For different isolation per chunk, flatten:
+Passing `isolation:` while any transaction is already open raises `ActiveRecord::TransactionIsolationError` ("cannot set transaction isolation in a nested transaction"). Transactional test fixtures count as the open outer transaction - this error often first appears in specs around code that runs flat in production. For different isolation per chunk, flatten:
 
 ```ruby
 slice_ids.each do |slice|
@@ -219,4 +219,4 @@ Failure modes considered: {deadlock cascade | leader-lock starvation | connectio
 - Conflating advisory locks (mutual exclusion) with row locks (data consistency)
 - Default `innodb_lock_wait_timeout` / `lock_timeout` (50s) - makes stuck holders look like a hang
 - Optimistic locking on hot rows - use pessimistic by PK
-- Nesting `transaction(isolation:)` - the inner isolation is silently ignored
+- Nesting `transaction(isolation:)` - raises `TransactionIsolationError` (transactional fixtures included)

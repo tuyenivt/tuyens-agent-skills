@@ -29,7 +29,7 @@ App-side validations cost a SELECT (uniqueness, `belongs_to` presence) or CPU. W
 
 #### Presence on `belongs_to`
 
-`belongs_to` defaults to `optional: false` since Rails 5.1, so it already adds a presence validation; the FK rejects null inserts. The duplicate validation is dead.
+`belongs_to` defaults to `optional: false` since Rails 5.0, so it already adds a presence validation; the FK rejects null inserts. The duplicate validation is dead.
 
 ```ruby
 # Bad
@@ -51,7 +51,8 @@ validates :email, uniqueness: true
 # Good - DB-enforced; validation kept only if form needs the pre-submit error
 validates :email, uniqueness: { case_sensitive: false } # advisory; index is authoritative
 # MySQL (case-insensitive collation): add_index :users, :email, unique: true
-# MySQL 8 / PG functional index: add_index :users, "lower(email)", unique: true
+# PG functional index: add_index :users, "lower(email)", unique: true
+# MySQL 8 functional index (double parens): add_index :users, "((lower(email)))", unique: true
 ```
 
 This is the *inverted* finding the review must still emit: nothing is redundant - a constraint is missing. Use `Unsafe because:` in place of `Redundant because:`, recommend adding the index (note the migration), and keep the validation when a form consumes the error.

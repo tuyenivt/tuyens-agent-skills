@@ -84,7 +84,8 @@ RSpec.describe FulfillOrder do
   end
 
   context "when inventory is insufficient" do
-    before { allow(InventoryService).to receive(:new).and_raise(Inventory::InsufficientStockError) }
+    # Drive the failure through data, not by stubbing internal classes (Rules: mock boundaries only)
+    before { order.order_items.first.product.update!(available_stock: 0) }
 
     it "returns failure and does not transition" do
       result = described_class.new(order: order).call

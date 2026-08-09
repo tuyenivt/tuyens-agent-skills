@@ -128,6 +128,7 @@ The fence below delimits the template for display only - it is not part of the r
 **Tracing:** OpenTelemetry | New Relic | Datadog APM | Scout | Skylight | none
 **Error tracker:** Sentry | Honeybadger | Rollbar | none
 **Overall:** Adequate | Gaps Found - [High/Medium/Low count]
+**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped _(standalone runs; investigation mode: `inline (no diff)`; omit on subagent runs - the parent verifies)_
 
 ## Findings
 
@@ -151,7 +152,7 @@ _Omit empty sections._
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: Sidekiq] - [one-line action]
 
-`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Severity maps to intent: High -> [Must], Medium/Low -> [Recommend]. Order Must > Recommend. Omit if no gaps; state "No observability gaps found" when clean.
+`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Severity maps to intent: High -> [Must], Medium/Low -> [Recommend]; when the verify pass de-escalated a finding, its verified `Label` wins over this mapping. Order Must > Recommend. Omit if no gaps; state "No observability gaps found" when clean.
 ```
 
 ## Self-Check

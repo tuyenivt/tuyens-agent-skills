@@ -21,7 +21,7 @@ user-invocable: false
 ## Rules
 
 - Direct upload (`direct_upload: true`) for files > 1 MB - proxying through Puma blocks a worker for the upload duration
-- `has_one_attached` / `has_many_attached` use `dependent: :purge_later`; reserve `:purge` for admin/rake scripts
+- Leave `dependent:` at its default `:purge_later` (omitting the option is compliant); never `dependent: :purge` on request-path models. The sync `purge` *method* is for admin/rake scripts
 - Validate `content_type` and `byte_size` in the model (or via `active_storage_validations`) - Active Storage does no validation itself
 - Re-detect content type via magic bytes for sensitive uploads; client `content_type` is untrusted. Run it in the attach-time background job using `blob.open { |f| Marcel::MimeType.for(f) }` - streaming, not `blob.download` (loads the whole file into memory). Gate visibility on the result: a `verified_at`/quarantine flag holds the file from viewers until the sniff passes; purge on confirmed mismatch
 - libvips processor (`config.active_storage.variant_processor = :vips`) - faster, lower memory, fewer CVEs than ImageMagick; install `libvips` + `image_processing` gem
@@ -133,7 +133,7 @@ Non-image previews (PDF first page, video frame): `attachment.preview(resize_to_
 | ---------------------------- | ------------------------------------------ | ------------------------------------- |
 | `attachment.purge`           | Sync delete blob + variants                | Rake/admin scripts                    |
 | `attachment.purge_later`     | Enqueue `ActiveStorage::PurgeJob`          | Default; non-blocking                 |
-| `dependent: :purge_later`    | On parent destroy, enqueue purge jobs      | All model attachments                 |
+| `dependent: :purge_later`    | On parent destroy, enqueue purge jobs      | All model attachments (the default)   |
 | `dependent: :purge`          | On parent destroy, sync purge (blocks)     | Avoid in request path                 |
 
 Replacing a `has_one_attached` file destroys the old attachment and purges its blob via `purge_later` automatically - no manual cleanup on re-attach.
@@ -155,7 +155,7 @@ LoanApplication.decided.where(decided_at: ..90.days.ago)
 
 1. `bin/rails active_storage:install` + migrate.
 2. Keep the old uploader; add `has_one_attached :new_<name>` on the model.
-3. Backfill rake: for each record, attach from the old storage. When source and target are the same S3 account (CW on S3), skip download-reupload: S3 server-side copy into the Active Storage key, then create the `ActiveStorage::Blob` row from the object's metadata (blobs need a base64-MD5 `checksum` - multipart ETags aren't MD5, so compute it once per object or copy single-part). Disk or cross-provider sources stream (`File.open` / `blob.open`) into `attach` - no copy shortcut. At millions of records, run as a sharded resumable backfill (`rails-work-splitter-patterns`).
+3. Backfill rake: for each record, attach from the old storage. When source and target are the same S3 account (CW on S3), skip download-reupload: S3 server-side copy into the Active Storage key, then create the `ActiveStorage::Blob` row from the object's metadata (`ActiveStorage::Blob.create!(key:, filename:, byte_size:, checksum:, content_type:, service_name:)`; the `checksum` is base64-MD5 - multipart ETags aren't MD5, so compute it once per object or copy single-part). Disk or cross-provider sources stream (`File.open` / `blob.open`) into `attach` - no copy shortcut. At millions of records, run as a sharded resumable backfill (`rails-work-splitter-patterns`).
 4. Warm variants inside the backfill job (before reads flip), not lazily after.
 5. Dual-read during transition (one helper/presenter owns it): `record.new_<name>.attached? ? record.new_<name> : record.<name>`.
 6. Switch writes to Active Storage; backfill stragglers.

@@ -84,7 +84,7 @@ Same rule for Turbo Stream scope:
 | Adapter      | Use when                              | Trade-off                                  |
 | ------------ | ------------------------------------- | ------------------------------------------ |
 | `redis`      | Production, >1 app process            | One Redis conn per process; default        |
-| `postgresql` | Single-process dev or low-volume only | LISTEN/NOTIFY caps throughput; DB pool hit |
+| `postgresql` | Single-process dev or low-volume only | LISTEN/NOTIFY caps throughput and payload (8000 bytes - large broadcasts fail); DB pool hit |
 | `async`      | Test / single-process dev             | No cross-process broadcast                 |
 
 ```yaml
@@ -131,7 +131,7 @@ def send_message(data)
 end
 ```
 
-`broadcast_later_to` enqueues rendering + broadcast to Active Job when the model has a Turbo `broadcasts` directive.
+Non-`later` broadcast helpers render the partial in the caller's thread. Use the `_later_to` variants (`broadcast_replace_later_to`) from model callbacks and request-path code so rendering happens on Active Job; inline variants are fine from jobs, which already run off-thread. The Turbo `broadcasts` directive wires the `later` form by default.
 
 ### Testing
 
@@ -163,7 +163,7 @@ end
 
 ## Output Format
 
-In review mode, precede the block with numbered findings citing the violated rule; any field may carry `- GAP` with the observed non-compliant value (`Broadcast adapter: async - GAP`). Emit one block per channel. Pure `turbo_stream_from` flows have no custom channel: write `Channel: Turbo::StreamsChannel (turbo_stream_from)` and pick the signed-scope authorization value.
+In review or diagnosis mode, precede the block with numbered findings citing the violated rule; any field may carry `- GAP` with the observed non-compliant value (`Broadcast adapter: async - GAP`). Emit one block per channel. Pure `turbo_stream_from` flows have no custom channel: write `Channel: Turbo::StreamsChannel (turbo_stream_from)` and pick the signed-scope authorization value.
 
 ```
 Channel: <name | Turbo::StreamsChannel (turbo_stream_from)>
@@ -171,7 +171,7 @@ Identified by: <current_user | session token | JWT (transport)>
 Stream scope: <per-user | per-resource | global - reason>
 Authorization in subscribed: <Yes - policy/ownership check | Signed scope + controller gate (turbo_stream_from) | No - GAP>
 Broadcast adapter: <redis | postgresql | async>
-Broadcast hook: <after_commit | service explicit | broadcast_later_to>
+Broadcast hook: <after_commit (inline | later) | service explicit | broadcasts directive>
 Fan-out volume: <recipients per event - sync or batched>
 Tests: <channel spec | broadcast assertion | both>
 ```

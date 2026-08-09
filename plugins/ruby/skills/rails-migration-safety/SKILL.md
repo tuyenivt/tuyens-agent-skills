@@ -70,7 +70,7 @@ Metadata-only - finishes in ms even on TB tables.
 | Enum/set additions                   | 8.0.0   |
 | Rename table                         | 8.0.0   |
 
-Rails 7.2 doesn't auto-emit INSTANT; use `execute`:
+The server auto-selects INSTANT when the operation is eligible - a plain `add_column` on an eligible operation is already instant. Write `ALGORITHM=INSTANT` explicitly anyway (via `execute`; Rails emits no algorithm clause): an ineligible operation then fails loudly instead of silently degrading to a multi-hour rebuild.
 
 ```ruby
 execute "ALTER TABLE orders ADD COLUMN notes TEXT, ALGORITHM=INSTANT, LOCK=NONE"

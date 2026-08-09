@@ -101,7 +101,7 @@ class FulfillOrder
                                                 idempotency_key: "fulfill-#{@order.id}-#{@order.fulfillment_attempt}")
     Result.success(payload)
   rescue ShipperClient::PermanentError => e
-    Result.failure(:shipper_rejected, e.message)
+    Result.failure([e.message], code: :shipper_rejected)
   rescue ShipperClient::TransientError
     raise  # let Sidekiq retry
   end
@@ -161,9 +161,9 @@ In-process retries during a sustained outage make the outage worse. Trip after N
 require "stoplight"
 
 def create_shipment(order_id:, idempotency_key:)
-  Stoplight("shipper.create_shipment") do
+  Stoplight("shipper.create_shipment", threshold: 5, cool_off_time: 60).run do
     @connection.post("shipments") { |req| ... }.body
-  end.with_threshold(5).with_cool_off_time(60).run
+  end
 end
 ```
 
