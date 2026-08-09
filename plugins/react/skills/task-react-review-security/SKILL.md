@@ -28,8 +28,8 @@ Stack-specific delegate of `task-code-review-security` for React / Next.js / Vit
 | Severity     | Definition                                                                                                                                                                                                                  |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Critical** | Working XSS via `dangerouslySetInnerHTML` on user input, privileged secret in `NEXT_PUBLIC_*`, auth bypass on Server Action / Route Handler, mass exfiltration via RSC passing entire ORM row to Client Component, `eval` / `new Function` on user input. Blocks merge. |
-| **High**     | Missing input validation on a Server Action that mutates, missing `auth()` on a privileged handler, IDOR via path param without ownership check, open redirect via unchecked `redirect(userInput)`, CSRF on cookie-session form, `localStorage` for session tokens. |
-| **Medium**   | Hardening gap with mitigating control (CSP missing nonce but no untrusted HTML rendered), weak rate limit on auth route, Sentry collecting PII without redaction, `<meta>`-delivered CSP on SSR app, `npm audit` advisory not yet exploited. |
+| **High**     | Missing input validation on a Server Action that mutates, missing `auth()` on a privileged handler, IDOR via path param without ownership check, open redirect via unchecked `redirect(userInput)`, CSRF on cookie-session form, `localStorage` for session tokens, reachable SSRF (caller-influenced server-side fetch with a bypassable hostname check or no `redirect: 'manual'`), webhook signature over a re-serialized body or compared without `timingSafeEqual`. |
+| **Medium**   | Hardening gap with mitigating control (CSP missing nonce but no untrusted HTML rendered), weak rate limit on auth route, Sentry collecting PII without redaction, `<meta>`-delivered CSP on SSR app, `npm audit` advisory not yet exploited, missing webhook replay window, missing `AbortSignal.timeout` on a user-triggered outbound fetch. |
 | **Low**      | Defense-in-depth, advisory below actively-exploited threshold, hardening without a concrete current attack scenario.                                                                                                        |
 
 **Combined-finding rule.** When two findings *compose* on the same handler / component / route segment into a worse threat than either alone, file as one finding at the elevated severity citing each component (e.g., missing `auth()` + mass assignment via `Object.fromEntries(formData)` on the same Server Action = Critical unauthenticated admin override; `dangerouslySetInnerHTML` + sanitizer with `ADD_TAGS: ['script']` on the same component = Critical working XSS; `NEXT_PUBLIC_API_KEY` + that key calling an admin API from the browser = Critical exposed admin key). If either is independently exploitable, file separately. When co-location is unclear from the diff, file separately and add `Note: Combined-finding rule applies if both land on the same handler; verify before merge` to the lower-severity entry.
@@ -98,7 +98,7 @@ One-row-per-category verdict that funnels which downstream checks run carefully.
 | SSRF                          | `fetch(searchParams.get('url'))` in Route Handler / Server Component without host allowlist                                                |
 | Insecure Design (A04)         | Middleware allows by default; auth enforced per-route instead of router-level default-deny                                                 |
 | Vulnerable Components (A06)   | `package.json` / lockfile change with stale advisory; Dependabot disabled                                                                  |
-| Data Integrity Failures (A08) | `eval` / `new Function`; `JSON.parse(userInput)` spread into Prisma; `'use server'` file re-exporting non-action utility                    |
+| Data Integrity Failures (A08) | `eval` / `new Function`; `JSON.parse(userInput)` spread into Prisma; `'use server'` file re-exporting non-action utility; webhook handler with missing, post-parse, or non-raw-body signature verification |
 | Logging & Monitoring (A09)    | Sentry browser SDK without `beforeSend` PII strip; client / server logs containing `password` / `token` / `authorization`                  |
 
 Mark each category `yes` or `no signal in diff`.
@@ -129,6 +129,15 @@ Apply against changed files. **Gate**: only run a sub-block when its Step 5 row 
 - [ ] Dynamic route segments (`params.id`) Zod-validated (UUID / int / slug) before reaching ORM
 - [ ] File uploads: type via `file-type` content sniff (not `file.type`), size capped, `instanceof File` checked
 - [ ] Server Action / Route Handler return value treated as a public surface - no privileged / internal fields
+
+**Server-side outbound requests and inbound webhooks**
+- [ ] Server-side `fetch` with a caller-influenced URL validates the parsed `hostname` against an allowlist - a prefix or `includes()` check passes `https://evil.com/?x=https://allowed.com`
+- [ ] Allowlisted outbound fetch sets `redirect: 'manual'` - an allowed host redirecting to `169.254.169.254` or an internal address defeats a check made only on the original URL
+- [ ] Outbound fetch on a user-triggered path carries `AbortSignal.timeout(...)`; an unbounded server-side fetch is a denial-of-service primitive
+- [ ] Inbound webhook handlers read the **raw** body and verify the signature **before** parsing; parsing first means untrusted input already reached a parser
+- [ ] Signature comparison is timing-safe (`crypto.timingSafeEqual`), never `===` or `==`
+- [ ] Webhook handlers reject timestamps outside a short window (~5 min); without it any captured request is replayable forever
+- [ ] Webhook secrets read server-side only; a webhook route that skips verification when the secret env var is unset is Critical
 
 **Common React vulnerability patterns**
 - [ ] `dangerouslySetInnerHTML` on user input wrapped in `DOMPurify.sanitize(html)` with default config; flag `ADD_TAGS` containing `script` / `iframe` / `object` / `embed` / `style`; flag `ADD_ATTR` containing event handlers (`onload`, `onclick`, `onerror`) or URL attrs (`src`, `href`)

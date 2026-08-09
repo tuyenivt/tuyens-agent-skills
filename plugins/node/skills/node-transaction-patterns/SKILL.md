@@ -8,8 +8,7 @@ user-invocable: false
 ---
 
 > Load `Use skill: stack-detect` first to determine the project stack.
-
-Owns the **cross-ORM** transaction contract. `node-prisma-patterns` / `node-typeorm-patterns` show ORM-specific syntax; this skill owns rules that apply regardless of ORM: what may run inside an open tx, how post-commit side effects dispatch, when to use the outbox, and how to bound write transactions with timeouts.
+> The transaction boundary contract - no I/O inside a transaction, post-commit dispatch, outbox semantics, lock-then-write, timeouts - is owned by `backend-transaction-patterns`. Load it first; it supplies the rules and severity taxonomy. This skill owns only the Node/ORM bindings for them.
 
 ## When to Use
 
@@ -21,15 +20,14 @@ Owns the **cross-ORM** transaction contract. `node-prisma-patterns` / `node-type
 
 ## Rules
 
-- **No I/O inside an open transaction.** No `fetch` / `axios`, no `queue.add`, no `mailer.send`, no third-party SDK calls. They hold a pooled DB connection, and on rollback the side effect has already fired
-- **Capture scalars before commit; dispatch after.** Pull the IDs / values you need inside the tx, then enqueue / call after `$transaction(...)` (Prisma) or `transaction(...)` (TypeORM) resolves
-- Read-only queries run **outside** transactions. Wrapping a `SELECT` in `$transaction` adds latency and pool pressure for no benefit
-- Multi-step writes that must be atomic go in **one** transaction - don't chain two `$transaction` calls; the gap between them can leave the system in an inconsistent state
-- Every write transaction sets `lock_timeout` (avoid waiting forever on a row lock) and `statement_timeout` (avoid a runaway query holding locks)
-- Use savepoints (`tx.$executeRawUnsafe('SAVEPOINT ...')` or TypeORM's nested transaction) only when partial failure must be tolerated **within** the transaction - rare; most cases want one atomic unit
-- Lock-then-write (`SELECT ... FOR UPDATE` before mutate) when the update depends on the current value (counters, balances, state machines). Skip locking when the unique constraint or optimistic concurrency token catches the conflict
-- For **at-least-once** dispatch under crashes (billing, payments, contractual notifications), use the transactional outbox. For best-effort (notifications, analytics), post-commit dispatch is enough
-- Outbox consumers are idempotent - they use `jobId` (BullMQ) or `Idempotency-Key` (HTTP) so replay doesn't double-fire
+`backend-transaction-patterns` carries the contract. These are the Node-specific bindings and hazards it cannot state:
+
+- Dispatch after `$transaction(...)` (Prisma) or `transaction(...)` (TypeORM) **resolves**, or via `runOnTransactionCommit` when using `typeorm-transactional`
+- Return scalars from the transaction callback, never ORM entities - lazy relations may not be loaded outside the transaction scope
+- `SET LOCAL lock_timeout` / `statement_timeout` must run **inside** the transaction; standalone it is a no-op, and plain `SET` leaks to every later query sharing the pooled connection. Under `@Transactional()`, run it through the transactional entity manager's `.query()` as the first statement
+- Prisma's `maxWait` (pool acquisition) and `timeout` (total wall-clock) are separate from the Postgres-side timeouts; set both
+- Outbox consumers dedupe with BullMQ `jobId` or an HTTP `Idempotency-Key`
+- Never dispatch from `@AfterInsert`, `@AfterUpdate`, or a pre-commit `EventEmitter2` listener - they fire before `COMMIT` and race it
 
 ## Patterns
 
@@ -44,11 +42,7 @@ await prisma.$transaction(async (tx) => {
 });
 ```
 
-Three concrete failures:
-
-1. **Pool starvation** - the connection sits idle waiting on HTTP. Under load the pool exhausts.
-2. **Worker races commit** - BullMQ workers can pick up the job before `COMMIT` returns; they read a non-existent row.
-3. **Rollback leaks side effects** - Stripe charged, row rolled back. Money taken, no order.
+The three failures - pool starvation, dispatch racing commit, the rollback-surviving charge - are stated in `backend-transaction-patterns`; this is what they look like in Prisma.
 
 ### Pattern A - Post-Commit Dispatch (default)
 
@@ -87,6 +81,7 @@ model OutboxMessage {
   createdAt   DateTime @default(now())
   claimedAt   DateTime?
   processedAt DateTime?
+  attempts    Int      @default(0)
   @@index([processedAt, createdAt])
 }
 
@@ -100,13 +95,15 @@ await prisma.$transaction(async (tx) => {
 
 // relay (BullMQ scheduler or interval) - lease a batch, dispatch outside any tx, then mark done
 const claimed = await prisma.$queryRaw<OutboxRow[]>`
-  UPDATE "OutboxMessage" SET "claimedAt" = NOW()
+  UPDATE "OutboxMessage" SET "claimedAt" = NOW(), attempts = attempts + 1
   WHERE id IN (
     SELECT id FROM "OutboxMessage"
-    WHERE "processedAt" IS NULL AND ("claimedAt" IS NULL OR "claimedAt" < NOW() - INTERVAL '5 minutes')
+    WHERE "processedAt" IS NULL AND attempts < 10
+      AND ("claimedAt" IS NULL OR "claimedAt" < NOW() - INTERVAL '5 minutes')
     ORDER BY "createdAt" LIMIT 100 FOR UPDATE SKIP LOCKED
   )
   RETURNING *`;
+// rows at attempts >= 10 are parked - alert on them; a poison message must not redispatch forever
 
 for (const m of claimed) {
   await queue.add(m.eventType, m.payload, { jobId: m.id });     // jobId dedupes redelivery
@@ -170,7 +167,7 @@ const orders = await prisma.$transaction(async tx => tx.order.findMany({ where: 
 const orders = await prisma.order.findMany({ where: { userId } });
 ```
 
-Transactions are for **writes that must be atomic together**, not for grouping reads. Reads inside a transaction also acquire read locks under `SERIALIZABLE`, which is rarely what you want.
+Transactions are for **writes that must be atomic together**, not for grouping reads; the contract's one carve-out - several reads needing one consistent snapshot - stands. Reads inside a transaction also acquire read locks under `SERIALIZABLE`, which is rarely what you want.
 
 ### Savepoints (Use Sparingly)
 
@@ -189,6 +186,8 @@ await dataSource.transaction(async (tx) => {
 Justified when a non-critical side write (audit log, denormalized view) must not roll back the main transaction. If the side write **does** belong with the main one atomically, use a single transaction without the savepoint.
 
 ## Output Format
+
+Reviews emit `backend-transaction-patterns`' Transaction Assessment envelope, with a Node binding in every Fix line. When authoring or proposing a transaction, emit this block:
 
 ```
 Pattern: {Post-Commit | Outbox | Lock-Then-Write | Atomic-Guard | Savepoint | Read-Outside-Tx}

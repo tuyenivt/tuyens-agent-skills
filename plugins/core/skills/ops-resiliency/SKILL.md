@@ -25,6 +25,7 @@ user-invocable: false
 - When a `Retry-After` header is present, it overrides computed backoff - the server is telling you when it will serve you, and retrying sooner burns the budget for nothing.
 - One circuit breaker per external dependency, with explicit thresholds (failure rate, open duration, half-open probes) and monitoring - a silent or shared breaker is useless.
 - Independent failure domains use bulkhead isolation (separate pools per downstream).
+- Each external dependency has exactly one client module owning its timeout, retry, breaker, and fallback configuration. Settings spread across call sites cannot be reviewed or changed coherently.
 - Every dependency has a defined fallback. Every fallback logs the original failure at WARN; silent fallbacks hide degradation until it compounds.
 
 ## Patterns
@@ -69,6 +70,42 @@ Pass remaining budget as a deadline to each downstream call. Without a shared bu
 
 Retries amplify load. Three services chained with 3 retries each turn one failed request into `3*3*3 = 27` downstream calls. Cap retries per request (e.g., 5 total across the chain), decrement on each retry at any layer, and pass the remaining budget downstream.
 
+### Per-Dependency Client Wrapper
+
+One module per external dependency is the unit that owns resilience configuration. Scattering timeout and retry settings across call sites makes them impossible to audit, and guarantees the third caller added later has none.
+
+Bad - each call site decides for itself, and one of them forgot:
+
+```
+chargeCard()    -> http.post(url, { timeout: 3000, retries: 3 })
+refundCard()    -> http.post(url, { timeout: 3000 })
+lookupCard()    -> http.post(url)
+```
+
+Good - one wrapper owns the policy; call sites express intent only:
+
+```
+paymentClient = client({
+  baseUrl, timeout: 3s, retries: 3, breaker: perDependency, fallback: failFast
+})
+chargeCard()  -> paymentClient.post('/charges', body, { idempotencyKey })
+lookupCard()  -> paymentClient.get('/cards/:id')
+```
+
+The wrapper is also where the breaker instance lives, which is what makes "one breaker per dependency" enforceable rather than aspirational.
+
+### Where the Retry Lives
+
+Retrying in-process and retrying via a job queue are different budgets, and spending both on the same failure multiplies them.
+
+| Retry location  | Use when                                                     | Bound                                            |
+| --------------- | -------------------------------------------------------------- | -------------------------------------------------- |
+| In-process      | The caller is waiting and the failure is likely transient    | Small, capped (2-3), inside the request timeout  |
+| Deferred to queue | The caller does not need the result now, or recovery may take minutes | The job's own retry policy; in-process retries drop to 0-1 |
+| Neither         | The operation is not safe to repeat and has no idempotency key | Fail fast and surface it                        |
+
+Choose one owner per operation. A request that retries three times in-process and then enqueues a job that retries five more has a retry budget of fifteen, which is not what anyone intended when they configured either number.
+
 ### Bulkhead
 
 Separate thread / connection pools per downstream dependency. In single-threaded runtimes (Node), bound concurrent in-flight requests per dependency instead. One slow dependency cannot consume the capacity used by other dependencies.
@@ -110,7 +147,7 @@ Consuming workflow skills parse this structure to surface resilience gaps.
 ### Gaps
 
 - [Severity: High | Medium | Low] {integration point or component} - {description of gap}
-  - Missing: {timeout | retry | circuit breaker | bulkhead | fallback | timeout budget | retry budget | idempotency key}
+  - Missing: {timeout | retry | circuit breaker | bulkhead | fallback | timeout budget | retry budget | retry owner | client ownership | idempotency key}
   - Risk: {failure mode this gap enables}
   - Recommendation: {concrete pattern and library for the detected stack}
 

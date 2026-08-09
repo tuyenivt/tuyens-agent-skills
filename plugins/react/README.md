@@ -1,12 +1,16 @@
 # Tuyen's Agent Skills - React
 
-Claude Code plugin for React 18+ (React 19 hooks) / TypeScript / Next.js 15 App Router (primary), Vite 5+ (secondary) development.
+Claude Code plugin for React 18+ (React 19 hooks) / TypeScript / Next.js 15 App Router fullstack (primary), Vite 5+ SPA (secondary) development.
+
+Next.js App Router spans both sides of the wire, so this plugin covers the Next server surface (data layer, server testing, self-hosted operations) alongside the UI. On a Vite SPA the server skills report not-applicable and the rest applies unchanged.
 
 ## Stack
 
 - React 18+ baseline; React 19 hooks (`use`, `useOptimistic`, `useActionState`, `useFormStatus`) used throughout
 - TypeScript (strict mode)
 - Next.js 15 App Router (primary), Vite 5+ + React Router 6+ (secondary)
+- Prisma + PostgreSQL for the Next.js server surface (matching `node`, so the marketplace carries two ORMs, not three)
+- Stack-agnostic server contracts come from `core`: `backend-transaction-patterns`, `backend-connection-pooling`, `backend-db-migration`, `ops-resiliency`
 
 ## Key Features
 
@@ -49,7 +53,10 @@ Atomic skills provide focused, reusable React patterns. These are hidden from th
 | `react-testing-patterns`   | Vitest + React Testing Library, MSW, hook testing, Playwright e2e                              |
 | `react-legacy-integration` | Embed React into legacy apps: island adoption, React-in-Rails/Django/PHP, Module Federation, single-spa, hydration boundaries |
 | `react-overengineering-review` | Flag React overengineering: premature memo, single-consumer Context, store-for-two-slices, single-use hooks, generic-for-one-usage |
-| `react-onboard-map`        | Build framework (Next App/Pages, Vite), routing, state management, data fetching, styling, component library - injected into `task-onboard` |
+| `react-server-data-layer`  | Prisma in Server Components and Server Actions: client singleton and hot-reload guard, `server-only` boundary, `src/server/` service layer, RSC N+1, request memoization vs data cache |
+| `react-server-testing`     | Database-backed integration tests, per-test isolation, Server Action and Route Handler tests, async Server Component testing boundary |
+| `react-selfhost-operations` | Self-hosted Next.js: standalone output, CI builds, build-time vs runtime env, ISR cache locality, CDN cookie bypass, image optimizer CPU cost |
+| `react-onboard-map`        | Build framework (Next App/Pages, Vite), routing, state management, data fetching, styling, component library, ORM and deployment target - injected into `task-onboard` |
 
 ## Agents
 

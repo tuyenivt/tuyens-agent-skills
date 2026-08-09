@@ -34,13 +34,15 @@ types.ts
 
 **Step 6 - Data.** Use skill: `react-data-fetching` + `frontend-api-integration`. Define query keys, cache invalidation, loading/error/empty states. Optimistic updates: with TanStack Query use the cancel/snapshot/set/rollback/settle mutation flow; with a Server Action over a server-rendered (RSC) list, pass the server data into a Client Component, wrap it in `useOptimistic`, and let the action's `revalidatePath`/`revalidateTag` reconcile the canonical list on re-render. A list rendered by a Server Component is `server` category with mechanism `RSC fetch` (not TanStack Query) in the State Map.
 
+If the feature touches an ORM client, a schema file, or a `src/server/` module - or adds one - additionally Use skill: `react-server-data-layer` for the client singleton, the server-only boundary, service-layer placement, cache scope, and the authorize-then-delegate-then-revalidate shape every Server Action must follow.
+
 **Step 7 - Components.** Use skill: `react-hooks-patterns` + `react-styling-patterns`. Next.js: Use skill: `react-nextjs-patterns`. Generate with named exports (default only for route pages), typed props (declare an `interface` once props >= 2; inline a single-prop type is fine), `"use client"` only where required.
 
 **Step 8 - Forms.** Use skill: `frontend-form-handling` (skip if no forms). Validation, error display, submission protection, dirty tracking.
 
 **Step 9 - A11y.** Use skill: `frontend-accessibility`. Audit to WCAG 2.1 AA: semantic HTML, keyboard nav, ARIA, focus management.
 
-**Step 10 - Tests.** Use skill: `react-testing-patterns` + `frontend-testing-patterns`. Component tests (RTL), hook tests, integration with MSW. Assert behavior, not internals. List e2e candidates.
+**Step 10 - Tests.** Use skill: `react-testing-patterns` + `frontend-testing-patterns`. Component tests (RTL), hook tests, integration with MSW. Assert behavior, not internals. List e2e candidates. When Step 6 loaded `react-server-data-layer`, additionally Use skill: `react-server-testing` for database-backed tests of the service functions and the authorization cases on every Server Action added.
 
 **Step 11 - Validate.** Run `npx tsc --noEmit`, lint, test. Fix failures before reporting.
 

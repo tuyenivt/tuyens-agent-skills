@@ -9,7 +9,7 @@ user-invocable: false
 
 > Load `Use skill: stack-detect` first to determine the project stack.
 
-Single owner for outbound HTTP discipline. The security workflow checks SSRF (`node-security-patterns`); the perf workflow checks event-loop blocking; this skill owns timeout / retry / idempotency / wrapper structure. Workflows delegate here and flag deviations.
+Owns the Node bindings for outbound HTTP discipline. `ops-resiliency` owns the stack-agnostic contract - timeout and retry policy, retryable status codes, `Retry-After`, breakers, the per-dependency client wrapper, and the in-process-versus-queue retry-location decision. Load it first. The security workflow checks SSRF (`node-security-patterns`); the perf workflow checks event-loop blocking; this skill owns the `AbortSignal` / `fetch` / `axios` / BullMQ expression of those rules and the MSW test story. Workflows delegate here and flag deviations.
 
 ## When to Use
 
@@ -122,6 +122,8 @@ async sendInvoice(orderId: string): Promise<void> {
 
 Rule of thumb: **in-process retry seconds, BullMQ retry minutes-to-hours**. Sync request handlers can't sleep 5 minutes - the connection times out and the user retries the whole request.
 
+Once the queue owns the retry, the job processor calls the vendor with in-process retries dropped to 0-1 (a retry-free wrapper variant) - otherwise 8 job attempts x 3 wrapper attempts is 24 upstream calls per failure, the multiplied budget `ops-resiliency` prohibits.
+
 ### Per-Vendor Client Wrapper
 
 ```typescript
@@ -198,6 +200,8 @@ server.use(http.post('https://api.stripe.com/v1/charges', () => new HttpResponse
 `onUnhandledRequest: 'error'` catches accidental real network calls. Don't mock `global.fetch` / `axios.get` - MSW intercepts at the network layer and exercises the real client wrapper, retry, and error-translation code.
 
 ## Output Format
+
+Reviews emit `ops-resiliency`'s Resiliency Assessment envelope, with a Node binding in every Recommendation. When authoring or describing a vendor integration, emit this block:
 
 ```
 Vendor: {Stripe | SendGrid | internal-service-X | ...}

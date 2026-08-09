@@ -48,6 +48,8 @@ Greenfield (no existing tests): state choices explicitly, do not invent silently
 
 Use skill: `react-testing-patterns` for canonical React test forms (`renderWithProviders`, MSW handler reset, `next/navigation` mock, Server Action flavors, React 19 form primitives, TanStack Query isolation, and timer-driven behavior - fake timers + the `userEvent.setup({ advanceTimers })` wiring required for debounce/throttle hooks).
 
+When the project has a server surface (an ORM client, `src/server/**`, Server Actions, or Route Handlers), additionally Use skill: `react-server-testing` for database-backed integration tests, per-test isolation, Route Handler and Server Action tests, and the async-Server-Component testing boundary.
+
 ### Step 4 - React test pyramid
 
 | Layer       | Tooling                                                                      | What belongs here                                                            |
@@ -56,12 +58,13 @@ Use skill: `react-testing-patterns` for canonical React test forms (`renderWithP
 | Hook        | Vitest + `renderHook` + provider wrapper                                     | Custom hooks - state transitions, effect cleanup, return shape               |
 | Component   | Vitest + RTL + `user-event` + MSW                                            | Component rendering, interaction, a11y - mount, click, type, assert visible  |
 | Integration | Vitest + RTL + MSW + router (`next/navigation` mock or `MemoryRouter`)       | Multi-component flows on a page - filter list, multi-step form               |
+| Server integration (when a server surface exists) | Vitest + Testcontainers (real DB, per `react-server-testing`) | Service functions, Server Actions (authorization first), Route Handlers |
 | E2E         | Playwright                                                                   | Critical journeys - signup, checkout, payment, multi-page flows              |
 | Visual      | Chromatic / Percy / Playwright screenshots                                   | Visual regression on stable components (opt-in, gated to `main`)             |
 
 **Many** unit + component, **some** integration, **few** E2E.
 
-**Server Components.** RTL renders Client Components in jsdom; Server Components are async functions that return JSX before client lifecycle. Two paths: (a) test the **data function** the Server Component calls (`getOrders()`) as a unit test; (b) test the **rendered route** via Playwright. Do not import a Server Component into RTL.
+**Server Components.** RTL renders Client Components in jsdom; Server Components are async functions that return JSX before client lifecycle. Two paths: (a) test the **data function** the Server Component calls (`getOrders()`) directly - database-backed when it queries one (`react-server-testing`); (b) test the **rendered route** via Playwright. Do not import a Server Component into RTL.
 
 ### Step 5 - Apply React test patterns
 

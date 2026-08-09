@@ -22,6 +22,8 @@ Workflow needs React-specific orientation: build framework, routing, state, data
 - Detect package manager from lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`).
 - Detect state layer - `useState`+`useContext`, Zustand, Redux Toolkit, Jotai, Recoil, MobX, or none.
 - Detect data fetching - TanStack Query, SWR, Apollo, urql, RTK Query, or native fetch in Server Components.
+- Detect the persistence layer - Prisma (`prisma/schema.prisma`), Drizzle (`drizzle.config.*`), Kysely, raw driver, or none. A Next.js repo with an ORM is a fullstack app: report the server surface, not just the UI.
+- Detect the deployment target - managed platform (`vercel.json`, platform config) vs self-hosted (`Dockerfile`, `docker-compose.*`, `output: "standalone"` in `next.config.*`); with neither signal, report `static/unknown - no deploy signal observed`. Self-hosted changes the caching, image, and ISR story materially.
 
 ## Patterns
 
@@ -37,6 +39,9 @@ Workflow needs React-specific orientation: build framework, routing, state, data
 | `eslint.config.*` / `.prettierrc.*` | Lint/format config                                       |
 | `vitest.config.*` / `jest.config.*` | Vitest or Jest unit/component runner                     |
 | `playwright.config.*` / `cypress.config.*` | E2E framework                                     |
+| `prisma/schema.prisma` / `drizzle.config.*` | ORM and migration tool; fullstack app          |
+| `Dockerfile` / `docker-compose.*`  | Self-hosted; check for `output: "standalone"`     |
+| `src/server/` or `lib/server/`    | Service layer; the reuse seam for a future API    |
 
 ### Bootstrap
 
@@ -90,6 +95,8 @@ Workflow needs React-specific orientation: build framework, routing, state, data
 - **Hydration mismatch** - timestamps, random IDs, browser-only APIs in render body; `next-themes` needs `suppressHydrationWarning` on `<html>`.
 - **Server → Client leaks** - full ORM rows as props, `dangerouslySetInnerHTML` XSS, `NEXT_PUBLIC_*` secret leak, Server Action without auth/Zod: see `task-react-review-security`.
 - **Store-on-server (Next.js + Zustand/Redux)** - module-level stores share state across requests on the server. Instantiate per-request in a provider or keep stores in `"use client"` modules only.
+- **ORM client without a hot-reload guard** (Next.js + any ORM) - a module-scope client not cached on `globalThis` leaks a pool per edit in development until the database refuses connections: see `react-server-data-layer`.
+- **Self-hosted ISR and CDN rules** (self-hosted only) - local-disk ISR cache with more than one instance, or a CDN cache rule that does not bypass on the session cookie: see `react-selfhost-operations`.
 
 The hydration / `"use client"` / fetch-caching / `NEXT_PUBLIC_*` / store-on-server hotspots above are Next.js-only - omit them for a Vite/CRA SPA. SPA-specific hotspots to report instead: unstable Redux/Zustand selectors causing wide re-renders, axios/fetch without `AbortController` (no query-cache dedupe), and `MUI sx={{}}` / inline-object props defeating memoization.
 
@@ -103,11 +110,11 @@ Riskier: root layout / `_app.tsx`, `middleware.ts`, auth provider, `next.config.
 
 Inject into `task-onboard` sections:
 
-- **Stack and Tooling**: package manager, build framework (Next App/Pages, Vite, Remix), React version, TS strict, state management, data fetching, styling, component library.
+- **Stack and Tooling**: package manager, build framework (Next App/Pages, Vite, Remix), React version, TS strict, state management, data fetching, styling, component library, ORM and migration tool (or `none - client only`), deployment target (managed platform vs self-hosted).
 - **Local Bootstrap**: install command, env file, run command, default port, entry route.
 - **Architecture Map**: routing convention (file-based vs config), components/hooks/utilities layout, server/client boundary if Next App Router, API location (`app/*/route.ts`, `pages/api`, or external).
 - **Conventions**: TS strict, styling, data fetching, form handling, auth provider, test framework.
-- **Risk Hotspots**: stale closures and inline JSX identity (all stacks); for Next.js add `"use client"` boundary, fetch caching, hydration mismatch, `NEXT_PUBLIC_*`, store-on-server; for a Vite/CRA SPA add unstable Redux/Zustand selectors, axios/fetch without `AbortController`, inline-object/`sx` props defeating memoization. Emit only the hotspots that match the detected framework.
+- **Risk Hotspots**: stale closures and inline JSX identity (all stacks); for Next.js add `"use client"` boundary, fetch caching, hydration mismatch, `NEXT_PUBLIC_*`, store-on-server; for a Vite/CRA SPA add unstable Redux/Zustand selectors, axios/fetch without `AbortController`, inline-object/`sx` props defeating memoization. Emit only the hotspots that match the detected framework, plus the conditional sets: ORM detected adds the hot-reload-guard hotspot; self-hosted adds the ISR/CDN hotspot.
 - **First-PR Safe Zones**: scoped to observed structure.
 
 ## Avoid

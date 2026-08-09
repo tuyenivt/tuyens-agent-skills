@@ -8,8 +8,7 @@ user-invocable: false
 ---
 
 > Load `Use skill: stack-detect` first to determine the project stack.
-
-Owns the **whole-deployment** pool math. `node-prisma-patterns` / `node-typeorm-patterns` set per-process pool size in one line; this skill makes that line correct in production across replicas, workers, rolling deploys, and the pooler tier.
+> The capacity equation, headroom, deploy-peak sizing, worker-concurrency rule, and pooler-tier trade-offs are owned by `backend-connection-pooling`. Load it first; it supplies the arithmetic and the output contract. This skill owns the Node/ORM bindings and the Prisma-specific pooler caveats.
 
 ## When to Use
 
@@ -19,65 +18,21 @@ Owns the **whole-deployment** pool math. `node-prisma-patterns` / `node-typeorm-
 - Switching to / from PgBouncer, RDS Proxy, Prisma Accelerate
 - Moving any portion of the workload to serverless (Lambda, Cloud Run, Vercel)
 
-## The Capacity Equation
-
-```
-sum( per_process_pool_size * process_count )  +  headroom  <=  DB max_connections
-
-where process_count includes:
-  - API replicas (singleton DB client per process)
-  - BullMQ worker replicas
-  - One-shot containers (migrations, cron jobs, scheduled tasks)
-  - OLD deployment still draining during rolling deploy
-```
-
-Headroom: 15-25% for ad-hoc psql sessions, migrations, monitoring exporters.
-
-The math above assumes **one DB client per process**. NestJS `PrismaService` / `DataSource` is singleton-scoped by default; audit for `new PrismaClient(` / `new DataSource(` outside the bootstrap path - per-request clients silently break every number below.
-
 ## Rules
 
-- One DB client per Node process - never construct per-request or per-job
-- `connection_limit` (Prisma) / `extra.max` (TypeORM) reflects what **this one process** needs, not what the DB has
-- BullMQ worker `concurrency` <= worker process's DB pool size; otherwise jobs wait on DB connections (visible as queue stall, not DB error)
-- Rolling deploys briefly hold **old + new** pool simultaneously - size the equation against `2 * replicas` during a deploy, or use pre-stop hooks that drain the old client first
-- PgBouncer **transaction mode** breaks Prisma prepared statements; use session mode, or set `pgbouncer=true` in the Prisma URL (disables prepared statements)
-- RDS Proxy adds latency (~1-2ms) and a connection cap of its own; check `MaxConnectionsPercent` against the underlying DB
-- Serverless (Lambda, Vercel, Cloud Run scale-to-zero): never connect directly to Postgres - use Prisma Accelerate, RDS Proxy, or PgBouncer with transaction-mode-safe settings. Cold start * concurrent invocations >> any reasonable `max_connections`
-- Migrations and one-shot containers count toward `max_connections` for their runtime - schedule, don't overlap with peak load
+`backend-connection-pooling` carries the equation and the generic rules. These are the Node-specific bindings:
+
+- NestJS `PrismaService` / `DataSource` is singleton-scoped by default; audit for `new PrismaClient(` / `new DataSource(` outside the bootstrap path - per-request clients silently break every number in the equation
+- Per-process pool size is `connection_limit` in the Prisma URL, `extra.max` on a TypeORM `DataSource`
+- BullMQ worker `concurrency` above the worker's pool presents as a **queue stall, not a DB error**, which is why it goes undiagnosed
+- PgBouncer **transaction mode** breaks Prisma prepared statements; use session mode, or set `pgbouncer=true` in the Prisma URL to disable them
+- RDS Proxy is compatible with Prisma without `pgbouncer=true`; it multiplexes internally
+- Prisma Accelerate is the serverless answer where no pooler tier exists - HTTP-based, so cold starts hold no DB connection
+- On `SIGTERM`, `await prisma.$disconnect()` / `dataSource.destroy()` after draining, or the old pool lingers through the deploy overlap
 
 ## Patterns
 
-### Worked Example - Mid-Size NestJS Deployment
-
-```
-Postgres max_connections     = 100      (managed Postgres default)
-Reserved for superuser       = 3        (PG default)
-Effective pool               = 97
-
-API replicas                 = 4        Each PrismaClient connection_limit = 10
-  -> 4 * 10 = 40
-
-BullMQ worker replicas       = 2        Each PrismaClient connection_limit = 10
-  Worker concurrency         = 5        (<= 10, OK)
-  -> 2 * 10 = 20
-
-Migration container          = 1        connection_limit = 5
-  -> 5 (only during deploys; otherwise 0)
-
-Rolling deploy (worst case: old + new fully overlap - no surge cap, slow drain)
-  API     old 4 + new 4 = 8 * 10 = 80
-  Workers old 2 + new 2 = 4 * 10 = 40
-
-Steady state         40 + 20 + 5 = 65    (within 97, with 32 headroom)
-Deploy peak          80 + 40 + 5 = 125   >> 97 - BREACHES
-```
-
-Fix options:
-
-1. Drop `connection_limit` to 5 per process: peak `40 + 20 + 5 = 65`, within budget
-2. Pre-stop hook that closes the old `PrismaClient` before the new replicas come up - keeps the math at steady state during deploys
-3. Put a pooler (PgBouncer / RDS Proxy) in front; the app connects to the pooler, the pooler holds the DB connections (see below)
+The worked example and fix ordering live in `backend-connection-pooling`; run its equation with `connection_limit` (or `extra.max`) as the per-process pool.
 
 ### Per-ORM Configuration
 
@@ -170,17 +125,11 @@ Even with module scope, every cold container is a new process and a new pool. So
 
 ## Output Format
 
-```
-Postgres max_connections: N (reserved: M, effective: N-M)
-API: replicas R_api * connection_limit L_api = T_api
-Workers: replicas R_w * connection_limit L_w = T_w (BullMQ concurrency C; check C+2 <= L_w)
-One-shots: migrations / cron containers - L_m total during runs
-Rolling deploy peak: T_api * (1 + maxSurge/replicas)  + T_w  + L_m
-Pooler tier: {none | PgBouncer session | PgBouncer transaction (pgbouncer=true) | RDS Proxy | Prisma Accelerate}
-Steady state usage: U / effective (target <= 75%)
-Deploy peak usage: P / effective (must stay <= 100%; if not, action: drop L / preStop drain / add pooler)
-Action: {ship as is | drop connection_limit to X | add preStop drain | route through pooler | switch serverless to Accelerate}
-```
+Emit `backend-connection-pooling`'s Pool Sizing Assessment envelope - including its `Verdict:` row. Node bindings for its rows:
+
+- Per-process pool = `connection_limit` (Prisma URL) or `extra.max` (TypeORM); the worker row's concurrency check is BullMQ `concurrency + 2 <= pool`
+- `Pooler tier` values extend to: {PgBouncer session | PgBouncer transaction (pgbouncer=true) | RDS Proxy | Prisma Accelerate}
+- `Action` values extend to: {drop connection_limit to X | add preStop drain | switch serverless to Accelerate}
 
 ## Avoid
 

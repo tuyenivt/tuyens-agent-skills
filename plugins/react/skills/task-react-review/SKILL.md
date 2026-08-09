@@ -175,7 +175,7 @@ Output risk level and blast radius before any findings.
 
 **Auto-promote depth:** if Blast Radius is Wide / Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E (so historical pattern matching, cross-PR context, and anemic-prop assessment are in scope).
 
-**Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth config, middleware, route layouts, shared providers / contexts, `next.config.js`, `vite.config.js`, top-level `App.tsx` / `app/layout.tsx`), skip Phases C-D and produce a streamlined output with Phase B only.
+**Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth config, middleware, route layouts, shared providers / contexts, `next.config.*`, `vite.config.*`, top-level `App.tsx` / `app/layout.tsx`), skip Phases C-D and produce a streamlined output with Phase B only.
 
 ### Phase B - React Correctness and Safety
 
@@ -187,6 +187,15 @@ Apply atomic skills. Each owns canonical patterns; this phase flags deviations:
 - Use skill: `react-data-fetching` - fetch in Server Components or via TanStack Query; flag `useEffect(() => fetch(...))` in Client Components when a Server Component parent could fetch
 - Use skill: `react-nextjs-patterns` (skip on Vite) - `"use client"` placement at the leaf (not layout root), Server Action `auth()` + Zod / `zod-form-data` validation, `'use server'` file exports only actions, Server Action / RSC return values projected to a DTO, `middleware.ts` `matcher` exclusions justified
 - Use skill: `react-routing-patterns` if diff touches `app/**/page.tsx`, `app/**/layout.tsx`, or router config
+- Use skill: `react-server-data-layer` if the diff touches an ORM client, a schema file, `src/server/**`, or any Server Action / Route Handler that reads or writes persistent state - client singleton and hot-reload guard, server-only boundary, service-layer placement, RSC N+1, request memoization vs data cache, raw ORM rows crossing the client boundary
+- Use skill: `backend-transaction-patterns` if the diff opens a transaction or dispatches a side effect (queue, mail, outbound HTTP) alongside a write
+- Use skill: `react-selfhost-operations` if the diff touches `next.config.*`, `Dockerfile`, CDN or cache rules, `instrumentation.ts`, or `NEXT_PUBLIC_` environment wiring
+
+When a delegated atomic emits its own severity, map it to labels the same way as the gate below: Blocker or High -> `[Must]`, Medium -> `[Recommend]`, Low -> below the reporting bar.
+
+**API contract gate (mandatory when triggered).** When the diff touches an `app/**/route.ts` Route Handler, a published spec or generated client, or a response shape returned from one, Use skill: `backend-api-guidelines` and Use skill: `ops-backward-compatibility`. Both run - the first judges design, the second judges consumer breakage. Apply the same coverage and the same severity-to-label mapping as the core `task-code-review` Phase B gate: removed, renamed, or retyped fields, tightened constraints, new required request fields, and changed status codes or error shapes are breaking until proven otherwise; DTOs never return raw ORM rows; collections are paginated; RFC 9457 error shape.
+
+**Server Actions are excluded from this gate.** They have no stable URL and ship with their only caller, so they carry no compatibility surface. A monolith is still in scope when a Route Handler serves a consumer it cannot redeploy - a mobile client, an inbound webhook, or a public read surface. When consumption is unknown, treat a published or versioned surface (`/api/v1/`, OpenAPI-documented) as externally consumed. Server Action authorization and input validation belong to `task-react-review-security`, not here.
 
 **Additional React-specific checks (deviation-flagging only; canonical rules live in the atomics above):**
 

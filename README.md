@@ -186,7 +186,7 @@ React / Next.js (plugin: react)
 | [ruby](plugins/ruby)                 | Ruby on Rails 7.2+                                                                                                                                                                  |
 | [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                                                                                                           |
 | [go](plugins/go)                     | Go 1.25+ / Gin                                                                                                                                                                      |
-| [react](plugins/react)               | React 19 / TypeScript client apps - Next.js App Router (primary), Vite (secondary). Server Components, TanStack Query, Zustand, Tailwind                                             |
+| [react](plugins/react)               | React 19 / TypeScript fullstack - Next.js App Router (primary), Vite SPA (secondary). Server Components, Server Actions, Prisma data layer, self-hosted operations, TanStack Query, Zustand, Tailwind |
 
 ## Notes
 

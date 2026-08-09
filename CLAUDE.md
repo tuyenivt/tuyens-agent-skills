@@ -17,7 +17,7 @@ plugins/
   ruby/          # Ruby 3.4+ / Ruby on Rails 7.2+
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
   go/            # Go 1.25+ / Gin / GORM+sqlx
-  react/         # React 19 / TypeScript - client plugin (Next.js App Router primary, Vite secondary)
+  react/         # React 19 / TypeScript - fullstack (Next.js App Router primary, Vite SPA secondary)
 ```
 
 Each plugin folder has a `README.md`. Each skill lives in its own directory as `SKILL.md`. Agent files are plain Markdown in `plugins/<stack>/agents/`.
@@ -26,7 +26,7 @@ Each plugin folder has a `README.md`. Each skill lives in its own directory as `
 
 **Plugin dependency rule: every plugin depends only on `core`, nothing else.** A plugin is installed with `core` and itself - never alongside another stack or domain plugin - so no plugin may reference skills, agents, or slash commands from a sibling plugin (a stack plugin must not point at `architecture`, `core` must not point at `architecture`, and so on). Cross-references like that never resolve at install time and must not be authored. Shared behavior belongs in `core`; if two plugins need the same atomic, it lives in `core` (see Skill Placement). The only permitted upward reference is any plugin -> `core`.
 
-**`react` is the marketplace's client/UI plugin**; every other stack plugin is server-side. Two consequences: its skills are authored fresh rather than adapted from a backend plugin (transactions, connection pools, and server middleware do not map to a client), and it does not review API contract design - a client consumes API contracts rather than designing them. API contract and compatibility review lives inside the general review (core Phase B and each server stack's umbrella), gated on changes to routes, controllers, DTOs, serializers, or a published spec. In `react`, Server Action and Route Handler input validation is owned by `task-react-review-security`. Accessibility is a client-only concern with no universal lens; it is handled in `task-react-implement` and checked at baseline depth in the umbrella's Phase E.
+**`react` is the marketplace's React/Next.js plugin, and it is fullstack.** Next.js App Router is its primary target and spans both sides of the wire, so `react` owns the Next server surface - data layer (`react-server-data-layer`), server testing (`react-server-testing`), and self-hosted operations (`react-selfhost-operations`) - alongside components, hooks, state, and styling. Vite SPA remains client-only; the server skills emit their not-applicable line there. The stack-agnostic server contracts it depends on (`backend-transaction-patterns`, `backend-connection-pooling`, `backend-db-migration`, `ops-resiliency`) live in `core` and are shared with the server stacks rather than duplicated. Its ORM is Prisma, matching `node`, so the marketplace carries two ORMs and not three. Server Action and Route Handler input validation, authorization, SSRF, and webhook verification are owned by `task-react-review-security`. Accessibility is a client-only concern with no universal lens; it is handled in `task-react-implement` and checked at baseline depth in the umbrella's Phase E.
 
 ## Skill File Format
 

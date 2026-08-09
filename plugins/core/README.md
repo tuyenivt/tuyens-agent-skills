@@ -96,6 +96,7 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 | ----------------------- | ---------------------------------------------------------------------------------------------------- |
 | `backend-db-indexing`   | Database index strategy and query optimization                                                       |
 | `backend-db-migration`  | Universal zero-downtime database migration patterns - expand-contract, lock risk, backfill safety.   |
+| `backend-connection-pooling` | Whole-deployment pool math - per-process pool x process count x rolling-deploy overlap vs `max_connections`, worker concurrency, pooler tiers. |
 
 ### Ops
 
@@ -115,6 +116,7 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 | Skill                 | Description                                                             |
 | --------------------- | ----------------------------------------------------------------------- |
 | `backend-idempotency` | Idempotency key pattern for safe retries. Adapts to detected ecosystem. |
+| `backend-transaction-patterns` | Transaction boundary contract - no I/O inside a transaction, post-commit dispatch, transactional outbox, lock-then-write, lock and statement timeouts. |
 
 ### Governance
 
