@@ -48,6 +48,8 @@ Parse the prior report's `## High-Impact Findings` section, matching the heading
 - **Legacy (severity-based):** `[Blocker]`, `[High]`, `[Suggestion]`, `[Nitpick]`, `[Praise]`
 - **Legacy (intent-based):** `[Question]` - retired label; still parsed from prior rounds, never emitted in new findings
 
+`[Praise]` rows carry no smell: classify `Obsolete` with note `praise - nothing to reconcile`; never carry them forward.
+
 Collect `(label, file, line, smell_summary)` where `label` is preserved **verbatim** as it appeared in the prior report (do not translate `[Blocker]` to `[Must]` - the reconciliation table reflects what was actually written). `smell_summary` is the first sentence of the `Issue:` or `Improvement:` line.
 
 If the section is present but empty, return an empty reconciliation table and stop. If no heading matches at all, return the empty table with the note `Prior report has no High-Impact Findings section; nothing reconciled` - a report that should have had findings and a report that genuinely had none look identical otherwise.
@@ -60,7 +62,7 @@ For each prior finding, check `name_status`:
 | -------------------------------- | ----------- |
 | `A` (added since prior round)    | Impossible for a prior finding; treat as `Needs re-check` and note. |
 | `M` (modified)                   | `touched` |
-| `D` (deleted)                    | `file-gone` |
+| `D` (deleted)                    | `file-gone` - but when `head_files` is provided and a file with the same basename exists at another path (an undetected `D`+`A` move), treat as `renamed` to that path |
 | `R<score>` (renamed)             | `renamed` - record new path |
 | not listed                       | `untouched` |
 

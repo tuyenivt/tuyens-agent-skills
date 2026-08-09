@@ -19,9 +19,9 @@ user-invocable: false
 
 ## Rules
 
-- Apply the detected language's naming convention (camelCase, snake_case, PascalCase, kebab-case). Do not mix styles within a codebase. Where an established codebase-wide convention already differs from the language norm, consistency with the codebase wins - new code matches what is there. Raise the divergence once, as `[Recommend]`, against the convention rather than the file that followed it.
+- Apply the detected language's naming convention (camelCase, snake_case, PascalCase, kebab-case). Do not mix styles within a codebase. Where an established codebase-wide convention already differs from the language norm, consistency with the codebase wins - new code matches what is there. Raise the divergence once, as `[Recommend]`, against the convention rather than the file that followed it. In polyglot repos, each file follows its own language's convention; the `**Stack:**` line names the primary stack.
 - Short names in small scopes; descriptive names in larger scopes.
-- One responsibility per file/class/module. Functions/methods over 50 lines must be decomposed (up to 80 for verbose languages - calibrate to stack norms). Length measures responsibility, not lines: a flat exhaustive dispatch (uniform short branches, no nesting, no shared state) is one responsibility at any length, and splitting it scatters a table across functions.
+- One responsibility per file/class/module. Functions/methods over 50 lines must be decomposed (up to 80 where idiomatic boilerplate inflates counts - Java's type ceremony, Go's `if err != nil` blocks). Length measures responsibility, not lines: a flat exhaustive dispatch (uniform short branches, no nesting, no shared state) is one responsibility at any length, and splitting it scatters a table across functions.
 - Files live in directories matching their architectural role (no service classes in `controllers/`).
 - Presentation layer stays thin - business logic belongs in the service or domain layer.
 - Responses use DTOs / serializers / response structs, never data-layer entities.

@@ -39,8 +39,8 @@ If known pain points are given, investigate each: trace the implicated flow (Ste
 
 | Mode               | Audience                              | Emphasis                                                                                       |
 | ------------------ | ------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `first-pr`         | New engineer shipping first PR        | Local bootstrap, contribution workflow, first-PR safe zones, what to read first                |
-| `architect-survey` | Senior engineer / due diligence       | Architecture, patterns, tech debt, structural risk                                             |
+| `first-pr`         | New engineer shipping first PR        | Full depth: Local Quickstart, Contribution Workflow (incl. First-PR Safe Zones / Avoid), Repository Structure, Onboarding Recommendations |
+| `architect-survey` | Senior engineer / due diligence       | Full depth: Architecture, Key Patterns and Conventions, Tech Debt and Risk Hotspots, Ecosystem and Runtime Topology |
 | `full` (default)   | Anyone wanting the complete picture   | All sections at equal weight                                                                   |
 
 Weight shift: section order never changes and no section is dropped; write the mode's emphasized sections at full depth and compress the rest - keep their tables and command blocks, reduce prose to one-line notes. If the user's stated goal implies a mode, confirm rather than defaulting silently.
@@ -68,7 +68,7 @@ If detected stack matches, load the atomic. It injects stack-specific bootstrap 
 | Go / Gin             | `go-onboard-map`      |
 | React / Next.js      | `react-onboard-map`   |
 
-If no atomic matches the detected stack (e.g., Elixir), or the matched atomic does not resolve (stack plugin not installed), proceed with the generic workflow and note `no stack-specific onboarding atomic - generic guidance applied` under the Stack table.
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the generic workflow). If no atomic matches the detected stack (e.g., Elixir), or the matched atomic does not resolve (stack plugin not installed), proceed with the generic workflow and note `no stack-specific onboarding atomic - generic guidance applied` under the Stack table.
 
 Also extract a **one-paragraph system summary**: what problem this system solves, who uses it, and 2-3 main capabilities. Source from `README.md`, repo context file, top-level package descriptions, or service manifest. If not declared, mark `unknown - repo does not declare purpose` rather than inferring from code.
 

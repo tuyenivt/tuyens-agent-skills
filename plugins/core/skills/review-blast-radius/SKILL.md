@@ -40,9 +40,9 @@ user-invocable: false
 - Moderate: writes to shared state but recoverable (soft delete, audit trail, message replay)
 - Wide: irreversible writes, corruption risk, no rollback path
 
-**User Scope** - how many users or systems are affected.
+**User Scope** - how many users or systems are affected. Breadth, not severity: a trivially wrong but universally visible change is still Wide. Internal systems consuming the changed surface count as users.
 - Narrow: internal tool, single team, or one feature's small user subset
-- Moderate: one product surface, subset of users
+- Moderate: one product surface, subset of users, or a bounded set of internal consumer systems
 - Wide: all users, public API, external integrations
 
 Wide data scope on a core model implies code scope expansion across every API that serializes it - assess both.
@@ -98,15 +98,15 @@ Reversibility: {Recoverable | Conditional | Irreversible} ({1-sentence rationale
 
 `N/A` dimensions are skipped when taking the maximum; when every dimension is `N/A`, the overall line is `Narrow`.
 
-When a mitigation materially changes the level, rewrite the affected lines in that same block and append a `Mitigation:` line naming the existing safeguard or the single action that achieves the mitigated level:
+When a mitigation materially changes the level, rewrite the affected lines in that same block and append a `Mitigation:` line. It begins with exactly one tag: `in-place:` (the safeguard already exists) or `required:` (an action must be taken first). A safeguard that exists but still needs a step before it counts is `required:`.
 
 ```
 Blast Radius: Critical (unmitigated) -> Wide (with feature flag off)
 Reversibility: Conditional (PITR available for 7 days)
-Mitigation: Gate behind feature flag; verify PITR backup before proceeding
+Mitigation: required: gate behind feature flag and verify PITR backup before proceeding
 ```
 
-In the two-state form, callers gate on the mitigated (second) value only when the `Mitigation:` line names a safeguard already in place; if it prescribes an action not yet taken, gate on the unmitigated (first) value.
+In the two-state form, callers gate on the mitigated (second) value only when the tag is `in-place:`; on `required:`, gate on the unmitigated (first) value.
 
 Read-only changes are Data: Narrow. Use "N/A" only when a dimension genuinely has no path to impact (e.g., Data: N/A for a docs-only or pure copy change). Always produce all five lines.
 

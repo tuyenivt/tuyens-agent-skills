@@ -125,7 +125,7 @@ Consuming workflow skills parse this structure to surface breaks and migration p
 {State explicitly if all changes are backward compatible - do not omit silently.}
 ```
 
-Always produce the Changes Assessed table even when all changes are compatible, one row per discrete change. Omit "No Breaking Changes" if breaking changes were listed.
+Always produce the Changes Assessed table even when all changes are compatible, one row per discrete change. Contract Type names the actual surface - the four listed are the common cases, not a closed set (GraphQL schema, gRPC proto, exported file format are all valid values). Omit "No Breaking Changes" if breaking changes were listed.
 
 ## Avoid
 

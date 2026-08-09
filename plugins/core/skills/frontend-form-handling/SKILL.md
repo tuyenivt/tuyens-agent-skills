@@ -223,6 +223,8 @@ Consuming workflow skills depend on this structure.
 
 Severity: High = data loss, security exposure, or blocked/duplicate submission; Medium = broken validation timing or error-display UX (including per-keystroke validation); Low = polish (debounce values, focus order, copy).
 
+Include either `Issues Found` or `No Issues Found`, never both. In implement or design mode (building a form, not reviewing), the Form Design table documents what was built or planned, and Issues Found carries only residual risks knowingly accepted.
+
 ---
 
 ## Avoid

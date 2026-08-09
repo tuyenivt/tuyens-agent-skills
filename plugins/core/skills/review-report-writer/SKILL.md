@@ -29,7 +29,7 @@ The consuming workflow passes these fields when invoking this skill:
 | `mode`            | yes               | `full` or `incremental`                                                             |
 | `round`           | yes               | `1` for first review on this branch; increment per re-review                        |
 | `prior_head_sha`  | only if `round>1` | The `head_sha` from the prior round's frontmatter                                   |
-| `scope`           | yes               | `core-only` / `+perf` / `+sec` / `+obs` / `+rel` / `full`                            |
+| `scope`           | yes               | `core-only` / `full` / one or more of `+perf` `+sec` `+obs` `+rel`, space-joined in that order (all four = `full`) |
 | `depth`           | yes               | `standard` / `deep`                                                                 |
 | `stack`           | yes               | Stack identifier from `stack-detect` (e.g., `java-spring-boot`, `unknown`)          |
 | `pr_url`          | no                | PR/MR URL if the review input carried one (e.g., a pasted GitHub PR link)           |
@@ -42,7 +42,7 @@ Only the workflow that owns the report invokes this skill. Sub-agents spawned fo
   - Missing or empty required field -> `Missing required input: <field>`
   - Value-set field (`report_type`, `mode`, `scope`, `depth`) holding a value outside its set -> `Invalid input: <field>: <value>`
 - Do not write a partial file, invent a default, or blank a field. Value sets are matched exactly, case included: `Core` and `Deep` are invalid, not variants of `core-only` and `deep` - mapping display values to enum values is the caller's job.
-- **`report_body` is raw Markdown, never fenced.** The consuming workflow's Output Format section shows its template inside a ` ```markdown ` fence for display only; that fence is not part of the report. The written body must render as Markdown - real headings, tables, and lists, not one monospace block. If the received `report_body` opens with a fence on its first line, that fence is the workflow's display wrapper - strip it and its matching closer before writing. Match by fence length: a wrapper opened with more backticks than any fence it contains (```` ```markdown ```` around a body whose samples use ```` ``` ````) closes at its own backtick count, which disambiguates a body that ends with a code sample. When the opener and an inner fence are the same length, the wrapper's closer is the last fence in the body. Fenced blocks *inside* the body (a code sample on a Fix line) are content - keep them.
+- **`report_body` is raw Markdown, never fenced.** The consuming workflow's Output Format section shows its template inside a ` ```markdown ` fence for display only; that fence is not part of the report. The written body must render as Markdown - real headings, tables, and lists, not one monospace block. If the received `report_body` opens with a fence on its first line, that fence is the workflow's display wrapper - strip it and its matching closer before writing. Match by fence length: a wrapper opened with more backticks than any fence it contains (a 4-backtick ````` ````markdown ````` opener around samples using 3-backtick ```` ``` ````) closes at its own backtick count, which disambiguates a body that ends with a code sample. An info string adds no length - ```` ```markdown ```` and ```` ``` ```` are both 3 backticks, which is the same-length case. When the opener and an inner fence are the same length, the wrapper's closer is the last fence in the body. Fenced blocks *inside* the body (a code sample on a Fix line) are content - keep them.
 - Sanitize `branch` for the filename: replace `/` and any character outside `[A-Za-z0-9_-]` with `-`, collapse consecutive `-`, strip leading/trailing `-`. The frontmatter `branch` field keeps the raw value; only the filename is sanitized.
 - Build the filename from `report_type`:
   - `review` -> `review-<branch>.md`
@@ -73,7 +73,7 @@ head_sha: <full SHA>
 mode: full | incremental
 round: <N>
 prior_head_sha: <full SHA from prior round>                     # omit on round 1; required on round 2+
-scope: core-only | +perf | +sec | +obs | +rel | full
+scope: core-only | full | space-joined subset of +perf +sec +obs +rel in that order
 depth: standard | deep
 stack: <stack identifier>
 pr_url: <PR/MR URL>                                             # omit unless the review input carried one
@@ -90,6 +90,8 @@ Report written to <filename> (round <N>, mode: <mode>)
 ```
 
 The file contains the YAML frontmatter followed by the workflow's standard Markdown report body.
+
+On validation failure, the output is the failure lines from Rules (one per bad field) and no file - there is no partial success.
 
 ## Avoid
 

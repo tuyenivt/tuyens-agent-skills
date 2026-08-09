@@ -24,7 +24,7 @@ Detects the project stack and delegates to the matching stack-specific perf revi
 
 `/task-code-review-perf [<branch> | pr-<N>] [standard | deep] [--base <branch>]`
 
-When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return the subagent envelope defined in Output Format, and skip Step 5 - the parent owns the report.
+When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, read-once diff/log, and active depth: skip Steps 2-3, run Step 4 on the supplied diff, return the subagent envelope defined in Output Format, and skip Step 5 - the parent owns the report.
 
 ## Workflow
 
@@ -51,7 +51,7 @@ A row matches only when the detected framework matches it (Java / Micronaut does
 
 ### Step 4 - Generic Fallback (no dispatch)
 
-Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full.
+Use skill: `review-precondition-check` with the invocation's target and any `--base` override when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full.
 
 Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field, then cover the applicable categories:
 
@@ -61,11 +61,11 @@ Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `
 
 **Caching (backend / fullstack).** Cache-aside via framework abstraction, TTL on every entry with jitter, explicit invalidation strategy, deterministic key scheme, stampede protection on hot keys, DTOs cached (never ORM entities).
 
-**Memory and I/O.** Streaming for large payloads, timeouts and circuit breakers on external calls, reused HTTP clients.
+**Memory and I/O (all scopes).** Streaming for large payloads, timeouts and circuit breakers on external calls, reused HTTP clients.
 
 **Frontend (frontend / fullstack).** Unnecessary re-renders / change-detection cycles, heavy computation in render path, virtualization for long lists (>100), client-side caching, image optimization, lazy loading, route-level code splitting. Use skill: `frontend-performance`.
 
-**Observability cross-check.** RED metrics on critical paths, correlation IDs propagated, latency histograms. Use skill: `ops-observability`.
+**Observability cross-check (backend / fullstack).** RED metrics on critical paths, correlation IDs propagated, latency histograms. Use skill: `ops-observability`.
 
 Every finding states estimated impact (e.g., "N+1 adds ~200ms per request at 1K rows"), not just "this is slow". Separate quick wins from structural changes. Next Steps map impact to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`.
 
@@ -73,7 +73,7 @@ Every finding states estimated impact (e.g., "N+1 adds ~200ms per request at 1K 
 
 ### Step 5 - Write Report
 
-Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-perf` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +perf`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.
+Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-perf` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +perf`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter: if its `head_sha` equals the current head SHA and the requested depth does not exceed its `depth` (`deep` exceeds `standard`), print `No new commits since prior perf review.` and stop - no report; otherwise increment its `round` and pass its `head_sha` as `prior_head_sha`.
 
 ## Output Format
 

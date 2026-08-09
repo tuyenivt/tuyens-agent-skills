@@ -187,7 +187,7 @@ Consuming workflow skills depend on this structure.
 {State explicitly if state management is adequate - do not omit this section silently}
 ```
 
-Include exactly one of `Issues Found` / `No Issues Found`. In review mode, `Owner` is the current owner; the recommended owner goes in the issue's Fix. In migration mode, write `Owner` as `{current} -> {target}` so the table is the migration map. Severity calibration: High = correctness or staleness bugs (duplicated server state, stored derived values, multiple owners); Medium = performance or maintainability (form drafts in global store, whole-store subscriptions, missing memoization of expensive derivations); Low = style and minor structure.
+Include exactly one of `Issues Found` / `No Issues Found`. In review mode, `Owner` is the current owner; the recommended owner goes in the issue's Fix. In migration mode, write `Owner` as `{current} -> {target}` so the table is the migration map. In design mode (new feature, no code yet), `Owner` is the planned owner and Issues Found carries only residual risks knowingly accepted. Severity calibration: High = correctness or staleness bugs (duplicated server state, stored derived values, multiple owners); Medium = performance or maintainability (form drafts in global store, whole-store subscriptions, missing memoization of expensive derivations); Low = style and minor structure.
 
 ---
 

@@ -20,7 +20,7 @@ user-invocable: false
 
 ## Rules
 
-- Every data-fetching component handles loading, success, and error states
+- Every data-fetching component handles loading, success, empty, and error states
 - Server state lives in a data-fetching library cache, not a UI state store
 - Identical concurrent requests must deduplicate to one network call
 - Mutations invalidate or update affected caches; stale data after writes is a bug

@@ -11,7 +11,7 @@ user-invocable: false
 
 ## When to Use
 
-- Step 0 of any code review workflow (`task-code-review`, `task-code-review-perf`, `task-code-review-security`, `task-code-review-observability`) before risk or finding analysis.
+- Step 0 of any code review workflow (`task-code-review` and every `task-code-review-*` scoped lens) before risk or finding analysis.
 - Whenever a free-form invocation argument (a PR number, a branch name, or nothing) must be turned into a confirmed `(base_ref, head_ref)` pair the workflow can diff against.
 
 This skill **gates only**: it emits ref names, not diffs or SHAs. The consuming workflow runs `git diff <base>...<head>` and `git log <base>..<head>` itself. Review is **PR-shaped only**: a feature branch or fetched PR ref vs its base. Working trees, commit ranges, and single commits are out of scope - hotfixes and cherry-picks must go through a PR.
@@ -30,7 +30,7 @@ This skill **gates only**: it emits ref names, not diffs or SHAs. The consuming 
 | ---------------------------------------- | ---------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | _(none)_                                 | `branch-vs-base` | No argument; `HEAD` becomes the candidate head                                          | Default: self-review. Trunk `HEAD` fails fast in Step 3.       |
 | `pr-<N>`, `pr/<N>`, `pull-<N>`, `mr-<N>` | `pr-ref`         | Matches `^(pr|pull|mr)[-/]\d+$`                                                         | Local branch must already exist (created by user via fetch).   |
-| `<branch>`                               | `branch-vs-base` | Resolves via `git rev-parse --verify refs/heads/<arg>` or `refs/remotes/<arg>`          | Self-review or teammate-branch cross-review.                   |
+| `<branch>`                               | `branch-vs-base` | Resolves via `git rev-parse --verify refs/heads/<arg>`, then `refs/remotes/<arg>`, then `refs/remotes/origin/<arg>` | Self-review or teammate-branch cross-review.                   |
 
 Trunk list (default): `main`, `master`, `develop`, `trunk`. Match is exact-name (case-insensitive), not substring - `develop-bug` is not a trunk. If the resolved head matches a trunk, fail fast.
 
@@ -40,7 +40,7 @@ When an argument resolves to both a branch and a tag locally (check with `git fo
 
 Local git cannot know the true target branch of a PR opened against a non-trunk base (e.g., `pr-123` against `phase-01`). When the workflow forwards an explicit base (typically `--base <branch>`), use it directly and skip trunk-branch auto-detection in Step 5.
 
-- Resolve via `refs/heads/<arg>` then `refs/remotes/<arg>`.
+- Resolve via `refs/heads/<arg>`, then `refs/remotes/<arg>`, then `refs/remotes/origin/<arg>`.
 - Not subject to the trunk-branch fail-fast (that rule applies to the head, not the base).
 - If unresolved, stop and ask the user to push or fetch - do not silently fall back to a trunk.
 
@@ -111,7 +111,7 @@ This creates a local ref only - no checkout, your current branch is untouched. A
 If that prints a SHA, re-run the review. If it errors, the fetch did not create the local branch (the `:pr-<N>` suffix is what creates it).
 ```
 
-For `<branch>` arguments, verify with `git rev-parse --verify` against `refs/heads/<arg>` then `refs/remotes/<arg>`. If neither resolves, stop and ask the user to push or fetch.
+For `<branch>` arguments, verify with `git rev-parse --verify` against `refs/heads/<arg>`, then `refs/remotes/<arg>`, then `refs/remotes/origin/<arg>` (users type teammate branches without the remote prefix). If none resolves, stop and ask the user to push or fetch.
 
 ### Step 5 - Detect the base branch
 
@@ -156,7 +156,7 @@ Wait for explicit affirmative (`y` / `yes`). On `n` or no response, stop with `R
 
 This step enables flag-free re-review. It only **reads and reports** - it does not decide mode. The consuming workflow decides.
 
-Compute the prior-report filename from the **head** short name (sanitization rules per `review-report-writer`: replace `/` and chars outside `[A-Za-z0-9_-]` with `-`, collapse, strip):
+Compute the prior-report filename from the **head** short name; when the head resolved from `refs/remotes/`, strip the leading `<remote>/` segment first, so `origin/feature/x` and a later local review of `feature/x` chain on the same file. Then apply the sanitization rules per `review-report-writer` (replace `/` and chars outside `[A-Za-z0-9_-]` with `-`, collapse, strip):
 
 ```
 review-<sanitized-head>.md

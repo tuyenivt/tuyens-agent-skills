@@ -46,6 +46,7 @@ Four stages; skipping any creates technical debt.
 | Boolean on/off  | default false; rollout 0% -> 5% -> 25% -> 100%                   | Simple toggles, gradual rollouts       |
 | User / group    | targeting: internal-users, beta-group, tenant-id-X; default off  | Internal testing, beta, tenant scoping |
 | Kill switch     | default false (feature runs); when true, feature disables        | Emergency disable for high-risk paths  |
+| Ops / permission | permanent; documented valid states, no rollout progression      | Throttles, maintenance mode, entitlements |
 
 ### Gradual Rollout
 

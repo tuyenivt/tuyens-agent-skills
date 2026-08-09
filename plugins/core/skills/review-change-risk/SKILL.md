@@ -49,7 +49,7 @@ If a diff exists, use `review-pr-risk` instead; use both when both apply.
 ### Classification Rules
 
 1. Identify triggered domains with evidence.
-2. Mark each as primary (direct, high-confidence) or secondary (indirect, lower-confidence, or assumed). A domain's default severity may be downgraded one step, only with the justification cited in the domain's evidence (e.g., additive column, low-traffic table); never silently.
+2. Mark each as primary (direct, high-confidence) or secondary (indirect, lower-confidence, or assumed). A domain's default severity may be downgraded one step, only with the justification cited in the domain's evidence (e.g., additive column, low-traffic table); never silently. The ladder in step 3 counts effective severities - a justified downgrade changes the domain's tier.
 3. Determine the base level from the first matching row:
 
 | Condition (first match wins)                      | Overall Level |
@@ -59,7 +59,7 @@ If a diff exists, use `review-pr-risk` instead; use both when both apply.
 | One or two medium domains                          | Medium        |
 | No domain triggered                                | Low           |
 
-4. Amplify: if a shared mutable resource is written by two or more flows touched by the change, raise the level one tier (caps at Critical). Amplify at most once, however many resources qualify. Evaluate each shared resource in turn and amplify on the first one that is not already the sole reason Concurrency triggered - that carve-out prevents counting one resource twice, not amplification itself, so a second qualifying resource still amplifies.
+4. Amplify: if a shared mutable resource is written by two or more flows touched by the change, raise the level one tier (caps at Critical). Evaluate every phase the proposal includes - a transitional dual-write window counts even if the end state has one writer. Amplify at most once, however many resources qualify. Evaluate each shared resource in turn and amplify on the first one that is not already the sole reason Concurrency triggered - that carve-out prevents counting one resource twice, not amplification itself, so a second qualifying resource still amplifies.
 5. Assess reversibility: Irreversible when any triggered domain includes a destructive or non-reversible step (data loss, irreversible migration); Partially reversible when rollback needs manual or multi-step action; Reversible otherwise.
 
 ### Good

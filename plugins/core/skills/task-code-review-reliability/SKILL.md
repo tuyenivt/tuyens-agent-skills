@@ -33,7 +33,7 @@ Reliability = behavior under failure and saturation - the unhappy path. It owns 
 
 `/task-code-review-reliability [<branch> | pr-<N>] [standard | deep] [--base <branch>]`
 
-When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return the subagent envelope defined in Output Format, and skip Step 5 - the parent owns the report.
+When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, read-once diff/log, and active depth: skip Steps 2-3, run Step 4 on the supplied diff, return the subagent envelope defined in Output Format, and skip Step 5 - the parent owns the report.
 
 ## Workflow
 
@@ -62,7 +62,7 @@ A row matches only when the detected framework matches it (Java / Micronaut does
 
 Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full and trace failure paths across service boundaries.
 
-**Whole-service sweep** (reliability-debt pass with no feature branch): when the precondition check fails fast on trunk, do not stop - skip the diff gate and review the reliability surface repo-wide at `HEAD`; findings cite current code. The failed check emits no handle, so assemble the writer fields directly: `branch` = current branch short name, `base_ref` = `head_ref` = that name, `base_sha` = `head_sha` = `git rev-parse HEAD`.
+**Whole-service sweep** (reliability-debt pass with no feature branch): when the precondition check fails fast on trunk, do not stop - announce in one line (`Head is trunk - running a repo-wide reliability sweep at HEAD; findings cite current code.`), then skip the diff gate and review the reliability surface repo-wide at `HEAD`. The failed check emits no handle, so assemble the writer fields directly: `branch` = current branch short name, `base_ref` = `head_ref` = that name, `base_sha` = `head_sha` = `git rev-parse HEAD`. The verify step receives an empty `diff` on a sweep - findings verify against code at `HEAD` and attribute `Pre-existing`.
 
 Cover the applicable categories. Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhead / fallback patterns and the per-stack resilience library (for stacks it does not list, apply the same patterns with the ecosystem's standard resilience libraries). Gate it: load `ops-resiliency` when the surface includes an external client, a fanning-out service, or breaker / retry / timeout config; skip it on a diff that is purely queue-system idempotency, transaction, or locking work with no synchronous dependency.
 
@@ -90,7 +90,7 @@ Every finding names the failure mode it enables (not just the missing pattern) a
 
 ### Step 5 - Write Report
 
-Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-reliability` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +rel`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-reliability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.
+Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-reliability` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +rel`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-reliability-<branch>.md` already exists with valid frontmatter: if its `head_sha` equals the current head SHA and the requested depth does not exceed its `depth` (`deep` exceeds `standard`), print `No new commits since prior reliability review.` and stop - no report; otherwise increment its `round` and pass its `head_sha` as `prior_head_sha`.
 
 ## Output Format
 

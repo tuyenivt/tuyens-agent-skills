@@ -26,7 +26,7 @@ Scope is the resolved branch diff vs base (PR-shaped, per `review-precondition-c
 
 `/task-code-review-security [<branch> | pr-<N>] [standard | deep] [--base <branch>]`
 
-When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return the subagent envelope defined in Output Format, and skip Step 5 - the parent owns the report.
+When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, read-once diff/log, and active depth: skip Steps 2-3, run Step 4 on the supplied diff, return the subagent envelope defined in Output Format, and skip Step 5 - the parent owns the report.
 
 ## Workflow
 
@@ -53,7 +53,7 @@ A row matches only when the detected framework matches it (Java / Micronaut does
 
 ### Step 4 - Generic Fallback (no dispatch)
 
-Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full.
+Use skill: `review-precondition-check` with the invocation's target and any `--base` override when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full.
 
 **Cover every OWASP Top 10 category explicitly.** State "No issues found" per category when clean - do not silently skip.
 
@@ -82,7 +82,7 @@ Every finding states an attack scenario, not just a code observation. Next Steps
 
 ### Step 5 - Write Report
 
-Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-security` and every required input: `report_body`, `branch` (from the handle), refs from the precondition handle, SHAs via `git rev-parse`, `stack` from `stack-detect` (kebab-case `<language>-<framework>`, or `unknown`), `depth` from the invocation (default `standard`), `scope: +sec`, and `mode: full`, `round: 1` - unless `review-security-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`. (The handle's `prior_checkpoint` is keyed to the general review report - do not use it here.)
+Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-security` and every required input: `report_body`, `branch` (from the handle), refs from the precondition handle, SHAs via `git rev-parse`, `stack` from `stack-detect` (kebab-case `<language>-<framework>`, or `unknown`), `depth` from the invocation (default `standard`), `scope: +sec`, and `mode: full`, `round: 1` - unless `review-security-<branch>.md` already exists with valid frontmatter: if its `head_sha` equals the current head SHA and the requested depth does not exceed its `depth` (`deep` exceeds `standard`), print `No new commits since prior security review.` and stop - no report; otherwise increment its `round` and pass its `head_sha` as `prior_head_sha`. (The handle's `prior_checkpoint` is keyed to the general review report - do not use it here.)
 
 ## Output Format
 

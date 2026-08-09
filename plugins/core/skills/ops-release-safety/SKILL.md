@@ -9,8 +9,6 @@ user-invocable: false
 
 # Release Safety
 
-> Load `Use skill: stack-detect` first to determine the project stack.
-
 ## When to Use
 
 - Designing deployment strategy for a new feature or risky change

@@ -44,9 +44,11 @@ Use skill: `stack-detect` to identify language, framework, and `Stack Type`.
 | Go / Gin             | `task-go-test`      |
 | React / Next.js      | `task-react-test`   |
 
-A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Forward the user's invocation. The dispatched workflow owns the output. **If matched and available, stop. Skip Step 4.** If the matched workflow is unavailable (plugin not installed), name the plugin that provides it, then run Step 4 using the detected stack's idioms.
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). When the ask targets pasted or out-of-repo code whose language differs from the detected stack, skip dispatch and run Step 4 with the snippet's inferred language. Forward the user's invocation. The dispatched workflow owns the output. **If matched and available, stop. Skip Step 4.** If the matched workflow is unavailable (plugin not installed), name the plugin that provides it, then run Step 4 using the detected stack's idioms.
 
 ### Step 4 - Generic Fallback (no dispatch match)
+
+**Ground the assessment first.** Locate the test tree and map it against the target path (or the highest-risk modules when no path was given); every coverage gap cites a specific untested surface - never pyramid theory alone.
 
 **Pyramid.** Unit (many) > Integration (some) > E2E (few). Unit covers pure logic, validation, branch-heavy domain code, isolated error handling. Integration covers DB queries against a real schema, HTTP endpoints end-to-end, external service clients (stubs or contract tests), auth filters. E2E covers only critical business flows (checkout, login, data export) - keep this layer small. For `Stack Type: frontend` or `fullstack` targets, Use skill: `frontend-testing-patterns`.
 
@@ -78,7 +80,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran, p
 ## Test Strategy
 
 **Objective:** [what this strategy achieves]
-**Pyramid balance (target):** Unit {x}% / Integration {y}% / E2E {z}%
+**Pyramid balance (target):** Unit {x}% / Integration {y}% / E2E {z}% (default 70/20/10 unless the codebase's risk profile justifies otherwise - state why)
 **Contract testing:** [required / not required - rationale]
 **Gaps to close (prioritized):**
 
@@ -97,6 +99,6 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran, p
 
 - Running both Step 3 dispatch and Step 4 fallback
 - Producing findings when a stack workflow was dispatched
-- Falling through to Step 4 when a table row matched and its workflow is available - the table is authoritative
+- Falling through to Step 4 when a table row matched and its workflow is available - the table is authoritative for in-repo targets (pasted out-of-repo code follows the Step 3 override)
 - Chasing a coverage number instead of prioritizing by risk
 - Treating the fallback as equivalent to a stack workflow

@@ -10,7 +10,7 @@ user-invocable: true
 
 # PR Description Generator
 
-Turns a git diff into a reviewer-ready PR description: title, summary, risk, test plan, linked context. Writes the description; does not open or submit the PR.
+Turns a git diff into a reviewer-ready PR description: title, summary, risk, test plan, linked context. Emits the description in chat for the user to paste; writes no file and does not open or submit the PR.
 
 ## When to Use
 
@@ -30,7 +30,7 @@ Turns a git diff into a reviewer-ready PR description: title, summary, risk, tes
 | ADR references       | No       | Commit messages or `docs/adr/`                  |
 | Related PRs          | No       | Commit messages or user-supplied                |
 
-The base branch is detected in Step 2; the user does not supply it unless detection fails.
+The base branch is detected in Step 2. A user-stated base (e.g., a stacked PR against `phase-01`) overrides detection; otherwise the user does not supply it unless detection fails.
 
 ## Workflow
 
@@ -52,7 +52,7 @@ Establish `(base_ref, head_ref)` before any diff is read. PR creation runs again
 
    A detached `HEAD` (`current_branch` prints `HEAD`) also stops - check out the feature branch first.
 
-3. **Detect base:** if `git symbolic-ref refs/remotes/origin/HEAD` resolves, use it. Otherwise probe every trunk name (`main`, `master`, `develop`) via `git rev-parse --verify`, remote (`origin/<name>`) then local; a name resolving in both forms counts once, remote form preferred.
+3. **Detect base:** a user-stated base overrides detection - resolve it (`origin/<name>` then local; if unresolved, ask for a push/fetch, do not fall back to a trunk), record it as `base_ref`, and skip item 4. Otherwise if `git symbolic-ref refs/remotes/origin/HEAD` resolves, use it. Otherwise probe every trunk name (`main`, `master`, `develop`, `trunk`) via `git rev-parse --verify`, remote (`origin/<name>`) then local; a name resolving in both forms counts once, remote form preferred.
 4. **Use or ask:** exactly one distinct trunk name resolved -> use it. More than one (e.g., gitflow with both `main` and `develop`), or none -> ask the user. Do not pick silently; the wrong base pulls unrelated commits into the diff.
 
 Record `base_ref` for Step 4.
@@ -167,7 +167,7 @@ Related: #[PR number or branch]
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: branch and base resolved; trunk-branch HEAD rejected; base auto-detected or asked when ambiguous
+- [ ] Step 2: branch and base resolved; trunk-branch HEAD rejected; user-stated base honored, else auto-detected or asked when ambiguous
 - [ ] Step 3: stack detected and reflected in test plan command
 - [ ] Step 4: diff and commits gathered against resolved `base_ref`, not hardcoded `main`
 - [ ] Step 5: risk classification present with rationale; `Action:` from `review-pr-risk` carried over if emitted

@@ -101,7 +101,7 @@ Rows are matched in order - the first match wins.
 | `backend`   | Server framework (Spring, Django, FastAPI, Rails, NestJS, Express, Gin, Axum, ASP.NET, etc.)           |
 | `fullstack` | Both a client and a backend present, OR a meta-framework with server capability (see fullstack triggers) |
 
-No row matches (library, CLI tool, framework still unknown): fall back to `frontend` if only frontend markers exist, otherwise `backend`. Never leave Stack Type unset.
+No row matches (library, CLI tool, framework still unknown): fall back to `frontend` only if a client-side marker exists (frontend framework dependency or meta-framework config - a bare `package.json` is not one), otherwise `backend`. Never leave Stack Type unset.
 
 A web app merely wrapped for desktop or a native shell (Electron, Tauri, Capacitor) stays `frontend` - its toolchain and guidance are the web's.
 
@@ -112,7 +112,7 @@ Fullstack triggers:
 
 When more than one trigger fires, the monorepo rule wins: two separate manifests are a stronger signal than one meta-framework's server capability.
 
-For fullstack from two stacks (monorepo), set `Language` and `Framework` to the primary stack - the one whose manifest sits at the repo root, or when all manifests are nested equally, the one serving HTTP to end users - and describe the secondary in `Additional` (e.g., `Frontend: TypeScript (React)`). For fullstack from a single meta-framework (Next.js, Nuxt) with no second manifest, keep the meta-framework as `Framework`; there is no secondary entry.
+For fullstack from two stacks (monorepo), set `Language` and `Framework` to the primary stack - the one whose manifest sits at the repo root, or when all manifests are nested equally, the backend stack (between two backends, the one serving end-user traffic) - and describe the secondary in `Additional` (e.g., `Frontend: TypeScript (React)`). For fullstack from a single meta-framework (Next.js, Nuxt) with no second manifest, keep the meta-framework as `Framework`; there is no secondary entry.
 
 ## Output Format
 

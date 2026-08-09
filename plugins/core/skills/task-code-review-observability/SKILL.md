@@ -25,7 +25,7 @@ Detects the project stack and delegates to the matching stack-specific observabi
 
 `/task-code-review-observability [<branch> | pr-<N>] [standard | deep] [--base <branch>]`
 
-When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, and read-once diff/log: skip Steps 2-3, run Step 4 on the supplied diff, return the subagent envelope defined in Output Format, and skip Step 5 - the parent owns the report.
+When invoked as a subagent by `task-code-review` (extra scope), the parent supplies the detected stack, precondition handle, read-once diff/log, and active depth: skip Steps 2-3, run Step 4 on the supplied diff, return the subagent envelope defined in Output Format, and skip Step 5 - the parent owns the report.
 
 ## Workflow
 
@@ -52,7 +52,7 @@ A row matches only when the detected framework matches it (Java / Micronaut does
 
 ### Step 4 - Generic Fallback (no dispatch match)
 
-Use skill: `review-precondition-check` when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full and include the SLO category below.
+Use skill: `review-precondition-check` with the invocation's target and any `--base` override when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full and include the SLO category below.
 
 Use skill: `ops-observability`. This is the primary source of findings - it covers structured logging, RED metrics, distributed tracing, correlation propagation, and SLO design. The list below names the categories the fallback must explicitly cover; rely on `ops-observability` for the patterns.
 
@@ -67,13 +67,13 @@ Use skill: `ops-observability`. This is the primary source of findings - it cove
 
 Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field; `fullstack` activates both the backend- and frontend-scoped rows. Flag services with no SLO as **Recommend** at deep depth. Every finding states what becomes invisible without the missing signal. Next Steps map severity to intent: High -> `[Must]`, Medium/Low -> `[Recommend]`.
 
-If the diff touches no instrumentable code (docs, tests, comments only), skip the category review and report `Overall: Adequate` with the note "diff contains no instrumentable surface" - still write the report in Step 5.
+If the diff touches no instrumentable code (docs, tests, comments only), skip the category review and report `Overall: Adequate` with the note "diff contains no instrumentable surface" - still write the report in Step 5. Subagent runs return the envelope with no findings and that note instead.
 
 **Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
 
 ### Step 5 - Write Report
 
-Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-observability` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +obs`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-observability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`.
+Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-observability` and every required input: `report_body`, `branch` (from the handle), the handle's refs, `base_sha` / `head_sha` via `git rev-parse`, `scope: +obs`, `depth` as invoked (default `standard`), `stack` from `stack-detect` (kebab-case language-framework, or `unknown`), and `mode: full`, `round: 1` - unless `review-observability-<branch>.md` already exists with valid frontmatter: if its `head_sha` equals the current head SHA and the requested depth does not exceed its `depth` (`deep` exceeds `standard`), print `No new commits since prior observability review.` and stop - no report; otherwise increment its `round` and pass its `head_sha` as `prior_head_sha`.
 
 ## Output Format
 

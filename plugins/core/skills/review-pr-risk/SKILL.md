@@ -24,7 +24,7 @@ If no diff exists yet (architecture proposal, migration plan), use `review-chang
 - Heuristic, not a guarantee. Use as framing, not a gate.
 - Run before line-by-line review.
 - Spend at most 30 seconds.
-- When unsure whether a signal fired, count it as fired. This resolves borderline triggers (a 480-line diff against the >500 threshold), not the level itself - the ladder is deterministic once the signals are fixed.
+- When unsure whether a signal fired, count it as fired. This resolves borderline triggers (a 480-line diff against the >500 threshold), not the level itself - the ladder is deterministic once the signals are fixed. A signal with no observable evidence either way (author history unavailable) stays unfired - score what the diff shows.
 
 ## Patterns
 
@@ -32,7 +32,7 @@ If no diff exists yet (architecture proposal, migration plan), use `review-chang
 
 | Signal                         | Weight | Trigger                                                     |
 | ------------------------------ | ------ | ----------------------------------------------------------- |
-| Cross-module changes           | High   | 2+ modules or packages                                      |
+| Cross-module changes           | High   | 2+ distinct domain modules/packages - layers of one feature (model + service + controller) count as one |
 | Shared state mutation          | High   | Global state, singletons, shared caches                     |
 | Database/schema changes        | High   | Migrations, index changes, entity modifications             |
 | Public API changes             | High   | Endpoint signatures, request/response contracts             |
@@ -47,7 +47,7 @@ If no diff exists yet (architecture proposal, migration plan), use `review-chang
 
 ### Classification
 
-Signals are counted over production files only - a change confined to tests, docs, or comments cannot trigger size, cross-module, or any High signal, since none of it reaches production behavior. Then apply top-down - first match wins. Same signals in, same level out.
+Signals are counted over production files only - a change confined to tests, docs, or comments cannot trigger size, cross-module, or any High signal, since none of it reaches production behavior. Use the detected stack to recognize file roles - what counts as a migration, config, or test file in this ecosystem. Then apply top-down - first match wins. Same signals in, same level out.
 
 - **Low** - no production files modified (tests, docs, comments in any mix and any size)
 - **Critical** - 2+ High signals, OR a destructive migration (drop, rename, type change, or backfill) on an existing table
@@ -97,6 +97,8 @@ Signals: Tests and docs only, no production code modified.
 ```
 
 Never exceed four lines. Never omit `Signals:`.
+
+When triaging multiple PRs, emit one block per PR, each prefixed with a `PR: <identifier>` line.
 
 ## Avoid
 

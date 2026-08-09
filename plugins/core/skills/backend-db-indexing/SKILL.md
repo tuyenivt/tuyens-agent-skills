@@ -20,7 +20,7 @@ user-invocable: false
 ## Rules
 
 - Index foreign keys, JOIN columns, and frequent WHERE/ORDER BY predicates.
-- Align indexes with actual query patterns - inspect EXPLAIN, not intuition. If EXPLAIN is unavailable, recommend from schema and query shape and mark each finding `(unverified - confirm with EXPLAIN)`.
+- Align indexes with actual query patterns - inspect EXPLAIN, not intuition. If EXPLAIN is unavailable, recommend from schema and query shape and mark each finding `(unverified - confirm with EXPLAIN)`. When traffic or table size is unknown, assign severity from query shape alone under the same marker.
 - Composite indexes: equality columns first, range and ORDER BY columns last (matching the sort direction).
 - Functions on indexed columns disable the index - rewrite the query or add an expression index.
 - Avoid single-column indexes on low-cardinality columns (a few distinct values - optimizer prefers scan). The same column is fine as the leading equality column of a composite or as a partial-index predicate.
@@ -118,7 +118,7 @@ Check, in order:
 
 ## Output Format
 
-Consuming workflows parse this structure. When reviewing a diff, report problematic indexes the diff adds under `Existing Index Issues`.
+Consuming workflows parse this structure. When reviewing a diff, report problematic indexes the diff adds under `Existing Index Issues`. In design mode (no existing schema or diff to review), `Missing Indexes` holds the proposed indexes, `Indexes Not Recommended` the declined ones; omit `Existing Index Issues`.
 
 ```
 ## Database Indexing Assessment

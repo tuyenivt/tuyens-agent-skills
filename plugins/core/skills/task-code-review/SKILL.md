@@ -45,7 +45,7 @@ Use skill: `stack-detect`.
 | Go / Gin             | `task-go-review`      |
 | React / Next.js      | `task-react-review`   |
 
-A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Dispatch keys on the detection's primary `Language`/`Framework` pair; a secondary stack in `Additional` never dispatches. Forward the user's invocation verbatim (target ref, `--base`, scope, depth). The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 4-5.**
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Dispatch keys on the detection's primary `Language`/`Framework` pair; a secondary stack in `Additional` never dispatches. Announce the dispatch in one line (`Dispatching to task-rails-review.`), then forward the user's invocation verbatim (target ref, `--base`, scope, depth). The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 4-5.**
 
 If a row matches but the target skill does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5 as a degraded generic review and note the degradation in the report.
 
@@ -53,14 +53,15 @@ If a row matches but the target skill does not resolve (stack plugin not install
 
 Runs when no Step 3 row matched the detected stack, or the matched workflow is unavailable.
 
-Use skill: `review-precondition-check` with the user's target argument and any `--base` override (default: current branch). On failure, surface the message verbatim and stop. On success, capture `base_sha`/`head_sha` via `git rev-parse <base_ref>` / `git rev-parse <head_ref>`, then read once: `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`.
+Use skill: `review-precondition-check` with the user's target argument (default target: current branch) and any `--base` override. On failure, surface the message verbatim and stop. On success, capture `base_sha`/`head_sha` via `git rev-parse <base_ref>` / `git rev-parse <head_ref>`, then read once: `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`.
 
 **Mode and round** (from the handle's `prior_checkpoint`):
 
 | Checkpoint state                                                        | Decision                                                          |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | Absent, or `prior_checkpoint: legacy`                                    | `mode: full`, `round: 1` (legacy report is overwritten)            |
-| `prior head_sha == head_sha`                                             | Print `No new commits since prior review.` and stop - no report    |
+| `prior head_sha == head_sha`, and the checkpoint's `scope`/`depth` cover the requested ones (`full` covers every scope; `deep` covers `standard`) | Print `No new commits since prior review.` and stop - no report |
+| `prior head_sha == head_sha`, requested scope or depth exceeds the checkpoint's | `mode: full`, `round: prior + 1` - same commits, wider lens        |
 | `git merge-base --is-ancestor <prior_head_sha> <head_sha>` fails, OR prior `base_sha`/`base_ref` differs | `mode: full`, `round: prior + 1` |
 | Otherwise                                                                | `mode: incremental`, `round: prior + 1`; re-read diff/log scoped to `<prior_head_sha>...<head_ref>` - all phases, the Phase A risk snapshot, and sub-scope spawns run on this scoped diff |
 
@@ -82,13 +83,13 @@ Use skill: `review-precondition-check` with the user's target argument and any `
 
 **Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
-**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `+rel` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all four) with the read-once diff/log and the detected stack handle. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend; highest wins on duplicates); preserve `file:line` citations. A single defect can surface in both the Phase B contract gate and a sub-scope (a payment endpoint missing `Idempotency-Key` is a contract gap here and a dedup-correctness gap under `+rel`): keep each under its own lens, deduped to one line at the strongest intent.
+**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `+rel` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all four) with the read-once diff/log, the precondition handle, the active depth, and the stack-detect output. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend; highest wins on duplicates); preserve `file:line` citations. A single defect can surface in both the Phase B contract gate and a sub-scope (a payment endpoint missing `Idempotency-Key` is a contract gap here and a dedup-correctness gap under `+rel`): keep each under its own lens, deduped to one line at the strongest intent.
 
 **Verify findings.** Use skill: `review-finding-verify` with the assembled findings (including any merged from sub-scopes), the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`.
 
 ### Step 5 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review` and every required input: `report_body` (the assembled report per Output Format), `branch` (current branch from the handle), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 4), `mode`/`round` (Step 4; plus `prior_head_sha` when round > 1), `scope` (enum value - `core-only` when no scope flag was passed), `depth` (`standard` when no depth flag), `stack` (kebab-case `<language>-<framework>` from the stack-detect output, e.g. `elixir-phoenix`; drop a segment reported unknown; `unknown` only when detection failed entirely).
+Use skill: `review-report-writer` with `report_type: review` and every required input: `report_body` (the assembled report per Output Format), `branch` (current branch from the handle), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 4), `mode`/`round` (Step 4; plus `prior_head_sha` when round > 1), `scope` (writer enum value - `core-only` when no scope flag was passed; combined flags join with single spaces in the canonical order `+perf +sec +obs +rel`; all four = `full`), `depth` (`standard` when no depth flag), `stack` (kebab-case `<language>-<framework>` from the stack-detect output, e.g. `elixir-phoenix`; drop a segment reported unknown; `unknown` only when detection failed entirely).
 
 ## Feedback Labels
 
@@ -106,6 +107,8 @@ The fence below delimits the template for display only - it is not part of the r
 When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
 **Assessment** derives from the verified findings: any `[Must]` -> Request Changes; no `[Must]` but at least one `[Recommend]` -> Discuss; none -> Approve.
+
+**Scope** displays combined flags capitalized in the canonical order (`+Perf +Sec`); the writer input keeps the lowercase form in the same order.
 
 ```markdown
 ## Summary

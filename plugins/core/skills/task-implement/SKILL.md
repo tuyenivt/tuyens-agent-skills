@@ -48,11 +48,11 @@ Use skill: `stack-detect`.
 | Go / Gin                    | `task-go-implement`      |
 | React / Next.js             | `task-react-implement`   |
 
-A detected frontend stack other than React (Vue, Angular, Svelte) has no dedicated workflow - run Step 4, whose IMPLEMENT phase covers the frontend layers.
+A row matches only when the detected framework matches it (Python / Flask does not match Python / FastAPI or Django - use the fallback); dispatch keys on the detection's primary `Language`/`Framework` pair. A detected frontend stack other than React (Vue, Angular, Svelte) has no dedicated workflow - run Step 4, whose IMPLEMENT phase covers the frontend layers.
 
-**Fullstack (`Stack Type: fullstack`):** decide which side the feature belongs to from the user's description. Delegate the backend side to the table workflow first for the API contract; build the frontend side via the Step 4 frontend path. If parallel work is required, fix the API contract up front and mock data on the frontend until the backend lands. Include an integration test from UI action to DB persistence. Ask the user when the split is ambiguous.
+**Fullstack (`Stack Type: fullstack`):** when the primary pair matches a single row whose workflow owns both sides (a meta-framework like React / Next.js), delegate the whole feature to it - the split below applies only when backend and frontend belong to different stacks. Otherwise decide which side the feature belongs to from the user's description. Delegate the backend side to the table workflow first for the API contract; build the frontend side via the Step 4 frontend path. If parallel work is required, fix the API contract up front and mock data on the frontend until the backend lands. Include an integration test from UI action to DB persistence. Ask the user when the split is ambiguous.
 
-On a single-stack match: delegate, passing the feature description and any Inputs gathered. Stop; skip Step 4. A fullstack detection follows the fullstack rule above instead - backend delegation plus the Step 4 frontend path. If the matched workflow's plugin is not installed (skill does not resolve), say so and run Step 4 instead.
+On a single-stack match: delegate, passing the feature description and any Inputs gathered. Stop; skip Step 4. A fullstack detection follows the fullstack rule above instead. If the matched workflow's plugin is not installed (skill does not resolve), say so and run Step 4 instead.
 
 ### Step 4 - Universal Fallback (no matching stack workflow)
 

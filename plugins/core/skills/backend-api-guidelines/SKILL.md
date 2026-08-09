@@ -17,7 +17,7 @@ user-invocable: false
 - Reviewing API contracts for consistency
 - Planning backward-compatible API evolution
 
-For a GraphQL or gRPC API, the transport rules (paths, methods, status codes, pagination params) do not apply - reviewing against them manufactures violations from design choices the paradigm made. What carries over is boundary validation, error-shape consistency, no ORM entities on the wire, idempotency on non-idempotent mutations, and versioning on breaking change. Review that subset and append the assessed paradigm to the **Stack:** line (e.g. `Node.js/NestJS - GraphQL`).
+For a GraphQL or gRPC API, the transport rules (paths, methods, status codes, pagination params) do not apply - reviewing against them manufactures violations from design choices the paradigm made. What carries over is boundary validation, error-shape consistency, no ORM entities on the wire, idempotency on non-idempotent mutations, bounded collections (paginated via the paradigm's own mechanism, e.g. GraphQL connections with `first`/`after`), and versioning on breaking change. Express fixes in the paradigm's idiom (a GraphQL breaking change gets a `@deprecated` cycle, not `/v2` paths). Review that subset and append the assessed paradigm to the **Stack:** line (e.g. `Node.js/NestJS - GraphQL`).
 
 ## Rules
 
@@ -94,7 +94,7 @@ After stack-detect, apply these patterns using the detected ecosystem's idioms: 
 
 ## Output Format
 
-Consuming workflows parse this structure. In design mode (no existing code to review), apply Rules as constraints and output the proposed endpoint table (method, path, status codes, pagination, idempotency) instead of the assessment block.
+Consuming workflows parse this structure. In design mode (no existing code to review), apply Rules as constraints and output, after the same **Stack:** line, the proposed endpoint table instead of the assessment block - columns `| Method | Path | Status codes | Pagination | Idempotency |`, one row per endpoint.
 
 ```
 ## API Guidelines Assessment
@@ -118,7 +118,7 @@ Consuming workflows parse this structure. In design mode (no existing code to re
 - **Medium**: Wrong method or status code, missing pagination, offset pagination on high-write collection
 - **Low**: Field naming drift, missing version header, missing `Sunset` on deprecated endpoint
 
-These are examples, not a closed list. For unlisted violations, classify by impact: data exposure or unsafe retries = High, wrong semantics or scalability (verbs in paths, missing pagination) = Medium, naming and metadata hygiene = Low. When a finding matches multiple tiers, report the highest. One finding per rule violated.
+These are examples, not a closed list. For unlisted violations, classify by impact: data exposure or unsafe retries = High, wrong semantics or scalability (verbs in paths, missing pagination) = Medium, naming and metadata hygiene = Low. When a finding matches multiple tiers, report the highest. Report one finding per defect: the same rule broken the same way at N endpoints is one finding listing all N sites; one endpoint breaking N rules is N findings.
 
 A convention the project has documented and built clients against (a response envelope, a field-naming scheme) is the baseline for consistency findings, not a violation - report deviation *from it*, and raise the convention itself only once, as Low, with the migration cost named. Correctness and safety rules (validation, error leakage, idempotency, ORM exposure) hold regardless of local convention.
 

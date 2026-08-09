@@ -92,7 +92,7 @@ After stack-detect, wire the pattern using the detected ecosystem:
 - Use the framework's transaction management to wrap the dedup insert and business operation
 - Use the engine's native conflict handling (`ON CONFLICT`, `INSERT IGNORE`, advisory locks)
 - For HTTP, implement as middleware or a service wrapper
-- For background jobs, leverage broker dedup features (Kafka exactly-once, SQS dedup ID) when available; otherwise dedup at the application layer
+- For background jobs, leverage broker dedup only where it covers the flow: SQS FIFO deduplication IDs do; Kafka exactly-once covers consume-transform-produce within Kafka - a consumer writing to an external store still needs application-layer dedup
 
 If the stack is unfamiliar, apply the rules above, emit `unknown` for **Stack**, and recommend the user consult their framework's transaction docs. If no datastore has been chosen yet, state idempotency as a requirement on that choice - the store must support an atomic conditional insert (unique constraint or conditional write) - rather than deferring the assessment.
 
@@ -124,6 +124,8 @@ Consuming workflows parse this structure.
 - **Low**: Natural business key available but not used as the idempotency key; missing TTL on idempotency records
 
 Severity follows impact: escalate any gap to High when the duplicated side effect is financial or irreversible.
+
+One `Gaps` entry per operation; `Missing:` lists every absent element for it, comma-separated. In design mode (no code yet), `Gaps` holds the requirements the design must satisfy, with `Risk:` stating the consequence if omitted.
 
 Omit "No Gaps Found" if gaps were listed.
 

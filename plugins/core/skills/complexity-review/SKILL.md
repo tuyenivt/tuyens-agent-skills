@@ -84,6 +84,8 @@ One row per unit, not per signal - a unit firing three signals is one row carryi
 {Include only when no issues were listed. State that no actionable complexity was found - covers both clean code and downgraded rows that were dropped.}
 ```
 
+When evaluating a design rather than code, anchor each row at the proposed construct (layer, abstraction, interface) and `Measured` counts what the proposal declares - layers, branches, parameters - against the same thresholds.
+
 ## Avoid
 
 - Treating thresholds as absolutes; well-tested stable code may exceed them
