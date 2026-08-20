@@ -59,15 +59,17 @@ Refinements (apply in this priority):
    - `@angular/core` -> Angular
 3. **`tsconfig.json` alongside `package.json`** -> Language: TypeScript.
    **Lockfile** (sets Build tool for JS/TS): `package-lock.json` -> npm, `yarn.lock` -> yarn, `pnpm-lock.yaml` -> pnpm, `bun.lock`/`bun.lockb` -> bun.
+   **Other ecosystems - the marker names the build tool**: `pom.xml` -> Maven, `build.gradle*` -> Gradle, `go.mod` -> go, `Cargo.toml` -> Cargo, `Gemfile` -> Bundler, `mix.exs` -> mix, `composer.json` -> Composer; Python: `poetry.lock` -> Poetry, `uv.lock` -> uv, else pip.
 4. **ORM markers** (set ORM field):
    - `prisma/schema.prisma` -> Prisma
    - `drizzle.config.ts` -> Drizzle
    - `ormconfig.json` / `data-source.ts` -> TypeORM
    - `.sequelizerc` / `sequelize.config.js` -> Sequelize
 5. **Backend dependency inspection** (sets Framework): the marker file's own dependency declarations name the framework - `axum`/`actix-web` in `Cargo.toml`, `gin` in `go.mod`, `rails`/`sinatra` in `Gemfile`, `fastapi`/`django`/`flask` in `pyproject.toml`/`requirements.txt`, `laravel/framework` in `composer.json`, `phoenix` in `mix.exs`, `spring-boot` in `build.gradle*`/`pom.xml`, `@nestjs/core`/`express` in `package.json`. Same move for unlisted ecosystems: read the manifest's dependency section.
-6. **`pubspec.yaml` inspection** (Dart projects): Language = Dart, Build tool = `dart`, Framework from the declared dependencies (`shelf`/`dart_frog` -> that server framework). Test framework = `test` when it is a dev dependency.
+6. **Test-framework dev dependencies** (sets Test framework): a known test framework in the manifest's dev/test dependency section names it - `jest`/`vitest`/`mocha` in `package.json`, `rspec`/`minitest` in `Gemfile`, `pytest` in `pyproject.toml`, `rstest` in `Cargo.toml`, `junit`/`spock` in `build.gradle*`/`pom.xml`, `test` in `pubspec.yaml`. Same move for unlisted ecosystems.
+7. **`pubspec.yaml` inspection** (Dart projects): Language = Dart, Build tool = `dart`, Framework from the declared dependencies (`shelf`/`dart_frog` -> that server framework).
 
-File-based detection can determine Language, Build tool, sometimes Framework and ORM. It cannot determine Database or Test framework - except for Dart, where `pubspec.yaml` declares the test framework directly.
+File-based detection can determine Language, Build tool, sometimes Framework, ORM, and Test framework. It cannot determine Database.
 
 ### Step 2 - Instruction file (supplemental detail)
 
@@ -112,7 +114,7 @@ Fullstack triggers:
 
 When more than one trigger fires, the monorepo rule wins: two separate manifests are a stronger signal than one meta-framework's server capability.
 
-For fullstack from two stacks (monorepo), set `Language` and `Framework` to the primary stack - the one whose manifest sits at the repo root, or when all manifests are nested equally, the backend stack (between two backends, the one serving end-user traffic) - and describe the secondary in `Additional` (e.g., `Frontend: TypeScript (React)`). For fullstack from a single meta-framework (Next.js, Nuxt) with no second manifest, keep the meta-framework as `Framework`; there is no secondary entry.
+For fullstack from two stacks (monorepo), set `Language` and `Framework` to the primary stack - the one whose manifest sits at the repo root, or when all manifests are nested equally, the backend stack (between two backends, the one serving end-user traffic) - and describe the secondary in `Additional` (e.g., `Frontend: TypeScript (React)`). The scalar fields (`Build tool`, `Database`, `Test framework`, `ORM`) also describe the primary stack; secondary-stack facts worth keeping (its build tool, ORM, test framework) append to its `Additional` entry. For fullstack from a single meta-framework (Next.js, Nuxt) with no second manifest, keep the meta-framework as `Framework`; there is no secondary entry.
 
 ## Output Format
 

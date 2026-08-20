@@ -110,10 +110,14 @@ Pooler tier: {none | session mode | transaction mode | managed proxy}
 Steady state: U / effective ({percent}; target <= 75%)
 Deploy peak: P / effective ({percent}; must be <= 100%)
 Verdict: {Fits | Breaches at deploy peak | Breaches at steady state}
-Action: {ship as is | cap deploy surge | drain old client on shutdown | reduce pool to X | route through pooler | defer work off a per-request runtime}
+Action: {ship as is | cap deploy surge | drain old client on shutdown | reduce pool to X | cap worker concurrency at X | route through pooler | defer work off a per-request runtime}
 ```
 
+`Action` lists the minimal set of remedies, comma-joined in fix-preference order - one entry per independent violation, `ship as is` only alone.
+
 When any input is unknown, state the assumption inline and mark the verdict `Fits (assumed)` rather than omitting the row. A sizing assessment with a silent hole is indistinguishable from one that fits.
+
+With a pooler in front, emit the block twice - once for app pools against the pooler's client cap, once for the pooler's backend pool against `max_connections` - and take the reported `Verdict` from the worse level.
 
 ## Avoid
 

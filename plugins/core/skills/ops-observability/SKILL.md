@@ -125,7 +125,7 @@ Consuming workflow skills parse this structure to surface observability gaps.
 ### Gaps
 
 - [Severity: High | Medium | Low] {component or layer} - {description of gap}
-  - Missing: {signal absent - log field | metric | trace span | context propagation | alert | SLO}
+  - Missing: {signal absent - log field | metric | trace span | context propagation | alert | SLO; for a logged secret/PII the slot reads `removal - secret/PII in logs`}
   - Impact: {what becomes invisible or undetectable}
   - Recommendation: {concrete addition with library/mechanism for the detected stack}
 
@@ -136,7 +136,7 @@ Consuming workflow skills parse this structure to surface observability gaps.
 
 **Severity:**
 
-- **High**: gap prevents detecting a production failure (no error rate on critical path, no SLO on critical service, an SLO with no burn-rate alerting, no absence alert on scheduled work, missing trace propagation across boundary). An SLO nobody alerts on detects nothing, so it rates with the missing-SLO case rather than below it.
+- **High**: gap prevents detecting a production failure (no error rate on critical path, no SLO on critical service, an SLO with no burn-rate alerting, no absence alert on scheduled work, missing trace propagation across boundary), or a secret/PII value reaching logs. An SLO nobody alerts on detects nothing, so it rates with the missing-SLO case rather than below it.
 - **Medium**: gap slows diagnosis (missing correlation ID on internal calls, no business metric on key flow).
 - **Low**: nice-to-have signal with no current blind spot.
 

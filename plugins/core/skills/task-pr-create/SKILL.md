@@ -52,8 +52,8 @@ Establish `(base_ref, head_ref)` before any diff is read. PR creation runs again
 
    A detached `HEAD` (`current_branch` prints `HEAD`) also stops - check out the feature branch first.
 
-3. **Detect base:** a user-stated base overrides detection - resolve it (`origin/<name>` then local; if unresolved, ask for a push/fetch, do not fall back to a trunk), record it as `base_ref`, and skip item 4. Otherwise if `git symbolic-ref refs/remotes/origin/HEAD` resolves, use it. Otherwise probe every trunk name (`main`, `master`, `develop`, `trunk`) via `git rev-parse --verify`, remote (`origin/<name>`) then local; a name resolving in both forms counts once, remote form preferred.
-4. **Use or ask:** exactly one distinct trunk name resolved -> use it. More than one (e.g., gitflow with both `main` and `develop`), or none -> ask the user. Do not pick silently; the wrong base pulls unrelated commits into the diff.
+3. **Detect base:** a user-stated base overrides detection - resolve it (`origin/<name>` then local; if unresolved, ask for a push/fetch, do not fall back to a trunk), record the resolved form (`origin/<name>` when remote) as `base_ref`, and skip item 4. A base named mid-workflow (answering item 4's question) resolves through this same path. Otherwise if `git symbolic-ref refs/remotes/origin/HEAD` resolves, use it. Otherwise probe every trunk name (`main`, `master`, `develop`, `trunk`) via `git rev-parse --verify`, remote (`origin/<name>`) then local; a name resolving in both forms counts once, remote form preferred.
+4. **Use or ask** (probe path only - a symbolic-ref or user-stated base is used directly): exactly one distinct trunk name resolved -> use it. More than one (e.g., gitflow with both `main` and `develop`), or none -> ask the user. Do not pick silently; the wrong base pulls unrelated commits into the diff. The question lists the resolved candidates, offers no default, and states why picking wrong matters.
 
 Record `base_ref` for Step 4.
 
@@ -70,7 +70,7 @@ Run or accept:
 3. `current_branch` from Step 2
 4. `git diff <base_ref>...HEAD --name-only`
 
-If the diff is empty, stop and tell the user. If `git status --porcelain` shows uncommitted changes, warn that they are excluded - the description covers committed work only.
+If the diff is empty, stop and tell the user. If `git status --porcelain` shows uncommitted changes, warn - before emitting the description - that they are excluded: the description covers committed work only.
 
 Extract from above:
 
@@ -92,7 +92,7 @@ Compose using the Output Format below.
 **Title:**
 - Imperative ("Add", "Fix", "Refactor") - not "Added" / "Adding"
 - Under 72 characters; no ticket number (goes in body)
-- Format: `<type>: <what changed>` where type is `feat`, `fix`, `refactor`, `perf`, `chore`, `docs`, or `test`
+- Format: `<type>: <What changed>` where type is lowercase `feat`, `fix`, `refactor`, `perf`, `chore`, `docs`, or `test`, and the description starts with a capitalized imperative verb
 - Mixed concerns: pick the type of the dominant user-facing change (a bugfix wrapped in refactoring is `fix`)
 
 **Summary:**
@@ -100,17 +100,20 @@ Compose using the Output Format below.
 - Up to 5 bullets, each starting with a verb; proportional to the diff (a trivial change needs one)
 - If the *why* is not inferable from diff, commits, or ticket, ask the user - do not invent it
 - Reference ticket/ADR inline only if essential context
+- Stacked PR (base is not a trunk branch): open the Summary with the standalone line `Stacked on <branch>.` (bare branch name, before the bullets) so reviewers set the right merge target
 
 **Test Plan:**
-- Concrete, runnable steps. Include the exact test command for the detected stack when production code changed; docs-only changes need only a relevant verification step (e.g., render check).
+- Concrete, runnable steps. Include the exact test command for the detected stack when production code changed (production code = anything shipping or configuring runtime/build behavior; prose and assets alone are docs-only, needing only a relevant verification step such as a render or build check). When no test framework is detected, the stack's build or verification command serves as the runnable command.
 - Manual verification for UI/API changes; migration steps when applicable.
-- New infrastructure dependency (Redis, DB, broker): include the setup step (e.g., `docker-compose up -d redis`).
+- New infrastructure dependency (Redis, DB, broker): include the setup step (e.g., `docker-compose up -d redis`); new usage of existing infra (a new queue) gets its worker/consumer config step instead.
 
-**Checklist:** include only items relevant to this PR; omit non-applicable items.
+**Deployment Notes:** include only when deployment-time implications exist - new infrastructure dependency, config change, behavior change to existing endpoints, or feature flag. A new library that changes runtime behavior (a scheduler, a background worker) counts via the behavior it introduces.
+
+**Checklist:** include only items relevant to this PR; omit non-applicable items and drop the `(if applicable)` suffix from retained ones.
 
 ### Step 7 - Surface Linked Context
 
-Add a **Linked Context** section only if at least one of: ticket reference, ADR reference, related PR. If none found, omit entirely - no empty placeholders.
+Add a **Linked Context** section only if at least one of: ticket reference, ADR reference, related PR. If none found, omit entirely - no empty placeholders. Render `Closes <TICKET-ID>` bare when no tracker link is known.
 
 ## Output Format
 
@@ -137,9 +140,7 @@ Suggested action: [only if `review-pr-risk` emitted `Action:`; otherwise omit th
 
 ### Deployment Notes
 
-_{Include only when there are deployment-time implications: new infrastructure dependency, config change, behavior change to existing endpoints, or feature flag. Otherwise omit.}_
-
-- {consideration}
+- [deployment-time consideration]
 
 ### Checklist
 
@@ -158,11 +159,12 @@ Related: #[PR number or branch]
 ## Output Constraints
 
 - Title is the first line with `##` prefix - not a separate field
+- Atomic outputs (detection block, risk block) stay internal - the description is the only emission besides mandated warnings and questions
 - Risk appears before Test Plan
 - Omit sections with no content
 - No line-by-line diff description - orient reviewers, do not duplicate the diff
 - Test plan includes at least one runnable command for the detected stack when production code changed
-- Total description under 400 words
+- Total description under 400 words (body prose; headings, commands, and checkbox markers excluded); over budget, trim Summary bullets and manual test steps first - never Risk, the test command, or Deployment Notes
 
 ## Self-Check
 

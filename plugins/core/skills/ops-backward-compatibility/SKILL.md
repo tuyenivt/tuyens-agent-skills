@@ -116,7 +116,7 @@ Consuming workflow skills parse this structure to surface breaks and migration p
 
 **{Contract type}: {change description}**
 - Consumers affected: {list or "unknown - verify before deploy"}
-- Migration plan: {expand-contract phases}
+- Migration plan: {phases from the matrix row's action - expand-contract, announce/grace/enforce, or verify-then-emit}
 - Dual-write needed: Yes / No
 - Dual-read needed: Yes / No
 

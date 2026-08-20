@@ -43,7 +43,9 @@ If known pain points are given, investigate each: trace the implicated flow (Ste
 | `architect-survey` | Senior engineer / due diligence       | Full depth: Architecture, Key Patterns and Conventions, Tech Debt and Risk Hotspots, Ecosystem and Runtime Topology |
 | `full` (default)   | Anyone wanting the complete picture   | All sections at equal weight                                                                   |
 
-Weight shift: section order never changes and no section is dropped; write the mode's emphasized sections at full depth and compress the rest - keep their tables and command blocks, reduce prose to one-line notes. If the user's stated goal implies a mode, confirm rather than defaulting silently.
+Weight shift: section order never changes and no section is dropped; write the mode's emphasized sections at full depth and compress every section not named in the mode's emphasis list - keep tables and command blocks, reduce prose to one-line notes, trim table bodies to the 1-3 most load-bearing rows. Scope focus wins over mode compression: focused content stays full depth wherever it lands. If the user's stated goal implies a mode, confirm rather than defaulting silently.
+
+**Delegate outputs fold in.** Every atomic a step loads (stack atomic, guardrail, complexity, standards, observability) contributes content to the matching report sections with severities and labels preserved; this workflow's template governs final shape, and no atomic's own output envelope is emitted - a delegate's check-ran marker is satisfied by the folded content itself. For Tech Debt ordering, `[Must]` ranks High and `[Recommend]` Medium, the original label kept visible; when several delegates flag the same location, merge into one finding naming each source. Fixed tables are floors - append rows the folded content needs (extra Stack rows for Migrations or Lint). A cell the repo positively shows to be absent takes `none - <evidence>`; a cell nothing reveals takes `unknown - not discoverable from the repo`.
 
 ## Workflow
 
@@ -55,9 +57,9 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect` to identify language, framework, build tool, test framework, database / ORM, async / messaging, IaC / deployment tooling.
 
-Read repo context file (`CLAUDE.md` / `AGENTS.md` / `GEMINI.md`) plus build manifests (`package.json`, `build.gradle`, `go.mod`, `pyproject.toml`, `Gemfile`, `*.csproj`, `pom.xml`, `Cargo.toml`, `mix.exs`) to fill gaps.
+Read repo context file (`CLAUDE.md` / `AGENTS.md` / `GEMINI.md`) plus build manifests (`package.json`, `build.gradle`, `go.mod`, `pyproject.toml`, `Gemfile`, `*.csproj`, `pom.xml`, `Cargo.toml`, `mix.exs`) to fill gaps. A stack-detect `unknown` may be upgraded from direct repo evidence (ExUnit from `test/test_helper.exs`); mark it Inferred.
 
-If detected stack matches, load the atomic. It injects stack-specific bootstrap commands, key files, conventions, and risk hotspots into the matching report sections; do not produce a separate "stack-specific" section.
+If detected stack matches, load the atomic. It injects stack-specific bootstrap commands, key files, conventions, and risk hotspots into the matching report sections; do not produce a separate "stack-specific" section - the atomic governs content, this template governs placement and shape, and the atomic's own section order and envelope are discarded.
 
 | Detected stack       | Load atomic           |
 | -------------------- | --------------------- |
@@ -145,7 +147,7 @@ For each known pain point, record a verdict: `confirmed` (cite the signal), `not
 
 CI/CD (what runs on PR vs merge, deploy targets); deployment model (container, serverless, bare metal, cloud); env config (dev/staging/prod differences, secrets injection); observability (logging, metrics, tracing if detectable); migration trigger strategy. Local dev setup belongs to Step 9 - the Operational Context table carries only a one-line summary.
 
-Use skill: `ops-observability` to assess whether observability is production-sufficient.
+Use skill: `ops-observability` to assess whether observability is production-sufficient - the one-line verdict fills the Observability row; severity-graded gaps land in Tech Debt.
 
 ### Step 9 - Local Bootstrap and Smoke Test
 
@@ -156,7 +158,7 @@ Read `README.md`, `CONTRIBUTING.md`, `Makefile`, `Justfile`, `docker-compose.yml
 - **Prerequisites** - language version (`.tool-versions`, `.nvmrc`, `.python-version`, `go.mod`, build files); required services (DB, Redis, broker); system tools.
 - **Bootstrap sequence** - exact ordered commands: clone -> install -> start deps -> migrate -> seed -> run. Cite each.
 - **Required config** - env vars, example file location, secret sources (1Password, Vault, team handoff).
-- **Smoke check** - health endpoint, default port, login URL, local default credentials.
+- **Smoke check** - health endpoint, default port, login URL, local default credentials; when no health endpoint exists, give the closest verifiable check (framework status command, a known route) - never invent an endpoint.
 - **Common first-run failures** - documented gotchas (port conflicts, native deps, Apple Silicon notes).
 
 If a step is required but undocumented (e.g., code reads `DATABASE_URL` but no `.env.example`), flag as a documentation gap rather than inventing values.
@@ -190,12 +192,14 @@ Capture the path from edit to merge. Read `CONTRIBUTING.md`, `.github/` (PR temp
 - **Reference example PRs** - linked from `README`, `CONTRIBUTING`, or PR template; otherwise omit (do not invent PR numbers).
 - **First-PR safe zones** - cross-reference Step 7 hotspots. List 2-3 well-tested, low-churn, narrow-blast areas; list 2-3 areas to avoid first.
 
-Use skill: `dependency-impact-analysis` if the user names a candidate first-PR area, to estimate blast radius.
+Use skill: `dependency-impact-analysis` when the user names a specific candidate change or file for their first PR, to estimate blast radius - a module-level scope focus alone does not trigger it.
 
 ## Output Format
 
 ```markdown
 # Codebase Onboarding Report
+
+**Mode:** [focus mode] | **Scope focus:** [module, or none] | **Pain points:** [list, or none]
 
 ## System Summary
 
@@ -352,7 +356,7 @@ Order findings High -> Medium -> Low. For each:
 
 ## Onboarding Recommendations
 
-Include subsections per their Focus tags; untagged subsections appear in every mode. `first-pr`: lead with Mission Framing + First-PR Playbook. `architect-survey`: lead with First-Week Knowledge Gaps. `full`: keep template order.
+Emit a subsection only when its tag list contains the active mode; untagged subsections appear in every mode. Ordering: `first-pr` leads with Mission Framing then First-PR Playbook; `architect-survey` leads with First-Week Knowledge Gaps; `full` keeps template order.
 
 ### Mission Framing (first-pr)
 

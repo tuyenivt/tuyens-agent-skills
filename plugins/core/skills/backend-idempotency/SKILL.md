@@ -108,7 +108,7 @@ Consuming workflows parse this structure.
 ### Gaps
 
 - [Severity: High | Medium | Low] {operation or endpoint} - {gap description}
-  - Missing: {idempotency key | dedup table | transactional check | reconciliation sweeper | entity-state guard | TTL}
+  - Missing: {idempotency key | dedup table | transactional check | reconciliation sweeper | entity-state guard | request-hash guard | TTL}
   - Risk: {duplicate side effect - e.g., double charge, double publish, double insert}
   - Recommendation: {concrete pattern and mechanism for the detected stack}
 

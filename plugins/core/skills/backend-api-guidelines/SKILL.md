@@ -94,7 +94,7 @@ After stack-detect, apply these patterns using the detected ecosystem's idioms: 
 
 ## Output Format
 
-Consuming workflows parse this structure. In design mode (no existing code to review), apply Rules as constraints and output, after the same **Stack:** line, the proposed endpoint table instead of the assessment block - columns `| Method | Path | Status codes | Pagination | Idempotency |`, one row per endpoint.
+Consuming workflows parse this structure. In design mode (no existing code to review), apply Rules as constraints and output, after the same **Stack:** line, the proposed endpoint table instead of the assessment block - columns `| Method | Path | Status codes | Pagination | Idempotency |`, one row per endpoint. Below the table, one `Conventions:` line records the API-wide decisions the table cannot carry: error format, versioning scheme, and rate-limit posture.
 
 ```
 ## API Guidelines Assessment

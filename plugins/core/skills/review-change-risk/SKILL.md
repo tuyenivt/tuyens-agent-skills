@@ -24,7 +24,7 @@ If a diff exists, use `review-pr-risk` instead; use both when both apply.
 - Classify by risk domain, not code signal - this skill works on proposals.
 - A change may trigger multiple primary and secondary domains; both count toward the overall level (primary/secondary marks confidence, not weight).
 - Every domain triggered must cite the evidence that triggered it.
-- Classify Low only when no domain is triggered.
+- Classify Low only when no domain is triggered at Medium or higher effective severity.
 - Underspecified proposal: classify from stated facts, mark inferred domains "(assumed)" in their evidence, and record unknowns that could change the level under Open Questions. Never fail silently into a confident classification.
 - When assumed domains outnumber the evidenced ones, the classification is a prompt for information, not a verdict: keep the level (an alarming level on a vague proposal is the useful signal) and open the Evidence line with `Provisional - N of M domains assumed;` so the reader knows answering the Open Questions is what settles it.
 
@@ -57,7 +57,7 @@ If a diff exists, use `review-pr-risk` instead; use both when both apply.
 | Two or more high-severity domains                  | Critical      |
 | One high-severity domain, OR three or more medium  | High          |
 | One or two medium domains                          | Medium        |
-| No domain triggered                                | Low           |
+| No domain at Medium or higher (none triggered, or only justified-downgrade-to-Low domains) | Low           |
 
 4. Amplify: if a shared mutable resource is written by two or more flows touched by the change, raise the level one tier (caps at Critical). Evaluate every phase the proposal includes - a transitional dual-write window counts even if the end state has one writer. Amplify at most once, however many resources qualify. Evaluate each shared resource in turn and amplify on the first one that is not already the sole reason Concurrency triggered - that carve-out prevents counting one resource twice, not amplification itself, so a second qualifying resource still amplifies.
 5. Assess reversibility: Irreversible when any triggered domain includes a destructive or non-reversible step (data loss, irreversible migration); Partially reversible when rollback needs manual or multi-step action; Reversible otherwise.
@@ -123,5 +123,5 @@ Always produce all sections. Use "none" for an empty domain list (Primary or Sec
 - Treating all schema changes as equal risk regardless of traffic
 - Ignoring shared mutable state as an amplifier
 - Conflating code-quality concerns with systemic risk
-- Classifying as Low when any domain is triggered
+- Classifying as Low when any domain sits at Medium or higher effective severity
 - Producing a confident classification from an underspecified proposal without Open Questions

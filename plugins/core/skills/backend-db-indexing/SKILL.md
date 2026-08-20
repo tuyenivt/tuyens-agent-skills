@@ -132,7 +132,7 @@ Consuming workflows parse this structure. When reviewing a diff, report problema
 
 ### Existing Index Issues
 
-- {table.index_name} - {over-indexed | low-cardinality | unused | duplicate} - {recommendation}
+- {table.index_name} - {over-indexed | low-cardinality | unused | duplicate | ineffective (wrong column order, type mismatch, or unmatchable predicate)} - {recommendation}
 
 ### Indexes Not Recommended
 

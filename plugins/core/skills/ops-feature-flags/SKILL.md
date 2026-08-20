@@ -127,11 +127,12 @@ Use this template when designing or reviewing a flag.
 
 ## Rollout Plan
 
+Stages come from the Gradual Rollout table's row for the assessed risk; the rows below show a Medium-risk fill.
+
 | Stage    | Traffic        | Promotion Criteria       | Rollback Trigger      | Soak   |
 | -------- | -------------- | ------------------------ | --------------------- | ------ |
-| Internal | Internal users | No errors                | Any error             | 1 h    |
 | Canary   | 5%             | Error rate <baseline+10% | Error rate >threshold | 30 min |
-| Broad    | 50%            | Same                     | Same                  | 30 min |
+| Broad    | 25%            | Same                     | Same                  | 30 min |
 | Full     | 100%           | Same                     | Same                  | 30 min |
 
 ## Rollback Procedure
@@ -164,7 +165,7 @@ When reviewing existing flags rather than designing one, output findings instead
 ## Flag Review Findings
 
 - [Severity: High | Medium | Low] {flag name} - {violation}
-  - Fix: {rename | cleanup | split | assign owner | add kill switch | add dual-write so disable is reversible}
+  - Fix: {rename | cleanup | split | assign owner | add kill switch | add dual-write so disable is reversible | remove auth/security bypass}
 ```
 
 Severity: High = auth/security bypass or un-rollback-able data writes; Medium = stale at 100%, multi-behavior flag, missing owner or kill switch; Low = naming, missing cleanup target.

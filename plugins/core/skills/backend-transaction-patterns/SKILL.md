@@ -142,7 +142,7 @@ Justified only when a non-critical side write must be allowed to fail without ro
 ### Findings
 
 - [Severity: High | Medium | Low] {file:line if available} - {description}
-  - Violation: {IoInTransaction | PreCommitDispatch | ReadInTransaction | SplitAtomicUnit | MissingLockTimeout | MissingStatementTimeout | LostUpdate | OutboxClaimAsCompletion | NonIdempotentConsumer | EntityEscapesTransaction}
+  - Violation: {IoInTransaction | PreCommitDispatch | ReadInTransaction | SplitAtomicUnit | MissingLockTimeout | MissingStatementTimeout | LostUpdate | OutboxClaimAsCompletion | NonIdempotentConsumer | EntityEscapesTransaction | UnjustifiedSavepoint}
   - Risk: {pool exhaustion | side effect survives rollback | dispatch races commit | duplicated side effect | dropped side effect | lost update | unbounded lock wait}
   - Fix: {concrete correction using the detected stack's transaction API}
 

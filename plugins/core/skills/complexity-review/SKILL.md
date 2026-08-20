@@ -65,14 +65,14 @@ After `stack-detect`, adjust thresholds to ecosystem norms and prefer the stack'
 
 ## Output Format
 
+One row per unit, not per signal - a unit firing three signals is one row carrying three Signal lines, severity set by its worst signal, so the reader sees one place to fix rather than three reports of the same method.
+
 ```
 ## Complexity Assessment
 
 **Stack:** {language / framework}
 
 ### Issues
-
-One row per unit, not per signal - a unit firing three signals is one row carrying three Signal lines, severity set by its worst signal, so the reader sees one place to fix rather than three reports of the same method.
 
 - [Severity: High | Medium | Low] {file:line or symbol} - {one-line description}
   - Signal: {signal name from table}

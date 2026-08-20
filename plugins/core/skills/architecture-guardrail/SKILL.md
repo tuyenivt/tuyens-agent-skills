@@ -88,6 +88,8 @@ Bad - vague:
 
 ## Output Format
 
+A violation that is a property of a module or a pair of modules - utils accumulation, a circular dependency, mixed styles - anchors there (`common/utils/ (21 files)`, `orders -> billing -> orders`), not on whichever file the diff happened to touch. The file that crossed the threshold is not the defect.
+
 ```
 ## Architecture Guardrail Findings
 
@@ -100,8 +102,6 @@ Bad - vague:
 - Issue: {what boundary or layer was violated}
 - Impact: {coupling or drift consequence}
 - Drift: {how this diverges from the established pattern; "none observed" when no baseline is visible}
-
-A violation that is a property of a module or a pair of modules - utils accumulation, a circular dependency, mixed styles - anchors there (`common/utils/ (21 files)`, `orders -> billing -> orders`), not on whichever file the diff happened to touch. The file that crossed the threshold is not the defect.
 
 ### No Violations Found
 

@@ -79,7 +79,7 @@ For each prior finding, check `name_status`. It spans the full `base_ref...head_
 
 This is the only judgment-heavy step. The prior finding cites a named smell (e.g., `@Transactional self-invocation`, `N+1 in listAll`, `missing @PreAuthorize`, `hardcoded credential`). Use the smell summary plus the file content at the new head:
 
-- **Specific tokens** (annotations, function names, literal values): grep at the file level. Present -> `Still open`. Absent -> `Addressed`.
+- **Specific tokens** (annotations, function names, literal values): grep at the file level. Present -> `Still open`. Absent -> `Addressed`. For absence smells (`missing @PreAuthorize`, `no rate limit`), the greppable token belongs to the fix, so the mapping inverts: construct now present at the cited site -> `Addressed`, still absent -> `Still open`.
 - **Behavioral smells** (N+1, race condition, transaction misuse): inspect the relevant section of the file. If the pattern that produced the prior finding is structurally still there -> `Still open`. If the code was refactored such that the pattern no longer applies -> `Addressed`. If you cannot decide without running the code -> `Needs re-check`.
 - **Do not check whether the fix is correct.** A wrong-but-it-removed-the-smell change is still `Addressed`. New problems introduced by that change surface as new findings in the workflow's regular Phase A-E pass; they are not this skill's concern.
 

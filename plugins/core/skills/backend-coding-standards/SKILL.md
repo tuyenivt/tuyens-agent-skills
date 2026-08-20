@@ -103,7 +103,7 @@ A defect matching both a Rule and an anti-pattern category is one entry under Vi
 
 Omit Anti-Patterns only when the scan ran and found none. When the stack is unfamiliar and the ecosystem-specific scan could not run, keep the section and write `not assessed - {stack} anti-patterns require ecosystem knowledge; verify with the stack's linter`. An omitted section reads as a clean result, which is a stronger claim than "not checked."
 
-Omit "No Issues Found" if violations were listed.
+Omit "No Issues Found" when either Violations or Anti-Patterns has entries - it claims a fully clean result.
 
 ## Avoid
 

@@ -94,20 +94,10 @@ Changed the Order API. Should be fine for everyone.
 | ----------------- | ---------------- | -------------------- | ------------- | -------- | ------ |
 | {name} | {list, "none", or "unenumerable: <where they live>"} | {same} | {API / event / library / DB view} | {compile-time / runtime / event} | {breaking / additive / behavioral (incl. performance) / none} |
 
-When impact differs across consumers, split into one row per consumer group so classification stays per consumer.
-
-Write `none` only when you have checked and there are no consumers. When the consumer set cannot be enumerated - a library published to a registry, callers in repos you cannot read - write `unenumerable: <where they live>` and plan for the worst case: `none` claims a coordinated rollout is unnecessary, which is the opposite of what an unenumerable set implies.
-
-A change that is additive during expand and breaking at contract takes the classification of its **end state**, with the per-phase safety shown in Deployment Order - the column answers "will this break someone," not "is every step safe."
-
 ### Deployment Order
 
 1. {step with reason}
 2. {step with reason}
-
-When the risk is not sequencing - a behavioral or performance change deployable in one step - write `Single deploy; ordering is not the risk` and name the verification that is (load test with the tight-loop consumer's profile, canary with consumer monitoring). A numbered list of one step hides that.
-
-A blocker strategy (wait / swap / shim / fork) is a numbered step here, carrying its removal condition.
 
 ### Breaking Changes Requiring Migration
 
@@ -123,6 +113,14 @@ A blocker strategy (wait / swap / shim / fork) is a numbered step here, carrying
 ```
 
 Always produce the Consumers Affected table. Omit "No Impact" when impact was found. Omit "Cross-Team Notifications" when no consumer is cross-team.
+
+Fill rules:
+
+- When impact differs across consumers, split into one row per consumer group so classification stays per consumer.
+- Write `none` only when you have checked and there are no consumers. When the consumer set cannot be enumerated - a library published to a registry, callers in repos you cannot read - write `unenumerable: <where they live>` and plan for the worst case: `none` claims a coordinated rollout is unnecessary, which is the opposite of what an unenumerable set implies.
+- A change that is additive during expand and breaking at contract takes the classification of its **end state**, with the per-phase safety shown in Deployment Order - the column answers "will this break someone," not "is every step safe."
+- When the risk is not sequencing - a behavioral or performance change deployable in one step - Deployment Order reads `Single deploy; ordering is not the risk` and names the verification that is (load test with the tight-loop consumer's profile, canary with consumer monitoring). A numbered list of one step hides that.
+- A blocker strategy (wait / swap / shim / fork) is a numbered Deployment Order step, carrying its removal condition.
 
 ## Avoid
 

@@ -47,7 +47,7 @@ If no diff exists yet (architecture proposal, migration plan), use `review-chang
 
 ### Classification
 
-Signals are counted over production files only - a change confined to tests, docs, or comments cannot trigger size, cross-module, or any High signal, since none of it reaches production behavior. Use the detected stack to recognize file roles - what counts as a migration, config, or test file in this ecosystem. Then apply top-down - first match wins. Same signals in, same level out.
+Signals are counted over production files only - production means everything except tests, docs, and comments, so config, CI/CD, and infrastructure files count. A change confined to tests, docs, or comments cannot trigger size, cross-module, or any High signal, since none of it reaches production behavior. Use the detected stack to recognize file roles - what counts as a migration, config, or test file in this ecosystem. Then apply top-down - first match wins. Same signals in, same level out.
 
 - **Low** - no production files modified (tests, docs, comments in any mix and any size)
 - **Critical** - 2+ High signals, OR a destructive migration (drop, rename, type change, or backfill) on an existing table

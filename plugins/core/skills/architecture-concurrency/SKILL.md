@@ -95,6 +95,8 @@ Concurrency bugs surface only under contention:
 
 ## Output Format
 
+One Issue entry per defect, not per symptom: when several rules fail on the same construct and one restructure resolves them all, that is one Issue at the highest severity with every Risk listed. Repeating the same Fix under two entries reads as two problems.
+
 ```
 ## Concurrency Assessment
 
@@ -103,8 +105,6 @@ Concurrency bugs surface only under contention:
 **Primary primitive:** {thread | goroutine | coroutine | process | task | fiber | not yet chosen}
 
 ### Issues
-
-One entry per defect, not per symptom: when several rules fail on the same construct and one restructure resolves them all, that is one Issue at the highest severity with every Risk listed. Repeating the same Fix under two entries reads as two problems.
 
 - [Severity: High | Medium | Low] {file:line if available} - {description}
   - Risk: {data race | lost update | deadlock | resource leak | blocking in async context | cross-instance race | etc.}

@@ -85,7 +85,7 @@ The phasing above is engine-independent; only the mechanism changes. Examples el
 | -------------------------- | ----------------------------------- | ------------------------------------------------------- | --------------------------------------- |
 | Non-blocking index build   | `CREATE INDEX CONCURRENTLY`         | `ALTER TABLE ... ADD INDEX, ALGORITHM=INPLACE, LOCK=NONE` | `CREATE INDEX ... WITH (ONLINE = ON)`   |
 | Add defaulted column       | metadata-only (11+)                 | instant DDL (8.0+, `ALGORITHM=INSTANT`)                  | metadata-only (2012+, NOT NULL + default) |
-| Constraint without rewrite | `NOT VALID` then `VALIDATE CONSTRAINT` | `ALTER TABLE ... ADD CONSTRAINT ... NOT ENFORCED`, then enforce | `WITH NOCHECK` then `CHECK CONSTRAINT`  |
+| Constraint without rewrite | `NOT VALID` then `VALIDATE CONSTRAINT` | CHECK only: `ADD CONSTRAINT ... NOT ENFORCED`, then enforce; FK: add under `foreign_key_checks=0` (skips validating existing rows, permits INPLACE) | `WITH NOCHECK` then `CHECK CONSTRAINT`  |
 | Online table rewrite       | `pg_repack`                         | `pt-online-schema-change` / `gh-ost`                     | online index rebuild                     |
 
 Verify the operation is online for the exact engine version before recommending it - MySQL instant DDL in particular has version-dependent conditions. When the version is unknown, the unknown-engine rule applies: assume a rewrite and say so.

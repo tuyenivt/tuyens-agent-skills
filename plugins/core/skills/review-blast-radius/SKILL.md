@@ -56,7 +56,7 @@ Wide data scope on a core model implies code scope expansion across every API th
 
 ### Reversibility
 
-- **Recoverable** - rolled back by redeploy or schema rollback
+- **Recoverable** - rolled back by redeploy or schema rollback, or repairable by deterministic backfill from surviving source data
 - **Conditional** - recoverable within a window (PITR retention, recent backup, message replay within topic retention)
 - **Irreversible** - data destruction or corruption with no programmatic rollback (includes mis-attributed writes with no source to backfill from)
 
@@ -98,7 +98,7 @@ Reversibility: {Recoverable | Conditional | Irreversible} ({1-sentence rationale
 
 `N/A` dimensions are skipped when taking the maximum; when every dimension is `N/A`, the overall line is `Narrow`.
 
-When a mitigation materially changes the level, rewrite the affected lines in that same block and append a `Mitigation:` line. It begins with exactly one tag: `in-place:` (the safeguard already exists) or `required:` (an action must be taken first). A safeguard that exists but still needs a step before it counts is `required:`.
+When a mitigation materially changes the level, rewrite the affected lines in that same block and append a `Mitigation:` line. It begins with exactly one tag: `in-place:` (the safeguard already exists) or `required:` (an action must be taken first). A safeguard that exists but still needs a step before it counts is `required:`; with multiple mitigations of mixed tags, the line is `required:` until every required action is done.
 
 ```
 Blast Radius: Critical (unmitigated) -> Wide (with feature flag off)

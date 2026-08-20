@@ -131,7 +131,7 @@ Volume growth: {estimate}
 [NFRs not specified that matter for this system type, plus a confirmation question for each `(assumed)` target - e.g. "no RPO stated for a write-heavy system"]
 ```
 
-Always produce all six sections plus Conflicts and Gaps. If a category has no business signal, state "not specified" and list it in Gaps.
+Always produce all six sections plus Conflicts and Gaps. If a category has no business signal, state "not specified" and list it in Gaps. An empty Conflicts or Gaps section reads `none identified` - never a blank section or leftover template text.
 
 `(assumed: basis)` goes in the Notes column where a table has one, and directly after the value everywhere else (`RTO: < 15 min (assumed: no DR target stated)`). Every tag anywhere gets its confirmation question in Gaps.
 
