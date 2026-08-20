@@ -1,9 +1,9 @@
 ---
 name: review-report-writer
-description: Write review report to Markdown with checkpoint frontmatter (head_sha, base_sha, round, mode) so the next round can auto-detect incremental scope.
+description: Write the review report to Markdown with checkpoint frontmatter (head_sha, base_sha, round) so the next round can reconcile prior findings.
 metadata:
   category: review
-  tags: [review, report, output, file, checkpoint, incremental]
+  tags: [review, report, output, file, checkpoint, re-review]
 user-invocable: false
 ---
 
@@ -11,7 +11,7 @@ user-invocable: false
 
 ## When to Use
 
-Final step of every `task-*-review*` workflow after findings have been assembled. Persists the full review and embeds a checkpoint so the next invocation on the same branch can auto-detect incremental re-review scope without user flags.
+Final step of every `task-*-review*` workflow after findings have been assembled. Persists the full review and embeds a checkpoint so the next invocation on the same branch is recognized as a re-review without user flags.
 
 ## Inputs
 
@@ -26,7 +26,7 @@ The consuming workflow passes these fields when invoking this skill:
 | `base_sha`        | yes               | `git rev-parse <base_ref>` output captured by the workflow                          |
 | `head_ref`        | yes               | From `review-precondition-check` handle                                             |
 | `head_sha`        | yes               | `git rev-parse <head_ref>` output captured by the workflow                          |
-| `mode`            | yes               | `full` or `incremental`                                                             |
+| `mode`            | yes               | `full` - the only accepted value; anything else fails validation. Every round analyzes the full `base...head` range; the field stays in the frontmatter so pre-change reports still parse on the next round's lookup |
 | `round`           | yes               | `1` for first review on this branch; increment per re-review                        |
 | `prior_head_sha`  | only if `round>1` | The `head_sha` from the prior round's frontmatter                                   |
 | `scope`           | yes               | `core-only` / `full` / one or more of `+perf` `+sec` `+obs` `+rel`, space-joined in that order (all four = `full`) |
@@ -56,12 +56,12 @@ Only the workflow that owns the report invokes this skill. Sub-agents spawned fo
 - Print one confirmation line after writing:
 
   ```
-  Report written to <filename> (round <N>, mode: <mode>)
+  Report written to <filename> (round <N>)
   ```
 
 ## Frontmatter Contract
 
-Emit exactly this block at the top of the file. Emit `prior_head_sha` whenever `round > 1`, independent of `mode` - a full re-review on round 2+ still records the prior round's head for chain continuity. Emit `pr_url` only when the caller passed a non-empty value; omit the line entirely otherwise (never write `pr_url:` with a blank value). `generated_at` is the writer's current UTC time (ISO 8601, `Z` suffix); the workflow does not pass it.
+Emit exactly this block at the top of the file. Emit `prior_head_sha` whenever `round > 1` - it records the prior round's head for chain continuity. Emit `pr_url` only when the caller passed a non-empty value; omit the line entirely otherwise (never write `pr_url:` with a blank value). `generated_at` is the writer's current UTC time (ISO 8601, `Z` suffix); the workflow does not pass it.
 
 ```yaml
 ---
@@ -70,7 +70,7 @@ base_ref: <base_ref>
 base_sha: <full SHA>
 head_ref: <head_ref>
 head_sha: <full SHA>
-mode: full | incremental
+mode: full
 round: <N>
 prior_head_sha: <full SHA from prior round>                     # omit on round 1; required on round 2+
 scope: core-only | full | space-joined subset of +perf +sec +obs +rel in that order
@@ -86,7 +86,7 @@ This frontmatter is the **checkpoint contract** consumed by `review-precondition
 ## Output Format
 
 ```
-Report written to <filename> (round <N>, mode: <mode>)
+Report written to <filename> (round <N>)
 ```
 
 The file contains the YAML frontmatter followed by the workflow's standard Markdown report body.

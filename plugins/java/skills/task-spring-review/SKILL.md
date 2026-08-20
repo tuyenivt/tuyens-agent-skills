@@ -55,6 +55,8 @@ Two-plus categories -> Full. User-passed scope wins but signals are still record
 
 Flags compose: `/task-spring-review pr-50273 --base release/2026.05 +sec deep`. No checkout required.
 
+Pass `--req <path>` to name a requirement source (ticket export, PRD, spec) for Phase 0; without it, Phase 0 uses whatever requirement is already in context.
+
 ## Workflow
 
 ### Step 1 - Behavioral Principles
@@ -82,11 +84,13 @@ Also capture the current SHAs for the report's checkpoint frontmatter:
 - `current_head_sha = git rev-parse <head_ref>`
 - `current_base_sha = git rev-parse <base_ref>`
 
-### Step 3.5 - Decide Mode (re-review auto-detect)
+### Step 3.5 - Decide Round (re-review auto-detect)
 
-Skip if the handle has no `prior_checkpoint` -> `mode = full`, `round = 1`, no fetch, no reconciliation. Continue to Step 4.
+**Every round analyzes the full `<base_ref>...<head_ref>` range read in Step 3.** Risk, blast radius, scope signals, depth promotion, and requirement fit are scored on the whole change on every round, so a small follow-up commit cannot under-score a large PR and a defect missed in round 1 stays reachable in round 2. Rounds differ only in that round 2+ reconciles against the prior report.
 
-If `prior_checkpoint: legacy` (file present, frontmatter missing/invalid) -> `mode = full`, `round = 1`. Note in Summary: `Prior report lacks checkpoint metadata - treated as round 1.` Continue to Step 4.
+Skip if the handle has no `prior_checkpoint` -> `round = 1`, no fetch, no reconciliation. Continue to Step 4.
+
+If `prior_checkpoint: legacy` (file present, frontmatter missing/invalid) -> `round = 1`. Note in Summary: `Prior report lacks checkpoint metadata - treated as round 1.` Continue to Step 4.
 
 Otherwise (valid prior checkpoint present):
 
@@ -108,30 +112,18 @@ No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, 
 
 | Condition                                                              | Decision                                                                                                                            |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `prior_checkpoint.head_sha == current_head_sha`                        | **No-op.** Print `No new commits on <head_ref_short> since prior review at <sha_short>. Prior report unchanged.` (where `<head_ref_short>` is the short name of `head_ref` - the review target, not the user's current branch - and `<sha_short>` is the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
-| `git merge-base --is-ancestor <prior_head_sha> <current_head_sha>` fails (prior SHA unreachable) | `mode = full`, `round = prior.round + 1`. Note in Summary: `Prior checkpoint unreachable - history rewritten; full re-review.`      |
-| `prior_checkpoint.base_sha != current_base_sha`                        | `mode = full`, `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round> - full re-review.`       |
-| `prior_checkpoint.base_ref != base_ref`                                | `mode = full`, `round = prior.round + 1`. Note in Summary: `Base ref changed since round <prior.round> - full re-review.`           |
-| None of the above                                                       | `mode = incremental`, `round = prior.round + 1`, `incremental_range = <prior_head_sha>...<current_head_sha>`.                       |
+| `prior_checkpoint.head_sha == current_head_sha`, and the invocation adds no scope or depth beyond the prior checkpoint | **No-op.** Print `No new commits on <head_ref_short> since prior review at <sha_short>. Prior report unchanged.` (where `<head_ref_short>` is the short name of `head_ref` - the review target, not the user's current branch - and `<sha_short>` is the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
+| `prior_checkpoint.head_sha == current_head_sha`, but the invocation expands scope or depth beyond it | `round = prior.round + 1`. Note in Summary: `Same head as round <prior.round>; re-review for expanded <scope\|depth>.` |
+| `git merge-base --is-ancestor <prior_head_sha> <current_head_sha>` fails (prior SHA unreachable) | `round = prior.round + 1`. Note in Summary: `Prior checkpoint unreachable - history rewritten.`      |
+| `prior_checkpoint.base_sha != current_base_sha`                        | `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round>.`       |
+| `prior_checkpoint.base_ref != base_ref`                                | `round = prior.round + 1`. Note in Summary: `Base ref changed since round <prior.round>.`           |
+| None of the above                                                       | `round = prior.round + 1`.                                                                          |
 
-**Step 3.5c - Incremental: re-read the diff scoped to the new range.**
+**Step 3.5c - Scope expansion handling.**
 
-If `mode = incremental`, replace the diff read from Step 3 with:
+If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `core-only`, round 2 is `full`), the newly-added scopes have no prior findings to reconcile. Record in Summary: `Scope expanded round <N>: +<list>.`
 
-- `git diff <prior_head_sha>...<current_head_sha>`
-- `git diff --name-status <prior_head_sha>...<current_head_sha>`
-- `git log --oneline <prior_head_sha>..<current_head_sha>`
-
-The full-range diff from Step 3 is discarded; all Phase A-E analysis operates on the incremental range only.
-
-**Step 3.5d - Scope expansion handling.**
-
-If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `core-only`, round 2 is `full`), the newly-added scopes have no prior findings to reconcile. Record in Summary based on mode:
-
-- `mode = incremental`: `Scope expanded round <N>: +<list> - new scopes reviewed in full; previously-reviewed scopes reviewed incrementally.`
-- `mode = full`: `Scope expanded round <N>: +<list>.` (the incremental clause does not apply)
-
-If the invocation *narrowed* scope (a round-2+ flag drops scopes), prior findings from dropped scopes are still reconciled - they are High-Impact rows - but get no fresh pass. Record: `Scope narrowed round <N>: -<list> - prior findings reconciled; no new <list> pass.`
+If this round runs *narrower* than the checkpoint - a round-2+ flag drops scopes, or a no-flag invocation follows a user-flagged round and no signal re-fires - prior findings from dropped scopes are still reconciled (they are High-Impact rows) but get no fresh pass. Record: `Scope narrowed round <N>: -<list> - prior findings reconciled; no new <list> pass.` When the resolved depth likewise falls below the checkpoint's user-flagged `deep`, record: `Depth narrowed vs round <prior.round> - re-run with deep to re-cover.`
 
 The reconciliation table (when emitted) only covers findings whose scope was active in the prior round.
 
@@ -139,7 +131,13 @@ The reconciliation table (when emitted) only covers findings whose scope was act
 
 Scan files and diff against signal categories (above). Log `signal: <category> -> <file:line>` for each match. Resolve scope (Core / +X / Full) and surface in Summary: `auto-escalated from Core; signals: <list>` or, when user-pinned with conflicting signals, `Scope user-pinned; <category> signals present: <list>`.
 
-**Scope precedence on round 2+:** user flag > firing signals > inherit from `prior_checkpoint.scope`. If the user passed no flag and the (incremental, in incremental mode) diff fires no signals, inherit the prior round's scope so reviewer coverage does not silently narrow. Surface as `Scope: <inherited> (inherited from round <prior.round>)`.
+**Scope precedence on round 2+:** user flag > firing signals. Signals are scored on the full range every round, so a scope that escalated in round 1 escalates again on its own - nothing is inherited from the prior checkpoint.
+
+### Phase 0 - Change Intent
+
+Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req <path>` file when passed, and `prior_checkpoint.report_path` when round > 1.
+
+Its `## Change Brief` block goes into the report verbatim, its `Requirement Source` and `Requirement Fit` lines into Summary, and its findings join the assembled set verified in Step 6.6. With no requirement source the Brief still renders, and the traceability block and its two Summary lines are omitted. Runs before Phase A - acceptance criteria decide what counts as a defect downstream - and the low-risk short-circuit never skips it.
 
 ### Phase A - PR Risk Snapshot
 
@@ -147,7 +145,7 @@ Scan files and diff against signal categories (above). Log `signal: <category> -
 - Use skill: `review-blast-radius`.
 - Output Risk and Blast Radius before findings.
 
-**Low-risk short-circuit:** Risk `Low` + Blast Radius `Narrow` + no architecture-relevant files touched (security config, filters, API contracts, shared base classes, aspects, `application.yml`, migrations) -> skip Phases C-E, deliver Phase B findings only.
+**Low-risk short-circuit:** Risk `Low` + Blast Radius `Narrow` + no architecture-relevant files touched (security config, filters, API contracts, shared base classes, aspects, `application.yml`, migrations) -> skip Phases C-E, deliver the Phase 0 outputs (Change Brief, traceability, requirement findings) and Phase B findings only.
 
 ### Phase B - Spring Correctness and Safety
 
@@ -260,13 +258,13 @@ Use skill: `review-finding-verify` with the assembled findings (including any me
 
 Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`.
 
-### Step 6.5 - Reconcile Prior Findings (incremental mode only)
+### Step 6.5 - Reconcile Prior Findings (round 2+ only)
 
-Skip if `mode = full`. Otherwise use skill: `review-prior-findings-reconcile` with:
+Skip on round 1. Otherwise use skill: `review-prior-findings-reconcile` with:
 
 - `prior_report`: the loaded body of `review-<branch>.md` (frontmatter excluded)
-- `incremental_diff`: from Step 3.5c
-- `name_status`: from Step 3.5c
+- `diff`: the full-range diff from Step 3
+- `name_status`: the full-range `git diff --name-status <base_ref>...<head_ref>` from Step 3
 
 The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
 
@@ -277,7 +275,7 @@ Fold any `Still open` rows into `## Next Steps` as `(open since round <prior.rou
 Use skill: `review-report-writer` with `report_type: review` and these checkpoint fields:
 
 - `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
-- `mode` (from Step 3.5), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
+- `mode: full` (the writer's only accepted value), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
 - `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full` - the writer rejects unmapped values), `depth` (resolved/auto-promoted in Phase A), `stack = java-spring-boot`
 
 The report writer owns label semantics (`[Must]` / `[Recommend]` - no severity-mixed `[Blocker]`/`[High]`/`[Suggestion]`, no `[Nit]`/`[Consider]`/`[Praise]`).
@@ -296,14 +294,27 @@ The fence below delimits the template for display only - it is not part of the r
 **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
 **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
 **Round:** <N>                                _(include from round 2 onward)_
-**Mode:** incremental (since <prior_head_sha_short>) | full _(include from round 2 onward)_
 **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
-**Diff Range:** <range_short> (<N> commits, <M> files) _(incremental rounds only)_
+**Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
+**Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 **Notes:** <free text> _(omit if empty - home for checkpoint gaps, `Scope incomplete: ...` records, subagent failures, deep-pass limitations)_
 
 [full Risk and Blast Radius blocks from Phase A's atomics]
 
-## Prior Round Reconciliation _(incremental rounds only; omit otherwise)_
+## Change Brief
+
+**Requested:** <what the change was asked to do, citing the source; `(inferred from commits)` when no source resolved>
+**Delivered:** <the mechanism implemented and where>
+**Author decisions:** <each choice the request did not imply, with its consequence, excluding choices already raised as findings; `None observed` when nothing remains>
+**Watch points:** <what to confirm by hand before reading findings; `None` when there are none>
+
+## Requirement Traceability _(omit when Phase 0 resolved no source)_
+
+| Criterion | Status | Implementation | Proof |
+| --------- | ------ | -------------- | ----- |
+| <id or quoted outcome> | Met \| Partial \| Unmet \| Deferred \| Untraceable | <file:line, or `-`> | <file:line or verification note, or `-`> |
+
+## Prior Round Reconciliation _(round 2+ only; omit otherwise)_
 
 | Round <N-1> Finding | file:line | Status | Notes |
 | ------------------- | --------- | ------ | ----- |
@@ -337,7 +348,7 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 - 2-4 bullets summarizing systemic impact and what to address before merge.
 
 ## Next Steps
-Prioritized, each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend. On incremental rounds, prior-round `Still open` items are folded in with `(open since round <N>)` suffix and ordered by intent alongside new findings.
+Prioritized, each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend. On round 2+, prior-round `Still open` items are folded in with `(open since round <N>)` suffix and ordered by intent alongside new findings.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Implement]** [Recommend] OldFile.java:88 - N+1 in listAll (open since round 1)
@@ -353,8 +364,9 @@ Omit empty sections.
 - [ ] Step 1 - behavioral principles loaded
 - [ ] Step 2 - stack confirmed (or accepted from parent)
 - [ ] Step 3 - `review-precondition-check` ran (or handle received); diff/commit log read once; `current_head_sha` and `current_base_sha` captured
-- [ ] Step 3.5 - mode decided (full / incremental / no-op); auto-fetch attempted only when prior checkpoint exists; incremental range re-read when mode flipped to incremental; no-op path exits without writing the report
+- [ ] Step 3.5 - round decided (1 / prior + 1 / no-op); auto-fetch attempted only when prior checkpoint exists; the full `<base_ref>...<head_ref>` range analyzed regardless of round; no-op path exits without writing the report
 - [ ] Step 4 - scope decision recorded with firing signals; user-pinned conflicts surfaced; scope expansion vs. prior round noted when applicable
+- [ ] Phase 0 - `review-change-intent` ran on the cumulative diff; Change Brief carried into the report; requirement lines in Summary, or all three requirement outputs omitted when no source resolved; its findings verified with the rest
 - [ ] Phase A - Risk and Blast Radius stated before findings; depth auto-promoted on Wide/Critical
 - [ ] Phase B - Spring idioms applied (transactions, JPA-in-API, authz coverage, exception advice, VT pinning, dual-write); migration safety where applicable; API contract checks ran when a route, controller, DTO, or springdoc spec changed; missing tests raised as named finding
 - [ ] Phase C - layering, anemic domain, constructor injection, configuration, boundaries, multi-tenant (skipped under the Phase A low-risk short-circuit)
@@ -363,7 +375,7 @@ Omit empty sections.
 - [ ] Step 5 - subagents ran in parallel with pre-resolved handle (when scope > Core)
 - [ ] Step 6 - findings deduped, highest-severity wins, severity-ordered, raw subagent reports not appended; missing scopes noted
 - [ ] Step 6.6 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels applied; tally in Summary
-- [ ] Step 6.5 - on incremental rounds, `review-prior-findings-reconcile` ran; reconciliation table inserted; `Still open` rows folded into Next Steps with `(open since round <N>)` suffix
+- [ ] Step 6.5 - on round 2+, `review-prior-findings-reconcile` ran; reconciliation table inserted; `Still open` rows folded into Next Steps with `(open since round <N>)` suffix
 - [ ] Step 7 - report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
 - [ ] Every Must cites system risk; every finding has label, `file:line`, actionable Spring fix
 - [ ] Next Steps tagged `[Implement]`/`[Delegate]`, ordered Must > Recommend (omit if none); carry-overs from prior round inline-suffixed, not in a separate section
@@ -373,7 +385,7 @@ Omit empty sections.
 - State-changing git (`checkout`/`merge`/`pull`/`rebase`) from this workflow. The one allowed exception is `git fetch <remote> <branch>` in Step 3.5a, and only when a valid prior checkpoint exists.
 - Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
 - Reviewing without reading full diff + commit log first.
-- Running incremental analysis against the full-range diff (must re-read scoped to `<prior_head_sha>...<head_sha>`).
+- Scoping round 2+ analysis to `<prior_head_sha>...<head_sha>` - risk, scope, depth, and requirement fit score the full `<base_ref>...<head_ref>` range on every round.
 - Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
 - Generic backend phrasing when a Spring idiom exists ("extract to a `@Service`", not "helper class").
 - Vague feedback without a concrete Spring fix; blocking on personal preference; nitpicking absent project standard.

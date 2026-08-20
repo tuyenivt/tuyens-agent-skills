@@ -1,9 +1,9 @@
 ---
 name: review-precondition-check
-description: Gate code review workflows: clean tree, non-trunk branch, resolve base/head pair, surface prior-round checkpoint for incremental re-review. Local git.
+description: Gate code review workflows: clean tree, non-trunk branch, resolve base/head pair, surface prior-round checkpoint for re-review. Local git.
 metadata:
   category: review
-  tags: [review, git, pull-request, local-git, gating, checkpoint, incremental]
+  tags: [review, git, pull-request, local-git, gating, checkpoint, re-review]
 user-invocable: false
 ---
 
@@ -154,7 +154,7 @@ Wait for explicit affirmative (`y` / `yes`). On `n` or no response, stop with `R
 
 ### Step 7 - Surface prior-round checkpoint (read-only)
 
-This step enables flag-free re-review. It only **reads and reports** - it does not decide mode. The consuming workflow decides.
+This step enables flag-free re-review. It only **reads and reports** - it does not decide the round. The consuming workflow decides.
 
 Compute the prior-report filename from the **head** short name; when the head resolved from `refs/remotes/`, strip the leading `<remote>/` segment first, so `origin/feature/x` and a later local review of `feature/x` chain on the same file. Then apply the sanitization rules per `review-report-writer` (replace `/` and chars outside `[A-Za-z0-9_-]` with `-`, collapse, strip):
 
@@ -177,7 +177,7 @@ If the file exists, read the leading YAML frontmatter (delimited by `---` lines 
 | `base_sha`       | yes                                                            |
 | `head_ref`       | yes                                                            |
 | `head_sha`       | yes                                                            |
-| `mode`           | yes (`full` / `incremental`)                                   |
+| `mode`           | yes - `full`; a report predating full-range re-review may say `incremental`, which parses the same; any other value is unparseable |
 | `round`          | yes (integer)                                                  |
 | `scope`          | yes                                                            |
 | `depth`          | yes                                                            |
@@ -211,7 +211,7 @@ prior_checkpoint:                       # omit entirely if no prior report file;
   base_sha: <from prior report>
   head_ref: <from prior report>
   head_sha: <from prior report>
-  mode: full | incremental
+  mode: <from prior report>
   round: <integer>
   scope: <from prior report>
   depth: <from prior report>
@@ -230,5 +230,5 @@ When a precondition fails, emit only the stop message from the relevant step. Do
 - Skipping the dirty-tree, trunk-branch, or missing-head fail-fasts.
 - Gating head-vs-current when they already match - that just adds friction.
 - Forcing a `git checkout` of the head branch.
-- Deciding incremental vs. full mode in Step 7 - just surface the prior checkpoint; the workflow decides.
+- Deciding the round, or comparing the prior head to the current one, in Step 7 - just surface the checkpoint; the workflow decides.
 - Validating `prior_head_sha` reachability or comparing it to the current head in Step 7 - that's the workflow's job.

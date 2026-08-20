@@ -20,9 +20,9 @@ Detects the project stack and delegates to the matching stack-specific review wo
 
 ## Invocation
 
-`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | +rel | full | core-only] [standard | deep] [--base <branch>]`
+`/task-code-review [<branch> | pr-<N>] [+perf | +sec | +obs | +rel | full | core-only] [standard | deep] [--base <branch>] [--req <path>]`
 
-Scope flags combine (`+sec +perf`); `full` expands to all four. All flags are forwarded to the dispatched stack workflow.
+Scope flags combine (`+sec +perf`); `full` expands to all four. All flags are forwarded to the dispatched stack workflow. `--req <path>` names a requirement source for Phase 0 (ticket export, PRD, spec); without it Phase 0 falls back to whatever requirement is already in context.
 
 ## Workflow
 
@@ -45,7 +45,7 @@ Use skill: `stack-detect`.
 | Go / Gin             | `task-go-review`      |
 | React / Next.js      | `task-react-review`   |
 
-A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Dispatch keys on the detection's primary `Language`/`Framework` pair; a secondary stack in `Additional` never dispatches. Announce the dispatch in one line (`Dispatching to task-rails-review.`), then forward the user's invocation verbatim (target ref, `--base`, scope, depth). The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 4-5.**
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback). Dispatch keys on the detection's primary `Language`/`Framework` pair; a secondary stack in `Additional` never dispatches. Announce the dispatch in one line (`Dispatching to task-rails-review.`), then forward the user's invocation verbatim (target ref, `--base`, `--req`, scope, depth). The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 4-5.**
 
 If a row matches but the target skill does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5 as a degraded generic review and note the degradation in the report.
 
@@ -55,21 +55,22 @@ Runs when no Step 3 row matched the detected stack, or the matched workflow is u
 
 Use skill: `review-precondition-check` with the user's target argument (default target: current branch) and any `--base` override. On failure, surface the message verbatim and stop. On success, capture `base_sha`/`head_sha` via `git rev-parse <base_ref>` / `git rev-parse <head_ref>`, then read once: `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>`.
 
-**Mode and round** (from the handle's `prior_checkpoint`):
+**Round** (from the handle's `prior_checkpoint`). Every round analyzes the full `<base_ref>...<head_ref>` range read above - risk, scope, and requirement fit score the whole change each time, so a small follow-up commit cannot under-score a large PR. Rounds differ only in that round 2+ reconciles against the prior report:
 
 | Checkpoint state                                                        | Decision                                                          |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Absent, or `prior_checkpoint: legacy`                                    | `mode: full`, `round: 1` (legacy report is overwritten)            |
+| Absent, or `prior_checkpoint: legacy`                                    | `round: 1` (legacy report is overwritten)                          |
 | `prior head_sha == head_sha`, and the checkpoint's `scope`/`depth` cover the requested ones (`full` covers every scope; `deep` covers `standard`) | Print `No new commits since prior review.` and stop - no report |
-| `prior head_sha == head_sha`, requested scope or depth exceeds the checkpoint's | `mode: full`, `round: prior + 1` - same commits, wider lens        |
-| `git merge-base --is-ancestor <prior_head_sha> <head_sha>` fails, OR prior `base_sha`/`base_ref` differs | `mode: full`, `round: prior + 1` |
-| Otherwise                                                                | `mode: incremental`, `round: prior + 1`; re-read diff/log scoped to `<prior_head_sha>...<head_ref>` - all phases, the Phase A risk snapshot, and sub-scope spawns run on this scoped diff |
+| `prior head_sha == head_sha`, requested scope or depth exceeds the checkpoint's | `round: prior + 1` - same commits, wider lens                       |
+| Otherwise                                                                | `round: prior + 1`                                                 |
 
-**Incremental reconciliation.** When `mode: incremental`, Use skill: `review-prior-findings-reconcile` with the prior report body, the incremental diff, and `git diff --name-status <prior_head_sha>...<head_ref>`; its table goes under `## Prior Round Reconciliation` in the report. Full-mode rounds skip it (fresh pass). Run this after the phases below and after **Verify findings**, so reconciliation matches against the verified set - the mode decision is made here, but the reconciliation pass is not executed until findings exist.
+**Prior-round reconciliation.** On round 2+, Use skill: `review-prior-findings-reconcile` with the prior report body, the full-range diff, and `git diff --name-status <base_ref>...<head_ref>`; its table goes under `## Prior Round Reconciliation` in the report. Round 1 skips it. Run this after the phases below and after **Verify findings**, so reconciliation matches against the verified set.
 
 **Depth.** `standard` (default): review diff hunks plus immediate context. `deep`: skip the Phase A fast-path and read each touched file in full.
 
-**Phase A - Risk Snapshot.** Use skill: `review-pr-risk`. Use skill: `review-blast-radius`. State Risk Level (Low/Medium/High/Critical) and Blast Radius (Narrow/Moderate/Wide/Critical) before any line-level finding. If both are Low/Narrow and the diff touches no architecture-sensitive files (auth, middleware, API contracts, shared libs), produce Phase B findings only and skip C-E.
+**Phase 0 - Change Intent.** Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req <path>` file when passed, and `prior_checkpoint.report_path` when round > 1. Its `## Change Brief` block is carried into the report verbatim, its `Requirement Source` and `Requirement Fit` lines into Summary, and its findings join the assembled set for **Verify findings** with the rest. When no requirement source resolves, the Brief still renders and the traceability block and its two Summary lines are omitted. Phase 0 runs before Phase A - acceptance criteria decide what counts as a defect downstream - and no short-circuit skips it.
+
+**Phase A - Risk Snapshot.** Use skill: `review-pr-risk`. Use skill: `review-blast-radius`. State Risk Level (Low/Medium/High/Critical) and Blast Radius (Narrow/Moderate/Wide/Critical) before any line-level finding. If both are Low/Narrow and the diff touches no architecture-sensitive files (auth, middleware, API contracts, shared libs), produce the Phase 0 outputs (Change Brief, traceability, requirement findings) and Phase B findings only, and skip C-E.
 
 **Phase B - Correctness and Safety.** Logical correctness, error handling, edge cases, transaction boundaries, unsafe shared-state mutation. Use skill: `ops-resiliency` for fault tolerance. Use skill: `architecture-concurrency` when concurrency is present. **Raise an explicit named finding when logic was added or modified without tests** ([Recommend] minimum; [Must] for critical paths).
 
@@ -89,7 +90,7 @@ Use skill: `review-precondition-check` with the user's target argument (default 
 
 ### Step 5 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review` and every required input: `report_body` (the assembled report per Output Format), `branch` (current branch from the handle), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 4), `mode`/`round` (Step 4; plus `prior_head_sha` when round > 1), `scope` (writer enum value - `core-only` when no scope flag was passed; combined flags join with single spaces in the canonical order `+perf +sec +obs +rel`; all four = `full`), `depth` (`standard` when no depth flag), `stack` (kebab-case `<language>-<framework>` from the stack-detect output, e.g. `elixir-phoenix`; drop a segment reported unknown; `unknown` only when detection failed entirely).
+Use skill: `review-report-writer` with `report_type: review` and every required input: `report_body` (the assembled report per Output Format), `branch` (head short name from the handle - the review target, which is the checkpoint lookup key), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 4), `mode: full` (the writer's only accepted value), `round` (Step 4; plus `prior_head_sha` when round > 1), `scope` (writer enum value - `core-only` when no scope flag was passed; combined flags join with single spaces in the canonical order `+perf +sec +obs +rel`; all four = `full`), `depth` (`standard` when no depth flag), `stack` (kebab-case `<language>-<framework>` from the stack-detect output, e.g. `elixir-phoenix`; drop a segment reported unknown; `unknown` only when detection failed entirely).
 
 ## Feedback Labels
 
@@ -119,12 +120,25 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 **Stack Detected:** <identifier or unknown> (generic fallback applied)
 **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full
 **Depth:** standard | deep
-**Mode:** full | incremental (round <N>)
+**Round:** <N> _(include from round 2 onward)_
 **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+**Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
+**Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
+
+## Change Brief
+
+**Requested:** <what the change was asked to do; `(inferred from commits)` when no source resolved>
+**Delivered:** <the mechanism implemented and where>
+**Author decisions:** <each choice the request did not imply, with its consequence, excluding choices already raised as findings; `None observed` when nothing remains>
+**Watch points:** <what to confirm by hand before reading findings; `None` when there are none>
+
+## Requirement Traceability
+
+<table from `review-change-intent` - omit the section when no requirement source resolved>
 
 ## Prior Round Reconciliation
 
-<table from `review-prior-findings-reconcile` - incremental rounds only; omit section otherwise>
+<table from `review-prior-findings-reconcile` - round 2+ only; omit section otherwise>
 
 ## High-Impact Findings
 
@@ -169,7 +183,7 @@ _Omit sections with no findings._
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran
 - [ ] Step 3: if matched and available, stack workflow ran with all flags forwarded, Steps 4-5 skipped; if matched but unavailable, missing plugin named and fallback ran
-- [ ] Step 4: if no dispatch, SHAs captured; mode/round decided from `prior_checkpoint`; prior findings reconciled on incremental rounds; Phase A risk stated before line findings; the Phase B API contract gate ran when the diff touched a route, controller, DTO, serializer, or spec file; missing tests raised as named finding; extra scopes spawned in parallel and merged without writing their own reports; `review-finding-verify` ran on the assembled findings with Dropped rows excluded; findings ordered Must > Recommend
+- [ ] Step 4: if no dispatch, SHAs captured; round decided from `prior_checkpoint`; prior findings reconciled on round 2+; Phase 0 `review-change-intent` ran on the full-range diff with its Change Brief in the report; Phase A risk stated before line findings; the Phase B API contract gate ran when the diff touched a route, controller, DTO, serializer, or spec file; missing tests raised as named finding; extra scopes spawned in parallel and merged without writing their own reports; `review-finding-verify` ran on the assembled findings with Dropped rows excluded; findings ordered Must > Recommend
 - [ ] Step 5: report written via `review-report-writer` with all required inputs (fallback path only)
 
 ## Avoid

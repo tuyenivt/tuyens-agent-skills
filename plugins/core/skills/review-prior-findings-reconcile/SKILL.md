@@ -3,7 +3,7 @@ name: review-prior-findings-reconcile
 description: Classify each finding from prior review report as Addressed, Still open, Obsolete, or Needs re-check by checking whether the specific smell persists.
 metadata:
   category: review
-  tags: [review, incremental, re-review, reconciliation, checkpoint]
+  tags: [review, re-review, reconciliation, checkpoint]
 user-invocable: false
 ---
 
@@ -12,7 +12,7 @@ user-invocable: false
 ## When to Use
 
 - Round 2+ of a `task-*-review*` workflow when the prior `review-<head>.md` report has valid checkpoint frontmatter.
-- After the workflow has loaded the prior report content and computed the incremental diff range (`prior_head_sha...head_sha`).
+- After the workflow has loaded the prior report content and read the full `base_ref...head_ref` diff. Every round analyzes the whole PR range, so reconciliation compares prior findings against the current head, not against a slice of commits since the prior round.
 
 Not for round 1 (no prior findings exist) or when `prior_checkpoint: legacy` (no parseable findings to reconcile).
 
@@ -23,8 +23,8 @@ The consuming workflow passes:
 | Field            | Source                                                                  |
 | ---------------- | ----------------------------------------------------------------------- |
 | `prior_report`   | Full Markdown body of `review-<head>.md` (frontmatter already parsed) |
-| `incremental_diff` | Output of `git diff <prior_head_sha>...<head_sha>` (already read)      |
-| `name_status`    | Output of `git diff --name-status <prior_head_sha>...<head_sha>`        |
+| `diff`           | Output of `git diff <base_ref>...<head_ref>` (already read) - the full PR range |
+| `name_status`    | Output of `git diff --name-status <base_ref>...<head_ref>` - the same full range |
 | `head_files`     | Optional. File list at the new head: output of `git ls-tree -r --name-only <head_ref>`. Cross-check deleted/renamed paths; when absent, `name_status` alone decides touch state. |
 
 To read file content at the new head (Steps 3-4), use `git show <head_sha>:<path>` - after the workflow's auto-fetch, `head_sha` may not be the checked-out working tree.
@@ -56,21 +56,21 @@ If the section is present but empty, return an empty reconciliation table and st
 
 ### Step 2 - Determine file touch state
 
-For each prior finding, check `name_status`:
+For each prior finding, check `name_status`. It spans the full `base_ref...head_ref` range, so touch state answers "does this PR change the file at all", not "did the author change it since the prior round":
 
 | `name_status` entry for the file | Touch state |
 | -------------------------------- | ----------- |
-| `A` (added since prior round)    | Impossible for a prior finding; treat as `Needs re-check` and note. |
+| `A` (added by this PR)           | `touched` - the PR created the file, so a prior finding on it is ordinary, not a contradiction |
 | `M` (modified)                   | `touched` |
-| `D` (deleted)                    | `file-gone` - but when `head_files` is provided and a file with the same basename exists at another path (an undetected `D`+`A` move), treat as `renamed` to that path |
+| `D` (deleted)                    | `file-gone` - but when `head_files` is provided and exactly one file with the same basename exists at another path (an undetected `D`+`A` move), treat as `renamed` to that path; with several candidates, classify the finding `Needs re-check` and note the candidate paths |
 | `R<score>` (renamed)             | `renamed` - record new path |
-| not listed                       | `untouched` |
+| not listed                       | `untouched` - the PR does not touch this file at all, which is normal for a finding attributed to pre-existing code |
 
 ### Step 3 - Classify per finding
 
 | Touch state | Classification logic                                                                                                                                                              |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `untouched` | `Still open`. No file read needed - the smell at `file:line` cannot have changed if the file was not modified. Note: line number references the prior commit; current line may differ if other commits shifted things, but the smell persists at the same logical site. |
+| `untouched` | Split on the prior finding's provenance annotation. Annotated `_(pre-existing)_`: `Still open`, no file read needed - the PR still does not touch the code carrying the smell (line numbers may have shifted; the logical site persists). Not annotated (the PR introduced it): the file now matches base, so the change that carried the smell was reverted - `Obsolete` with note `file no longer exists at head` when `head_files` shows the file absent, otherwise `Addressed` with note `reverted to base state`. |
 | `touched`   | Read the file at the new head (`git show <head_sha>:<path>`). Search for the specific smell described in the prior finding. Present -> `Still open`. Absent -> `Addressed`. If the surrounding code restructured enough that presence cannot be determined without speculation -> `Needs re-check`. |
 | `renamed`   | Treat as `touched`; reconcile against the new path. Record original and new path in the row.                                                                                       |
 | `file-gone` | `Obsolete`. Note in the row.                                                                                                                                                       |
@@ -117,7 +117,7 @@ Reconciliation: <addressed_count> addressed, <still_open_count> still open, <obs
 - Inventing `Addressed-incorrectly` or any "fix is wrong" status - that conflates reconciliation with new-finding detection.
 - Linking new smells back to prior findings - they are independent.
 - Reconciling Suggestions or notes from Architecture / Maintainability sections - only the `## High-Impact Findings` section.
-- Re-reading the file when the touch state is `untouched` - wastes tokens, the answer is `Still open`.
+- Re-reading the file when the touch state is `untouched` - the classification keys on the prior report's provenance annotation, never on file content.
 - Speculating when restructuring makes the smell's presence unclear - mark `Needs re-check` and move on.
 - Changing the original label or `file:line` text - preserve exactly so the user can compare rounds at a glance.
 - Translating legacy severity labels (`[Blocker]`/`[High]`/`[Suggestion]`) into intent labels (`[Must]`/`[Recommend]`) when surfacing prior findings - the table shows what was actually written.
