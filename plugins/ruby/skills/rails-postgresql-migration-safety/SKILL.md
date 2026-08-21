@@ -215,11 +215,10 @@ change_column_default :orders, :status, from: nil, to: "pending"
 Guard against double-runs (deploy retry, two engineers). Full leader-election patterns and `pg_advisory_xact_lock`: `rails-db-locking-patterns`.
 
 ```ruby
-def up
-  ApplicationRecord.with_advisory_lock("backfill_order_amount", timeout_seconds: 0) do
-    Order.in_batches(of: 10_000) { |b| b.where(amount: nil).update_all(amount: ...) }
-  end || abort("another backfill_order_amount is running")
-end
+# In the backfill rake task (never db/migrate):
+ApplicationRecord.with_advisory_lock("backfill_order_amount", timeout_seconds: 0) do
+  Order.in_batches(of: 10_000) { |b| b.where(amount: nil).update_all(amount: ...) }
+end || abort("another backfill_order_amount is running")
 ```
 
 ### Rollback safety

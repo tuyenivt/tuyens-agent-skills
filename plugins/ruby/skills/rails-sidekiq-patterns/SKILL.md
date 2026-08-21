@@ -135,7 +135,7 @@ Sidekiq stores every job's args in Redis as JSON. 10 KB x 100K jobs = 1 GB.
 - Pass IDs; refetch in `perform`
 - For lists, pass ID arrays (not record arrays)
 - For large inputs, stage to S3 / a `JobInput` row, pass the key; expire staged rows (TTL or sweep)
-- `DeserializationError` from already-enqueued AR-object payloads: fix the enqueue site, then drain or discard the poisoned jobs
+- `DeserializationError` from already-enqueued AR-object payloads: fix the enqueue site, then sweep the poisoned jobs - enumerate by class across `Sidekiq::Queue`, `Sidekiq::RetrySet`, and `Sidekiq::ScheduledSet`, then `.delete` or re-enqueue with fixed args
 
 For >100 enqueues at once, use `push_bulk`. Cross-process fan-out, sharding, and `SKIP LOCKED` claim shapes: see `rails-work-splitter-patterns`.
 

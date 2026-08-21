@@ -26,7 +26,7 @@ user-invocable: false
 - Inner services that open `transaction` need `requires_new: true` if rescued by the caller - a fused inner block has no savepoint, so the caller's rescue commits the inner writes along with the outer transaction.
 - `after_commit` for side effects (jobs, email, HTTP). `after_save` only for in-aggregate derived columns that must be visible inside the same transaction.
 - Default isolation is adapter-default (MySQL `REPEATABLE READ`, PG `READ COMMITTED`). Bump only with a documented reason (multi-row invariants, financial ledgers); cost is higher deadlock rate.
-- Retry on `ActiveRecord::Deadlocked` and `ActiveRecord::SerializationFailure` (PG) - both expected under contention. Cap at 3 retries with backoff.
+- Retry on `ActiveRecord::Deadlocked` and `ActiveRecord::SerializationFailure` (PG) - both expected under contention. Cap at 3 attempts with backoff.
 - Idempotency keys live one layer above the transaction - retrying a transaction is safe; retrying a charge is not.
 
 ## Patterns
@@ -51,7 +51,7 @@ def call
 
   ActiveRecord::Base.transaction do
     @order.update!(status: :paid, stripe_charge_id: payment.id)
-    @inventory.decrement!(@order.items)
+    @inventory.decrement!(:available, @order.quantity)
   end
 
   ShipmentNotificationJob.perform_async(@order.id)  # post-commit
@@ -62,6 +62,8 @@ end
 ```
 
 If the DB write fails after the charge, enqueue a reconciliation job (compensating action) - inline refund compounds failure.
+
+When the mutation claims a contended resource (seat, slot, finite stock), charge-first inverts: use the two-transaction variant in `rails-service-objects` - txn 1 claims pending under row lock -> charge -> txn 2 finalizes, with pending-claim expiry.
 
 ### Nested transactions and `requires_new`
 
@@ -186,9 +188,9 @@ Split: open transaction late, close it early. External calls and computation hap
 Boundary: <service.call | model callback | controller action>
 Network calls inside: <Yes (BLOCKER) | No>
 .perform_async inside: <Yes (BLOCKER) | No - uses after_commit | No>
-Nested transactions: <None | Inner uses requires_new | Inner relies on outer (caller-aware)>
+Nested transactions: <None | Inner uses requires_new | Inner relies on outer (caller-aware) | Inner fused + caller rescues (BLOCKER)>
 Isolation: <adapter default | :read_committed | :repeatable_read | :serializable - reason: <text>>
-Retry strategy: <None | Deadlock retry x N>
+Retry strategy: <None | None - GAP (isolation bumped, retry required) | Deadlock retry x N>
 Compensating action on partial failure: <Yes - <job> | No - acceptable | No - GAP>
 ```
 

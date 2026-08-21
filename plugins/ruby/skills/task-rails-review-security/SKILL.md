@@ -21,18 +21,18 @@ Rails PR security regression check; pre-deploy hardening on auth/authz/upload/pa
 
 | Severity | Trigger |
 | -------- | ------- |
-| **Critical** (block deploy) | Unauth RCE, auth bypass (incl. JWT decode with verification disabled or `alg: none` accepted), mass data exfiltration, SQLi on prod path, shell interpolation, `Marshal.load`/`YAML.load` / `ERB.new(user_input).result` on untrusted input, secrets/`master.key` committed, `permit!`/`to_unsafe_h` on a model whose **schema** exposes role/admin/tenant/owner/billing fields (judge by table, not by diff) |
-| **High** (block merge) | Authenticated privilege escalation, IDOR via `Model.find(params[:id])` without policy scope, SSRF to cloud metadata, missing `authorize`/`verify_authorized`, path traversal via `send_file(params[:path])`, missing CSRF on cookie-auth POST, webhook HMAC compared with `==`, CORS `origins '*'` with `credentials: true`, unauthorized `turbo_stream_from`, open `redirect_to params[:return_to]`, raw `render json: @model` exposing sensitive columns |
-| **Medium** | Hardening gap with mitigation present, secrets in ENV instead of credentials, weak `Rack::Attack` limit, non-prod debug surface (Sidekiq Web, `letter_opener`), unfixed `bundle audit` advisory, missing `filter_parameters` entry, raw `render json:` over-exposure of non-sensitive columns |
+| **Critical** (block deploy) | Unauth RCE, auth bypass (incl. JWT decode with signature verification disabled or `alg: none` accepted), mass data exfiltration, SQLi on prod path, shell interpolation, `Marshal.load`/`YAML.load` / `ERB.new(user_input).result` on untrusted input, secrets/`master.key` committed, `permit!`/`to_unsafe_h` on a model whose **schema** exposes role/admin/tenant/owner/billing fields (judge by table, not by diff) |
+| **High** (block merge) | Authenticated privilege escalation, IDOR via `Model.find(params[:id])` with no `authorize` or policy scoping, SSRF to cloud metadata, missing `authorize`/`verify_authorized`, JWT claim validation disabled (`exp`/`aud`/`iss`), refresh or API tokens stored unhashed, raw-SQL interpolation reachable only through a framework guard (`disallow_raw_sql!` on `.order`/`.pluck`; unguarded paths stay Critical), path traversal via `send_file(params[:path])`, missing CSRF on cookie-auth POST, webhook HMAC compared with `==`, CORS `origins '*'` with `credentials: true`, unauthorized `turbo_stream_from`, open `redirect_to params[:return_to]`, raw `render json: @model` exposing sensitive columns |
+| **Medium** | Hardening gap with mitigation present, secrets in ENV instead of credentials, weak `Rack::Attack` limit, non-prod debug surface (Sidekiq Web, `letter_opener`), unfixed `bundle audit` advisory, missing `filter_parameters` entry, raw `render json:` over-exposure of non-sensitive columns, `skip_authorization`/`skip_after_action :verify_authorized` without stated rationale, `Model.find` + `authorize` where scoping would 404 (existence leak) |
 | **Low** | Defense-in-depth, advisories below actively-exploited threshold |
 
-**Combined-finding rule.** N actions sharing a missing `before_action` gate file as **one** finding at elevated severity (one level above the worst individual action, capped at Critical), citing the worst payload as the attack scenario. Findings with their own distinct attack chain (SQLi, path traversal, mass assignment) file separately and do **not** restate the missing-authz dimension - the combined finding owns it.
+**Combined-finding rule.** N actions sharing one missing authorization gate (skipped `before_action`, absent `verify_authorized` enforcement, controller-wide policy hole) file as **one** finding at elevated severity (one level above the worst individual action, capped at Critical), citing the worst payload as the attack scenario. Findings with their own distinct attack chain (SQLi, path traversal, mass assignment) file separately and do **not** restate the missing-authz dimension - the combined finding owns it.
 
 ## Invocation
 
-`/task-rails-review-security [<branch>|pr-<N>]` - current branch vs base; fails fast on trunk. Subagent invocation with pre-read artifacts skips Steps 1-3.
+`/task-rails-review-security [<branch>|pr-<N>]` - current branch vs base; fails fast on trunk. Subagent invocation with pre-read artifacts skips Steps 2-3 (Step 1 still runs - behavioral rules are per-context). Checks needing config outside the evidence in hand (`verify_policy_scoped` enablement, `Rack::Attack` limits): file `[Recommend]` with a `verify:` caveat rather than asserting or skipping.
 
-**Audit mode** (no PR/diff: Pundit / strong-params drift sweep, Devise/JWT flow audit): skip Step 3. Scope = the named surface; none named = `app/controllers` + `app/policies` for an authz sweep, auth config + custom auth controllers for a flow audit. Run Steps 4-9 against current code (skip axes with no matching surface, state the skip). Verify: skip `review-finding-verify` (it requires a diff) - instead re-read each cited `file:line` at `HEAD`, drop findings the code does not support, and report `Findings verified: inline (no diff)`. Report `**Target:** <surface>` in the Summary instead of checkpoint fields; skip `review-report-writer` checkpointing and write the report body directly.
+**Audit mode** (no PR/diff: Pundit / strong-params drift sweep, Devise/JWT flow audit): skip Step 3. Scope = the named surface; none named = `app/controllers` + `app/policies` for an authz sweep, auth config + custom auth controllers for a flow audit. Run Steps 4-9 against current code - "diff"-worded checks and gates read as "the resolved surface"; skip axes with no matching surface, state the skip. Severity tiers keep their meanings; read `block deploy/merge` as fix-priority ranks, not gates. Verify: skip `review-finding-verify` (it requires a diff) - instead re-read each cited `file:line` at `HEAD`, drop findings the code does not support, and report `Findings verified: inline (no diff)`. Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and write the report body directly.
 
 ## Workflow
 
@@ -64,7 +64,7 @@ Use skill: `rails-security-patterns` for canonical rules. Walk the OWASP axes be
 
 ### Step 5 - Authentication (only when diff touches auth)
 
-Run only the detected flavor's bullets.
+Run the detected flavor's bullet (Devise or JWT); the Session / Password / Secrets bullets are flavor-independent and always run when the diff touches auth.
 
 - **Devise**: `:lockable`/`:trackable`/`:confirmable`/`:rememberable` per threat model; `password_length >= 8`; `paranoid: true` on forgot-password; custom controllers preserve `protect_from_forgery` + rate limit
 - **JWT**: signature pinned (no `alg: none`); HMAC secret from credentials; `exp`/`aud`/`iss` validated; refresh rotation or short access lifetime
@@ -108,15 +108,19 @@ Run only the detected flavor's bullets.
 - [ ] No sensitive data in URLs - POST body or signed tokens
 - [ ] Rails credentials for all third-party keys; per-environment credential files
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+### Verify Findings (before writing)
+
+Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary; dropped rows appear only in the tally, never in the body. Subagent runs skip this - the parent verifies the merged set once.
 
 ### Step 10 - Write Report
 
-Standalone runs: use skill `review-report-writer` with `report_type: review-security`. Assemble every checkpoint field the writer requires: `scope: +sec`, `depth: deep` (this skill always runs full depth; `deep` is its writer value), `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-security-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report. Security-adjacent correctness bugs found en route (double `body.read`, broken comparisons) stay in the report - they weaken the security posture even when the category is "bug".
+Standalone runs: use skill `review-report-writer` with `report_type: review-security`. Assemble every checkpoint field the writer requires: `scope: +sec`, `depth: deep` (this skill always runs full depth; `deep` is its writer value), `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-security-<branch>.md` already exists with valid frontmatter (filename per the writer's sanitization: `/` and characters outside `[A-Za-z0-9_-]` become `-`), then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report. Security-adjacent correctness bugs found en route (double `body.read`, broken comparisons) stay in the report - they weaken the security posture even when the category is "bug".
 
 ## Output Format
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+Fill rules: `Findings verified:` carries the verify tally on standalone runs, the literal `inline (no diff)` in audit mode, and is omitted on subagent runs (the parent verifies). `Target:` appears only in audit mode (it replaces writer checkpointing); omit otherwise.
 
 ```markdown
 ## Rails Security Review Summary
@@ -124,8 +128,9 @@ The fence below delimits the template for display only - it is not part of the r
 **Stack Detected:** Ruby <version> / Rails <version>
 **Auth:** Devise | JWT | Custom | Hybrid
 **Authorization:** Pundit | CanCanCan | Custom
+**Target:** <surface>
 **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
-**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped _(standalone runs; audit mode: `inline (no diff)`; omit on subagent runs - the parent verifies)_
+**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
 
 [2-3 sentence assessment; call out Rails-specific risks.]
 
@@ -153,18 +158,19 @@ _Omit empty severity sections. If all empty, state "No security issues found."_
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: dependencies] - [one-line action]
 
-`[Implement]` = localized fix. `[Delegate]` = cross-cutting hardening / dependency upgrade / threat-model. Order Must > Recommend. Intent per finding: Critical/High -> [Must]; Medium/Low -> [Recommend]; when the verify pass de-escalated a finding, its verified `Label` wins over this mapping. Omit if no issues.
+`[Implement]` = localized fix. `[Delegate]` = cross-cutting hardening / dependency upgrade / threat-model. Order Must > Recommend. Intent per finding: Critical/High -> [Must]; Medium/Low -> [Recommend]; when the verify pass changed a finding's label, its verified `Label` wins over this mapping. No other label is written. Omit if no issues.
 ```
 
 ## Self-Check
 
-- [ ] Steps 1-3 ran (or accepted from parent); auth + authz flavor recorded
+- [ ] Steps 1-3 ran (or accepted from parent; audit mode: Step 3 skipped); auth + authz flavor recorded
 - [ ] Step 4: OWASP axes walked; skip-reasons stated when an axis didn't apply
-- [ ] Step 5: only detected auth flavor's bullets ran
+- [ ] Step 5: detected flavor's bullet + the flavor-independent bullets ran (only when the diff touches auth)
 - [ ] Step 6: every new action has matching policy method; IDOR + tenant isolation checked
 - [ ] Step 7: strong params on every diffed create/update; views audited (skipped for API-only)
 - [ ] Step 8-9: CSRF/CORS/admin gating/data protection covered
-- [ ] Step 10: report via `review-report-writer`; confirmation printed
+- [ ] Verify pass ran (inline in audit mode; skipped as subagent - the parent verifies); tally or omission per fill rules
+- [ ] Step 10: report via `review-report-writer` (subagent: findings returned to parent; audit mode: body written directly); confirmation printed when the writer ran
 - [ ] Combined-finding rule applied; every finding has an attack scenario; empty severities stated explicitly
 
 ## Avoid
@@ -175,4 +181,3 @@ _Omit empty severity sections. If all empty, state "No security issues found."_
 - Disabling `verify_authorized` instead of adding the missing call
 - N near-duplicate findings when one combined finding captures the shared root cause
 - Walking flavor-specific bullets when the diff doesn't touch that flavor
-- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

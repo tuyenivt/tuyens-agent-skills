@@ -207,7 +207,7 @@ namespace :reports do
 end
 ```
 
-`invoke` chains fail fast - a raise in step 1 skips the rest, which is right when steps depend on each other. For independent steps, rescue per step, continue, and raise a summary at the end. The composite owns the cross-cutting pieces exactly once: one leader lock around the chain (children don't re-lock) and one set of `Signal.trap`s (per-child traps overwrite each other in the same process). `Rake::Task["foo"].reenable` if a chained task needs to run twice in one process.
+`invoke` chains fail fast - a raise in step 1 skips the rest, which is right when steps depend on each other. For independent steps, rescue per step, continue, and raise a summary at the end. The composite owns the cross-cutting pieces exactly once: one leader lock around the chain and one set of `Signal.trap`s (per-child traps overwrite each other in the same process). Chain-only children don't lock; a child that also runs standalone (its own cron entry) keeps its own lock - advisory locks are session-reentrant, so the chained acquisition is a no-op. `Rake::Task["foo"].reenable` if a chained task needs to run twice in one process.
 
 ### Layout and Testing
 

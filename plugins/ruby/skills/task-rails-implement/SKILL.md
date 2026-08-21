@@ -29,7 +29,7 @@ Use skill: `stack-detect`. Identify Ruby/Rails version, DB (MySQL/PG), API-only 
 
 ### Step 3 - Gather Requirements
 
-Ask:
+Resolve (ask, or infer per the threshold below):
 1. Feature description and primary use case
 2. Main models (fields, types, relationships, constraints)
 3. External integrations (payments, email, third parties)
@@ -68,6 +68,7 @@ app/
   mailers/order_mailer.rb                   # if emails sent
   clients/shipment_api_client.rb            # if external API
 config/routes.rb                            # routes diff
+config/schedule.yml                         # if cron-scheduled (sidekiq-cron / whenever)
 spec/{models,services,policies,requests,jobs,mailers,components}/...
 db/migrate/<ts>_create_orders.rb
 ```
@@ -76,13 +77,13 @@ db/migrate/<ts>_create_orders.rb
 
 ### Step 5 - Migrations
 
-Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG). One structural concern per migration. Indexes on FKs and frequently-filtered columns; partial indexes for non-terminal status; `null: false` + defaults where appropriate. Monetary values: integer cents columns (`amount_cents`) by default; `decimal` precision/scale only when matching an existing project convention.
+Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG). One structural concern per migration (a new table plus its own indexes and constraints is one concern). Indexes on FKs and frequently-filtered columns; partial indexes for non-terminal status (PG; on MySQL composite the flag with the range/sort column instead); `null: false` + defaults where appropriate. Monetary values: integer cents columns (`amount_cents`) by default; `decimal` precision/scale only when matching an existing project convention.
 
 ### Step 6 - Models
 
 Use skill: `rails-activerecord-patterns`. Apply its rules: explicit `dependent:` on `has_many`/`has_one`, `enum` with integer mapping, chainable scopes, `counter_cache` where count queries appear, no `default_scope`.
 
-File uploads: use skill `rails-active-storage-patterns` *here* (attachment declarations, validations, direct-upload decision) - it also shapes the migration (Step 5) and form (Step 11); don't defer it to Step 12.
+File uploads: decided at the Step 4 design - load skill `rails-active-storage-patterns` there so it shapes the migration (Step 5, including Active Storage's own tables when not yet installed), the attachment declarations here, and the form (Step 11); don't defer it to Step 12.
 
 ### Step 7 - Services
 
@@ -101,13 +102,15 @@ def call
 end
 ```
 
-When externals enter the flow, `rails-service-objects`' ordering arbitrates: abort-critical calls (charge) go *before* the transaction with an idempotency key; deferrable/flaky systems move to a post-commit Sidekiq job whose own service applies the same call-before-txn rule internally.
+When externals enter the flow, `rails-service-objects`' ordering arbitrates. Discriminator: abort-critical = the caller's success depends on the provider's answer right now (charging at checkout) - call *before* the transaction with an idempotency key; a call whose result the caller does not wait on (refund execution, notification, sync) is deferrable - post-commit Sidekiq job whose own service applies the same call-before-txn rule internally.
 
-Cross-row invariants (per-user caps, quotas): enforce in the service under a row lock, with a DB backstop where expressible - a model validation alone races.
+Cross-row invariants (per-user caps, quotas): enforce in the service under a row lock, with a DB backstop where declaratively expressible (constraint, unique/partial index - not triggers) - a model validation alone races.
 
-Mailers: generate under `app/mailers`; dispatch with `deliver_later` post-commit, exactly like Sidekiq jobs - never inside the transaction.
+Domain-state denials (locked / archived / expired target): service `Result` failures, not Pundit policies - policies decide who may act, services decide whether current state allows it.
 
-Time-based behavior (expiry, eligibility windows, retention): owned here. If the deadline is only checked at request time, a predicate on the timestamp (guard or scope) is the whole design - no scheduler. Add a cron-invoked rake task (`rails-rake-task-patterns`) or scheduled job only when something must happen at the deadline without a request (notify, purge, flip visible state); name the trigger in the design.
+Mailers: generate under `app/mailers`; dispatch with `deliver_later` post-commit, exactly like Sidekiq jobs - never inside the transaction. Templates live in `app/views/<mailer_name>/` even in API-only apps - the Step 11 skip does not cover mailer views.
+
+Time-based behavior (expiry, eligibility windows, retention): owned here. If the deadline is only checked at request time, a predicate on the timestamp (guard or scope) is the whole design - no scheduler. Add a cron-invoked rake task (`rails-rake-task-patterns`) or scheduled job only when something must happen at the deadline without a request (notify, purge, flip visible state); name the trigger in the design. Register the cadence in the scheduler the app already runs (`sidekiq-cron` schedule file, `whenever`'s `config/schedule.rb`; none present - cron-invoked rake task) and list that config file in Files Generated.
 
 ### Step 8 - External HTTP Clients
 
@@ -117,19 +120,20 @@ If the feature fans out across two or more external services on the same request
 
 ### Step 9 - Controllers
 
-Strong params; pagination on list endpoints; delegate business logic to services. Domain error -> HTTP:
+Strong params; pagination on list endpoints (match the project's paginator; none - `pagy`); delegate business logic to services. Authentication: wire the app's existing mechanism (`before_action :authenticate_user!` or equivalent) on new controllers - scaffolding auth itself is out of scope. Domain error -> HTTP:
 
-| Domain Error         | HTTP |
-| -------------------- | ---- |
-| Validation failure   | 422  |
-| RecordNotFound       | 404  |
-| Conflict (duplicate) | 409  |
-| Unauthenticated      | 401  |
-| Forbidden            | 403  |
+| Domain Error                          | HTTP |
+| ------------------------------------- | ---- |
+| Validation failure (incl. quota/cap)  | 422  |
+| RecordNotFound                        | 404  |
+| Conflict (duplicate)                  | 409  |
+| Upstream dependency down / timed out  | 503  |
+| Unauthenticated                       | 401  |
+| Forbidden                             | 403  |
 
 **API versioning:** new APIs under `/api/v1/...`; for existing apps, match the convention.
 
-**Idempotency keys** for non-GET write endpoints whose effect must not duplicate on retry (payments, orders, refunds). Two valid mechanisms: row-creating endpoints forward the `Idempotency-Key` header backed by a unique index; state transitions on existing rows are replay-safe via a status guard under row lock (no header needed - there's no row to key). An endpoint that does both (creates a row and transitions its parent) applies both: header-backed unique index on the new row, status guard on the parent. See `rails-service-objects`.
+**Idempotency keys** for non-GET write endpoints whose effect must not duplicate on retry (payments, orders, refunds). Two valid mechanisms: row-creating endpoints forward the `Idempotency-Key` header backed by a unique index; state transitions on existing rows are replay-safe via a status guard under row lock (no header needed - there's no row to key). An endpoint that does both (creates a row and transitions its parent) applies both: header-backed unique index on the new row, status guard on the parent. A create whose only effect is a row already guarded by a unique index needs no header - the index is the guard. See `rails-service-objects`.
 
 ### Step 10 - Serializers (API only)
 
@@ -146,7 +150,7 @@ Use skill: `rails-security-patterns` (Pundit policies per resource, `verify_auth
 Public/token endpoints (shared links): the token *is* the capability - generate with `has_secure_token` (unguessable), route by token outside the authenticated resource namespace, serve through a read-only serializer, and skip Pundit with an explicit `skip_after_action :verify_authorized` + stated rationale.
 
 - File uploads: `rails-active-storage-patterns` was loaded at Step 6; apply its serving/security rules here
-- For ActionCable channels (custom channels, connection auth): use skill `rails-actioncable-patterns`
+- Custom ActionCable channels / connection auth: `rails-actioncable-patterns` covers them here (its Step 11 load covered Turbo broadcast scoping)
 
 ### Step 13 - Tests
 
@@ -156,6 +160,7 @@ Use skill: `rails-testing-patterns`. Minimum coverage - add rows the feature's b
 - Policy: per `(role, action)`
 - Request: happy + unauthorized + validation-error per action
 - Job: idempotency + bounded retry (if applicable)
+- Client: boundary-stubbed (WebMock) per outcome, incl. timeout/error -> domain-error translation (if external APIs)
 - Mailer: per email action; enqueued via `deliver_later` (if emails sent)
 - ViewComponent (server-rendered): `render_inline` per state
 - Turbo Stream / broadcast (server-rendered live updates): response format + `have_broadcasted_to`
@@ -206,13 +211,13 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presentin
 - [ ] Step 10: serializer per resource (or skipped for server-rendered)
 - [ ] Step 11: views in existing engine via `rails-view-templates` (or skipped for API)
 - [ ] Step 12: Pundit policies + `rescue_from` ladder; Active Storage / ActionCable patterns when applicable
-- [ ] Step 13: model + service + policy + request + job + mailer + component + broadcast specs as applicable; factory traits
+- [ ] Step 13: model + service + policy + request + job + mailer + client + component + broadcast specs as applicable; factory traits
 - [ ] Step 14: `rspec` and `rubocop` pass (or reported "written, not executed" when the environment can't run them)
 
 ## Avoid
 
 - Generating code before design approval
-- `.perform_async` / external API calls / mailers inside a DB transaction (dispatch via `after_commit`)
+- `.perform_async` / external API calls / mailers inside a DB transaction (dispatch post-commit: sequential code after the transaction block, or `after_commit`)
 - `render json: @model` without a serializer
 - Business logic in controllers or model callbacks
 - Introducing a new view engine when one already exists

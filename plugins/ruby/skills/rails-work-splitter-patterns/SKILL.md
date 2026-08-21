@@ -85,7 +85,7 @@ end
 
 MySQL under default `REPEATABLE READ`: wrap the claim in per-transaction `:read_committed` (shown). Never set RC on the pool - web (RR) and Sidekiq would diverge. The `order(:id) LIMIT N` hits the PK; non-unique scans gap-lock. See `rails-db-locking-patterns`.
 
-PostgreSQL default is RC, so the `isolation:` parameter is a no-op there but harmless.
+PostgreSQL default is RC - omit the parameter there: it buys nothing in production and explicit `isolation:` raises `TransactionIsolationError` inside any open transaction, transactional test fixtures included.
 
 Two non-negotiables for any claim shape:
 

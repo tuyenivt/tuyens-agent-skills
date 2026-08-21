@@ -64,11 +64,11 @@ Metadata-only - finishes in ms even on TB tables.
 | Add column (last position)           | 8.0.12  |
 | Add column (any position)            | 8.0.29  |
 | Drop column                          | 8.0.29  |
-| Rename column                        | 8.0.13  |
-| Modify default                       | 8.0.0   |
-| Add/drop virtual generated column    | 8.0.0   |
-| Enum/set additions                   | 8.0.0   |
-| Rename table                         | 8.0.0   |
+| Rename column                        | 8.0.28  |
+| Modify default                       | 8.0.12  |
+| Add/drop virtual generated column    | 8.0.12  |
+| Enum/set additions                   | 8.0.12  |
+| Rename table                         | 8.0.12  |
 
 The server auto-selects INSTANT when the operation is eligible - a plain `add_column` on an eligible operation is already instant. Write `ALGORITHM=INSTANT` explicitly anyway (via `execute`; Rails emits no algorithm clause): an ineligible operation then fails loudly instead of silently degrading to a multi-hour rebuild.
 
@@ -123,7 +123,7 @@ add_index :users, "(JSON_VALUE(metadata, '$.tier' RETURNING CHAR(50)))", name: "
 
 ### Renaming columns (five-step copy)
 
-`RENAME COLUMN` is INSTANT (8.0.13+) but breaks rolling deploys (old code still reads/writes the old name) and every external reader. Use it only with a coordinated cutover; default to the five-step copy:
+`RENAME COLUMN` is INSTANT (8.0.28+; INPLACE before that, and a column referenced by a foreign key refuses INSTANT) but breaks rolling deploys (old code still reads/writes the old name) and every external reader. Use it only with a coordinated cutover; default to the five-step copy:
 
 ```ruby
 add_column :orders, :amount, :decimal, precision: 10, scale: 2          # 1
@@ -224,11 +224,10 @@ end
 Guard against double-runs (deploy retry, two engineers). Full leader-election patterns: `rails-db-locking-patterns`.
 
 ```ruby
-def up
-  ApplicationRecord.with_advisory_lock("backfill_order_amount", timeout_seconds: 0) do
-    Order.in_batches(of: 10_000) { |b| b.where(amount: nil).update_all(amount: ...) }
-  end || abort("another backfill_order_amount is running")
-end
+# In the backfill rake task (never db/migrate):
+ApplicationRecord.with_advisory_lock("backfill_order_amount", timeout_seconds: 0) do
+  Order.in_batches(of: 10_000) { |b| b.where(amount: nil).update_all(amount: ...) }
+end || abort("another backfill_order_amount is running")
 ```
 
 ### Rollback safety

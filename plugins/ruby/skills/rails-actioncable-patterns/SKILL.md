@@ -44,7 +44,7 @@ module ApplicationCable
 end
 ```
 
-For JWT/API apps, prefer the `Sec-WebSocket-Protocol` subprotocol header for the token - headers don't land in access logs. Query params are acceptable only for short-lived single-use tickets minted per connection. Never put the long-lived JWT itself in a URL. Devise apps can identify via `env["warden"].user` instead of the cookie lookup.
+For JWT/API apps, prefer the `Sec-WebSocket-Protocol` subprotocol header for the token - headers don't land in access logs; in `connect`, read `request.headers["Sec-WebSocket-Protocol"]` and take the entry that isn't `actioncable-v1-json`. Query params are acceptable only for short-lived single-use tickets minted per connection. Never put the long-lived JWT itself in a URL. Devise apps can identify via `env["warden"].user` instead of the cookie lookup.
 
 ### Subscription Authorization (IDOR Prevention)
 
@@ -70,14 +70,14 @@ end
 Same rule for Turbo Stream scope:
 
 ```erb
-<%# Bad - guessable scope leaks across tenants %>
+<%# Bad - every viewer receives the identical signed tag - leaks across tenants %>
 <%= turbo_stream_from "orders" %>
 
 <%# Good - per-user, signed by Rails %>
 <%= turbo_stream_from current_user, :orders %>
 ```
 
-`turbo_stream_from` signs the scope so the signature proves the server emitted it - **not** that the current viewer is entitled. Authorization is the scope the controller chooses to render. For a user-owned resource, scope as `[current_user, record]` (and broadcast to the identical array) - including the owner makes the scope unguessable even if a signed tag leaks. For a shared resource (project, team, room), scope as `[record, :collection]` and gate access in the controller/policy before rendering the tag - every holder of the signed tag can read the stream.
+`turbo_stream_from` signs the scope so the signature proves the server emitted it - **not** that the current viewer is entitled. Authorization is the scope the controller chooses to render. For a user-owned resource, scope as `[current_user, record]` (and broadcast to the identical array) - including the owner makes the scope unguessable even if a signed tag leaks. For a shared resource (project, team, room), scope as `[record, :collection]` and gate access in the controller/policy before rendering the tag - every holder of the signed tag can read the stream. A singleton scope with no record (admin dashboard, site status) follows the same shared-resource rule: a bare symbol scope is acceptable exactly when the controller renders the tag only to the entitled audience - the audience gate, not the scope name, is the control.
 
 ### Broadcast Adapters
 
@@ -179,7 +179,7 @@ Tests: <channel spec | broadcast assertion | both>
 ## Avoid
 
 - `stream_from "scope_#{params[:id]}"` without an ownership check - IDOR over WebSocket
-- `turbo_stream_from "scope"` with a guessable name - cross-tenant leak
+- One shared `turbo_stream_from` scope for per-user or per-tenant data - every viewer holds the identical signed tag
 - Broadcasting from `after_save` - subscribers race the commit
 - Sharing one Redis instance between ActionCable and Sidekiq under load
 - Inline `broadcast_to` in a loop over many recipients

@@ -135,7 +135,7 @@ class FulfillOrderJob
 end
 ```
 
-`rescue => e; logger.error(...)` in a job prevents retry and hides incidents. So do unbounded `retry`/`sleep` loops inside service code - retry belongs to Sidekiq, bounded and observable. If you swallow, document why and call the reporter explicitly. For per-item batch work, don't swallow per item silently: collect failures, report the batch summary, raise if everything failed.
+`rescue => e; logger.error(...)` in a job prevents retry and hides incidents. So do unbounded `retry`/`sleep` loops inside service code - retry belongs to Sidekiq, bounded and observable. If you swallow, document why and call the reporter explicitly. For per-item batch work, don't swallow per item silently: collect failures, report one aggregate `Rails.error.report` with counts and sample rows in context (not one report per item - 10k failing rows must not page 10k times), raise if everything failed.
 
 ### Boundary Translation
 

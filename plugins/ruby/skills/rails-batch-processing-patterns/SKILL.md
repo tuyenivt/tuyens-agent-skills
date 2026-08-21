@@ -185,7 +185,7 @@ Tools: `get_process_mem`, `memory_profiler` (allocation reports), `derailed_benc
 ### MySQL Gotchas
 
 - `innodb_flush_log_at_trx_commit=1` (durable default) makes per-row transactions slow - fix chunk size, not flush mode
-- Long transactions on RDS/Aurora trip History List Length; Aurora's `Aurora_MySQL_undo_log_records` is the metric
+- Long transactions on RDS/Aurora trip History List Length; the Aurora CloudWatch metric is `RollbackSegmentHistoryListLength` (writer instance)
 - Gap locks held by long write transactions under `REPEATABLE READ` produce surprising read-stalls
 - Backfills > 100M rows: evaluate `gh-ost` / `pt-online-schema-change` for replication-lag-aware throttling
 
@@ -204,7 +204,7 @@ Workload: {backfill | recompute | export | migration}
 Volume: {row count, payload shape}
 Database: {MySQL | PostgreSQL}
 Chunk size: {N} (rationale: {OLTP contention | cold table | large payload})
-Transaction shape: {chunked / per-statement / none}
+Transaction shape: {chunked | per-statement | none - compliant for read-only chunks, GAP for multi-statement writes (Shape C)}
 Idempotency: {state column | cursor | progress table | natural}
 External side effects: {none | per-chunk call with completion flag | post-commit only}
 Throttle: {none | per-chunk sleep | replica-lag poll @ {threshold}s}

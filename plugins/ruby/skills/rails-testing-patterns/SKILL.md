@@ -235,7 +235,7 @@ RSpec.describe "orders:fulfill_pending" do
 end
 ```
 
-For production-gate tasks, stub `Rails.env` to `"production"` and assert `task.invoke` raises `SystemExit` when `CONFIRM` is unset.
+For production-gate tasks, stub `Rails.env` with a StringInquirer - `allow(Rails).to receive(:env).and_return("production".inquiry)` (a plain string breaks `Rails.env.production?`) - and assert `task.invoke` raises `SystemExit` when `CONFIRM` is unset.
 
 ### Suite Speed
 

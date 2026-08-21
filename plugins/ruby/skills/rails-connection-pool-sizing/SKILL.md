@@ -106,7 +106,7 @@ RDS MySQL default: `max_connections = LEAST({DBInstanceClassMemory/12582880}, 16
 | `db.r6g.large`  | 16 GB  | ~1365                     |
 | `db.r6g.xlarge` | 32 GB  | ~2730                     |
 
-Aurora MySQL: per writer; readers have their own. RDS PG: similar formula (`/9531392`); per-connection memory higher. Always confirm the live value (`SHOW VARIABLES LIKE 'max_connections'` / `SHOW max_connections`) - parameter groups override the formula, and when observed errors contradict the computed budget, an override is the first suspect.
+Aurora MySQL: per writer; readers have their own. RDS PG: similar formula (`/9531392` of instance memory in bytes - `db.r6g.large` 16 GB ~= 1800); per-connection memory higher. Always confirm the live value (`SHOW VARIABLES LIKE 'max_connections'` / `SHOW max_connections`) - parameter groups override the formula, and when observed errors contradict the computed budget, an override is the first suspect.
 
 ### Detection in production
 

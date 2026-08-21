@@ -27,7 +27,7 @@ Depth (`standard` (default) | `deep`) and scope (`Core` | `+Perf` | `+Sec` | `+O
 
 - **+Sec**: file upload (Active Storage/Shrine/CarrierWave), Devise/Pundit/CanCanCan config, `params.permit` changes, raw SQL, secrets, Sidekiq taking user input
 - **+Perf**: `db/migrate/`, `add_index`, new `.where`/`.order`/scopes, new payload endpoints, loops hitting DB or HTTP
-- **+Obs**: new service, external dependency, ActiveJob/Sidekiq class, log/notifications config
+- **+Obs**: log/notifications/tracer config, a new external dependency, or a new service / ActiveJob / Sidekiq class whose diff adds no instrumentation (no structured log or event)
 - **+Rel**: new Faraday/`Net::HTTP` client without timeout, `stoplight`/`retriable` config, Sidekiq job without an idempotency guard, external call or `.perform_async` inside a transaction, unbounded `.all.each`, missing `after_commit` dispatch
 - Two or more categories in the resolved union (user flags + firing signals) -> **Full** (scope enums are single-valued; a two-scope union has no representation)
 
@@ -99,6 +99,8 @@ No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, 
 | `prior_checkpoint.base_ref != base_ref`                                | `round = prior.round + 1`. Note in Summary: `Base ref changed since round <prior.round>.`           |
 | None of the above                                                       | `round = prior.round + 1`.                                                                          |
 
+Apply the first matching row's decision; when several rows match, emit every matching row's Summary note.
+
 **Step 3.5c - Scope expansion handling.**
 
 If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `core-only`, round 2 is `full`), the newly-added scopes have no prior findings to reconcile. Record in Summary: `Scope expanded round <N>: +<list>.`
@@ -119,11 +121,11 @@ Use skills: `review-pr-risk`, `review-blast-radius`. State **Risk Level** and **
 
 **Resolve scope now** (round 1): union of user flags and signals firing on the Step 3 diff; `core-only` suppresses signal escalation. Record firing signals in Summary. (Round 2+ precedence: Step 3.5c.)
 
-**Low-risk short-circuit:** Risk: Low + Blast Radius: Narrow + change does not touch auth, middleware, API contracts, shared concerns, `app/services/`, or `lib/` -> skip Steps 6-8, produce Step 5 only (with its atomic skills); Step 9 still follows its own scope rules; Step 10 still writes the report (Summary + the Step 3.7 outputs (Change Brief, traceability, requirement findings) + Step 5 findings). Note `Low-risk short-circuit: Steps 6-8 skipped` in Summary. When `core-only` suppressed a firing escalation signal, record the suppressed signal in Summary and emit a `[Delegate]` Next Step naming the matching `/task-rails-review-*` command.
+**Low-risk short-circuit:** Risk: Low + Blast Radius: Narrow + change does not touch auth, middleware, API contracts, shared concerns, `app/services/`, or `lib/` -> skip Steps 6-8, produce Step 5 only (with its atomic skills); Step 9 still follows its own scope rules, and Steps 9.4 (and 9.5 on round 2+) still run; Step 10 still writes the report (Summary + the Step 3.7 outputs (Change Brief, traceability, requirement findings) + Step 5 findings + Next Steps). Note `Low-risk short-circuit: Steps 6-8 skipped` in Summary. When `core-only` suppressed a firing escalation signal, record the suppressed signal in Summary and emit a `[Delegate]` Next Step naming the matching `/task-rails-review-*` command.
 
 ### Step 5 - Rails Correctness
 
-Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (strong params, authz, IDOR, mass assignment, AR-in-API leakage, idempotency keys) belong to `task-rails-review-security`. When +Sec IS in scope, core stays silent on them - the subagent owns them and Step 10 dedups. When +Sec is not in scope, raise the most severe as a `[Recommend]` and note "verify via `/task-rails-review-security`". Dual-natured findings (a TOCTOU balance check is both a race and an authz-adjacent hole) are filed by core for the correctness dimension; the merge unifies.
+Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (strong params, authz, IDOR, mass assignment, AR-in-API leakage, endpoint idempotency keys) belong to `task-rails-review-security`. When +Sec IS in scope, core stays silent on them - the subagent owns them and Step 10 dedups. When +Sec is not in scope, raise the most severe as a `[Recommend]` and note "verify via `/task-rails-review-security`". Job idempotency guards, retries, and timeouts follow the same pattern with +Rel: the reliability subagent owns them when +Rel is in scope; otherwise raise the most severe as a `[Recommend]` + "verify via `/task-rails-review-reliability`". Dual-natured findings (a TOCTOU balance check is both a race and an authz-adjacent hole) are filed by core for the correctness dimension; the merge unifies.
 
 Atomic skills (consult when PR touches the area):
 
@@ -136,7 +138,7 @@ Atomic skills (consult when PR touches the area):
 - `rails-exception-handling` (rescue logic, new error classes, Sidekiq error flow)
 - `rails-view-templates` (diffed `.erb`/`.haml`/`.slim` templates)
 
-`deep` depth in core steps: consult every listed atomic skill (not only touched-area ones) and read the surrounding code beyond the diff hunks before judging.
+`deep` depth in core steps: consult every listed atomic skill (not only touched-area ones) and read the surrounding code beyond the diff hunks before judging; an atomic with no matching surface anywhere in the repo is skipped, without a consulted-clean note.
 
 Checks:
 
@@ -222,7 +224,7 @@ Scopes added by *firing signals* and by *user flag* alike review the full range;
 
 Use skill: `review-finding-verify` with the assembled findings (including any merged back from subagents), the diff already read, and `base_ref` / `head_ref`.
 
-Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`.
+Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`; the tally counts each distinct defect once, not once per scope that raised it.
 
 ### Step 9.5 - Reconcile Prior Findings (round 2+ only)
 
@@ -235,12 +237,12 @@ Skip on round 1. Otherwise use skill: `review-prior-findings-reconcile` with:
 
 The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
 
-Fold any `Still open` rows into `## Next Steps` as `(open since round <prior.round>)`-suffixed entries, ordered by severity alongside this round's new findings. Do not emit a standalone "Carry-Over Open Items" section.
+Fold any `Still open` rows into `## Next Steps` as `(open since round <prior.round>)`-suffixed entries, ordered by severity alongside this round's new findings (ties at the same label: carryover first). Do not emit a standalone "Carry-Over Open Items" section. A prior finding rediscovered by this round's full-range analysis renders once in High-Impact Findings, once as a `Still open` reconciliation row, and once in Next Steps with the suffix - never twice in the findings list.
 
 ### Step 10 - Synthesize and Report
 
 Merge subagent findings:
-- Deduplicate cross-cutting findings; one entry citing all scopes that raised it
+- Deduplicate cross-cutting findings; one entry citing all scopes that raised it (`raised by: <scopes>` appended to the Issue line)
 - **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend`
 - Preserve `file:line` citations; order by intent, not scope
 - Merge Next Steps into one prioritized list; preserve `[Implement]`/`[Delegate]` tags
@@ -250,7 +252,7 @@ Use skill: `review-report-writer` with `report_type: review` and these checkpoin
 
 - `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
 - `mode: full` (the writer's only accepted value), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4; frontmatter uses the writer's enum - `Core` maps to `core-only`, `+Rel` to `+rel`), `depth` (resolved/auto-promoted), `stack = ruby-rails`
+- `scope` (resolved in Step 4; frontmatter uses the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full`), `depth` (resolved/auto-promoted), `stack = ruby-rails`
 
 Print confirmation line.
 
@@ -275,12 +277,13 @@ _(Request Changes = any [Must]; Discuss = no [Must] but an unresolved assumption
 **Risk Level:** Low | Medium | High | Critical
 **Blast Radius:** Narrow | Moderate | Wide | Critical
 **Stack Detected:** Ruby <version> / Rails <version>
-**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
+**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(append `auto-escalated from Core; signals: <list>` or `user-flagged; signals also firing: <list>` as applicable)_
 **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
 **Round:** <N>                                _(include from round 2 onward)_
 **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
 **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Step 3.7 resolved no source)_
 **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
+**Notes:** <every note line mandated by Steps 3.5/3.5c/4/9 - narrowing, expansion, suppressed signals, short-circuit, incomplete scopes; omit the line when none>
 
 ## Change Brief
 
@@ -327,7 +330,7 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## Next Steps
 
-On round 2+, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Prioritized; each `[Implement]` or `[Delegate]`; order Must > Recommend.
+On round 2+, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings (ties at the same label: carryover first). Prioritized; each `[Implement]` or `[Delegate]`; order Must > Recommend.
 
 1. **[Implement]** [Must] file:line - one-line action
 2. **[Implement]** [Recommend] OldFile.rb:88 - N+1 in listAll (open since round 1)
@@ -343,9 +346,9 @@ _Omit empty sections. Omit Next Steps entirely if no actionable findings._
 - [ ] Step 3.7 - `review-change-intent` ran on the cumulative diff; Change Brief carried into the report; requirement lines in Summary, or all three requirement outputs omitted when no source resolved; its findings verified with the rest
 - [ ] Step 4: Risk and Blast Radius stated before findings; depth auto-promoted on Wide/Critical
 - [ ] Step 5: Rails correctness only - security idioms deferred to the security subagent or flagged for it; API contract checks ran when a route, serializer, permitted param, or rswag/openapi spec changed
-- [ ] Step 6: architecture / layering / Zeitwerk / multi-tenant / multi-DB applied via `architecture-guardrail`
-- [ ] Step 7: complexity + overengineering reviews run; test verbosity checked
-- [ ] Step 8: maintainability checks applied
+- [ ] Step 6: architecture / layering / Zeitwerk / multi-tenant / multi-DB applied via `architecture-guardrail` (or skipped via low-risk short-circuit)
+- [ ] Step 7: complexity + overengineering reviews run; test verbosity checked (or skipped via low-risk short-circuit)
+- [ ] Step 8: maintainability checks applied (or skipped via low-risk short-circuit)
 - [ ] Step 9: non-Core subagents ran in parallel with pre-resolved artifacts; failed scopes noted
 - [ ] Step 9.4 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels applied; tally in Summary
 - [ ] Step 9.5 - on round 2+, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
@@ -359,7 +362,6 @@ _Omit empty sections. Omit Next Steps entirely if no actionable findings._
 - Scoping round 2+ analysis to `<prior_head_sha>...<head_sha>` - risk, scope, depth, and requirement fit score the full `<base_ref>...<head_ref>` range on every round.
 - Writing the report on no-op exit - the file must stay byte-identical. (Same head SHA with expanded scope/depth is not a no-op - Step 3.5b.)
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
-- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Duplicating perf / security / observability / reliability depth here - dedicated subagents own it
 - Reviewing without reading the full diff and log first

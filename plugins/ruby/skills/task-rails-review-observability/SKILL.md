@@ -19,16 +19,16 @@ Rails PR observability check; pre-release for new service or major feature; post
 
 ## Depth
 
-| Depth      | What Runs                         |
-| ---------- | --------------------------------- |
-| `standard` | All steps except 10 (default)     |
-| `deep`     | All steps + SLI/SLO suggestions   |
+| Depth      | What Runs                                                     |
+| ---------- | ------------------------------------------------------------- |
+| `standard` | All steps except 10 (default; Step 10 has its own trigger)    |
+| `deep`     | All steps + SLI/SLO suggestions                               |
 
 ## Invocation
 
-`/task-rails-review-observability [<branch>|pr-<N>] [standard|deep]` - current branch vs base; fails fast on trunk. Subagent invocation with pre-read artifacts skips Steps 1-3.
+`/task-rails-review-observability [<branch>|pr-<N>] [standard|deep]` - current branch vs base; fails fast on trunk. Subagent invocation with pre-read artifacts skips Steps 2-3 (Step 1 still runs - behavioral rules are per-context).
 
-**Investigation mode** (no PR/diff: post-incident "diagnosis was slow" audit): skip Step 3. Scope = the paths involved in the incident (controllers, jobs, clients) plus their logging/tracing/tracker config; run Steps 4-10 against current code ("diffed" checks apply to every callsite in scope; Step 10 runs regardless of depth). Report `**Target:** <path>` in the Summary instead of checkpoint fields; skip `review-report-writer` checkpointing and write the report body directly.
+**Investigation mode** (no PR/diff: post-incident "diagnosis was slow" audit): skip Step 3. Scope = the paths involved in the incident (controllers, jobs, clients) plus their logging/tracing/tracker config; run Steps 4-10 against current code ("diffed" checks apply to every callsite in scope; a step whose surface doesn't exist in scope states N/A; Step 10 runs regardless of depth). There is no merge to block in this mode: the pre-existing-gap carve-outs don't apply - everything in scope files at its severity. Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and write the report body directly.
 
 ## Workflow
 
@@ -36,7 +36,7 @@ Rails PR observability check; pre-release for new service or major feature; post
 Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
-Use skill: `stack-detect`. Accept pre-confirmed from parent. If not Rails, redirect to `/task-code-review-observability`. Record **logger** (lograge / semantic_logger / raw), **tracer** (OpenTelemetry / Datadog / New Relic / Scout / Skylight / none), **error tracker** (Sentry / Honeybadger / Rollbar / none).
+Use skill: `stack-detect`. Accept pre-confirmed from parent. If not Rails, redirect to `/task-code-review-observability`. Record **logger** (lograge / semantic_logger / raw), **tracer** (OpenTelemetry / Datadog / New Relic / Scout / Skylight / none), **error tracker** (Sentry / Honeybadger / Rollbar / none) - each as of the head (post-diff) state.
 
 ### Step 3 - Resolve the Diff
 Use skill: `review-precondition-check`. On approval, read diff and log once. Skip if parent passed pre-read artifacts. Surface fail-fast verbatim and stop.
@@ -51,9 +51,11 @@ Inspect `config/environments/*.rb`, `config/initializers/lograge*.rb`/`semantic_
 
 `filter_parameters` coverage belongs to `task-rails-review-security`. Cross-flag here only when a new log line clearly leaks fields the security review wouldn't catch (e.g., custom `params.to_unsafe_h` log).
 
+The pre-existing-gap rule generalizes across Steps 4-9: config or instrumentation the diff doesn't touch files as `[Recommend]` context, never a merge blocker (investigation mode suspends this - see Invocation).
+
 ### Step 5 - Business Events (AS::Notifications & custom spans)
 
-Treat `ActiveSupport::Notifications` events and tracer spans as **one axis** - both answer "is this domain operation visible?" One finding per missing-visibility callsite, not one per signal type. The same merging applies across Steps 4/5: a callsite lacking both a structured log and a business event files once, here, with the log fix folded into the same finding.
+Treat `ActiveSupport::Notifications` events and tracer spans as **one axis** - both answer "is this domain operation visible?" One finding per missing-visibility callsite, not one per signal type. The same merging applies across Steps 4/5: a callsite lacking both a structured log (an interpolated-string log is not one) and a business event files once, here, with the log fix folded into the same finding.
 
 - [ ] **Custom business events instrumented**: domain operations (`order.fulfilled`, `payment.charged`) emitted via `ActiveSupport::Notifications.instrument` AND/OR wrapped in a tracer span (OTel `tracer.in_span`, Datadog `Datadog::Tracing.trace`)
 - [ ] **Subscribers exist or are documented** for emitted events
@@ -62,7 +64,7 @@ Treat `ActiveSupport::Notifications` events and tracer spans as **one axis** - b
 
 ### Step 6 - Correlation Across Layers
 
-Skip when diff doesn't touch correlation config or add new Sidekiq jobs / outbound HTTP / async paths.
+Skip when diff doesn't touch correlation config (request-id middleware, `CurrentAttributes`, tracer/instrumentation initializers) or add new Sidekiq jobs / outbound HTTP / async paths.
 
 - [ ] **`ActionDispatch::RequestId`** enabled; LB `X-Request-ID` honored when present
 - [ ] **Request-scoped context** via `ActiveSupport::CurrentAttributes` for `user_id`, `tenant_id`, `request_id`. Flag new code adding the legacy `RequestStore` gem instead of extending `Current`
@@ -82,7 +84,7 @@ Skip unless diff touches `config/initializers/opentelemetry.rb`, `config/initial
 
 ### Step 8 - Sidekiq Observability
 
-Skip when the diff touches no job code or Sidekiq config (state the skip).
+Skip when the diff touches no job code or Sidekiq runtime config (an instrumentation-gem add alone belongs to Step 7; state the skip).
 
 - [ ] **Job retries logged** with retry count and reason; **dead jobs alerted**
 - [ ] **Sidekiq metrics** (queue latency, busy workers, retry/dead counts) via `sidekiq-prometheus-exporter`, `yabeda-sidekiq`, or APM gem
@@ -99,7 +101,7 @@ Setup checks (gem install, DSN-from-credentials, test-mode silent, release track
 - [ ] **Unhandled `rescue_from` errors** still report to tracker (not swallowed). Inspect every new `rescue` in the diff
 - [ ] **DSN/API key in credentials**, test-mode silent (setup PRs only)
 
-### Step 10 - Health Checks and SLIs (deep depth or explicit request)
+### Step 10 - Health Checks and SLIs (deep depth, explicit request, or a service-introducing PR)
 
 Use skill: `ops-observability` for liveness/readiness shapes and SLI/SLO definitions. Rails specifics:
 
@@ -108,17 +110,21 @@ Use skill: `ops-observability` for liveness/readiness shapes and SLI/SLO definit
 - Dependency-health (`/internal/deps`): ops-dashboard signal, not a probe target
 - **Sidekiq SLI** for time-sensitive queues
 
-A Rails service with no SLI/SLO is a **High** observability gap - when the PR introduces the service or feature. On infra-only PRs (tracing setup, gem bumps), note the absence as a Recommendation instead of filing High.
+A Rails service with no SLI/SLO is a **High** observability gap - when the PR introduces the service or feature. On infra-only PRs (tracing setup, gem bumps), note the absence as a Recommendation instead of filing High. In investigation mode, a missing SLI/SLO for the audited path files High - the mode exists because diagnosis failed.
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once. Investigation mode also skips it (the skill requires a diff; there is none): instead re-read each cited `file:line` at `HEAD`, drop findings the code does not support, and report `Findings verified: inline (no diff)`.
+### Verify Findings (all depths and modes)
+
+Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary; dropped rows appear only in the tally, never in the body. Subagent runs skip this - the parent verifies the merged set once. Investigation mode also skips it (the skill requires a diff; there is none): instead re-read each cited `file:line` at `HEAD`, drop findings the code does not support, and report `Findings verified: inline (no diff)`.
 
 ### Step 11 - Write Report
 
-Standalone runs: use skill `review-report-writer` with `report_type: review-observability`. Assemble every checkpoint field the writer requires: `scope: +obs`, `depth` as invoked, `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-observability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report.
+Standalone runs: use skill `review-report-writer` with `report_type: review-observability`. Assemble every checkpoint field the writer requires: `scope: +obs`, `depth` as invoked, `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-observability-<branch>.md` already exists with valid frontmatter (filename per the writer's sanitization: `/` and characters outside `[A-Za-z0-9_-]` become `-`), then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report.
 
 ## Output Format
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+Fill rules: `Findings verified:` carries the verify tally on standalone runs, the literal `inline (no diff)` in investigation mode, and is omitted on subagent runs (the parent verifies). `Target:` appears only in investigation mode (it replaces writer checkpointing); omit otherwise. Pre-existing gaps filed as `[Recommend]` context render under Medium / Low Severity with a `(pre-existing)` prefix on Location.
 
 ```markdown
 ## Rails Observability Review Summary
@@ -127,8 +133,9 @@ The fence below delimits the template for display only - it is not part of the r
 **Logger:** lograge | semantic_logger | Rails.logger (raw) | other
 **Tracing:** OpenTelemetry | New Relic | Datadog APM | Scout | Skylight | none
 **Error tracker:** Sentry | Honeybadger | Rollbar | none
+**Target:** <path(s)>
 **Overall:** Adequate | Gaps Found - [High/Medium/Low count]
-**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped _(standalone runs; investigation mode: `inline (no diff)`; omit on subagent runs - the parent verifies)_
+**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
 
 ## Findings
 
@@ -152,20 +159,21 @@ _Omit empty sections._
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: Sidekiq] - [one-line action]
 
-`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Severity maps to intent: High -> [Must], Medium/Low -> [Recommend]; when the verify pass de-escalated a finding, its verified `Label` wins over this mapping. Order Must > Recommend. Omit if no gaps; state "No observability gaps found" when clean.
+`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Severity maps to intent: High -> [Must], Medium/Low -> [Recommend]; when the verify pass changed a finding's label, its verified `Label` wins over this mapping. No other label is written. Order Must > Recommend. Omit if no gaps; state "No observability gaps found" when clean.
 ```
 
 ## Self-Check
 
-- [ ] Steps 1-3 ran (or accepted from parent); logger + tracer + error-tracker recorded
+- [ ] Steps 1-3 ran (or accepted from parent; investigation mode: Step 3 skipped); logger + tracer + error-tracker recorded
 - [ ] Step 4: every new `Rails.logger.*` call assessed; PII overlap with security only when novel
 - [ ] Step 5: business events and custom spans assessed as one axis
 - [ ] Step 6: ran when diff added jobs / outbound HTTP / async paths; skipped with note otherwise
-- [ ] Step 7: tracing setup checked only on initializer/gem change
+- [ ] Step 7: tracing setup checked only on initializer/gem change (investigation mode: on in-scope tracer config, or N/A when none)
 - [ ] Step 8: retry/dead visibility and Sidekiq metrics covered
 - [ ] Step 9: scrub/user-context/Sidekiq capture every PR; setup checks only on initializer change
-- [ ] Step 10 (deep): liveness/readiness/SLI via `ops-observability`
-- [ ] Step 11: report via `review-report-writer`; confirmation printed
+- [ ] Step 10 ran when triggered (deep / explicit request / service-introducing PR / investigation mode) via `ops-observability`, or skip stated
+- [ ] Verify pass ran (inline in investigation mode; skipped as subagent - the parent verifies); tally or omission per fill rules
+- [ ] Step 11: report via `review-report-writer` (subagent: findings returned to parent; investigation mode: body written directly); confirmation printed when the writer ran
 - [ ] Every finding states the missing signal AND what becomes invisible; Next Steps ordered Must > Recommend
 
 ## Avoid
@@ -177,4 +185,3 @@ _Omit empty sections._
 - Reviewing infra-level config - stays at gem/library level
 - Filing the same correlation-ID gap as separate findings under logging + Sidekiq + outbound HTTP
 - Filing `filter_parameters` coverage as observability - that's security
-- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

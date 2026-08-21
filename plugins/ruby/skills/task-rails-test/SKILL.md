@@ -62,13 +62,13 @@ Use skill: `rails-testing-patterns` for recipes (FactoryBot traits, shoulda-matc
 
 Assert each behavior at the lowest layer that can catch it; upper layers verify wiring, not re-assert logic (a request spec checks the 422, not every validation message).
 
-### Step 6 - Prioritize by Risk (coverage < ~50%)
+### Step 6 - Prioritize by Risk (coverage < ~50% or unknown)
 
-Run **before scaffolding**. Coverage for this trigger: SimpleCov's line-coverage figure when configured; otherwise the per-layer ratio of specced to total files (models, actions, services, policies, jobs) - state which basis was used. Alphabetical is wrong when authorization holes go unspec'd while plumbing gets full coverage.
+Run **before scaffolding**. Coverage for this trigger: SimpleCov's line-coverage figure when configured; otherwise the per-layer ratio of specced to total files (models, actions, services, policies, jobs); when neither is computable from the evidence, state `basis: none available` and apply the risk order to the gaps that are in evidence. Always state which basis was used. Alphabetical is wrong when authorization holes go unspec'd while plumbing gets full coverage.
 
 1. **Authorization/authentication** - Pundit policy specs for every API-exposed model; request specs asserting 403/404 on every protected action; Devise/JWT flow specs; inbound webhook signature verification (invalid/missing signature -> 401)
 2. **Data integrity** - model validations + unique-constraint enforcement; write services (one happy + one failure); Sidekiq mutating jobs (idempotency + retry)
-3. **Business-critical flows** - revenue (checkout, billing, subscription transitions); multi-step state machines (AASM, `state_machines`)
+3. **Business-critical flows** - revenue (checkout, billing, subscription transitions); multi-step state machines (AASM, `state_machines`); public/partner API contract drift (covered by the Step 7 tool)
 4. **High-churn code** - frequent recent commits (`git log --since="3 months ago"`); bug-fix history (`git log --grep=fix`)
 5. **Plumbing** - pass-through controllers, simple CRUD - lower risk, can wait
 
@@ -86,12 +86,12 @@ Skip for internal/admin apps with a single frontend consumer where drift is caug
 
 ### Step 8 - Infrastructure Hygiene
 
-When `rails_helper.rb`/CI config isn't in evidence, emit this as a confirm-checklist - don't claim items verified.
+Judge evidence per item, not per file set: an item whose config is in evidence is verified (file findings when broken); an item not in evidence goes to the confirm-checklist - never claimed verified. The checklist lands in the deliverable's `## Infra To Confirm` section (Output Format).
 
 - [ ] DB isolation: transactional fixtures (default; matches `rails-testing-patterns`) or `database_cleaner-active_record` truncation only for cross-connection state
 - [ ] `Sidekiq::Testing` defaults to `:fake`; `:inline` per-spec when end-to-end needed. A global `inline!` is a finding, not a pass
 - [ ] `WebMock.disable_net_connect!(allow_localhost: true)` in `rails_helper.rb`; existing live third-party calls migrate to boundary stubs (WebMock on the client) or VCR cassettes
-- [ ] **Verify HTTP stubs intercept.** WebMock matches `Net::HTTP` and adapter shims. Faraday with `:typhoeus`/`:em_http`/`:patron`, custom `aws-sdk-*` handlers, and gRPC bypass WebMock silently. Write one stubbed test, assert `expect(stub).to have_been_requested` - if not, install the matching adapter, switch Faraday to `:net_http` in test, or stub the SDK client. Silent passthrough leaks production credentials into CI
+- [ ] **Verify HTTP stubs intercept.** WebMock hooks `Net::HTTP` and the major adapters (Typhoeus, Patron, em-http, Excon, http.rb, Curb) - Faraday on those adapters is intercepted. What bypasses it silently: gRPC, raw sockets, shell-outs (`curl`), SDKs with custom non-Ruby transports, and WebMock simply not required in `rails_helper.rb`. Write one stubbed test, assert `expect(stub).to have_been_requested` - if unmatched, wire WebMock in or stub at the SDK client boundary. Silent passthrough leaks production credentials into CI
 - [ ] `example_status_persistence_file_path` for `--only-failures`
 - [ ] `--order random` - tests pass in any order
 - [ ] CI runs full suite; local default runs fast unit + request (use `slow:`/`system:` tags)
@@ -106,7 +106,9 @@ When `rails_helper.rb`/CI config isn't in evidence, emit this as a confirm-check
 | "Test strategy" / "test plan" / coverage < 50%       | Strategy Doc (+ Assessment)  |
 | Reviewing existing specs                             | Review Checklist (below)     |
 
-When several rows match, produce the most comprehensive (Strategy Doc subsumes Assessment). Review mode emits checklist findings + Step 8 infra findings; add an Assessment block only when coverage gaps are visible in the evidence. Policy/source files not shown: scaffold the known roles and mark unknowns `# TODO: confirm role`.
+When several rows match, emit the most comprehensive row's full output set: `Strategy Doc (+ Assessment)` means both blocks, carrying **one** prioritized gap list - it lives in the Strategy Doc's `Gaps to close`, and the Assessment's `Close first` block is omitted. A `coverage < 50%` row matches only on an established figure - `basis: none available` does not escalate the mode. Review mode emits checklist findings + Step 8 infra findings; add an Assessment block only when coverage gaps are visible in the evidence.
+
+**Any mode, unseen source:** when a policy or source file isn't shown, work from the roles and actions in evidence plus the conventional set (`guest`/`member`/`admin`), mark unknowns `# TODO: confirm role`, and label invented file or example names as placeholders.
 
 **Review Checklist (existing specs):**
 
@@ -121,6 +123,8 @@ When several rows match, produce the most comprehensive (Strategy Doc subsumes A
 - [ ] System specs minimal; critical journeys only
 
 ## Output Format
+
+Every mode's deliverable ends with an `## Infra To Confirm` section holding the Step 8 items not in evidence plus any step skip rationale (e.g. Step 7's); omit the section when Step 8 verified everything. Assessment or Strategy rows with no matching surface fill as `N/A (<reason>)` - never dropped; a folded pyramid share renders as `0%`.
 
 **Coverage Assessment:**
 
@@ -144,12 +148,12 @@ When several rows match, produce the most comprehensive (Strategy Doc subsumes A
 **Pyramid target:** Unit {x}% / Request {y}% / System {z}%
 ```
 
-**Review (existing specs):** numbered findings tagged `[Critical | High | Medium]`. Assign by consequence: Critical = tests can pass while auth or data-integrity is broken (missing policy/unauthorized coverage, HTTP stubs not intercepting); High = green-but-broken risk (global `Sidekiq::Testing.inline!`, happy-path-only actions, mocked AR); Medium = maintainability (duplicated factories, deep chains, wrong layer). Infra findings (Step 8) first, spec findings (checklist) after; when the user reported a symptom ("CI green, staging breaks"), open with one line tying the top findings to it. Append the Assessment block only when coverage gaps are visible in the evidence.
+**Review (existing specs):** numbered findings tagged `[Critical | High | Medium]`. Assign by consequence: Critical = tests can pass while auth or data-integrity is broken (missing policy or unauthorized-example coverage, HTTP stubs not intercepting); High = green-but-broken risk outside auth (global `Sidekiq::Testing.inline!`, missing validation-error/edge examples, mocked AR); Medium = maintainability (duplicated factories, deep chains, wrong layer). A happy-path-only protected action files two findings: its missing-unauthorized facet at Critical, its missing-validation-error facet at High. Infra findings (Step 8) first, spec findings (checklist) after, severity-ordered within each group; when the user reported a symptom ("CI green, staging breaks"), open with one line tying the top findings to it. Append the Assessment block only when coverage gaps are visible in the evidence.
 
-**Test Scaffolds:** ready-to-run RSpec files using project conventions. Each scaffold:
+**Test Scaffolds:** a `**Stack:** / **Basis:**` header line, then ready-to-run RSpec files using project conventions. Each scaffold:
 
 - Correct spec type (`type: :model | :request | :policy | :job | :system`)
-- FactoryBot with traits (not `Model.new`)
+- FactoryBot with traits (not `Model.new`); missing factories ship as files alongside the specs
 - Model: shoulda-matchers for validations and associations
 - Request: happy + unauthorized + validation-error
 - Policy: every `(role, action)` pair
@@ -165,7 +169,8 @@ Run `bundle exec rspec <scaffolded files>` and fix failures before presenting. I
 
 **Objective:** [what this strategy achieves]
 **Pyramid:** Unit {x}% / Request {y}% / System {z}%
-**Tooling:** RSpec, FactoryBot (traits), Shoulda-matchers, pundit-matchers, WebMock/VCR, Cuprite
+**Tooling:** RSpec, FactoryBot (traits), shoulda-matchers + what the app shape needs (pundit-matchers, WebMock/VCR; Cuprite only when system specs exist)
+**API contract:** [rswag | committee | hand-rolled match_schema | skipped - <reason>]
 **Sidekiq:** default `:fake`, `:inline` per-spec for end-to-end
 **DB isolation:** [transactional fixtures | database_cleaner truncation]
 **Parallelism:** [parallel_tests | none]
@@ -182,7 +187,7 @@ Run `bundle exec rspec <scaffolded files>` and fix failures before presenting. I
 - [ ] Step 5: boundaries defined; no duplicated assertions across layers
 - [ ] Step 6: risk prioritization applied when coverage is low
 - [ ] Step 7: API contract approach chosen (or skip rationale stated)
-- [ ] Step 8: infra hygiene confirmed - HTTP stubs verified to intercept
+- [ ] Step 8: infra items verified from evidence or routed to `## Infra To Confirm`; stub interception addressed
 - [ ] Step 9: output type matches request; Review Checklist applied when reviewing
 
 ## Avoid

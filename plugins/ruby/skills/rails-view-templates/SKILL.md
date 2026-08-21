@@ -37,7 +37,7 @@ user-invocable: false
 | HAML   | `= expr` | `!= expr` |
 | Slim   | `= expr` | `== expr` |
 
-Slim review grep: `\s== ` and `^\s*[a-z]+ ==`. Every match must come from a trusted source (i18n, `link_to`, `form_with`) - flag any user-data path. Two adjacent escapes: user data interpolated into inline JS (`script` blocks, `data-` JSON) is Critical regardless of operator - HTML-escaping doesn't cover the JS string context; and user data in *attribute values* (`div class=user.theme`) is attribute-escaped but still allows class/attribute injection - allowlist the permitted values.
+Slim review grep: `\s== ` and `^\s*[a-z]+ ==`. Every match must come from a trusted source (i18n, `link_to`, `form_with`) - flag any user-data path. Two adjacent escapes: user data interpolated into a `script` block is Critical regardless of operator - HTML-escaping doesn't cover the JS string context; move it to an escaped `data-*` value (see Stimulus), which the browser entity-decodes as attribute text - safe under `=`, still Critical under an unescape operator. And user data in *attribute values* (`div class=user.theme`) is attribute-escaped but still allows class/attribute injection - allowlist the permitted values.
 
 ### Slim Traps
 
@@ -106,6 +106,14 @@ Presenter vs component when both fit: formatting that belongs to one reusable pi
   = render order
 ```
 
+Uniform lists use collection caching - one `read_multi` instead of a cache read per row:
+
+```slim
+= render partial: "orders/order", collection: @orders, cached: true
+```
+
+`cached: true` is partial-only. ViewComponent rows render via `OrderCardComponent.with_collection(@orders)`; don't wrap component renders in `cache` blocks - template digests don't track component files, so component edits never bust the fragment.
+
 Russian-doll: `touch: true` on child associations bubbles writes so the parent cache key invalidates:
 
 ```ruby
@@ -146,6 +154,8 @@ div data-controller="dropdown"
 
 `data-action` syntax is `event->controller#method`, parsed by Stimulus - no Ruby expressions in `data-action` values.
 
+Server data reaches controllers through the values API with the escaped operator - `div data-controller="chart" data-chart-points-value=@points.to_json` - never an inline `script`.
+
 ### ViewComponent
 
 ```ruby
@@ -171,7 +181,7 @@ Markdown / rich-text passes through `sanitize` even if the renderer (Commonmarke
 
 ## Output Format
 
-Generating:
+Generating - multi-valued slots (`Turbo:`, `Fragment Caching:`) list every applying value, `+`-joined:
 
 ```
 Engine: {ERB | HAML | Slim}
@@ -182,14 +192,14 @@ ViewComponents: {app/components/{name}_component.rb + .html.{ext} | None}
 Layout Slots: {content_for / yield keys | None}
 Turbo: {Frames | Streams | None}
 Stimulus Controllers: {list | None}
-Fragment Caching: {Russian-doll on X | Low-level | None}
+Fragment Caching: {Russian-doll on X | Collection (cached: true) on X | Low-level | None}
 Logic Moves: {helper -> presenter/component verdicts | None}
 ```
 
 Reviewing - one block per finding in the format below; after all blocks, emit the corrected template code for each affected file:
 
 ```
-Severity: {Critical (XSS, JS-context injection) | High (broken cache, logic/indentation bug, frame collision) | Medium (attribute injection, helper/presenter misplacement) | Low (style, partial contract)}
+Severity: {Critical (XSS, JS-context injection, cross-tenant cache leak) | High (stale/never-invalidating cache, logic/indentation bug, frame collision) | Medium (attribute injection, helper/presenter misplacement) | Low (style, partial contract)}
 Engine: {ERB | HAML | Slim}
 Location: file:line
 Issue: {one line, engine-specific idiom}
@@ -202,5 +212,5 @@ Fix: {one-line remediation}
 - Mixing template engines without a migration plan
 - Inline `<script>` tags
 - Slim/HAML without a linter - indentation bugs go unnoticed
-- Fragment keys omitting implicit scope context - data cached under a `default_scope` (tenant scoping is the dangerous case) serves other scopes; include the scoping value in the key
+- Fragment keys omitting implicit scope context - data cached under a `default_scope` (tenant scoping is the dangerous case) serves other scopes; include the scoping value in the key (`cache [Current.tenant, :stats]`)
 - Caching on `record.id` instead of the record

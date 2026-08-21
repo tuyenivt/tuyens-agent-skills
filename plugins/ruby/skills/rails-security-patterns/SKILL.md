@@ -135,6 +135,8 @@ def safe_return_to
 end
 ```
 
+Dynamic in-app targets (`/orders/42`) that no enumerable list can express: require an app-relative path - `to.match?(%r{\A/[^/\\]})` (single leading `/`; rejecting a second `/` or `\` kills the protocol-relative `//evil.com` and browser-normalized `/\evil.com` bypasses).
+
 ### Host Authorization and Transport
 
 ```ruby

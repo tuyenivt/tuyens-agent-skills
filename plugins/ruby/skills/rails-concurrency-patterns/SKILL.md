@@ -35,7 +35,7 @@ user-invocable: false
 | ----------------------------------- | ----------------------------- | ---------------------------------------- |
 | 2-5 independent reads in a request  | `load_async` or `Async {}`    | Built-in, no scheduler change            |
 | Many parallel HTTP fetches          | `async-http` (Falcon)         | One fiber per request, no thread cost    |
-| CPU-bound batch (durable, chunkable)| Sidekiq fan-out, chunk jobs   | Process-level parallelism + retries; run CPU queues at concurrency ~1-2 per core (threads in one pod serialize under the GVL) and release the AR connection before the CPU phase |
+| CPU-bound batch (durable, chunkable)| Sidekiq fan-out, chunk jobs   | Process-level parallelism + retries; run CPU queues at concurrency ~1-2 per core (threads in one pod serialize under the GVL) and release the AR connection before the CPU phase (scope reads inside `with_connection`; run the transform after the block) |
 | CPU-bound transform, in-process     | Process forks (`Parallel` gem) / `Ractor` | GVL serializes threads for CPU |
 | Fire-and-forget side effect         | Sidekiq job                   | Durable across restarts, retry semantics |
 | I/O fan-out inside one request/job (results aggregated) | `Concurrent::Promises` / pool | Thread-friendly, releases GVL during I/O; aggregate into ONE write at the end |
@@ -126,7 +126,7 @@ Fiber.set_scheduler(MyScheduler.new)
 Fiber.schedule { do_io }
 ```
 
-Use the `Async` gem rather than hand-rolling a scheduler. Falcon (`gem "falcon"`) provides fiber-per-request serving in place of Puma - a deployment change; validate adapter support (pg works, mysql2 partial, `net/http` hooks since 3.1).
+Use the `Async` gem rather than hand-rolling a scheduler. Falcon (`gem "falcon"`) provides fiber-per-request serving in place of Puma - a deployment change; validate adapter support (pg works; mysql2 implements no scheduler hooks - one query stalls every fiber in the process, so don't adopt Falcon on mysql2; `net/http` hooks since 3.1).
 
 ## Output Format
 

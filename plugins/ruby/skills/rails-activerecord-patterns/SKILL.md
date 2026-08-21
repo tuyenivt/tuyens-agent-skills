@@ -103,7 +103,7 @@ Index endpoints computing per-row aggregates (`sum`, `count` per parent) at scal
 
 ### Bulk inserts and upserts
 
-`create!` in a loop fires one INSERT plus all callbacks per row. `insert_all` / `upsert_all` issue one multi-row statement and run 50-100x faster - but skip callbacks/validations and don't coerce serialized columns (timestamps are set: `record_timestamps` follows the model config, on by default). Untrusted input (CSV, API payloads) must be validated/coerced before the call - DB constraints are the only remaining guard. Slice into batches of 1-5K rows to bound statement size and undo-log growth.
+`create!` in a loop fires one INSERT plus all callbacks per row. `insert_all` / `upsert_all` issue one multi-row statement and run 50-100x faster - but skip callbacks/validations and don't coerce serialized columns (timestamps are set: `record_timestamps` follows the model config, on by default). Untrusted input (CSV, API payloads) must be validated/coerced before the call - instantiate-and-`validate` (or a form object) per row, then feed the clean `attributes` to the bulk call; DB constraints are the only remaining guard. Slice into batches of 1-5K rows to bound statement size and undo-log growth.
 
 ```ruby
 rows.each_slice(2_000) { |batch| OrderRollup.insert_all(batch, returning: %w[id]) }
@@ -194,14 +194,14 @@ Migration safety for these operations: `rails-migration-safety` (MySQL) or `rail
 
 ## Output Format
 
-One block per pattern applied (a task spanning N+1 + Association emits two):
+One block per pattern applied (a task spanning N+1 + Association emits two). In review mode, precede the blocks with numbered findings citing the violated rule; any field may carry `- GAP` with the observed non-compliant value.
 
 ```
 Pattern: {N+1 Fix | Scope | Enum | Association | Normalization | Callback | Batch | Locking | DB Feature}
 Model: {name}
 Adapter: {MySQL | PostgreSQL}
 Change: {description}
-Queries: {before} -> {after}   # query counts or formulas, e.g. "1 + 4N -> 4"; "n/a" for greenfield or non-query-shaped patterns (Locking, DB Feature)
+Queries: {before} -> {after}   # query counts or formulas, e.g. "1 + 4N -> 4"; "n/a" for greenfield or any non-query-shaped change (e.g. Locking, DB Feature, a counter_cache declaration)
 ```
 
 ## Avoid

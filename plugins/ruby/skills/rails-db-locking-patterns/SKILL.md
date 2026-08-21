@@ -111,6 +111,8 @@ class LedgerEntriesController < ApplicationController
 end
 ```
 
+The explicit `isolation: :read_committed` here is the MySQL Tier-2 escalation - on PostgreSQL omit it (RC is already the default, and explicit `isolation:` raises under transactional fixtures).
+
 ### Transaction isolation: three tiers
 
 "RR for web, RC for jobs" silently changes shared-service behavior. Escalate per-transaction at the call site instead.
