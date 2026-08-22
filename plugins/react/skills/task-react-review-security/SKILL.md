@@ -175,11 +175,11 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## React Security Review Summary
 
-**Stack Detected:** React <version> / TypeScript <version>
-**Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
-**Auth:** Auth.js | Clerk | Lucia | iron-session | Custom | backend-only
-**Sanitizer:** DOMPurify | sanitize-html | none
-**Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
+- **Stack Detected:** React <version> / TypeScript <version>
+- **Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
+- **Auth:** Auth.js | Clerk | Lucia | iron-session | Custom | backend-only
+- **Sanitizer:** DOMPurify | sanitize-html | none
+- **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
 
 [2-3 sentence assessment calling out React-specific risks: `dangerouslySetInnerHTML` on user input, `NEXT_PUBLIC_*` secret leak, missing Server Action validation, RSC passing ORM rows to Client Components, missing / weak CSP, open redirect via `returnTo`.]
 

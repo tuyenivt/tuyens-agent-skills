@@ -129,6 +129,7 @@ Compound requests produce each matched deliverable (e.g. "test plan and scaffold
 ## Spring Boot Test Coverage Assessment
 
 **Stack:** Java <version> / Spring Boot <version>
+
 **Tooling:** JUnit 5, Mockito, AssertJ, Spring Boot Test, Testcontainers
 
 **Gaps:**
@@ -162,9 +163,13 @@ Compound requests produce each matched deliverable (e.g. "test plan and scaffold
 ## Spring Boot Test Strategy
 
 **Objective:** [what this achieves]
+
 **Pyramid balance:** Unit {x}% / Slice {y}% / Full-context+E2E {z}% (Step 4 fill rule)
+
 **Tooling:** JUnit 5, Mockito (strict), AssertJ, Spring Boot Test, Testcontainers (Postgres / Kafka), Spring Security Test
+
 **DB isolation:** [singleton Testcontainers Postgres base + @ServiceConnection; transactional rollback, or @Sql cleanup for @Async / @Scheduled flows]
+
 **Concurrency:** [JUnit parallel config]
 
 **Prioritized gaps:**

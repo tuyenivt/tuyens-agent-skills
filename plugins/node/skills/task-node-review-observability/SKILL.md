@@ -167,15 +167,15 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Node.js Observability Review Summary
 
-**Stack Detected:** Node.js <version> / TypeScript <version>
-**Framework:** NestJS <version> | Express <version> | mixed
-**ORM:** Prisma <version> | TypeORM <version>
-**Logging:** pino (JSON) | winston (JSON) | nestjs-pino | console (text) | absent
-**Metrics:** prom-client | OTel metrics (Prometheus exporter) | StatsD | absent
-**Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (Jaeger / Zipkin) | absent
-**BullMQ instrumentation:** wired (community instrumentation-bullmq) | partial | absent | n/a
-**Error Tracker:** Sentry | Honeybadger | Rollbar | absent
-**Overall:** Adequate | Gaps Found - [count by impact] | Greenfield - no observability surface wired
+- **Stack Detected:** Node.js <version> / TypeScript <version>
+- **Framework:** NestJS <version> | Express <version> | mixed
+- **ORM:** Prisma <version> | TypeORM <version>
+- **Logging:** pino (JSON) | winston (JSON) | nestjs-pino | console (text) | absent
+- **Metrics:** prom-client | OTel metrics (Prometheus exporter) | StatsD | absent
+- **Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (Jaeger / Zipkin) | absent
+- **BullMQ instrumentation:** wired (community instrumentation-bullmq) | partial | absent | n/a
+- **Error Tracker:** Sentry | Honeybadger | Rollbar | absent
+- **Overall:** Adequate | Gaps Found - [count by impact] | Greenfield - no observability surface wired
 
 ## Surface Map
 

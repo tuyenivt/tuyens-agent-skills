@@ -52,10 +52,15 @@ If the feature touches an ORM client, a schema file, or a `src/server/` module -
 ## Files Generated
 
 Routes:      app/orders/page.tsx, app/orders/[id]/page.tsx
+
 Components:  components/orders/OrderList.tsx (+ .test.tsx), OrderRow.tsx
+
 Hooks:       hooks/useOrderFilters.ts (+ .test.ts)
+
 Lib:         lib/orders/queries.ts, lib/orders/actions.ts
+
 Types:       lib/orders/types.ts
+
 Tests:       (covered above) + e2e/orders.spec.ts (candidate)
 
 ## Component Tree

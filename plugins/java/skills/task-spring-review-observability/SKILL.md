@@ -160,12 +160,12 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Spring Boot Observability Review Summary
 
-**Stack Detected:** Java <version> / Spring Boot <version>
-**Logging:** Logback + Logstash JSON | Logback JsonEncoder | log4j2 | plain-text pattern (unstructured) | other
-**Metrics:** Micrometer + Prometheus | Micrometer + StatsD | Micrometer via Actuator - no export registry | none
-**Tracing:** Micrometer Tracing (OTel) | Micrometer Tracing (Brave/Zipkin) | Sleuth (deprecated) | none
-**Error Tracker:** Sentry | Honeybadger | Rollbar | none
-**Overall:** Adequate | Gaps Found - [<N> High / <N> Medium / <N> Low]
+- **Stack Detected:** Java <version> / Spring Boot <version>
+- **Logging:** Logback + Logstash JSON | Logback JsonEncoder | log4j2 | plain-text pattern (unstructured) | other
+- **Metrics:** Micrometer + Prometheus | Micrometer + StatsD | Micrometer via Actuator - no export registry | none
+- **Tracing:** Micrometer Tracing (OTel) | Micrometer Tracing (Brave/Zipkin) | Sleuth (deprecated) | none
+- **Error Tracker:** Sentry | Honeybadger | Rollbar | none
+- **Overall:** Adequate | Gaps Found - [<N> High / <N> Medium / <N> Low]
 
 ## Findings
 

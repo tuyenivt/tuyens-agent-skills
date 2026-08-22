@@ -98,8 +98,11 @@ Use skill: `ops-observability-fetch` for any row whose evidence lives in an APM/
 ## Investigation: {one-line description}
 
 Request Type: {Data | Access | Operational | Unexpected behavior | Performance | Alert}
+
 Affected Scope: {Single entity | Single user | N users | Tenant/cohort | Specific feature | All users | None (alert only)}
+
 Blast Radius Probe: {Confirmed isolated | Potentially affects N others | Not run | N/A - no entity scope} - {query/source used, or recommended}
+
 Time Window: {when}
 
 ### Expected vs Actual

@@ -194,11 +194,11 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Node.js Security Review Summary
 
-**Stack Detected:** Node.js <version> / TypeScript <version>
-**Framework:** NestJS <version> | Express <version> | mixed
-**Auth:** JWT (jsonwebtoken) | JWT (jose) | NestJS Passport JWT | NestJS Passport Local | Session (cookie) | Custom | Hybrid
-**Authorization:** NestJS Guards | Express middleware | Custom
-**Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
+- **Stack Detected:** Node.js <version> / TypeScript <version>
+- **Framework:** NestJS <version> | Express <version> | mixed
+- **Auth:** JWT (jsonwebtoken) | JWT (jose) | NestJS Passport JWT | NestJS Passport Local | Session (cookie) | Custom | Hybrid
+- **Authorization:** NestJS Guards | Express middleware | Custom
+- **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
 
 [2-3 sentence assessment calling out Node-specific risks: missing `whitelist: true`, prototype pollution from `Object.assign(target, req.body)`, exposed Swagger in prod, `csurf` dep.]
 

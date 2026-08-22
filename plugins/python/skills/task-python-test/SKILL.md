@@ -129,8 +129,11 @@ Run before scaffolding when coverage is below ~50%. Alphabetic or by-file order 
 ## Python Test Coverage Assessment
 
 **Stack:** Python <version>
+
 **Framework:** FastAPI <version> | Django <version>
+
 **Test framework:** pytest, pytest-asyncio, factory_boy / model_bakery, Testcontainers
+
 **Coverage gaps:**
 
 - **Unit:** [services / validators / mappers without coverage]
@@ -163,10 +166,15 @@ Apply Step 7 risk bands: P1 AuthN/Z, P2 data integrity, P3 business-critical, P4
 ## Python Test Strategy
 
 **Objective:** [what this achieves]
+
 **Pyramid balance:** Unit {x}% / Endpoint + Integration {y}% / E2E {z}%
+
 **Tooling:** pytest, pytest-asyncio (FastAPI) / pytest-django (Django), factory_boy / model_bakery, Testcontainers PostgreSQL, respx / responses, pytest-celery
+
 **Database isolation:** Testcontainers PostgreSQL + per-test SAVEPOINT rollback
+
 **Concurrency:** [pytest-xdist config]
+
 **Gaps to close (prioritized):**
 
 1. [Highest risk - usually authorization or repository correctness]

@@ -104,22 +104,31 @@ Scaling model: {horizontal stateless / vertical / mixed}
 ### Security
 
 Authentication: {mechanism}
+
 Authorization: {model}
+
 Data classification: {PII / PCI / PHI / none}
+
 Compliance: {standards or "none identified"}
 
 ### Operability
 
 Deployment: {zero-downtime / maintenance window allowed}
+
 MTTR target: {minutes, alert to resolved}
+
 Log retention: {days}
+
 Tracing coverage: {percentage of requests or specific services}
+
 Metrics granularity: {per-second / per-minute / per-5-minute}
 
 ### Data
 
 Consistency: {strong / eventual / mixed - specify which operations}
+
 Retention: {policy}
+
 Volume growth: {estimate}
 
 ## NFR Conflicts

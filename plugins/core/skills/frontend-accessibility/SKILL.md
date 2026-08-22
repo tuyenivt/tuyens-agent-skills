@@ -139,6 +139,7 @@ Severity: Critical = blocks task completion for keyboard or assistive-technology
 ## Accessibility Assessment
 
 **Stack:** {detected language / framework, or "unknown - universal patterns applied"}
+
 **Standard:** WCAG 2.1 AA
 
 ### Audit Results

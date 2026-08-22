@@ -196,12 +196,12 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## React Performance Review Summary
 
-**Stack Detected:** React <version> / TypeScript <version>
-**Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
-**Data Layer:** Server Components + `fetch` | TanStack Query | mixed
-**Styling:** Tailwind | CSS Modules | CSS-in-JS
-**Scope:** Frontend (React)
-**Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
+- **Stack Detected:** React <version> / TypeScript <version>
+- **Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
+- **Data Layer:** Server Components + `fetch` | TanStack Query | mixed
+- **Styling:** Tailwind | CSS Modules | CSS-in-JS
+- **Scope:** Frontend (React)
+- **Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
 
 ## Findings
 

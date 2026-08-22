@@ -128,6 +128,7 @@ For an in-flight migration, append a gate assessment:
 | -------------- | ------------------ | -------- |
 
 **Promotion allowed:** {Yes | No - failing criteria}
+
 **Remediation:** {actions, and the traffic share to hold or fall back to until the gate passes}
 ```
 

@@ -200,11 +200,11 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Go Performance Review Summary
 
-**Stack Detected:** Go <version> / Gin <version>
-**Data Access:** GORM <version> | sqlx <version> | database/sql | mixed
-**Messaging:** Asynq | Kafka | none
-**Scope:** Backend (Go)
-**Overall:** Clean | Issues Found - [count by impact]
+- **Stack Detected:** Go <version> / Gin <version>
+- **Data Access:** GORM <version> | sqlx <version> | database/sql | mixed
+- **Messaging:** Asynq | Kafka | none
+- **Scope:** Backend (Go)
+- **Overall:** Clean | Issues Found - [count by impact]
 
 ## Findings
 

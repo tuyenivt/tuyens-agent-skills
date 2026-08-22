@@ -137,9 +137,9 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Spring Boot Reliability Review Summary
 
-**Stack Detected:** Java <version> / Spring Boot <version>
-**Resilience Library:** Resilience4j | Spring Retry | none detected
-**Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
+- **Stack Detected:** Java <version> / Spring Boot <version>
+- **Resilience Library:** Resilience4j | Spring Retry | none detected
+- **Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
 
 ## Findings
 

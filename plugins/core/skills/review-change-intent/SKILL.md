@@ -105,8 +105,11 @@ Requirement Fit: <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 ## Change Brief
 
 **Requested:** <what the change was asked to do, 1-2 sentences, citing the source; with no source, the intent the commit log states, marked `(inferred from commits)`>
+
 **Delivered:** <the mechanism actually implemented and where, 1-2 sentences naming the primary files>
+
 **Author decisions:** <one bullet per choice the request did not imply, each with its consequence, excluding choices already raised as findings; `None observed` when nothing remains>
+
 **Watch points:** <what the reviewer should confirm by hand before reading findings - untested behavior, an assumption the change rests on, what it deliberately does not do; `None` when there are none>
 
 ## Requirement Traceability

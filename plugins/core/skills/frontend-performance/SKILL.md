@@ -160,6 +160,7 @@ Consuming workflow skills depend on this structure.
 ## Frontend Performance Assessment
 
 **Stack:** {detected language / framework, or "unknown - universal patterns applied"}
+
 **Build tool:** {detected build tool, or "none detected"}
 
 ### Core Web Vitals Estimate

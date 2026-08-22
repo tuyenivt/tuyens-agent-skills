@@ -161,14 +161,14 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Python Observability Review Summary
 
-**Stack Detected:** Python <version>
-**Framework:** FastAPI <version> | Django <version> | mixed
-**Logging:** structlog (JSON) | stdlib + python-json-logger | stdlib (text) | absent
-**Metrics:** Prometheus (prometheus-client) | OTel metrics (Prometheus exporter) | StatsD | absent
-**Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (Jaeger / Zipkin) | absent
-**Celery instrumentation:** CeleryInstrumentor | partial | absent | n/a
-**Error Tracker:** Sentry | Honeybadger | Rollbar | absent
-**Overall:** Adequate | Gaps Found - [count by impact] | Greenfield - no observability surface wired
+- **Stack Detected:** Python <version>
+- **Framework:** FastAPI <version> | Django <version> | mixed
+- **Logging:** structlog (JSON) | stdlib + python-json-logger | stdlib (text) | absent
+- **Metrics:** Prometheus (prometheus-client) | OTel metrics (Prometheus exporter) | StatsD | absent
+- **Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (Jaeger / Zipkin) | absent
+- **Celery instrumentation:** CeleryInstrumentor | partial | absent | n/a
+- **Error Tracker:** Sentry | Honeybadger | Rollbar | absent
+- **Overall:** Adequate | Gaps Found - [count by impact] | Greenfield - no observability surface wired
 
 ## Surface Map
 

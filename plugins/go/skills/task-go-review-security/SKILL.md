@@ -216,12 +216,12 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Go Security Review Summary
 
-**Stack Detected:** Go <version> / Gin <version>
-**Data Access:** GORM <version> | sqlx <version> | database/sql | mixed
-**JWT Library:** golang-jwt/jwt/v5 | golang-jwt/jwt/v4 | gin-jwt | lestrrat-go/jwx | none
-**Password Hash:** bcrypt | argon2 | none
-**Authorization:** router-group middleware + ownership checks | inline checks | none
-**Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
+- **Stack Detected:** Go <version> / Gin <version>
+- **Data Access:** GORM <version> | sqlx <version> | database/sql | mixed
+- **JWT Library:** golang-jwt/jwt/v5 | golang-jwt/jwt/v4 | gin-jwt | lestrrat-go/jwx | none
+- **Password Hash:** bcrypt | argon2 | none
+- **Authorization:** router-group middleware + ownership checks | inline checks | none
+- **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
 
 [2-3 sentence assessment naming Go-specific risks: missing JWT, `mapstructure.Decode`, raw SQL via `fmt.Sprintf`, exposed `pprof`, `InsecureSkipVerify`.]
 

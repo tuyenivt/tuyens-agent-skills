@@ -95,9 +95,9 @@ When Step 3 dispatched: the stack workflow owns the output. Subagent runs return
 ```markdown
 ## Security Review Summary
 
-**Stack Detected:** [stack-detect result, or unknown] (generic fallback applied)
-**Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low counts]
-**Findings verified:** [N] confirmed, [M] reattributed, [K] dropped
+- **Stack Detected:** [stack-detect result, or unknown] (generic fallback applied)
+- **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low counts]
+- **Findings verified:** [N] confirmed, [M] reattributed, [K] dropped
 
 ## OWASP Coverage
 

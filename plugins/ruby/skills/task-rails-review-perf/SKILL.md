@@ -124,11 +124,11 @@ Fill rules: `Findings verified:` carries the verify tally on standalone runs, th
 ```markdown
 ## Rails Performance Review Summary
 
-**Stack Detected:** Ruby <version> / Rails <version> / <database>
-**Scope:** Backend (Rails)
-**Target:** <path(s)>
-**Overall:** Clean | Issues Found - [High/Medium/Low count]
-**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Stack Detected:** Ruby <version> / Rails <version> / <database>
+- **Scope:** Backend (Rails)
+- **Target:** <path(s)>
+- **Overall:** Clean | Issues Found - [High/Medium/Low count]
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
 
 ## Findings
 

@@ -126,6 +126,7 @@ function TextInput({ ref, ...props }: { ref?: Ref<HTMLInputElement> } & InputHTM
 ## Component Design
 
 **Stack:** {Next.js App Router | Next.js Pages | Vite | Other}
+
 **Component model:** {Server + Client | Client-only}
 
 ### Component Tree

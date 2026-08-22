@@ -230,15 +230,21 @@ Use Mermaid's standard syntax: `C4Container` for C4, `sequenceDiagram` with `aut
 ## 1. Problem Framing
 
 Business Objective:
+
 Functional Scope:
+
 Non-Functional Requirements:
+
 Constraints:
+
 Assumptions:
 
 ## 2. System Context and Boundaries
 
 System Context:
+
 Upstream Dependencies:
+
 Downstream Consumers:
 
 ### Module Boundaries
@@ -331,17 +337,25 @@ Downstream Consumers:
 ## 7. Performance and Capacity
 
 Traffic Estimate:
+
 Scaling Model:
+
 Bottleneck Prediction:
+
 Cost Drivers:
 
 ## 8. Deployment Strategy
 
 Rollout Approach:
+
 Backward Compatibility:
+
 DB Migration Order:
+
 Rollback Plan:
+
 Rollback Trigger:
+
 Feature Flags:
 
 ## 9. Trade-Off Analysis
@@ -395,7 +409,9 @@ _Skip with a one-liner if no public API surface._
 ### Multi-Tenancy
 
 Pattern: [Path segment | JWT claim | Header X-Tenant-ID | Single-tenant - N/A]
+
 Isolation enforced at: [middleware / repository / both]
+
 Rate limits: per-tenant or global
 
 ### Error Format
@@ -463,7 +479,9 @@ Walk through the failure end-to-end:
 5. {Recovery path}
 
 **Blast radius:** {Narrow | Moderate | Wide | Critical}
+
 **MTTR estimate:** {minutes / hours}
+
 **Gap identified:** {What the design is missing to contain this faster}
 
 [Repeat for 1-2 additional scenarios in deep mode]

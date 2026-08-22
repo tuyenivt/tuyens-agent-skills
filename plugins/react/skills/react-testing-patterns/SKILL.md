@@ -212,6 +212,7 @@ When designing a plan, emit:
 ## React Testing Plan
 
 **Stack:** {detected framework}
+
 **Tooling:** Vitest + RTL + MSW (+ Playwright for critical paths)
 
 ### Tests to Write

@@ -160,9 +160,13 @@ For new App Router code, prefer Tailwind or CSS Modules over CSS-in-JS.
 ## Styling Architecture
 
 Stack: {detected framework}
+
 Primary approach: {Tailwind | CSS Modules | Vanilla Extract | styled-components}
+
 Component library: {shadcn/ui | Radix | Headless UI | None}
+
 Token source: {Tailwind config | CSS variables | hybrid}
+
 Dark mode: {class strategy | media query | none}
 
 ## Component Variants

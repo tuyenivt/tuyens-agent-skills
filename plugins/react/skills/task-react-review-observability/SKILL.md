@@ -164,10 +164,10 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## React Observability Review Summary
 
-**Stack:** React <version> / TypeScript <version>
-**Framework:** Next.js App Router <version> | Next.js Pages Router <version> | Vite + React Router <version>
-**RUM:** Datadog RUM | Vercel Analytics | Cloudflare Web Analytics | custom | absent
-**Overall:** Adequate | Gaps Found [High/Medium/Low counts] | Greenfield - 3+ surfaces absent
+- **Stack:** React <version> / TypeScript <version>
+- **Framework:** Next.js App Router <version> | Next.js Pages Router <version> | Vite + React Router <version>
+- **RUM:** Datadog RUM | Vercel Analytics | Cloudflare Web Analytics | custom | absent
+- **Overall:** Adequate | Gaps Found [High/Medium/Low counts] | Greenfield - 3+ surfaces absent
 
 ## Surface Map
 

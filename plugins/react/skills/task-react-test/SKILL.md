@@ -164,8 +164,11 @@ Precedence when one ask matches several rows: an explicit verb ("write/scaffold"
 ## React Test Coverage Assessment
 
 **Stack:** React <version> / TypeScript <version>
+
 **Framework:** Next.js App Router <version> | Next.js Pages Router <version> | Vite + React Router <version>
+
 **Runner:** Vitest | Jest
+
 **Test framework:** Vitest, React Testing Library, `user-event`, MSW, Playwright
 
 **Coverage gaps:**
@@ -207,11 +210,17 @@ Precedence when one ask matches several rows: an explicit verb ("write/scaffold"
 ## React Test Strategy
 
 **Objective:** [what this strategy achieves]
+
 **Pyramid balance:** Unit + Hook {x}% / Component + Integration {y}% / E2E {z}%
+
 **Tooling:** Vitest, React Testing Library, `user-event`, MSW, Playwright, `vitest-axe`
+
 **Mocking:** MSW for network; provider wrappers for context; `vi.mock` reserved for non-network module mocks
+
 **Server Component strategy:** [data function in unit; Playwright for rendered route]
+
 **Concurrency:** Vitest `--pool=threads`; Playwright sharded across workers
+
 **Gaps to close (prioritized):**
 
 1. [Highest-risk gap, typically auth / Server Action / money path]

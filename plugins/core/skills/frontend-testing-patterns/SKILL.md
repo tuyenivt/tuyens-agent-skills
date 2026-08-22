@@ -189,6 +189,7 @@ On a codebase far below those targets, a global number is a wish, not a plan: st
 ## Frontend Testing Assessment
 
 **Stack:** {detected language / framework}
+
 **Test framework:** {detected or recommended test framework}
 
 ### Test Strategy

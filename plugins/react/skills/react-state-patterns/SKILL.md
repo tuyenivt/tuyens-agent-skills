@@ -159,6 +159,7 @@ Use only when the project already needs middleware (sagas, RTK Query already in 
 ## React State Architecture
 
 Stack: {framework}
+
 Primary library: {Zustand | Redux Toolkit | Jotai | Context-only}
 
 ### State Map

@@ -172,6 +172,7 @@ Consuming workflow skills depend on this structure.
 ## API Integration Assessment
 
 **Stack:** {detected language / framework}
+
 **Data-fetching library:** {detected or recommended library}
 
 ### Endpoints

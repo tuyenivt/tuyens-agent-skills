@@ -188,10 +188,10 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Python Performance Review Summary
 
-**Stack Detected:** Python <version>
-**Framework:** FastAPI <version> | Django <version> | mixed
-**Scope:** Backend (Python)
-**Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
+- **Stack Detected:** Python <version>
+- **Framework:** FastAPI <version> | Django <version> | mixed
+- **Scope:** Backend (Python)
+- **Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
 
 ## Findings
 

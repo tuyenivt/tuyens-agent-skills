@@ -164,6 +164,7 @@ Consuming workflow skills depend on this structure.
 ## State Management Assessment
 
 **Stack:** {detected language / framework}
+
 **State library:** {detected or recommended library}
 
 ### State Map

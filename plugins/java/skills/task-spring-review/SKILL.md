@@ -287,25 +287,28 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Summary
 
-**Assessment:** Approve | Request Changes | Discuss _(fill rule: any `[Must]` -> Request Changes; no `[Must]` but an unresolved assumption stated in a `[Recommend]` could block merge -> Discuss; otherwise Approve)_
-**Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide | Critical
-**Stack Detected:** Java <version> / Spring Boot <version>
-**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
-**Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
-**Round:** <N>                                _(include from round 2 onward)_
-**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
-**Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
-**Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
-**Notes:** <free text> _(omit if empty - home for checkpoint gaps, `Scope incomplete: ...` records, subagent failures, deep-pass limitations)_
+- **Assessment:** Approve | Request Changes | Discuss _(fill rule: any `[Must]` -> Request Changes; no `[Must]` but an unresolved assumption stated in a `[Recommend]` could block merge -> Discuss; otherwise Approve)_
+- **Risk Level:** Low | Medium | High | Critical
+- **Blast Radius:** Narrow | Moderate | Wide | Critical
+- **Stack Detected:** Java <version> / Spring Boot <version>
+- **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(append `auto-escalated from Core; signals: <list>` if applicable)_
+- **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
+- **Round:** <N>                                _(include from round 2 onward)_
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
+- **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
+- **Notes:** <free text> _(omit if empty - home for checkpoint gaps, `Scope incomplete: ...` records, subagent failures, deep-pass limitations)_
 
 [full Risk and Blast Radius blocks from Phase A's atomics]
 
 ## Change Brief
 
 **Requested:** <what the change was asked to do, citing the source; `(inferred from commits)` when no source resolved>
+
 **Delivered:** <the mechanism implemented and where>
+
 **Author decisions:** <each choice the request did not imply, with its consequence, excluding choices already raised as findings; `None observed` when nothing remains>
+
 **Watch points:** <what to confirm by hand before reading findings; `None` when there are none>
 
 ## Requirement Traceability _(omit when Phase 0 resolved no source)_

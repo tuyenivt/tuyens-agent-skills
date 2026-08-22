@@ -89,7 +89,9 @@ Consuming workflow skills parse this structure to produce actionable rollout and
 ## Release Safety Assessment
 
 **Rollout strategy:** {Feature flag | Canary | Blue-green | Rolling update}
+
 **Rollback speed:** {Instant | Fast (minutes) | Moderate | Slow}
+
 **DB migration backward compatible:** Yes / No / N/A
 
 ### Rollout Plan

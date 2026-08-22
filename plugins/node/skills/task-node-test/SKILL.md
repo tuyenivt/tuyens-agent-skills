@@ -119,9 +119,13 @@ Run before scaffolding when coverage is below ~50% or more than 5 gaps surfaced.
 ## Node.js Test Coverage Assessment
 
 **Stack:** Node.js <version> / TypeScript <version>
+
 **Framework:** NestJS <version> | Express <version>
+
 **ORM:** Prisma <version> | TypeORM <version>
+
 **Test framework:** Jest, Supertest, Testcontainers, MSW
+
 **Coverage gaps:**
 
 - **Unit:** [services / validators / mappers without coverage]
@@ -150,10 +154,15 @@ Apply Step 6 risk bands: P1 AuthN/Z, P2 data integrity, P3 business-critical, P4
 ## Node.js Test Strategy
 
 **Objective:** [what this achieves]
+
 **Pyramid balance:** Unit {x}% / Endpoint + Integration {y}% / E2E {z}%
+
 **Tooling:** Jest, Supertest, NestJS TestingModule (or Express app), Testcontainers PostgreSQL, MSW, BullMQ in-memory + real-broker for critical jobs
+
 **Database isolation:** Testcontainers + per-test rollback (Prisma `$transaction` + throw, or schema reset)
+
 **Concurrency:** [`--maxWorkers` config; `--runInBand` for Testcontainers integration]
+
 **Gaps to close (prioritized):**
 
 1. [Highest risk - usually authorization or repository correctness]

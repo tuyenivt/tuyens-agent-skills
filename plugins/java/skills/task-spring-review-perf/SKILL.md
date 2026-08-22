@@ -145,9 +145,9 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Spring Boot Performance Review Summary
 
-**Stack Detected:** Java <version> / Spring Boot <version>
-**Scope:** Backend (Spring Boot)
-**Overall:** Clean | Issues Found - [<N> High / <N> Medium / <N> Low]
+- **Stack Detected:** Java <version> / Spring Boot <version>
+- **Scope:** Backend (Spring Boot)
+- **Overall:** Clean | Issues Found - [<N> High / <N> Medium / <N> Low]
 
 ## Findings
 
@@ -174,6 +174,7 @@ _Omit empty sections._
 
 _(`deep` only - omit at `standard`.)_
 **Capacity:** [bottleneck resource and estimated ceiling, e.g. "HikariCP 10 conns at ~40ms/query -> ~250 req/s before pool wait"; label estimates when derived without profiling data]
+
 **Load-Test Plan:** [scenario, target endpoints, load shape, success criteria tied to the findings above]
 
 ## Next Steps

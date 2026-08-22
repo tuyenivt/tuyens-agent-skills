@@ -132,7 +132,9 @@ Every mode's deliverable ends with an `## Infra To Confirm` section holding the 
 ## Rails Test Coverage Assessment
 
 **Stack:** Ruby <version> / Rails <version>
+
 **Framework:** RSpec <version>, FactoryBot, Shoulda-matchers
+
 **Gaps:**
 - **Model:** [uncovered models]
 - **Request:** [uncovered actions; missing unauthorized examples]
@@ -168,12 +170,19 @@ Run `bundle exec rspec <scaffolded files>` and fix failures before presenting. I
 ## Rails Test Strategy
 
 **Objective:** [what this strategy achieves]
+
 **Pyramid:** Unit {x}% / Request {y}% / System {z}%
+
 **Tooling:** RSpec, FactoryBot (traits), shoulda-matchers + what the app shape needs (pundit-matchers, WebMock/VCR; Cuprite only when system specs exist)
+
 **API contract:** [rswag | committee | hand-rolled match_schema | skipped - <reason>]
+
 **Sidekiq:** default `:fake`, `:inline` per-spec for end-to-end
+
 **DB isolation:** [transactional fixtures | database_cleaner truncation]
+
 **Parallelism:** [parallel_tests | none]
+
 **Gaps to close (prioritized):**
 1. [Highest risk - typically authorization or data integrity]
 2. [...]

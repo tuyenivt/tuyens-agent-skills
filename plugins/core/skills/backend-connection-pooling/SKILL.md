@@ -103,13 +103,21 @@ With any pooler in front, per-process pool size becomes a thin local queue and c
 
 max_connections: N (reserved M, effective N-M)
 API: replicas R x pool P = T
+
 Workers: replicas R x pool P = T (concurrency C; check C + 2 <= P)
+
 One-shots: total during runs
+
 Deploy peak: {computed value} (old + new overlap)
+
 Pooler tier: {none | session mode | transaction mode | managed proxy}
+
 Steady state: U / effective ({percent}; target <= 75%)
+
 Deploy peak: P / effective ({percent}; must be <= 100%)
+
 Verdict: {Fits | Breaches at deploy peak | Breaches at steady state}
+
 Action: {ship as is | cap deploy surge | drain old client on shutdown | reduce pool to X | cap worker concurrency at X | route through pooler | defer work off a per-request runtime}
 ```
 

@@ -130,7 +130,9 @@ Splitting the page's data function out of the component, as `react-server-data-l
 ## Server Test Assessment
 
 **Isolation:** {transaction rollback | truncate | fresh container | none}
+
 **Database:** {real (containerized) | real (shared test DB) | mocked}
+
 **Client-side coverage:** {not assessed - react-testing-patterns scope | none present}
 
 ### Gaps

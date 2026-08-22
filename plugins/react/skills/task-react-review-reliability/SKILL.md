@@ -202,14 +202,14 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## React Reliability Review Summary
 
-**Stack Detected:** React <version> / TypeScript <version>
-**Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
-**Data Layer:** Server Components + `fetch` | TanStack Query | SWR | mixed
-**Boundary Coverage:** every remote-data route | PARTIAL: <routes uncovered> | NONE
-**Timeouts:** all requests bounded | PARTIAL: <where missing> | NONE
-**Cancellation:** signal threaded at file:line | absent
-**Offline:** defined per path | partial | undefined
-**Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
+- **Stack Detected:** React <version> / TypeScript <version>
+- **Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
+- **Data Layer:** Server Components + `fetch` | TanStack Query | SWR | mixed
+- **Boundary Coverage:** every remote-data route | PARTIAL: <routes uncovered> | NONE
+- **Timeouts:** all requests bounded | PARTIAL: <where missing> | NONE
+- **Cancellation:** signal threaded at file:line | absent
+- **Offline:** defined per path | partial | undefined
+- **Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
 
 ## Findings
 

@@ -160,10 +160,10 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Python Reliability Review Summary
 
-**Stack Detected:** Python <version>
-**Framework:** FastAPI <version> | Django <version> | mixed
-**Resilience Libraries:** tenacity | aiobreaker / purgatory / pybreaker | none detected
-**Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
+- **Stack Detected:** Python <version>
+- **Framework:** FastAPI <version> | Django <version> | mixed
+- **Resilience Libraries:** tenacity | aiobreaker / purgatory / pybreaker | none detected
+- **Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
 
 ## Findings
 

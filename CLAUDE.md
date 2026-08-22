@@ -68,6 +68,7 @@ Workflow skills stay in their domain plugin. Skills are resolved by name, not pa
 ## Writing Conventions
 
 - Use `-` (hyphen-minus). Never `—` or `–` (em/en dash) in any Markdown file.
+- **Field blocks in output templates never stack bare lines.** Consecutive `Label: value` lines with no blank line and no bullet marker are one paragraph in Markdown - VS Code and GitHub join them into a single line. The templates render fine inside their display fence and collapse only in the emitted document, so the defect is invisible at authoring time. Separate the fields with blank lines; use `- ` bullets instead for a report or design-doc header block (`## Summary`, `## <Stack> <Lens> Review Summary`). Blank lines change no line text, so they are safe in blocks a caller parses by line prefix; bullets are not - confine them to blocks nothing parses.
 
 ## Behavioral Principles
 

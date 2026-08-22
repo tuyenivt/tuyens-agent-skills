@@ -218,11 +218,11 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Go Reliability Review Summary
 
-**Stack Detected:** Go <version> / Gin <version>
-**Data Access:** GORM <version> | sqlx <version> | database/sql | mixed
-**Messaging:** Asynq | Kafka | none
-**Resilience Libraries:** sony/gobreaker | cenkalti/backoff | errgroup/semaphore | none detected
-**Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
+- **Stack Detected:** Go <version> / Gin <version>
+- **Data Access:** GORM <version> | sqlx <version> | database/sql | mixed
+- **Messaging:** Asynq | Kafka | none
+- **Resilience Libraries:** sony/gobreaker | cenkalti/backoff | errgroup/semaphore | none detected
+- **Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
 
 ## Findings
 

@@ -73,7 +73,9 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran, p
 ## Test Coverage Assessment
 
 **Stack:** {detected stack or unknown} (generic fallback applied)
+
 **Covered today:** [1-2 lines - what the existing test tree already covers]
+
 **Coverage gaps:**
 
 - [Layer / component]: [what is missing and why it matters]
@@ -81,8 +83,11 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran, p
 ## Test Strategy
 
 **Objective:** [what this strategy achieves]
+
 **Pyramid balance (target):** Unit {x}% / Integration {y}% / E2E {z}% (default 70/20/10 unless the codebase's risk profile justifies otherwise - state why)
+
 **Contract testing:** [required / not required - rationale]
+
 **Gaps to close (prioritized):**
 
 1. [Highest-risk gap]

@@ -162,10 +162,10 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Spring Boot Security Review Summary
 
-**Stack Detected:** Java <version> / Spring Boot <version>
-**Auth:** Spring Security Form Login | OAuth2 Resource Server (JWT) | OAuth2 Client | Custom | Hybrid
-**Authorization:** SecurityFilterChain matchers | @PreAuthorize / @PostAuthorize | Custom
-**Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
+- **Stack Detected:** Java <version> / Spring Boot <version>
+- **Auth:** Spring Security Form Login | OAuth2 Resource Server (JWT) | OAuth2 Client | Custom | Hybrid
+- **Authorization:** SecurityFilterChain matchers | @PreAuthorize / @PostAuthorize | Custom
+- **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
 
 [2-3 sentence assessment; call out Spring-specific risks like missing `@PreAuthorize`, deprecated `WebSecurityConfigurerAdapter`, or exposed Actuator.]
 

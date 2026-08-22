@@ -172,11 +172,11 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Node.js Performance Review Summary
 
-**Stack Detected:** Node.js <version> / TypeScript <version>
-**Framework:** NestJS <version> | Express <version> | mixed
-**ORM:** Prisma <version> | TypeORM <version> | mixed
-**Scope:** Backend (Node.js)
-**Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
+- **Stack Detected:** Node.js <version> / TypeScript <version>
+- **Framework:** NestJS <version> | Express <version> | mixed
+- **ORM:** Prisma <version> | TypeORM <version> | mixed
+- **Scope:** Backend (Node.js)
+- **Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
 
 ## Findings
 

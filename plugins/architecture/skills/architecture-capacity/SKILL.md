@@ -58,8 +58,11 @@ Consuming workflow skills depend on this structure. Always produce all fields.
 ## Capacity Model
 
 **Traffic profile:** {steady-state RPS} steady / {peak RPS} peak ({burst factor}x) {- mark derived numbers "(derived)"; for queue-absorbed workloads add: / {long-run average demand} long-run avg}
+
 **Bottleneck component:** {name} - saturates at {N} RPS/TPS; usable ~{0.75 x N}
+
 **Next bottleneck once mitigated:** {name} - saturates at {N}
+
 **Headroom target:** {2 or 3}x peak = {N} RPS vs usable capacity {N} RPS
 
 ### Component Saturation Points

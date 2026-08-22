@@ -175,9 +175,13 @@ Measure, don't guess: `go test -coverprofile=cover.out ./...` when the suite run
 ## Go Test Coverage Assessment
 
 **Stack:** Go <version> / Gin <version>
+
 **Data Access:** GORM | sqlx | database/sql | mixed
+
 **Messaging:** Asynq | Kafka | none
+
 **Test framework:** `testing` + table-driven, `httptest`, Testcontainers, gomock
+
 **Coverage gaps:**
 
 - **Unit:** [services / validators / mappers without coverage]
@@ -218,10 +222,15 @@ Measure, don't guess: `go test -coverprofile=cover.out ./...` when the suite run
 ## Go Test Strategy
 
 **Objective:** [what this strategy achieves]
+
 **Pyramid balance:** Unit {x}% / Handler + integration {y}% / E2E {z}%
+
 **Tooling:** `testing` + table-driven, `httptest`, Testcontainers Postgres, gomock, `go test -race`, Asynq in-process + real-broker
+
 **Database isolation:** Testcontainers Postgres + per-test transactional rollback
+
 **Concurrency:** `go test -race ./...` mandatory in CI; `t.Parallel()` for independent cases
+
 **Gaps to close (prioritized):**
 
 1. [Highest risk - typically authorization or repository correctness]

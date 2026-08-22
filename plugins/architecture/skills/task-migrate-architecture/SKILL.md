@@ -343,13 +343,17 @@ Output header: `# Migration Plan Review` and use the output structure defined in
 # Migration Plan: {Shape} - {system or change}
 
 Shape: {Decompose | Consolidate | Modernize | Schema}
+
 Scope: {what this plan covers; any deferred second shape}
+
 Assumptions: {stated assumptions from partial inputs}
 
 ## 1. Current State
 
 Overview:
+
 Deployment Profile: {frequency, duration, rollback rate; Schema: the deployment model (single service, multi-service, rolling, blue-green) instead}
+
 Pain Points:
 
 ### Inventory
@@ -377,6 +381,7 @@ Knowledge gaps: {unknown or unverifiable facts: what each blocks + discovery tas
 | -------- | -------------- | --------------------- | ------------ | ----- |
 
 Shared-kernel entities:
+
 Cross-boundary events:
 
 ## 3. {Decomposition | Consolidation | Modernization | Schema Change}
@@ -408,18 +413,27 @@ Cross-boundary events:
 ### Phase 0: Foundation  <!-- when prerequisite work exists -->
 
 What: {CI/CD, routing layer, event infrastructure, test harness}
+
 Verification: {what proves the foundation is ready}
+
 Rollback: N/A
+
 Duration:
 
 ### Phase {N}: {unit or group}
 
 What:
+
 Prerequisites:
+
 Data strategy: {how ownership or shape moves}
+
 Coexistence: {how old and new run together; routing}
+
 Verification: {concrete criterion gating the next phase}
+
 Rollback: {revert path; note if a backup restore is required}
+
 Duration:
 
 <!-- Schema phases are Expand / Migrate / Contract, each with a step table:
@@ -466,8 +480,11 @@ Phases requiring backup restore to roll back: {list, or "none"}
 | ----- | --------- | ----------- | ------ |
 
 Decision Gates: {approver by role}
+
 Rollback Triggers:
+
 Feature Flags:
+
 Cleanup Plan:
 
 ## Failure Simulation (deep only)
@@ -476,7 +493,9 @@ Cleanup Plan:
  mitigation -> recovery.}
 
 **Blast radius:** {Narrow | Moderate | Wide | Critical}
+
 **MTTR estimate:**
+
 **Gap identified:**
 
 ## Staff-Level Summary

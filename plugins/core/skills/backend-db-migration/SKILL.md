@@ -142,8 +142,11 @@ ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE USING INDEX idx_users
 ## Migration Safety Assessment
 
 **Change type**: [additive | non-additive | destructive]
+
 **Strategy**: [single-phase | expand-contract | scheduled downtime]
+
 **Lock risk**: [Low | Medium | High | Very High] - {reason}
+
 **Backfill required**: [Yes - estimated N rows | No]
 
 ## Phases

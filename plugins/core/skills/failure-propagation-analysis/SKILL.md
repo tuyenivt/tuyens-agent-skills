@@ -90,6 +90,7 @@ All services have issues.
 ## Failure Propagation Analysis
 
 **Primary failure:** {component and failure type}
+
 **Cascading components:** {list, or "none - failure is contained"}
 
 ### Propagation Path

@@ -197,7 +197,9 @@ Consuming workflow skills depend on this structure.
 ## Form Handling Assessment
 
 **Stack:** {detected language / framework}
+
 **Form library:** {detected or recommended library}
+
 **Validation library:** {detected or recommended schema library}
 
 ### Form Design

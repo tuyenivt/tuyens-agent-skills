@@ -139,11 +139,11 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Node.js Reliability Review Summary
 
-**Stack Detected:** Node.js <version> / TypeScript <version>
-**Framework:** NestJS <version> | Express <version> | mixed
-**ORM:** Prisma <version> | TypeORM <version>
-**Resilience Library:** opossum | cockatiel | p-retry | none detected
-**Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
+- **Stack Detected:** Node.js <version> / TypeScript <version>
+- **Framework:** NestJS <version> | Express <version> | mixed
+- **ORM:** Prisma <version> | TypeORM <version>
+- **Resilience Library:** opossum | cockatiel | p-retry | none detected
+- **Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
 
 ## Findings
 

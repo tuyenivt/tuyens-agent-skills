@@ -190,11 +190,11 @@ Output header: `# Upgrade Assessment Review` and use the output structure define
 
 ## Summary
 
-**Stack:** {detected language / framework}
-**Recommendation:** {Go - Now | Go - Planned | Go - Epic | No-Go - Defer | No-Go - Block}  <!-- multi-dep: the batch verdict -->
-**Overall Effort:** {S | M | L | XL}
-**Risk Level:** {Low | Medium | High}
-**Primary Reason:** {one sentence}
+- **Stack:** {detected language / framework}
+- **Recommendation:** {Go - Now | Go - Planned | Go - Epic | No-Go - Defer | No-Go - Block}  <!-- multi-dep: the batch verdict -->
+- **Overall Effort:** {S | M | L | XL}
+- **Risk Level:** {Low | Medium | High}
+- **Primary Reason:** {one sentence}
 
 ## Per-Dependency Verdicts (multi-dependency requests only)
 

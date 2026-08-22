@@ -129,13 +129,13 @@ Fill rules: `Findings verified:` carries the verify tally on standalone runs, th
 ```markdown
 ## Rails Observability Review Summary
 
-**Stack Detected:** Ruby <version> / Rails <version>
-**Logger:** lograge | semantic_logger | Rails.logger (raw) | other
-**Tracing:** OpenTelemetry | New Relic | Datadog APM | Scout | Skylight | none
-**Error tracker:** Sentry | Honeybadger | Rollbar | none
-**Target:** <path(s)>
-**Overall:** Adequate | Gaps Found - [High/Medium/Low count]
-**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Stack Detected:** Ruby <version> / Rails <version>
+- **Logger:** lograge | semantic_logger | Rails.logger (raw) | other
+- **Tracing:** OpenTelemetry | New Relic | Datadog APM | Scout | Skylight | none
+- **Error tracker:** Sentry | Honeybadger | Rollbar | none
+- **Target:** <path(s)>
+- **Overall:** Adequate | Gaps Found - [High/Medium/Low count]
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
 
 ## Findings
 

@@ -135,7 +135,9 @@ Without this the old container holds its pool through the deploy overlap, which 
 ## Self-Host Assessment
 
 **Target:** {VPS | container host | unknown}
+
 **Instances:** {1 | N}
+
 **CDN:** {present | absent}
 
 ### Findings

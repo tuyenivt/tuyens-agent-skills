@@ -125,12 +125,12 @@ Fill rules: `Findings verified:` carries the verify tally on standalone runs, th
 ```markdown
 ## Rails Security Review Summary
 
-**Stack Detected:** Ruby <version> / Rails <version>
-**Auth:** Devise | JWT | Custom | Hybrid
-**Authorization:** Pundit | CanCanCan | Custom
-**Target:** <surface>
-**Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
-**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Stack Detected:** Ruby <version> / Rails <version>
+- **Auth:** Devise | JWT | Custom | Hybrid
+- **Authorization:** Pundit | CanCanCan | Custom
+- **Target:** <surface>
+- **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
 
 [2-3 sentence assessment; call out Rails-specific risks.]
 

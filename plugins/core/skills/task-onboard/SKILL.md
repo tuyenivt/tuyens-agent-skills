@@ -222,11 +222,13 @@ Use skill: `dependency-impact-analysis` when the user names a specific candidate
 [directory map - top 2-3 levels with one-line annotations]
 
 **Where to look first:** [2-3 paths with reason]
+
 **Safe to skip initially:** [vendored, generated, fixtures, deprecated]
 
 ## Architecture
 
 **Pattern:** [Layered / Clean / Modular monolith / Vertical slice / Microservice / Event-driven]
+
 **Evidence:** [2-3 paths / naming observations]
 
 ### Modules

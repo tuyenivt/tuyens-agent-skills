@@ -153,6 +153,7 @@ Suggested action: [only if `review-pr-risk` emitted `Action:`; otherwise omit th
 
 Closes [TICKET-ID](link-if-available)
 ADR: [ADR title or path]
+
 Related: #[PR number or branch]
 ```
 

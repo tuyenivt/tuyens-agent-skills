@@ -118,22 +118,25 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 ```markdown
 ## Summary
 
-**Assessment:** Approve | Request Changes | Discuss
-**Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide | Critical
-**Stack Detected:** <identifier or unknown> (generic fallback applied)
-**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full
-**Depth:** standard | deep
-**Round:** <N> _(include from round 2 onward)_
-**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
-**Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
-**Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
+- **Assessment:** Approve | Request Changes | Discuss
+- **Risk Level:** Low | Medium | High | Critical
+- **Blast Radius:** Narrow | Moderate | Wide | Critical
+- **Stack Detected:** <identifier or unknown> (generic fallback applied)
+- **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full
+- **Depth:** standard | deep
+- **Round:** <N> _(include from round 2 onward)_
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
+- **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 
 ## Change Brief
 
 **Requested:** <what the change was asked to do; `(inferred from commits)` when no source resolved>
+
 **Delivered:** <the mechanism implemented and where>
+
 **Author decisions:** <each choice the request did not imply, with its consequence, excluding choices already raised as findings; `None observed` when nothing remains>
+
 **Watch points:** <what to confirm by hand before reading findings; `None` when there are none>
 
 ## Requirement Traceability

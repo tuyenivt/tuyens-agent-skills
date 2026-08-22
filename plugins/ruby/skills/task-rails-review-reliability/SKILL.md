@@ -156,12 +156,12 @@ Fill rules: `Findings verified:` carries the verify tally on standalone runs, th
 ```markdown
 ## Rails Reliability Review Summary
 
-**Stack Detected:** Ruby <version> / Rails <version> / <database>
-**Background Runtime:** Sidekiq | ActiveJob (<adapter>) | none detected
-**Resilience Gems:** Stoplight | Retriable | faraday-retry | sidekiq-unique-jobs | none detected
-**Target:** <path(s)>
-**Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
-**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Stack Detected:** Ruby <version> / Rails <version> / <database>
+- **Background Runtime:** Sidekiq | ActiveJob (<adapter>) | none detected
+- **Resilience Gems:** Stoplight | Retriable | faraday-retry | sidekiq-unique-jobs | none detected
+- **Target:** <path(s)>
+- **Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
 
 ## Findings
 

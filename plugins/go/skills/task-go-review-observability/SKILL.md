@@ -196,16 +196,16 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Go Observability Review Summary
 
-**Stack Detected:** Go <version> / Gin <version>
-**Data Access:** GORM <version> | sqlx <version> | database/sql | mixed
-**Messaging:** Asynq | Kafka | none
-**Logging:** slog (JSON) | slog (text) | log (stdlib) | absent
-**Metrics:** prometheus/client_golang | OTel metrics (Prometheus exporter) | absent
-**Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (Jaeger / Zipkin exporter) | absent
-**pprof:** enabled (admin port) | enabled (non-prod only) | enabled (public, prod) [security finding] | absent
-**Asynq instrumentation:** OTel middleware | partial | absent | n/a (no Asynq)
-**Error Tracker:** Sentry | Honeybadger | absent
-**Overall:** Adequate | Gaps Found - [count by impact] | Greenfield - no surface wired [count by impact]
+- **Stack Detected:** Go <version> / Gin <version>
+- **Data Access:** GORM <version> | sqlx <version> | database/sql | mixed
+- **Messaging:** Asynq | Kafka | none
+- **Logging:** slog (JSON) | slog (text) | log (stdlib) | absent
+- **Metrics:** prometheus/client_golang | OTel metrics (Prometheus exporter) | absent
+- **Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (Jaeger / Zipkin exporter) | absent
+- **pprof:** enabled (admin port) | enabled (non-prod only) | enabled (public, prod) [security finding] | absent
+- **Asynq instrumentation:** OTel middleware | partial | absent | n/a (no Asynq)
+- **Error Tracker:** Sentry | Honeybadger | absent
+- **Overall:** Adequate | Gaps Found - [count by impact] | Greenfield - no surface wired [count by impact]
 
 ## Surface Map
 

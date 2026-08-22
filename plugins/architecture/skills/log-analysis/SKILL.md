@@ -90,6 +90,7 @@ Missing expected entries observable from the unhealthy window alone still belong
 ## Log Analysis
 
 Time Window: {start} to {end | "ongoing at window end"} ({duration})
+
 Comparison Window: {healthy period | "unavailable"}
 
 ### Correlation Trace

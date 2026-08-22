@@ -120,9 +120,13 @@ Use this template when designing or reviewing a flag.
 ## Feature Flag Design
 
 **Flag name**: {descriptive-feature-name-enabled}
+
 **Type**: {boolean | user-targeting | kill-switch}
+
 **Default**: {on | off}
+
 **Owner**: {team or engineer}
+
 **Cleanup target**: {date or "within 1 sprint of 100% rollout"}
 
 ## Rollout Plan

@@ -95,10 +95,15 @@ Populate Summary fields as steps complete (blast radius arrives in Step 3); sect
 ## Incident Summary
 
 Failure Type:
+
 Severity: Low | Medium | High | Critical
+
 Blast Radius: Narrow | Moderate | Wide | Critical
+
 Onset: {timestamp | "~N min ago" | "unknown"}
+
 Duration:
+
 Affected Services:
 - {service}: {degraded (N% when known) | down | healthy}
 Propagation: {origin -> affected, via {call | shared resource (name it)}; omit when single-service}

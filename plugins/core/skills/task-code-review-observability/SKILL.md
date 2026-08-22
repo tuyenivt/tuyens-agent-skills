@@ -86,10 +86,10 @@ When Step 3 dispatched: the stack workflow owns the output. Subagent runs return
 ```markdown
 ## Observability Review Summary
 
-**Stack Detected:** [detected stack, or unknown] (generic fallback applied)
-**Scope:** Backend | Frontend | Fullstack
-**Overall:** Adequate | Gaps Found - [High/Medium/Low counts]
-**Findings verified:** [N] confirmed, [M] reattributed, [K] dropped
+- **Stack Detected:** [detected stack, or unknown] (generic fallback applied)
+- **Scope:** Backend | Frontend | Fullstack
+- **Overall:** Adequate | Gaps Found - [High/Medium/Low counts]
+- **Findings verified:** [N] confirmed, [M] reattributed, [K] dropped
 
 ## Findings
 

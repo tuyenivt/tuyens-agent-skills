@@ -197,11 +197,11 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Python Security Review Summary
 
-**Stack Detected:** Python <version>
-**Framework:** FastAPI <version> | Django <version> | mixed
-**Auth:** OAuth2 / JWT (python-jose) | OAuth2 / JWT (pyjwt) | DRF SimpleJWT | Django Session | Custom | Hybrid
-**Authorization:** FastAPI Depends-based | DRF permission_classes | Custom
-**Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
+- **Stack Detected:** Python <version>
+- **Framework:** FastAPI <version> | Django <version> | mixed
+- **Auth:** OAuth2 / JWT (python-jose) | OAuth2 / JWT (pyjwt) | DRF SimpleJWT | Django Session | Custom | Hybrid
+- **Authorization:** FastAPI Depends-based | DRF permission_classes | Custom
+- **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
 
 [2-3 sentence assessment calling out Python-specific risks: missing `permission_classes`, absent `extra="forbid"`, `pickle.loads` on untrusted input, exposed `/docs` in prod.]
 

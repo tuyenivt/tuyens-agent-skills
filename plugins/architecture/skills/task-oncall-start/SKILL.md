@@ -55,9 +55,9 @@ Identify risks not yet alerting: elevated error rates, unvalidated deploys, upco
 ```
 ## Oncall Shift-Start Summary
 
-Team/Service: {name}
-Rotation Start: {date/time}
-Previous Oncall: {name | "unnamed handoff" | "no handoff"}
+- Team/Service: {name}
+- Rotation Start: {date/time}
+- Previous Oncall: {name | "unnamed handoff" | "no handoff"}
 
 ### Handoff Review
 - Open incidents: {list or "None"}
@@ -143,7 +143,9 @@ State the classification, severity, recommended workflow, and the context the ne
 ## Oncall Classification
 
 Work Type: {Active incident | Code bug | Operational | User request | Performance | Alert}
+
 Severity: {Critical | High | Medium | Low}
+
 Ongoing: {Yes (symptom still occurring) | No | Unknown}
 
 ### Recommended Workflow

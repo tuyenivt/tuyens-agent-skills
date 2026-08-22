@@ -274,22 +274,25 @@ The fence below delimits the template for display only - it is not part of the r
 
 **Assessment:** Approve | Request Changes | Discuss
 _(Request Changes = any [Must]; Discuss = no [Must] but an unresolved assumption in a [Recommend] gates the verdict; Approve = neither - [Recommend]s alone don't block.)_
-**Risk Level:** Low | Medium | High | Critical
-**Blast Radius:** Narrow | Moderate | Wide | Critical
-**Stack Detected:** Ruby <version> / Rails <version>
-**Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(append `auto-escalated from Core; signals: <list>` or `user-flagged; signals also firing: <list>` as applicable)_
-**Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
-**Round:** <N>                                _(include from round 2 onward)_
-**Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
-**Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Step 3.7 resolved no source)_
-**Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
-**Notes:** <every note line mandated by Steps 3.5/3.5c/4/9 - narrowing, expansion, suppressed signals, short-circuit, incomplete scopes; omit the line when none>
+- **Risk Level:** Low | Medium | High | Critical
+- **Blast Radius:** Narrow | Moderate | Wide | Critical
+- **Stack Detected:** Ruby <version> / Rails <version>
+- **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(append `auto-escalated from Core; signals: <list>` or `user-flagged; signals also firing: <list>` as applicable)_
+- **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
+- **Round:** <N>                                _(include from round 2 onward)_
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Step 3.7 resolved no source)_
+- **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
+- **Notes:** <every note line mandated by Steps 3.5/3.5c/4/9 - narrowing, expansion, suppressed signals, short-circuit, incomplete scopes; omit the line when none>
 
 ## Change Brief
 
 **Requested:** <what the change was asked to do, citing the source; `(inferred from commits)` when no source resolved>
+
 **Delivered:** <the mechanism implemented and where>
+
 **Author decisions:** <each choice the request did not imply, with its consequence, excluding choices already raised as findings; `None observed` when nothing remains>
+
 **Watch points:** <what to confirm by hand before reading findings; `None` when there are none>
 
 ## Requirement Traceability _(omit when Step 3.7 resolved no source)_

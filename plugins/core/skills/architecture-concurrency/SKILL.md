@@ -101,7 +101,9 @@ One Issue entry per defect, not per symptom: when several rules fail on the same
 ## Concurrency Assessment
 
 **Stack:** {detected language / framework | unknown}
+
 **Concurrency model:** {Thread-based | Coroutine/Lightweight | Process/Actor | not yet chosen}
+
 **Primary primitive:** {thread | goroutine | coroutine | process | task | fiber | not yet chosen}
 
 ### Issues
