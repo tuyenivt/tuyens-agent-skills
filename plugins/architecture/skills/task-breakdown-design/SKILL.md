@@ -26,7 +26,7 @@ A pasted task breakdown (phased tasks, dependencies, sizes) with no authoring re
 
 ## Inputs
 
-**Breakdown Mode.** Required: a system design - HLD, LLD, or both. A `task-design-architecture` proposal is the ideal shape but not required. Optional: constraints, exclusions, owning teams, capacity.
+**Breakdown Mode.** Required: a system design - HLD, LLD, or both. A `task-design-architecture` proposal or a `task-design-brief` is the ideal shape but not required. Optional: constraints, exclusions, owning teams, capacity.
 
 When input is a thin sketch rather than a real design, say so, list the design sections that would sharpen the plan, and break down on stated assumptions rather than inventing architecture. Do not design the system here - if a load-bearing decision is absent (sync vs. async, storage choice), raise it as an Open Question or spike, never resolve it silently.
 
@@ -67,6 +67,8 @@ Read the design and extract the work it implies. Match the design's content to t
 | **Trade-Off / Significant Decisions** (S9) | Spikes where a decision is deferred or an ADR is still open |
 
 State which design sections you drew from. If a required design section is absent (e.g., no failure analysis for a high-blast-radius change), flag it under Open Questions rather than fabricating tasks.
+
+When the input is a `task-design-brief`, its change-inventory rows are the primary mapping surface - one or more tasks per row, phased by Kind: service -> Foundation scaffold + Build logic; table/column, infra -> Foundation; endpoint, job -> Build; event/queue, third-party -> Integration; config -> Ops Readiness. Its Rollout and Back-out section supplies the Ops-Readiness tasks, and its remaining sections map by heading or topic through the table above. A row whose impact is marked `assumed` still yields its tasks: the assumed impact goes to Open Questions, and only work depending on that impact waits on the answer - never plan against it as verified.
 
 ### STEP 2 - Hidden Complexity Scan
 
@@ -159,7 +161,7 @@ When the verdict is `add spike`, define:
 ```markdown
 # Design-to-Tasks Breakdown: <Feature / System>
 
-**Stack:** <detected | prompt-stated: <stack> | unknown> | **Design source:** <task-design-architecture proposal | HLD | LLD | sketch> | **Tasks:** <count>
+**Stack:** <detected | prompt-stated: <stack> | unknown> | **Design source:** <task-design-architecture proposal | design brief | HLD | LLD | sketch> | **Tasks:** <count>
 
 ## Design Coverage
 
@@ -232,7 +234,7 @@ State in one sentence each: what the plan builds, its stated scope/exclusions, t
 
 ### STEP 2 - Coverage Audit
 
-Does the plan cover the work the design (or stated scope) implies? For each area, mark **Covered** (a task implements it), **Under-specified** (named but no real task), or **Missing** (no task). When a source design is supplied, walk it against the areas below - by section when it is a `task-design-architecture` proposal, by heading or topic when it is a free-form HLD/LLD or a prose excerpt. When no design is supplied, replace the rows with each in-scope item the stated scope names plus the ops areas it implies (an export needs failure/retry + alerting; a write path needs rollback), and mark `n/a` any area the scope does not reach - `n/a` is not Missing.
+Does the plan cover the work the design (or stated scope) implies? For each area, mark **Covered** (a task implements it), **Under-specified** (named but no real task), or **Missing** (no task). When a source design is supplied, walk it against the areas below - by section when it is a `task-design-architecture` proposal, by change-inventory row when it is a `task-design-brief` (a plan that builds on an impact the brief marks `assumed` as if verified is Under-specified, Major minimum), by heading or topic when it is a free-form HLD/LLD or a prose excerpt. When no design is supplied, replace the rows with each in-scope item the stated scope names plus the ops areas it implies (an export needs failure/retry + alerting; a write path needs rollback), and mark `n/a` any area the scope does not reach - `n/a` is not Missing.
 
 | Area | A complete plan has |
 | --- | --- |

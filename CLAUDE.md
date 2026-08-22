@@ -11,7 +11,7 @@ A **Claude Code plugin marketplace repository** - agent skills and agents for Cl
 ```
 plugins/
   core/          # Stack-agnostic skills (required by all other plugins)
-  architecture/  # Stack-agnostic architecture design, re-architecture, task breakdown, release notes, and incident response
+  architecture/  # Stack-agnostic architecture design, reviewer-calibrated design briefs, re-architecture, task breakdown, and incident response
   java/          # Java 21+ / Spring Boot 3.5+
   python/        # Python 3.11+ / FastAPI (primary), Django (secondary)
   ruby/          # Ruby 3.4+ / Ruby on Rails 7.2+
@@ -48,6 +48,8 @@ user-invocable: true # false = atomic skill, hidden from slash menu
 **Naming.** Workflow skills are prefixed `task-` (e.g., `task-spring-implement`). Atomic skills use `<framework>-<concern>` (e.g., `spring-jpa-performance`).
 
 **Stack adaptation.** `stack-detect` reads the consuming project's `CLAUDE.md` for a `## Tech Stack` section (key-value pairs like `Language:`, `Framework:`, `Database:`). This is how skills adapt output to different ecosystems.
+
+**House-format adaptation.** `design-reference-pattern` reads the same file for a `## Design Docs` section (`Template:`, `Reference:`, `Approver:`) pointing at a company design template or an approved prior design. Same key-value shape as `## Tech Stack` and the same narrow-read rule. It governs a document's headings, order, and metadata slots - never the content a workflow requires, which maps into a house section or is appended, and is never dropped.
 
 ## Skill Placement
 

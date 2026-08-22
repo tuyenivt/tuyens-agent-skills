@@ -1,7 +1,7 @@
 {
   "name": "architecture",
   "version": "1.149.0",
-  "description": "Stack-agnostic architecture plugin: unified system design (boundaries + API contracts + C4 diagrams), re-architecture (monolith decomposition, service consolidation, legacy modernization), database migration planning, dependency upgrade assessment, design-to-tasks breakdown, and release notes. Every design workflow doubles as a review workflow with severity-tagged findings and verdict.",
+  "description": "Stack-agnostic architecture plugin: unified system design (boundaries + API contracts + C4 diagrams), reviewer-calibrated design briefs for epic approval, re-architecture (monolith decomposition, service consolidation, legacy modernization), database migration planning, dependency upgrade assessment, design-to-tasks breakdown, and live incident response (triage, root cause analysis). Every authoring workflow doubles as a review workflow with severity-tagged findings and verdict.",
   "author": {
     "name": "Tuyen"
   },

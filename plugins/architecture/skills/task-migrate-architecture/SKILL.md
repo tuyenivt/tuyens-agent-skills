@@ -51,7 +51,10 @@ Shape = Schema runs Sections 1, 3d, 5, 6, 7 only; Sections 2 and 4 do not apply 
 | Constraints          | No       | Timeline, team capacity, compliance, uptime, freeze windows                       |
 | Dependencies         | No       | Call graph, event flows, shared tables                                            |
 | Traffic profile      | No       | Volume, hotspots, peak patterns (Schema: row counts)                              |
+| Reference doc        | No       | Company template or an approved prior plan; path or pasted content                |
 | Depth                | No       | `quick`, `standard` (default), or `deep`                                          |
+
+When a reference doc is supplied, or the project's instruction file carries a `## Design Docs` section, load `Use skill: design-reference-pattern` (authoring only - in Review Mode do not load it; the review follows the lens's structure, and the house template is not review evidence). It governs headings, order, and metadata slots only - the one sanctioned exception to the behavioral directive's structure rule; every section this workflow requires maps to a house heading or is appended under its own name, the Shape, Scope, and Assumptions header lines ride with the metadata slots, and nothing is dropped to fit the template.
 
 Handle partial inputs gracefully. State assumptions explicitly when input is missing. For inputs naming only 1-3 specific services, skip the full landscape and scope the assessment to those and their immediate dependencies.
 

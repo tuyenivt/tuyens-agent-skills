@@ -24,6 +24,8 @@ Staff-level architecture design or review prioritizing boundaries, failure conta
 - Architecture proposal for cross-team changes
 - Reviewing an existing design proposal or comparing competing proposals
 
+Not this workflow when the artifact's only consumer is an approver who will not read a 12-section proposal - `task-design-brief` runs the same analysis and emits a two-page reviewer-facing document instead. Run this one when a named consumer needs the full record: an architecture board, a compliance file, or a cross-team contract outliving the change. Invoked directly with an approver-only consumer, say so and run `task-design-brief` instead.
+
 ## Mode Detection
 
 If the user's input makes mode obvious (e.g., "here's a design doc, review it" or "design a payment service"), proceed. A pasted authored artifact (design doc, proposal, spec) with no authoring request is Review Mode even without a verb; the user's own rough sketch or idea inside the request is input to New Design, not an artifact to review. Otherwise ask: **new design** (full proposal) or **review existing** (evaluate proposal). Default: New Design.
@@ -88,9 +90,13 @@ Output header: `# Architecture Review` and use the output structure defined in `
 | Constraints            | No       | Performance, compliance, timeline, legacy, team capacity          |
 | Traffic assumptions    | No       | Expected request volume, growth projections, burst profile        |
 | Integration needs      | No       | External APIs, third-party services, event sources                |
+| Reviewer profile       | No       | Architecture and domain fluency, `High` or `Low` each             |
+| Reference doc          | No       | Company template or approved prior design; path or pasted content |
 | Depth                  | No       | `quick`, `standard` (default), or `deep` - see Depth Levels below |
 
 Handle partial inputs gracefully. When input is missing, state assumptions explicitly and flag what additional context would strengthen the design.
+
+**Audience and house format (New Design Mode only).** When a reviewer profile is supplied, load `Use skill: design-audience-calibration`; when a reference doc is supplied or the project's instruction file carries a `## Design Docs` section, load `Use skill: design-reference-pattern`. In Review Mode load neither - the review's reader is the artifact's author, and approver-fit review belongs to `task-design-brief`. Neither changes this workflow's analysis or its 12-section content contract: calibration governs prose, glossing, and what moves to an appendix, and the house pattern governs headings, order, and metadata slots, with every section mapped to a house heading or appended under its own name - the one sanctioned exception to the behavioral directive's structure rule. Required content is never dropped to fit a template: when the calibration budget conflicts with the 12-section contract, the contract wins - load-bearing tables and decisions stay in the body, elaboration moves to the appendix, and the C4 Container outranks the diagram budget, with further diagrams relocating to the appendix rather than dropping.
 
 ## Depth Levels
 
