@@ -18,11 +18,11 @@ user-invocable: false
 
 ## Rules
 
-- Every finding cites the constraint making the code redundant: FK name, `gorm:"not null"`, `uniqueIndex`, `binding:` tag, framework guarantee, compile-time contract. When multiple constraints stack (e.g., binding + GORM tag + "only HTTP write path"), list them comma-separated in `Redundant because:`.
+- Every finding cites the constraint making the code redundant: FK name, `gorm:"not null"`, `uniqueIndex`, `binding:` tag, framework guarantee, compile-time contract, or a repo fact (call sites, existing implementations, a mock file). When multiple constraints stack (e.g., binding + GORM tag + "only HTTP write path"), list them comma-separated in `Redundant because:`.
 - Intent:
-  - **`[Recommend]`** (default). Cite the constraint, recommend the edit. Escalate to **`[Must]`** when measurable cost is present. Cite the cost in `Cost:`. Triggers: extra SELECT in a hot path; silent error swallow via `if err != nil { return nil }`; single-impl interface declared at the implementation; naked `go fn()` wrapping a sequential call
-  - **`[Recommend]`** when justification is plausible but not visible in the diff - state the justification being assumed and ask the author to confirm
-- A redundancy with **visible** justification is not a finding
+  - **`[Recommend]`** (default). Cite the constraint, recommend the edit. Escalate to **`[Must]`** when the code costs something at runtime or actively misleads: an extra query per request, a silently swallowed error, a `recover()` or guard that reports success on failure, a process-killing `log.Fatal` on a request path, a naked `go fn()` with no owner, a single-impl interface declared at the implementation. Cite the cost in `Cost:` - maintenance cost (parallel definitions, lost jump-to-impl) counts and is what most `[Must]` premature-abstraction findings cite
+  - **`[Recommend]`** when justification is plausible but unconfirmed - state the justification being assumed and ask the author to confirm
+- **Justification is repo-visible, not diff-visible.** A second implementation, a mock file, an Asynq or CLI call site, and a worker pool all live outside the hunks. Check the repo before flagging; if you cannot, say which fact you could not verify and label `[Recommend]`, never `[Must]`. Confirmed justification is not a finding
 - `Cost:` for premature-abstraction `[Must]` findings is maintenance cost (parallel definitions to keep in sync, indirect call, lost IDE jump-to-impl), not runtime cost - that is still measurable and worth citing
 
 ## Patterns
@@ -42,9 +42,9 @@ if req.CustomerID == 0 {                      // dead
 }
 ```
 
-#### Manual unique-check before `db.Create`
+#### Existence probe before a write the DB already constrains
 
-`[Must]` - races (two concurrent requests pass the SELECT) and adds a query per write.
+`[Must]` - races (two concurrent requests pass the SELECT) and adds a query per write. The same shape appears against a unique index and against a foreign key; both are the constraint doing the work twice.
 
 ```go
 // Bad
@@ -54,10 +54,16 @@ if err := db.Where("email = ?", req.Email).First(&existing).Error; err == nil {
 }
 db.Create(&User{Email: req.Email})
 
-// Good - let the unique index decide
+// Good - let the constraint decide, map its error (Postgres codes shown;
+// MySQL is 1062 / 1452, SQLite is ErrConstraintUnique / ErrConstraintForeignKey)
 if err := db.Create(&User{Email: req.Email}).Error; err != nil {
     var pgErr *pgconn.PgError
-    if errors.As(err, &pgErr) && pgErr.Code == "23505" { return ErrEmailTaken }
+    if errors.As(err, &pgErr) {
+        switch pgErr.Code {
+        case "23505": return ErrEmailTaken       // unique_violation
+        case "23503": return ErrCustomerNotFound // foreign_key_violation
+        }
+    }
     return fmt.Errorf("create user: %w", err)
 }
 ```

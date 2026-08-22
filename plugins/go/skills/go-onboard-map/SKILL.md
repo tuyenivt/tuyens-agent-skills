@@ -18,11 +18,13 @@ user-invocable: false
 
 ## Rules
 
-- Identify Go version from `go.mod` (`go 1.x`); current toolchain range per Go release policy (last two majors are supported)
+- Report the Go version and any `toolchain` directive verbatim from `go.mod`. Go supports the last two majors; state the position only if the current release is known from the environment, otherwise report the version and skip the judgment rather than inventing a release number
 - Identify framework: Gin / Echo / Chi / Fiber / gorilla / net/http
-- Identify DB: GORM / sqlx / pgx / database/sql + driver / ent / sqlc
-- Identify layout convention (drives where new code lands); when two fit, report the dominant one and note the secondary in parentheses
-- Grep `//go:build` tags: tagged files and tests are invisible to default builds - report required `-tags` (integration suites are commonly gated this way)
+- Identify DB: GORM / sqlx / pgx / database/sql + driver / ent / bun / sqlc
+- Identify layout convention (drives where new code lands). Report every convention that applies: the package convention, and orthogonally whether it is single-binary, monorepo multi-binary, or a `go.work` multi-module workspace. In a workspace, report each module's framework, ORM, and `go` directive separately and flag version skew between them
+- Grep `//go:build` tags: tagged files and tests are invisible to default builds - report required `-tags` (integration suites are commonly gated this way). Without filesystem access, say the tag surface is unverified rather than implying `go test ./...` is complete
+- Deps: `vendor/` present means vendor mode is the default - `go mod download` is unnecessary and `go build` never consults the proxy. In a workspace, `go work sync` comes first
+- Report the test surface as its own fact: colocated `_test.go`, tag-gated suites, or none at all. "This codebase has no tests" is a top-three onboarding fact, not a footnote
 
 ## Build Inventory
 
@@ -55,8 +57,9 @@ user-invocable: false
 | **Feature-package**          | `internal/orders/{handler,service,repository,model}.go`                | Recommended for medium+ services        |
 | **DDD / hexagonal**          | `internal/<domain>/{domain,application,adapters}/`; domain has no framework imports | Teams enforcing hexagonal architecture  |
 | **Monorepo multi-binary**    | `cmd/api/`, `cmd/worker/`, `cmd/migrate/` + shared `internal/`         | One repo serves API + Asynq workers     |
+| **`go.work` workspace**      | `go.work` + several `*/go.mod`, each module with its own layout        | Independently versioned services in one repo |
 
-Monorepo multi-binary is orthogonal to the package convention - a feature-packaged monorepo is the common combination; report both.
+The last two rows are orthogonal to the package convention - a feature-packaged monorepo is the common combination; report every row that applies. A layer-packaged repo without `internal/` is still layer-package: name the convention and note that the boundary is convention-only, not compiler-enforced.
 
 | Location                                  | Purpose                                       |
 | ----------------------------------------- | --------------------------------------------- |
@@ -82,9 +85,9 @@ Monorepo multi-binary is orthogonal to the package convention - a feature-packag
 
 ## Risk Hotspots (delegate depth to dedicated skills)
 
-- Goroutine lifetime + cancellation -> `go-concurrency`, `task-go-review-perf`
+- Goroutine lifetime + cancellation, unsupervised `go fn()` -> `go-concurrency`, `task-go-review-perf`
 - N+1, pool config, `AutoMigrate`, `defer rows.Close()`, `WithContext` -> `go-data-access`
-- Asynq inside transactions, ORM models in payloads -> `go-messaging-patterns`
+- Broker dispatch inside transactions (Asynq, Kafka, Watermill), ORM models in payloads -> `go-messaging-patterns`
 - Mass assignment, raw SQL, missing JWT -> `task-go-review-security`
 - Migration safety on hot tables -> `go-migration-safety`
 - Go quirks: default `http.Client` no timeout, `defer` in loops, `init()` doing heavy work, JSON tag mismatches, `init()`-wired globals breaking test isolation
@@ -111,54 +114,48 @@ Riskier: `cmd/<binary>/main.go`, middleware (applies globally), pool config, gor
 
 ## Output
 
-Inject into `task-onboard` as Markdown sections in this exact order and shape. Flag inferred items as `(inferred)` rather than fabricating values not in the tree.
+Inject into `task-onboard` as Markdown sections in this order. Every value is read from the tree; mark a derived value `(inferred)` and an unavailable one `(unknown)`. Never carry a value over from the shape below - it shows the section skeleton, not defaults.
 
 ```markdown
 ### Stack and Tooling
-- **Go:** 1.23 (toolchain go1.23.4, within support window)
-- **Framework:** Chi
-- **DB:** sqlc + sqlx on pgx / Postgres 16
-- **Migrations:** golang-migrate (`migrate up`)
-- **Logging:** slog JSON; OTel for traces/metrics
-- **Lint:** golangci-lint (govet, errcheck, staticcheck, revive, gosec)
+- **Go:** <go directive> (<toolchain directive, or "no toolchain directive">)
+- **Framework:** <framework, or (unknown)>
+- **DB:** <library + driver + engine>
+- **Migrations:** <tool + command>
+- **Logging / Observability:** <libraries>
+- **Lint:** <config file + enabled linters, or "none - no linter config">
+- **Build tags:** <required `-tags`, "none found", or "unverified - no filesystem access">
+- **Tests:** <colocated / tag-gated / none found> + the command that runs them
 
 ### Local Bootstrap
-- `go mod download`
-- `cp .env.example .env`; set DB_DSN, REDIS_URL, OTEL_ENDPOINT, STRIPE_KEY
-- `docker compose up -d` (postgres, redis, otel-collector)
-- `make migrate-up`
-- `go run ./cmd/api` -> http://localhost:8080/health
-- `go run ./cmd/worker` for Asynq consumers
+Ordered commands, each one runnable. Omit steps the tree does not support rather than
+inventing them; `vendor/` present means no `go mod download`, a workspace means
+`go work sync` first. Verify with `/health` or `/healthz`; if neither route exists,
+name the first routed GET. Never state a port the tree does not set.
 
 ### Architecture Map
-- Entry: `cmd/{api,worker,migrate,jobs}/main.go` (thin wire-up)
-- App code: `internal/` (compiler-enforced boundary)
-- Layout: **feature-package** under `internal/payments/`, `internal/refunds/`, `internal/webhooks/` (monorepo multi-binary on top)
-- Server: `internal/server/router.go` (Chi + middleware)
-- DB: `internal/db/` (sqlx + pgx); per-feature queries via sqlc in each `repo.go`
-- Observability: `internal/obs/` (otel + slog setup)
-- Shared utilities: `pkg/money/`
+- Entry: <cmd paths>, and whether wire-up is thin
+- App code: <internal/ or module root>
+- Layout: **<convention>**, plus single-binary / monorepo multi-binary / go.work workspace
+- <one line per structural package>
+- Workspace only: per-module framework, ORM, and `go` directive; flag version skew
 
 ### Conventions
-- Errors wrapped with `fmt.Errorf("ctx: %w", err)` (inferred from golangci errcheck)
-- `context.Context` first param on I/O functions
-- Constructors `NewX(...)`, no DI framework
-- envconfig for config; `.env` for dev
-- Tests `_test.go` colocated; assertion lib (inferred)
+Only what the tree shows. A convention with no evidence is `(unknown)` with the file to
+read for it - not restated as an idiom the repo may not follow. Call out deviations from
+the idiomatic baseline explicitly, since they change where new code goes.
 
 ### Risk Hotspots
-- Asynq dispatched from request path: ensure post-commit pattern (`go-messaging-patterns`)
-- sqlc + sqlx coexistence: confirm pool ownership; check `WithContext` plumbing (`go-data-access`)
-- Stripe webhook signature verification (`task-go-review-security`)
-- pgx pool config under k8s replica scaling (`go-data-access`)
-- Goroutine cancellation on graceful shutdown (`go-concurrency`)
-- Migration safety on `payments` / `refunds` (`go-migration-safety`)
+Ordered most-exploitable first, each naming the delegate skill.
 
 ### First-PR Safe Zones
-- New endpoint: add handler in `internal/payments/handler.go`, wire in `internal/server/router.go`
-- New Asynq task: add type + handler in `internal/payments/tasks.go`
-- New migration: `migrations/000042_<desc>.up.sql` + `.down.sql` (golang-migrate format)
-- Avoid for first PR: `cmd/*/main.go`, `internal/server/middleware/`, `internal/db/`
+Concrete paths from the observed layout. When a generic safe zone does not exist here
+(no `migrations/` directory, route table inside `main.go`), say so and say why instead of
+offering the generic form. Close with what to avoid and the reason.
+
+### Unknowns - Ask the Team
+Every `(unknown)` above, consolidated. On a repo with no compose file, no `.env.example`,
+no CI, and no linter, this is the highest-value section for a new joiner.
 ```
 
 ## Avoid

@@ -20,10 +20,11 @@ user-invocable: false
 
 ## Rules
 
-- Handlers must be idempotent - check state before acting (at-least-once delivery)
+- Handlers must be idempotent - check state before acting (at-least-once delivery). A status guard is check-then-act and can still race a redelivery; when the side effect leaves the process (a charge, an email), carry an idempotency key derived from the entity ID so the provider deduplicates what the guard misses
 - Payloads carry IDs / primitives, never structs with unexported fields or DB models
-- Configure max retries, timeout, and dead-letter strategy per task type
-- Classify errors transient (retry) vs permanent (`asynq.SkipRetry`)
+- Configure max retries, timeout, and dead-letter strategy per task type. A task with no timeout holds a worker slot for the broker's default and starves every queue on that server
+- `task Timeout < server ShutdownTimeout < platform grace period`. Asynq's `ShutdownTimeout` defaults to 8s, so any task longer than that is cut off on every rolling deploy, then redelivered by lease expiry - which is how a non-idempotent handler duplicates its side effect
+- Classify errors transient (retry) vs permanent (`asynq.SkipRetry`). A third class matters: an *indeterminate* outcome (the call timed out, so the side effect may or may not have happened) must be resolved by querying the provider, never by a blind retry
 - Workers honor `ctx` for cancellation and shutdown
 - Dispatch background jobs **after** the DB transaction commits, never inside
 - Use `errgroup` for worker lifecycle
@@ -60,11 +61,15 @@ if err != nil { return nil, fmt.Errorf("create order: %w", err) }
 
 task, _ := tasks.NewProcessOrderTask(order.ID)
 if _, err := s.client.EnqueueContext(ctx, task); err != nil {
-    // Log; a reconciliation job picks up unprocessed orders
+    // Logging is not the recovery. This is only safe because a scheduled
+    // reconciliation re-enqueues orders with no task - without that backstop a
+    // broker outage silently drops every dispatch in the window.
     slog.Error("enqueue failed", "order_id", order.ID, "err", err)
 }
 return order, nil
 ```
+
+Asynq's persistence protects a task that reached Redis; it does nothing for one that never arrived. Pair post-commit enqueue with **one** of: a reconciliation job that finds entities missing their task, or a dispatch row written inside the business transaction and relayed (the outbox below). Choose by asking how long an undispatched entity may go unnoticed - and alert on the backlog, since a week to detection is usually the more expensive half.
 
 ### Handler with Error Classification
 
@@ -107,6 +112,9 @@ srv := asynq.NewServer(
     asynq.Config{
         Queues:      map[string]int{"critical": 6, "default": 3, "low": 1},
         Concurrency: 10,
+        // Default is 8s - below almost every real task. Set it above the longest
+        // task Timeout, and set the pod's grace period above this.
+        ShutdownTimeout: 60 * time.Second,
         ErrorHandler: asynq.ErrorHandlerFunc(func(ctx context.Context, task *asynq.Task, err error) {
             slog.Error("task failed", "type", task.Type(), "err", err)
         }),
@@ -114,12 +122,14 @@ srv := asynq.NewServer(
 )
 mux := asynq.NewServeMux()
 mux.HandleFunc(tasks.TypeProcessOrder, handlers.HandleProcessOrder(repo, svc))
-if err := srv.Run(mux); err != nil { log.Fatalf("asynq: %v", err) }
+if err := srv.Run(mux); err != nil { log.Fatalf("asynq: %v", err) } // Run blocks and shuts down on SIGTERM
 ```
+
+Asynq's per-task timeout defaults to 30 minutes when `asynq.Timeout` is unset, so an untimed task holds its worker slot for that long. A task that genuinely needs longer than the grace period allows cannot be made legal by raising `Timeout` - split it into chunks that each fit.
 
 ### Scheduled Tasks
 
-Prefer `asynq.Scheduler` over `time.Ticker` in a goroutine:
+Prefer `asynq.Scheduler` over `time.Ticker` in a goroutine. A ticker runs once per replica, so N replicas do the work N times with no coordination; the scheduler enqueues once and one worker picks it up, and the work gains retries, a timeout, ctx cancellation, panic recovery, and queue visibility. Run the scheduler as a single instance.
 
 ```go
 scheduler := asynq.NewScheduler(asynq.RedisClientOpt{Addr: cfg.RedisAddr}, nil)
@@ -146,16 +156,47 @@ for {
     fetches.EachError(func(_ string, _ int32, err error) {
         slog.Error("kafka fetch error", "err", err)
     })
+    // EachRecord cannot break, so latch the first unresolvable error and skip the
+    // rest rather than committing offsets for work that never happened.
+    var fatal error
     fetches.EachRecord(func(r *kgo.Record) {
-        if err := handler(r.Value); err != nil {
-            // resolve BEFORE the batch commit: DLQ-produce or stop.
-            // Committing a failed record's offset is a silent skip.
-            produceToDLQ(ctx, client, r, err)
-        }
+        if fatal != nil { return }
+        fatal = handleRecord(ctx, client, r) // nil once the record is processed OR parked
     })
+    if fatal != nil {
+        return fmt.Errorf("consumer halted: %w", fatal) // restart and replay; do not commit
+    }
     client.CommitUncommittedOffsets(ctx) // every record in the batch handled or DLQ'd
 }
 ```
+
+### Dead-Letter Queue
+
+A record that can never succeed must leave the partition, or it blocks its consumer group indefinitely - the poison-message wedge. Bound both exits: permanent errors go straight to the DLQ, transient ones get a fixed attempt budget and then follow.
+
+```go
+// Returns nil when the record is resolved - processed, or parked in the DLQ.
+// Non-nil only when neither was possible, because the alternative is committing
+// an offset for work that never happened.
+func handleRecord(ctx context.Context, cl *kgo.Client, r *kgo.Record) error {
+    var last error
+    for attempt := 1; attempt <= maxAttempts; attempt++ {
+        if last = handler(ctx, r.Value); last == nil { return nil }
+        if isPermanent(last) { break } // schema, version, unknown reference
+        // backoff, honouring ctx
+    }
+    dlq := &kgo.Record{Topic: r.Topic + ".dlq", Key: r.Key, Value: r.Value,
+        Headers: append(r.Headers,
+            kgo.RecordHeader{Key: "dlq_reason", Value: []byte(last.Error())},
+            kgo.RecordHeader{Key: "dlq_offset", Value: []byte(strconv.FormatInt(r.Offset, 10))})}
+    if err := cl.ProduceSync(ctx, dlq).FirstErr(); err != nil {
+        return fmt.Errorf("dlq produce (cause %v): %w", last, err)
+    }
+    return nil
+}
+```
+
+Alert on DLQ depth and on Asynq's archived set; a task failing its full retry budget every day for a month is invisible without it. Consumer lag that grows linearly means arrival rate exceeds processing rate - add members up to the partition count first (members beyond that are idle), then take blocking I/O off the per-record path.
 
 ### In-Process Worker Pool
 
@@ -208,7 +249,7 @@ for _, ev := range events {
 }
 ```
 
-For Asynq (Redis-backed), post-commit enqueue is acceptable - Asynq's persistence handles retries. Use the outbox only for Kafka / external brokers requiring atomicity.
+For Asynq (Redis-backed), post-commit enqueue plus a reconciliation sweep is the default - Asynq's persistence covers a task that reached Redis, and the sweep covers one that never did. Reserve the outbox for Kafka and other external brokers, where a lost publish has no equivalent backstop. Size the sweep's interval by how long an undispatched entity may go unnoticed; a nightly job means a broker blip is invisible until tomorrow.
 
 ## Stack Notes
 
@@ -226,21 +267,45 @@ For Asynq (Redis-backed), post-commit enqueue is acceptable - Asynq's persistenc
 
 ## Output Format
 
+Design engagements emit `## Messaging Design`. Review and incident engagements emit `## Findings` first, then the design tables describing the system **as it exists today**.
+
 ```
 ## Messaging Design
 
 ### Task Types
 | Type | Queue | Payload | MaxRetry | Timeout | Idempotency Check |
+|------|-------|---------|----------|---------|-------------------|
 
 ### Error Classification
 | Error | Classification | Action |
+|-------|----------------|--------|
 
 ### Kafka Topics
 | Topic | Producer | Consumer Group | Delivery | Outbox? |
+|-------|----------|----------------|----------|---------|
 
 ### Dispatch Timing
 | Event | After Which Commit |
+|-------|--------------------|
+
+### Lifecycle
+| Setting | Value | Rationale |
+|---------|-------|-----------|
 ```
+
+Cell values: `Classification` is `Transient | Permanent | Indeterminate | Ignore | Fatal` - `Ignore` for work that is no longer needed (entity deleted), `Fatal` for "cannot process and cannot park", which must stop the consumer rather than commit. `Delivery` is `at-least-once | at-most-once | effectively-once`. `Outbox?` is `Yes | No`. `Timeout` and `MaxRetry` state the effective value, naming the default when unset. `Lifecycle` carries `ShutdownTimeout`, `Concurrency`, queue weights, and the platform grace period - the settings the timeout invariant depends on. A cell the input does not supply is `unknown`. Loops that are not broker tasks (outbox relay, consumer) get a `Lifecycle` row, not a `Task Types` row. On a review or incident engagement the tables describe what the code does today, so `Action` and `Rationale` record the observed behaviour and its consequence - the corrected value belongs in the finding's `Fix`, not the table.
+
+```
+## Findings
+
+### [Must] file:line
+
+- Defect: {what goes wrong in production}
+- Rule: {the messaging rule violated}
+- Fix: {concrete edit}
+```
+
+`[Must]` for a duplicated or lost side effect, a dropped dispatch, a wedged or unboundedly lagging consumer, a queue starved by untimed work, an unbounded retry, or work lost on deploy; `[Recommend]` otherwise - judge by consequence, not by matching the list. Order `[Must]` first. When the input is incident evidence rather than code, cite the task type or subsystem in place of `file:line` and fill unavailable cells with `unknown`. When several findings share one cause, say so - fixing idempotency and timeouts usually collapses most of an incident's list.
 
 ## Avoid
 

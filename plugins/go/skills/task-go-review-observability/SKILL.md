@@ -43,7 +43,7 @@ Default: `standard`. Request deep by appending `deep` to the invocation (e.g. `/
 | `/task-go-review-observability <branch>` | `<branch>` vs base (3-dot) |
 | `/task-go-review-observability pr-<N>` | PR head fetched into local branch (user runs fetch) |
 
-When invoked as subagent (e.g. by `task-go-review`), parent passes precondition handle + pre-read artifacts; Step 2 below is skipped and Step 12 returns findings instead of writing - the parent owns the report.
+**Subagent runs** (e.g. spawned by `task-go-review`). The parent passes the `review-precondition-check` handle, `base_ref` / `head_ref`, `base_sha` / `head_sha`, the pre-read diff and commit log, depth, the pre-confirmed stack, the data-access mix, and messaging. Step 2 is skipped whole, its SHA capture included - never re-run git. Step 11.5 is skipped (the parent verifies the merged set once). Step 12 returns the Output Format instead of writing, and prints no confirmation. Derive `Messaging` from `go.mod` and the diff when the parent did not send it.
 
 ## Workflow
 
@@ -55,15 +55,23 @@ Detect data access (GORM / sqlx / database/sql / mixed) and messaging (Asynq / K
 
 ### Step 2 - Resolve Diff
 
-Use skill: `review-precondition-check`. Read diff + log once via `git diff` and `git log`; reuse. Skip if subagent received the handle.
+Standalone only - skip the whole step, SHA capture included, when a subagent received the handle.
 
-Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
+Use skill: `review-precondition-check`. Read diff + log once via `git diff` and `git log`; reuse. Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
+
+If the clean-tree gate fails and **the only untracked file is this workflow's own prior report** (`review-observability-<branch>.md`), the gate is tripping on the artifact the last run wrote; every round-2 review would be unreachable. Say so, treat the tree as clean, continue, and tell the user to gitignore the report path. Any other fail-fast: surface verbatim and stop.
+
+**Resolve the round now, before any analysis.** Stat that same `review-observability-<branch>.md`. Absent or frontmatter-less -> `round: 1`. Present and valid -> `round = prior.round + 1`, with its `head_sha` as `prior_head_sha`. **When that `head_sha` equals the current head and the invocation asks for nothing more (no `deep` where the prior was `standard`), print `No new commits on <branch> since prior observability review at <sha_short>. Prior report unchanged.` and stop** - do not re-review and do not overwrite. Doing this at Step 12 instead wastes the whole pass and destroys the prior round's findings.
 
 ### Step 3 - Read the Instrumentation Surface
 
-**Most important output:** a one-line verdict per surface (logging / OTel / Prometheus / Asynq / pprof / error tracker) of the form `wired | partial | absent`. A missing wire is itself the finding.
+**Most important output:** a one-line verdict per surface - logging, OTel, Prometheus, messaging instrumentation (the row is named for whichever broker `Messaging` reported: Asynq, Kafka, or both), pprof, graceful shutdown, error tracker - of the form `wired | partial | absent | n/a`. A missing wire is itself the finding.
 
-**Grouping rule.** When a whole surface is `absent`, produce a **single High-Impact finding** for that surface listing missing pieces grouped by file/symbol - not one finding per sub-bullet. Per-callsite findings only when the surface exists and a specific callsite misuses it.
+The verdict answers **how much of the surface exists**, not whether it is correct: `wired` = every piece is present (misconfigured pieces stay `wired`, with the defect in the Evidence cell and a finding); `partial` = the mechanism is installed but does not cover everything it should (an SDK with no DB or HTTP instrumentation, a shutdown path that misses a client, a logger with no redaction); `absent` = nothing is wired. A correctly-built OTel SDK that instruments no dependency is `partial`, not `wired`.
+
+**Grouping rule.** When a whole surface is `absent`, produce a **single finding** for that surface listing missing pieces grouped by file/symbol - not one finding per sub-bullet. When the surface's gaps straddle impact tiers, keep the grouping and file at the strongest tier; split only when a sub-gap needs a materially different fix - a leaked secret in a `%+v` call is not fixed by wiring a JSON handler, so it is its own finding even though both sit on the logging surface. Per-callsite findings only when the surface exists and a specific callsite misuses it.
+
+**Severity, and the diff-vs-repo scope rule.** A surface the diff touches - or that the diff makes load-bearing, such as sub-instrumentation missing on an unchanged client once this PR installs the tracer that would have used it - is scored on consequence, High when it leaves a failure undiagnosable. A surface the diff never approaches and never activates is **not** a merge blocker on this PR: report it at Medium or Low as standing debt, annotated `_(pre-existing; not introduced by this PR)_`. Absent-surface findings on a greenfield service, where the PR *is* the whole service, are all in-scope - but do not tier them all High. A review that emits one `[Must]` per surface reads as none. Calibrate by what gates first production traffic: **High** for anything that leaks data, hides an active failure, or cannot be retrofitted without a redeploy of every caller (secrets in logs, no error signal, no request metrics); **Medium** for surfaces that make diagnosis slower but are additive later (pprof, queue-depth gauges, custom spans); **Low** for polish. Say in the Summary that the service ships without them and what the first-week follow-up is - a greenfield review is a sequencing document, not a merge gate. Without this, a routine PR collects a `[Must]` for every surface the service has never had.
 
 Open files that configure observability so findings cite real lines:
 
@@ -87,7 +95,8 @@ Open files that configure observability so findings cite real lines:
 
 ### Step 5 - OpenTelemetry SDK and Auto-Instrumentation
 
-- [ ] **SDK initialized in `main.go` BEFORE `gin.New()`** - middleware captures the tracer at registration; late init means no-op tracer
+- [ ] **SDK initialized in `main.go` BEFORE `gin.New()`.** Not because late init yields a permanent no-op - `otel.Tracer()` returns a delegating global that rewires when `otel.SetTracerProvider` runs, so a finding claiming "no-op tracer" is a false positive. The real defects are that spans emitted between engine construction and SDK init are lost, and that the ordering breaks outright the moment the middleware is given an explicit provider (`otelgin.WithTracerProvider(tp)`), which is the normal way to stop depending on globals
+- [ ] **`tp` handle kept and shut down at process exit** - a `defer tp.Shutdown(...)` declared inside the init function runs when *that function* returns, draining the batch processor microseconds after it starts. The handle must reach `main`'s signal-handling block
 - [ ] **OTLP exporter:** `otlptracegrpc.New(...)` / `otlptracehttp.New(...)` pointed at the collector; `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` per env
 - [ ] **Resource attributes:** `service.name`, `service.version`, `deployment.environment` via `resource.New(...)` with `semconv`
 - [ ] **Sampling explicit:** `sdktrace.ParentBased(sdktrace.TraceIDRatioBased(rate))`; not `AlwaysSample` in high-traffic prod
@@ -122,25 +131,28 @@ Open files that configure observability so findings cite real lines:
 
 ### Step 8 - Asynq / Kafka / Background Jobs
 
-- [ ] **Asynq OTel middleware** enabled - traceparent extracted, worker span links to dispatching request span
-- [ ] **Queue metrics:** `asynq.NewInspector(...)` polled into Prometheus gauges (`pending`, `active`, `scheduled`, `retry`, `archived`)
-- [ ] **Per-task metrics:** latency histogram, retry counter, failure counter
-- [ ] **Trace propagation across dispatch boundary** - `client.Enqueue(...)` inside a request links the worker span back
-- [ ] **Logger bound inside handler:** `task_id`, `task_type`, sanitized payload fields
-- [ ] **Outbound HTTP from tasks** instrumented via `otelhttp.NewTransport(...)`
-- [ ] **Scheduled tasks** emit spans; missed-execution alerting
+Skip and mark N/A when `Messaging` is `none`. The rows are written Asynq-first; the Kafka column gives the franz-go equivalent, and a row with no equivalent is dropped rather than reported as a gap.
+
+| Check | Asynq | Kafka (franz-go) |
+| ----- | ----- | ---------------- |
+| Trace propagation across the dispatch boundary | Middleware on `asynq.ServeMux` extracts traceparent from task headers and restarts the span | Producer injects the propagator's carrier into `kgo.RecordHeader`; consumer extracts from `r.Headers` and starts a `SpanKindConsumer` span per record. Absent headers on the producer side is the more common half to miss |
+| Queue depth | `asynq.NewInspector(...)` polled into gauges (`pending`, `active`, `scheduled`, `retry`, `archived`) | `kadm.Client.Lag(ctx, group)` polled into a per-topic/partition gauge. Kafka has none of Asynq's five states - lag is the signal |
+| Per-task / per-record metrics | latency histogram, retry counter, failure counter | same, labelled by `topic` and outcome - never by key, SKU, or record id |
+| Handler logger binding | `task_id`, `task_type`, sanitized payload fields | `topic`, `partition`, `offset`, and the record key when it is a bounded identifier - without the offset a poison record cannot be located |
+| Outbound HTTP from the worker | `otelhttp.NewTransport(...)` | same |
+| Scheduled work | scheduled tasks emit spans; missed-execution alerting | n/a unless a scheduler exists |
 
 ### Step 9 - Graceful Shutdown
 
 - [ ] **`signal.NotifyContext`** pattern: `ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT); defer stop()`. HTTP server in goroutine; main blocks on `<-ctx.Done()`; then `srv.Shutdown(shutdownCtx)`
 - [ ] **Bounded shutdown timeout:** `context.WithTimeout(context.Background(), 30*time.Second)` - never indefinite
 - [ ] **`tp.Shutdown(shutdownCtx)`** flushes buffered spans
-- [ ] **`Asynq.Server.Shutdown()`** drains workers; Kafka `client.Close()` commits in-flight
+- [ ] **`Asynq.Server.Shutdown()`** drains workers. For Kafka, `client.Close()` leaves the group and flushes produce buffers - it does **not** commit consumed offsets when `kgo.DisableAutoCommit()` is set, which is the normal manual-commit setup. Then the shutdown path must `CommitUncommittedOffsets(ctx)` before `CloseAllowingRebalance()`, or the next member re-reads and re-delivers everything since the last commit
 - [ ] **`db.Close()`** on shutdown
 
 ### Step 10 - Error Tracking (Sentry / Honeybadger)
 
-- [ ] **SDK initialized:** `sentry.Init(...)` in `main.go`; `sentrygin.New(...)` middleware applied - panics and `c.Error(err)` flow reach Sentry
+- [ ] **SDK initialized:** `sentry.Init(...)` in `main.go`; `sentrygin.New(...)` middleware applied. `sentrygin` reports **panics only** - it does not forward `c.Errors`, so a handler that logs an error and returns 500 sends Sentry nothing. Check separately that error paths call `sentry.CaptureException` / `hub.CaptureException`; a service whose dominant failure mode is a failing dependency rather than a panic is otherwise silent in Sentry
 - [ ] **DSN / API key** from env / Vault, never committed
 - [ ] **Release / environment** populated from build metadata
 - [ ] **PII scrubbing:** `SendDefaultPII: false`; `BeforeSend` strips sensitive keys
@@ -150,9 +162,11 @@ Open files that configure observability so findings cite real lines:
 - [ ] **Gin error middleware calls `sentry.CaptureException(err)`** before transforming
 - [ ] **`sentry.Recover()` deferred at goroutine boundaries** outside request lifecycle (Gin recovery only covers request goroutines)
 
-### Step 11 - Health and SLIs (deep only; exception below)
+### Step 11 - Health and SLIs
 
-The health-endpoint checks below run at **all depths** whenever the diff touches health/probe endpoints - a probe regression is a per-PR finding, not a deep-only audit item. The SLI/SLO items remain deep only.
+The health-endpoint checks run at **all depths** whenever the diff touches health or probe endpoints, or adds a dependency an existing probe now covers - a probe regression is a per-PR finding. Only the SLI/SLO items below are deep-gated, and the verify pass that follows this step is not gated at all.
+
+At `deep`, each SLI/SLO suggestion names: the journey, the objective (quoted from the project's own docs when they state one), the PromQL the SLI would be computed from, and what currently blocks it. Add the error budget the objective implies when the window is known.
 
 - [ ] Critical journeys have at least one SLI (request rate, success rate, p95 latency)
 - [ ] **Three distinct endpoints, not one `/health`** (single `/health` is a per-PR finding):
@@ -162,17 +176,27 @@ The health-endpoint checks below run at **all depths** whenever the diff touches
 - [ ] Health endpoints return JSON with per-dependency status (on dependency-observability endpoint)
 - [ ] SLO targets documented in code (`internal/slo/*.go` or README)
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+### Step 11.5 - Verify Findings
+
+Runs at every depth. Assign each draft finding its label first (High -> `[Must]`, Medium / Low -> `[Recommend]`), since `review-finding-verify` takes labelled findings and returns adjusted ones.
+
+Use skill: `review-finding-verify` with those findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`. **The label it returns is final** - never re-derive one from the impact tier afterwards. Carry its provenance annotation onto the finding heading and its tally into the Summary's `Findings verified` slot. Subagent runs skip this step and return findings tagged by tier alone.
 
 ### Step 12 - Write Report
 
-Standalone only - subagent runs return findings in the Output Format to the parent, which writes the single merged report.
+Standalone only - subagent runs return the whole Output Format below (Summary, Surface Map, Findings, Recommendations, Next Steps) to the parent, which writes the single merged report. Ignore the writer vocabulary in the Output Format preamble on that path; there is no `report_body` input when nothing is written.
 
-Use skill: `review-report-writer` with `report_type: review-observability` and every required input: `report_body`, `branch` (from the handle), refs from the precondition handle, `base_sha`/`head_sha` from Step 2, `stack: go-gin`, `scope: +obs`, `depth` as resolved from the Depth table, and `mode: full`, `round: 1` - unless `review-observability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`. (The handle's `prior_checkpoint` is keyed to the general review report - do not use it here.) Write before ending; print confirmation.
+The round was resolved in Step 2; pass it through. The handle's `prior_checkpoint` is keyed to the general review report - do not use it here.
+
+Use skill: `review-report-writer` with `report_type: review-observability` and every required input: `report_body`, `branch` (the branch short name, never the literal `HEAD`), refs from the precondition handle, `base_sha`/`head_sha` from Step 2, `stack: go-gin`, `scope: +obs`, `depth` as resolved from the Depth table, `mode: full`, and the `round` / `prior_head_sha` resolved above. Write before ending; print confirmation.
 
 ## Self-Check
 
+Mark a line N/A with its reason when the diff has no matching surface, or when the invocation mode makes it inapplicable (subagent, `standard` depth).
+
+- [ ] `behavioral-principles` loaded (or accepted from parent)
 - [ ] Stack confirmed (or accepted from parent); data-access mix and messaging recorded
+- [ ] Surface Map emitted with one verdict per surface; absent surfaces collapsed per the grouping rule; diff-vs-repo scope rule applied before assigning tiers
 - [ ] `review-precondition-check` ran (or handle received); diff/log read once and reused
 - [ ] When `head_matches_current` was false: user approval obtained (skipped when subagent)
 - [ ] Instrumentation surfaces (logging, OTel, settings, deps, changed callsites) read directly before checklists
@@ -185,9 +209,11 @@ Use skill: `review-report-writer` with `report_type: review-observability` and e
 - [ ] Error tracker: SDK + Gin middleware, DSN externalized, PII scrubbed, OTel correlation, sample rate explicit, `sentry.Recover()` at goroutine boundaries
 - [ ] Findings name a Go / OTel / slog / Prometheus idiom - not "add observability"
 - [ ] Library-level scope respected; infra concerns deferred to ops
-- [ ] Depth honored: `standard` ran all; `deep` ran SLI
+- [ ] Depth honored: every step ran; `deep` added SLI/SLO suggestions with objective, PromQL and blocker
+- [ ] Step 11.5 ran (standalone): findings labelled before verify, verify's labels and annotations carried onto the headings verbatim, tally in the Summary
+- [ ] Out-of-lens defects routed rather than dropped
 - [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend
-- [ ] Report written via `review-report-writer` with all required checkpoint fields (standalone only; subagent runs return findings to the parent); confirmation printed
+- [ ] Standalone: report written via `review-report-writer` with the round resolved from `review-observability-<branch>.md`, confirmation printed. Subagent: Output Format returned, no file written, no confirmation
 
 ## Output Format
 
@@ -203,37 +229,55 @@ The fence below delimits the template for display only - it is not part of the r
 - **Metrics:** prometheus/client_golang | OTel metrics (Prometheus exporter) | absent
 - **Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (Jaeger / Zipkin exporter) | absent
 - **pprof:** enabled (admin port) | enabled (non-prod only) | enabled (public, prod) [security finding] | absent
-- **Asynq instrumentation:** OTel middleware | partial | absent | n/a (no Asynq)
+- **Graceful shutdown:** wired | partial | absent
+- **Messaging instrumentation:** OTel middleware | partial | absent | n/a (no broker) _(name the broker: "Kafka instrumentation", "Asynq instrumentation")_
 - **Error Tracker:** Sentry | Honeybadger | absent
-- **Overall:** Adequate | Gaps Found - [count by impact] | Greenfield - no surface wired [count by impact]
+- **Overall:** Adequate | Gaps Found - <N> High / <N> Medium / <N> Low | Greenfield - no surface wired, <N> High / <N> Medium / <N> Low
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped (<F> false positive, <R> resolved by diff) _(parenthetical omitted when K is 0; whole line omitted on subagent runs)_
 
 ## Surface Map
 
-| Surface                | Verdict                        | Evidence                                   |
-| ---------------------- | ------------------------------ | ------------------------------------------ |
-| slog logging           | wired / partial / absent       | [file:line or "no logging config in repo"] |
-| OpenTelemetry SDK      | wired / partial / absent       | [...]                                      |
-| Prometheus metrics     | wired / partial / absent       | [...]                                      |
-| pprof endpoints        | wired / partial / absent       | [...]                                      |
-| Asynq instrumentation  | wired / partial / absent / n/a | [...]                                      |
-| Error tracker          | wired / partial / absent       | [...]                                      |
+| Surface                    | Verdict                        | Evidence                                   |
+| -------------------------- | ------------------------------ | ------------------------------------------ |
+| slog logging               | wired / partial / absent       | [file:line or "no logging config in repo"] |
+| OpenTelemetry SDK          | wired / partial / absent       | [...]                                      |
+| Prometheus metrics         | wired / partial / absent       | [...]                                      |
+| pprof endpoints            | wired / partial / absent       | [...]                                      |
+| <broker> instrumentation   | wired / partial / absent / n/a | [...]                                      |
+| Graceful shutdown          | wired / partial / absent       | [...]                                      |
+| Error tracker              | wired / partial / absent       | [...]                                      |
 
-> Use **Greenfield** as the `Overall:` headline when 3+ rows are `absent` - tells the reader the review is scaffolding, not auditing. Use the same `absent` vocabulary throughout.
+Use **Greenfield** as the `Overall:` headline when 3+ rows are `absent` - it tells the reader the review is scaffolding, not auditing. Keep the same `absent` vocabulary throughout. A surface that is wired but misconfigured stays `wired`; the defect goes in Evidence and in a finding.
 
 ## Findings
 
 ### High Impact
 
+#### 1. [Label] file:line - <short title> _(provenance annotation, when Step 11.5 assigned one)_
+
 - **Location:** [file:line or config key]
-- **Issue:** [name the idiom: missing slog redaction for `Authorization`, unbounded label cardinality on `user_id`, OTel SDK initialized after `gin.New()`, missing Asynq OTel middleware, route label is actual path not template]
-- **Impact:** [diagnosability / alertability / cost]
+
+- **Issue:** [name the idiom: missing slog redaction for `Authorization`, unbounded label cardinality on `user_id`, `tp.Shutdown` deferred inside the init function, missing traceparent on the dispatch boundary, route label is actual path not template]
+
+- **Impact:** [diagnosability | alertability | cost | exposure | availability - pick the one that dominates; a probe that couples liveness to a shared dependency is availability, not diagnosability]
+
 - **Fix:** [specific Go / OTel / slog / Prometheus change with code]
 
-### Medium Impact / Low Impact
+#### 2. [Label] file:line - <short title>
 
-[Same structure]
+[Same block]
 
-_Omit empty sections. Within each impact bucket, group by surface when > 2 findings share a surface. Greenfield reviews collapse a whole surface into one finding per Step 3 grouping rule._
+### Medium Impact
+
+[Same blocks, numbering continues]
+
+### Low Impact
+
+[Same blocks, numbering continues]
+
+Omit empty sections. Within a tier, order by surface when more than two findings share one. `[Label]` comes from Step 11.5; on subagent runs derive it from the tier (High -> `[Must]`, Medium / Low -> `[Recommend]`). Blank lines separate the field lines - consecutive bare `**Label:** value` lines collapse into one paragraph when the report renders.
+
+**A defect outside this lens** found while reading the instrumentation surface - a leaked `resp.Body`, a missing timeout, an auth gap - is not dropped and not filed as an observability finding. Add it to a closing `### Out of Lens` list under Recommendations with its `file:line` and the owning lens, so the reader can route it.
 
 ## Recommendations
 

@@ -21,7 +21,7 @@ user-invocable: false
 
 - Default-deny via authed router group; public endpoints listed explicitly in a separate `public` group
 - JWT: HS256 key in env/Vault (never committed) or asymmetric RS256/ES256 for cross-service; `golang-jwt/jwt/v5` (v4 is maintenance only); validate `iss`, `aud`, `exp`; pin algorithm in `keyFunc` to prevent `alg: none` and HS/RS confusion
-- Request DTOs are explicit structs with `validate:` tags; never `interface{}` / `map[string]any` / `mapstructure.Decode(req.Body, &domainModel)` on write paths - that is mass assignment
+- Request DTOs are explicit structs with validation tags; never `interface{}` / `map[string]any` / `mapstructure.Decode(req.Body, &domainModel)` on write paths - that is mass assignment. The tag key follows the consumer: Gin's `ShouldBind*` reads `binding:`, a standalone `validator.New()` reads `validate:`. The wrong key compiles, looks right, and validates nothing
 - Authorize after authenticating: scope every per-owner lookup by principal at the repository layer (`WHERE id = ? AND user_id = ?`), not just route grouping
 - SQL via `?` / `$1` / `:name` placeholders only; never `fmt.Sprintf` interpolation
 - `exec.Command(name, args...)` with arg slice - never `sh -c` / `cmd /c` with user input
@@ -104,7 +104,14 @@ func Required() gin.HandlerFunc {
 
 func RequireRole(role string) gin.HandlerFunc {
     return func(c *gin.Context) {
-        claims := c.MustGet("claims").(*Claims)
+        // c.Get, not c.MustGet: MustGet panics on a missing key, so mounting this
+        // before Required() would 500 with a stack trace instead of failing closed.
+        v, exists := c.Get("claims")
+        claims, ok := v.(*Claims)
+        if !exists || !ok {
+            c.AbortWithStatus(http.StatusUnauthorized)
+            return
+        }
         if claims.Role != role {
             c.AbortWithStatus(http.StatusForbidden)
             return
@@ -203,8 +210,8 @@ json.Unmarshal(body, &user) // user.Role overridable
 
 // Good - request DTO with explicit fields; server controls privileged ones
 type CreateUserRequest struct {
-    Name  string `json:"name" validate:"required,min=1,max=100"`
-    Email string `json:"email" validate:"required,email"`
+    Name  string `json:"name"  binding:"required,min=1,max=100"` // binding:, because ShouldBindJSON binds it
+    Email string `json:"email" binding:"required,email"`
     // Role, IsAdmin, OwnerID, UserID, TenantID, IsActive, Verified deliberately absent
 }
 var req CreateUserRequest
@@ -226,8 +233,8 @@ If GORM's `Updates` is called with a struct, only non-zero fields update (which 
 
 ```go
 type UpdateOrderRequest struct {
-    Quantity int    `json:"quantity" validate:"required,gt=0,lte=999"`
-    Status   string `json:"status" validate:"required,oneof=pending paid shipped"`
+    Quantity int    `json:"quantity" binding:"required,gt=0,lte=999"`
+    Status   string `json:"status"   binding:"required,oneof=pending paid shipped"`
 }
 
 if err := c.ShouldBindJSON(&req); err != nil { ... }      // controls 400 response
@@ -245,6 +252,14 @@ c.ShouldBindQuery(&queryDTO)                              // query params valida
 // Bad - concat / fmt.Sprintf is SQL injection
 db.Exec(fmt.Sprintf("UPDATE users SET role='%s' WHERE id=%d", role, id))
 
+// Bad - no Sprintf in sight, still injection: GORM's inline-condition slot treats a
+// non-numeric string as a raw SQL fragment. /users/1%20OR%201=1 becomes WHERE 1 OR 1=1.
+db.First(&user, c.Param("id"))
+// Good - parse first, then bind
+id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+if err != nil { c.AbortWithStatus(http.StatusBadRequest); return }
+db.Where("id = ?", id).First(&user)
+
 // Good - GORM
 db.Where("id = ?", id).Updates(map[string]any{"role": role})
 
@@ -254,6 +269,15 @@ db.NamedExecContext(ctx, "UPDATE users SET role=:role WHERE id=:id", args)
 ```
 
 `db.Where("name LIKE ?", "%"+input+"%")` is parameterized and safe; the smell is unparameterized interpolation, not the `LIKE` itself.
+
+Placeholders bind **values**, never identifiers. A user-chosen sort column or direction cannot be parameterized, so map it through an allowlist and fall back to a default on a miss:
+
+```go
+sortable := map[string]string{"created": "created_at", "name": "name"}
+col, ok := sortable[c.Query("sort")]
+if !ok { col = "created_at" }
+db.Order(col + " DESC").Find(&rows) // col came from the map, never from the request
+```
 
 ### Path traversal
 
@@ -328,7 +352,14 @@ hash := argon2.IDKey([]byte(pw), salt, 1, 64*1024, 4, 32)
 
 // Verify
 err := bcrypt.CompareHashAndPassword(stored, []byte(pw)) // constant-time internally
+
+// argon2 has no CompareHash helper: store salt and params alongside the hash,
+// re-derive with the stored params, and compare in constant time.
+derived := argon2.IDKey([]byte(pw), rec.Salt, rec.Time, rec.Memory, rec.Threads, uint32(len(rec.Hash)))
+ok := subtle.ConstantTimeCompare(derived, rec.Hash) == 1
 ```
+
+Pick one and use it everywhere - argon2id for new code, bcrypt when an existing table already holds bcrypt hashes (rehash on next successful login rather than forcing a reset). The dummy-hash trick in Login flow hardening applies to either: pre-compute a record with the same parameters at startup so a missing user costs the same work as a wrong password.
 
 Never `sha256.Sum256(pw)` / `md5.Sum(pw)` - fast hashes are crackable; constant-time compare matters even for hash equality (use `subtle.ConstantTimeCompare` on raw bytes).
 
@@ -382,7 +413,9 @@ Cap response size with `http.MaxBytesReader` on the response body to defeat over
 ### `crypto/rand` and `InsecureSkipVerify`
 
 ```go
-// Bad - math/rand is deterministic; tokens are guessable
+// Bad - math/rand's generator state is recoverable from a handful of observed
+// outputs, so every future token is predictable. (Go 1.20+ auto-seeds the global
+// source, so this is an algorithm problem, not a seeding one.)
 token := strconv.Itoa(mrand.Int())
 
 // Good
@@ -398,16 +431,31 @@ http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkip
 
 ## Output Format
 
-When invoked from a review workflow, emit one block per finding so the consuming workflow merges them:
+Review and audit engagements emit one block per finding so the consuming workflow merges them:
 
 ```
-### [Severity] file:line
+### [Critical] file:line
 
-- Category: {AuthN | AuthZ | Validation | Injection | Crypto | Secrets | Transport}
+- Category: {AuthN | AuthZ | Validation | Injection | Crypto | Secrets | SSRF | Traversal | Exposure}
 - Code: {one-line citation}
 - Attack scenario: {concrete exploit, regression risk, or topology-dependent note}
 - Fix: {concrete Go change with code}
 ```
+
+Severity is `Critical | High | Medium | Low`: `Critical` = unauthenticated compromise, cross-tenant or cross-account data access, arbitrary file or command execution; `High` = authenticated privilege escalation, credential disclosure, or a security control that is present but inert; `Medium` = defense-in-depth gap or an information oracle; `Low` = hardening. Judge by what an attacker gains, not by matching the wording. Order by severity, then by file and line. `Exposure` covers debug surfaces, profiling endpoints, and over-serialized responses.
+
+A **review** targets supplied code and stops at the findings. An **audit** targets a named surface or a whole service and adds the remediation table and coverage line below - it answers "are we ready", which a finding list alone does not. When findings compound, add a `- Chain:` line to each block naming the finding it depends on; partial remediation of a chain buys much less than the finding count suggests.
+
+Cite `file:line`; when the input is a snippet or prose with no line numbers, cite `file:<symbol>` or `<area>` and say so once at the top rather than inventing numbers. When findings compound (a forged token that then reaches a tenant-scoping gap), state the chain - a partially remediated chain buys much less than the finding count suggests.
+
+An audit engagement adds a closing remediation table ordered by what removes an exploitable path first:
+
+```
+| # | Finding | Severity | Effort | Ship first? |
+|---|---------|----------|--------|-------------|
+```
+
+and a one-line coverage statement naming what was **not** examined, so silence is not read as a clean bill.
 
 When invoked from an implementation workflow, emit a decision table:
 

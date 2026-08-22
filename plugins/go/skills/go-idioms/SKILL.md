@@ -23,7 +23,8 @@ user-invocable: false
 - Functional options (`WithTimeout(d)`-style) for constructors with > 2 optional knobs; positional struct config for the rest
 - Generics where they collapse repetitive type-switched code; never to abstract a single concrete type
 - New type (`type UserID int64`) over `type` alias when the boundary matters (compile-time prevents passing `OrderID` where `UserID` is expected)
-- Receivers: pointer when a method mutates, the type holds a lock, or copying is costly; value for small immutable types. If any method needs a pointer, make them all pointer - except `Scan`, which `database/sql` forces to pointer regardless
+- Receivers: pointer when a method mutates, the type holds a lock, or copying is costly; value for small immutable types. A mixed set is correct when the pointer methods are the decoders (`Scan`, `UnmarshalJSON`, `UnmarshalText`) - `String`/`Value`/`MarshalJSON`/`LogValue` must stay on the value, or a stored value loses them (`slog.Any(v)` and `json.Marshal(v)` see only the value's method set)
+- No `I` prefix or `Impl` suffix - the interface takes the plain noun (`Store`), the implementation says what it is (`pgStore`)
 - Constructors return concrete types; consumers define the interfaces they need ("accept interfaces, return structs")
 - Never store `context.Context` in a struct field - contexts are call-scoped and structs outlive them; pass ctx as the first parameter
 - Embedding for forwarding (`io.Reader` into a wrapper), not for inheritance; if you wanted overrides, use composition + method dispatch
@@ -68,7 +69,9 @@ func (s OrderStatus) Value() (driver.Value, error) { return s.String(), nil }
 func (s *OrderStatus) Scan(v any) error            { /* parse string -> enum */ }
 ```
 
-When `stringer` is not yet wired into `go generate`, hand-write `String()` until it is - never ship an enum without a string form.
+`stringer` emits the Go identifier (`StatusPending`). When the DB or JSON token differs (`pending`), hand-write `String()` off a `[...]string` table and parse back through the same table - one vocabulary, no drift. Never ship an enum without a string form.
+
+Reserve the zero value for unknown/unset so a missing column does not read as a valid state, and reject out-of-range values in `Value()` rather than persisting `OrderStatus(9)`.
 
 ### Struct tag conventions
 
@@ -85,7 +88,7 @@ type User struct {
 
 - `json:"-"` to drop a field from JSON (passwords, internal IDs)
 - `json:",omitempty"` only when the zero value is semantically "absent" (often surprising for `int`)
-- `mapstructure:"..."` only when the field is read from `viper` / `envconfig`; do not use `mapstructure.Decode(req.Body, &domain)` (see `go-security-patterns`)
+- `mapstructure:` is read by `viper`, `envconfig:` by `envconfig` - different keys, so a config field needs both when both load it; do not use `mapstructure.Decode(req.Body, &domain)` (see `go-security-patterns`)
 - Tag key follows the consumer: Gin binds with `binding:`, the standalone validator reads `validate:` - the wrong key silently skips validation
 
 ### Functional options
@@ -121,7 +124,7 @@ Use when there are more than 2-3 optional parameters and defaults make sense. Fo
 
 ### Generics: when they help
 
-Generics earn their keep when they collapse code that was previously written via `interface{}` + type switch:
+Threshold: 3+ real instantiations, or an `interface{}` + type switch the generic removes. One instantiation is the Bad case; a family of near-identical types (11 repositories over one storage API) is the Good case even with no type switch in sight.
 
 ```go
 // Bad - generics for a single concrete type (no callers benefit)
@@ -248,12 +251,14 @@ type Token string
 func (t Token) LogValue() slog.Value { return slog.StringValue("[REDACTED]") }
 ```
 
-`slog` prefers `LogValue()`, but `fmt.Println`/`%v` still call `String()` - a secret type must redact in both, or implement only `LogValue` and no `String`.
+`slog` prefers `LogValue()`; `fmt` and `%v` still call `String()`. A secret type implements both - omitting `String()` does not protect a named basic type, because `%v` then prints the underlying value verbatim. Add `MarshalJSON` when the type can reach a response body or a config dump.
+
+A `String()` that formats its own receiver (`fmt.Sprintf("%+v", s)`) recurses until the stack overflows - format the fields, never the receiver.
 
 ### `go:embed`
 
 ```go
-import _ "embed"
+import "embed" // regular import for embed.FS; the blank `import _ "embed"` form only works for string / []byte
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
@@ -262,30 +267,36 @@ var migrationsFS embed.FS
 var welcomeTemplate string
 ```
 
+Parse embedded templates in a constructor that returns `error`, not a package-level `template.Must` - init-time work turns a malformed template into a panic the caller cannot handle.
+
 Ships SQL migrations, HTML/email templates, OpenAPI specs, default config inside the binary. Eliminates "where is the file in prod" class of bugs.
 
 ## Output Format
 
-When invoked from an implementation workflow, emit decisions per concern:
+Implementation or written recommendation - one row per shape decision, ordered as the concerns were asked:
 
 ```
-| Concern | Decision | Rationale |
-|---------|----------|-----------|
-| Status field | iota + Stringer + Value/Scan | DB and log crossing |
-| ID types | `type UserID int64`, `type OrderID int64` | compile-time swap detection |
-| Server config | functional options | 4 optional knobs |
-| Embedded file | `go:embed migrations/*.sql` | ship in binary |
+| Concern | Decision | Rationale | Rejected |
+|---------|----------|-----------|----------|
+| Status field | iota + hand-written String + Value/Scan | DB and log crossing; wire token != identifier | stringer (emits `StatusPending`) |
+| ID types | `type UserID int64`, `type OrderID int64` | compile-time swap detection | alias (no safety) |
+| Server config | functional options | 4 optional knobs | Config struct |
+| Embedded file | `go:embed migrations/*.sql` | ship in binary | - |
 ```
 
-When invoked from a review workflow, emit one finding block per non-idiomatic shape:
+`Rejected` names the alternative and why it loses, or `-` when none was in play. Code for a decision goes below the table under a `### <Concern>` heading, in the same order as the rows.
+
+Review - one block per non-idiomatic shape, ordered `[Must]` before `[Recommend]` then by line. Every finding carries exactly one label:
 
 ```
-### [Severity] file:line
+### [Must] file:line
 
 - Code: {one-line citation}
 - Non-idiomatic because: {what the Go idiom is}
 - Recommendation: {concrete edit}
 ```
+
+`[Must]` when the shape is a live defect - it loses data, crashes, leaks a secret, makes a code path unreachable, or holds a resource past its scope. Those are examples, not the whole set: judge by consequence, not by matching the list. `[Recommend]` when the shape only costs clarity or future flexibility. A shape recurring at several sites is one block citing the first site and naming the rest in `Code:`. With no findings, emit `No non-idiomatic shapes found.`
 
 ## Avoid
 
@@ -298,6 +309,7 @@ When invoked from a review workflow, emit one finding block per non-idiomatic sh
 - `context.Context` as a struct field - pass it per call
 - Constructors returning same-package interfaces - return the struct; interfaces belong to consumers
 - `interface{}` / `any` to silence a type error - find the actual type
+- A duration as a bare `int` - `time.Duration` carries the unit
 - Stringer hand-written when `go generate stringer -type=...` exists
 - `time.Sleep` for synchronization - channels or `testing/synctest`
 - `panic` in library or service code (only `main` for unrecoverable startup); constructors return `error` for bad required args

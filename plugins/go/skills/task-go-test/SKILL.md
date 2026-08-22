@@ -29,7 +29,16 @@ Go-aware test strategy and scaffolding using table-driven tests, `httptest.NewRe
 
 ### Step 1 - Stack and Data Access
 
-Use skill: `stack-detect`. Accept pre-confirmed from parent. Record `Data Access`, `Messaging`, `Mock Framework` (`gomock` from `go.uber.org/mock`, hand-written, `mockery`-generated).
+Use skill: `stack-detect`. Accept pre-confirmed from parent.
+
+Then record four things it does not emit as fields - read them off `go.mod`, the driver import, and the repository constructors yourself:
+
+- **Data Access:** GORM | sqlx | database/sql | mixed (name both when mixed)
+- **DB engine and driver:** the driver import settles it (`lib/pq` and `jackc/pgx` are both PostgreSQL, and they raise *different* error types - see Step 4). `stack-detect` returns `Database: unknown` from file detection alone; infer from the driver and say you inferred it
+- **Messaging:** Asynq | Kafka | none
+- **Mock Framework:** `gomock` (`go.uber.org/mock`) | `mockery`-generated | hand-written | **none present** - when none, propose function-field fakes rather than importing a framework the project has not chosen
+
+Every one of these has a slot in the deliverable (see Output Format).
 
 ### Step 2 - Read Code Under Test + Existing Tests
 
@@ -41,7 +50,11 @@ Ground output in project conventions, not generic templates.
 - Read `internal/testutil/*.go` for shared fixtures (Testcontainers init, fake JWT, factories)
 - Read `cmd/api/main.go` for middleware order that handler tests must replicate
 
-If no existing tests: say so and propose conventions explicitly rather than inventing them silently.
+**Conventions are the default, not the ceiling.** Adopt the project's layout, naming, helper, and fixture conventions. Do not adopt a convention this skill's `Avoid` list names as a defect - a house style of `gin.Default()` in handler tests, mocked-away auth, or SQLite standing in for Postgres is the gap you were called to close, not the pattern to copy. Say which convention you are departing from and why.
+
+If no existing tests, no `Makefile`/CI, or no `internal/testutil`: say which is absent and propose the convention explicitly rather than inventing it silently. Proposed conventions belong in the deliverable, not only in your reasoning.
+
+If exactly one existing test embodies a pattern `Avoid` rejects: write the new tests correctly alongside it, name the redundancy, and recommend deleting the old one - do not rewrite files the request did not ask you to touch. Watch for same-package symbol collisions with the existing helpers (a second `stubService` will not compile).
 
 ### Step 3 - Go Test Pyramid
 
@@ -54,18 +67,22 @@ If no existing tests: say so and propose conventions explicitly rather than inve
 | E2E | `httptest.NewServer` + Testcontainers (Postgres + Redis) | Critical journeys only |
 | Contract | Pact / OpenAPI consumer-driven | API contract validation |
 
-**Many** unit, **some** handler / integration, **few** E2E - default band ~70% / ~25% / ~5%; adjust to risk profile, keep the shape. `go test -race ./...` on every CI run.
+**Many** unit, **some** handler / integration, **few** E2E - default band ~70% / ~25% / ~5%. Shift up to 10 points from unit into handler+integration when the risk concentrates in DB semantics or endpoint authorization (container-only queries, per-tenant scoping, a wide endpoint surface); state the reason. Keep E2E at ~5% and never invert the shape. `go test -race ./...` on every CI run.
 
 ### Step 4 - Apply Go Test Patterns
 
 Use skill: `go-testing-patterns` for canonical table-driven, fixtures, testcontainers, mocking, `synctest`. Notes below cover layer-specific or layout-specific items.
+
+**This workflow's Output Format wins.** The atomic declares its own `## Test Strategy` envelope; take its patterns and discard its envelope - the deliverable is the one the routing table selected.
+
+**Adapt every API name below to the stack recorded in Step 1.** The examples are written GORM-and-Asynq-first because that is the common pairing, not because the others are out of scope. Where a named construct does not exist in this project, use its equivalent and say so; where it has no equivalent, drop the check rather than manufacture a finding.
 
 **Unit tests** (`*_test.go` colocated):
 
 - One test function per public method; table-driven for outcomes (success, validation failure, external failure, edge)
 - **No Gin context / DB** - if a unit needs them, it's misclassified
 - Stub external HTTP via `httptest.NewServer`
-- `gomock` for interface mocks at service boundaries; `mockgen -source=service.go -destination=mock_service/mock.go`
+- Interface mocks at service boundaries follow the `Mock Framework` recorded in Step 1: `gomock` (`mockgen -source=service.go -destination=mock_service/mock.go`) or `mockery` when the project already uses one; **function-field fakes when it uses neither** - do not add a mocking framework the project has not chosen
 - `t.Cleanup` for teardown (not `defer`)
 - `testify/require` halts; `testify/assert` continues
 
@@ -84,15 +101,24 @@ Use skill: `go-testing-patterns` for canonical table-driven, fixtures, testconta
 
 - Testcontainers PostgreSQL - **not SQLite, not in-memory** (SQLite diverges on JSON / JSONB, partial indexes, window functions, `ON CONFLICT`, arrays, `LATERAL`)
 - Shared container per suite via `TestMain` (startup ~3-5s)
-- Per-test transactional rollback: GORM `db.Begin()` at start, `tx.Rollback()` in `t.Cleanup`; pass `tx` to repository constructor
+- Shared container needs `TestMain`, and a package may declare only one. Keep `TestMain` untagged (it also sets `gin.SetMode(gin.TestMode)`) and have it call `setupIntegration` / `teardownIntegration` hooks that are real under `//go:build integration` and no-ops without it
+- Per-test isolation, in preference order: **transactional rollback** when the repository constructor accepts an interface the transaction satisfies (GORM `db.Begin()` + `tx.Rollback()` in `t.Cleanup`; sqlx `BeginTxx` where the constructor takes `sqlx.ExtContext`); **unique-per-test key prefix** (tenant, owner, or SKU) plus a `t.Cleanup` delete when it takes a concrete `*gorm.DB` / `*sqlx.DB`. Never edit production constructors just to inject a transaction
 - One test per non-trivial query; assert SQL semantics (filter, sort, eager-load), not just "method returns something"
-- N+1 detection: enable GORM `Logger: logger.Default.LogMode(logger.Info)` in test setup; count queries
-- Constraint tests: insert violating data; assert the right error (`pgconn.PgError.Code: "23505"` for unique; GORM wraps as `gorm.ErrDuplicatedKey`)
+- N+1 detection: count queries via GORM `Logger: logger.Default.LogMode(logger.Info)`, or a `database/sql` driver wrapper / `otelsql` span count for sqlx - sqlx has no logger hook. Skip the check rather than fake it
+- Constraint tests: insert violating data; assert the driver's real error type - **`lib/pq` raises `*pq.Error` with `Code pq.ErrorCode`; `jackc/pgx` raises `*pgconn.PgError` with `Code string`**. Both carry `23505` for unique violation; GORM additionally wraps it as `gorm.ErrDuplicatedKey`. Check the driver in `go.mod` before writing the assertion - the two do not typecheck against each other
+- Container schema: run the project's migrations. If `migrations/` does not exist, inline the DDL, and name the drift risk explicitly - an inlined schema silently diverges from production
 
 **DTO / validator:**
 
-- `validator.New()` directly: `err := validate.Struct(req)` - faster than full handler test
-- Edge cases: missing required, wrong types via `BindJSON`, out-of-range, custom validators
+- `validator.New()` directly is faster than a full handler test, but **it will silently pass everything unless you set the tag name.** validator/v10 reads `validate:` tags; Gin registers its instance with `SetTagName("binding")`, so a DTO carrying only `binding:` tags has zero rules from validator's default view and `validate.Struct(req)` returns `nil` for every input - a green test asserting nothing. Set the tag name and assert the validator is live before using it:
+
+```go
+v := validator.New(validator.WithRequiredStructEnabled())
+v.SetTagName("binding")                                    // match Gin's instance
+require.Error(t, v.Struct(CreateInput{}), "validator is not reading `binding` tags")
+```
+
+- Edge cases: missing required, wrong types via `BindJSON`, out-of-range, custom validators. Worth writing even when every tag is stock - the rules are the request contract, and this is where they are covered exhaustively so the handler table can stay representative
 
 **Asynq / Kafka jobs:**
 
@@ -101,7 +127,9 @@ Use skill: `go-testing-patterns` for canonical table-driven, fixtures, testconta
 - Idempotency: invoke twice with same payload; assert side effect happens once
 - Retry: stub external to fail twice then succeed; assert task completes; assert retry count
 - Archived / max-retries: stub to fail forever; assert task ends in `archived` without infinite loop
-- Kafka: `kfake` (in-process) for unit; Testcontainers Kafka for integration
+- Permanent failure: assert a malformed payload wraps `asynq.SkipRetry` rather than burning the retry budget
+
+**Kafka (franz-go)** - the three checks above map, the APIs do not. Call the record handler directly (`consumer.handle(ctx, rec)`) for the in-process variant; `kfake` for the poll loop; Testcontainers Kafka when the test turns on real broker behavior. Substitutions: `asynq.MaxRetry` / archive -> a bounded retry wrapper plus a DLQ topic; `asynq.NewInspector` queue depth -> `kadm.Client.Lag`; dedup on `asynq.TaskID` -> an idempotency key carried in the record. Additionally assert offsets are **not** committed when the handler returned an error, and that a stale message `Version` does not overwrite newer state - the at-most-once and out-of-order losses have no Asynq analogue
 
 **E2E:**
 
@@ -119,13 +147,14 @@ Use skill: `go-testing-patterns` for canonical table-driven, fixtures, testconta
 
 **Integration:** every repository method with non-trivial query (multi-column filter, join, eager-load via `Preload`, aggregate); ORM constraints (unique, check, FK ON DELETE); migration smoke test on clean DB
 
-**Asynq / Kafka:** every task with retry, idempotency, or external side effects; workflows assert complete and aggregate; post-commit tasks assert they fire after parent commits
+**Asynq / Kafka:** every task with retry, idempotency, or external side effects; workflows assert complete and aggregate; post-commit tasks assert they fire after parent commits. **Dual writes** (a DB commit plus a publish, neither transactional) assert the divergence case: the row commits, the publish fails, and the caller sees the failure - the test pins which side wins
 
 **Does NOT need a test:** framework-provided behavior (Gin routing, middleware dispatch, default validator); generated boilerplate; trivial delegation (`service.Get(id) -> repository.Get(id)` with no logic)
 
 ### Step 6 - Test Data and Fixtures
 
 - Factory functions (`NewTestOrder(opts ...func(*Order)) *Order`) over hand-rolled literals
+- Share factories via `internal/testutil` **only when it does not import the package under test**. In-package tests (`package invoice`) that need a factory returning an `invoice.Invoice` cannot use a `testutil` that imports `invoice` - that is an import cycle. Then keep the factory package-local in `factories_test.go`; the sharing rule loses to the compiler
 - Repository tests with Testcontainers: factories to insert; isolate per-test via transactional rollback or unique-per-test prefix
 - Avoid mutating shared fixtures; `t.Cleanup` to rebuild
 - Test data minimal - 100-row setups signal integration / load layer
@@ -134,7 +163,17 @@ Use skill: `go-testing-patterns` for canonical table-driven, fixtures, testconta
 
 If coverage < ~50%, run this **before** scaffolding - determines _which_ tests first.
 
-Measure, don't guess: `go test -coverprofile=cover.out ./...` when the suite runs locally; when it can't run (missing Docker, broken build), estimate from `*_test.go` density and label the number an estimate.
+Establish the number in this order, and report which branch you took:
+
+1. **Measured:** `go test -coverprofile=cover.out ./...` when the suite runs.
+2. **Measured by enumeration:** zero `*_test.go` in the tree is 0%, a fact, not an estimate.
+3. **Estimated:** when the suite cannot run (no Go toolchain, no Docker, broken build, missing generated mocks), take test lines over production lines, weighted per package, and show the arithmetic so the number is auditable. Label it an estimate.
+
+When the request is scaffolding rather than assessment, the prioritization still runs - it decides file order - and lands in the deliverable's `Prioritization` slot.
+
+A band whose evidence is unavailable is filled `not determinable - <reason>`, never dropped and never guessed: P4 needs `git log --since="3 months ago"`, which a tree with no VCS history cannot answer. Keep the 1-5 structure intact.
+
+When the highest band points outside the requested scope (P1 names JWT middleware; the user asked for handler + repository), stay in scope and list the band's targets as named residuals. Do not silently widen the work, and do not silently drop the priority.
 
 | Priority | Targets |
 |----------|---------|
@@ -161,26 +200,46 @@ Measure, don't guess: `go test -coverprofile=cover.out ./...` when the suite run
 
 ## Output Format
 
-**Which output to produce:**
+**Which output to produce.** Match the request against these rows top-down and take the first hit - the rows overlap, and the first match wins:
 
-- "What tests are missing?" -> Coverage Assessment
-- "Write tests for X" / "scaffold" -> Test Scaffolds
-- "Test strategy" / "test plan", OR coverage < 50% with no scaffolds requested -> Strategy Doc (optionally with Coverage Assessment)
-- 2+ deliverables ("review coverage AND scaffold") -> in this order separated by `---`: Coverage Assessment -> Strategy Doc -> Test Scaffolds
-- Unclear -> default to Strategy Doc
+| Request | Deliverable |
+| ------- | ----------- |
+| "Write tests for X" / "scaffold" | Test Scaffolds |
+| "What tests are missing?" / "review coverage" | Coverage Assessment |
+| "Test strategy" / "test plan" | Strategy Doc |
+| 2+ of the above asked for together | All matched, in this order, separated by `---`: Coverage Assessment -> Strategy Doc -> Test Scaffolds |
+| Unclear | Strategy Doc |
+
+Whatever the row, when coverage is under ~50% the Coverage Assessment is emitted **as well**, ahead of the others - it is the only deliverable with a `Prioritization` slot, and Step 7 is mandatory below that threshold. Emit the header block once at the top, then the documents in that order separated by `---`; do not repeat the header inside each.
+
+**Every deliverable opens with this header block**, so the Step 1 records and the coverage number always have a home:
+
+```markdown
+**Stack:** Go <version> / Gin <version>
+
+**Data Access:** GORM <version> | sqlx <version> | database/sql | mixed - <both, named>
+
+**DB engine / driver:** PostgreSQL via lib/pq | PostgreSQL via jackc/pgx | ... _(say "inferred from driver" when no instruction file declared it)_
+
+**Messaging:** Asynq | Kafka | none
+
+**Mock framework:** gomock | mockery | hand-written | none present - proposing <what>
+
+**Test framework:** <what the repo actually has; "none present - proposing <list>" when go.mod declares no test dependency>
+
+**Coverage:** <n>% (measured | measured by enumeration | estimated - <method>)
+
+**Auth in tests:** test-issued JWT | claims-injecting middleware - <which and why>
+
+**Proposed conventions** _(only when the repo has none to adopt)_: <layout, fixtures, tag split, CI command>
+```
 
 **Coverage Assessment:**
 
 ```markdown
 ## Go Test Coverage Assessment
 
-**Stack:** Go <version> / Gin <version>
-
-**Data Access:** GORM | sqlx | database/sql | mixed
-
-**Messaging:** Asynq | Kafka | none
-
-**Test framework:** `testing` + table-driven, `httptest`, Testcontainers, gomock
+<header block>
 
 **Coverage gaps:**
 
@@ -191,6 +250,7 @@ Measure, don't guess: `go test -coverprofile=cover.out ./...` when the suite run
 - **Job:** [Asynq processors without tests; tasks without idempotency / retry tests]
 - **Race-detector gaps:** [packages with goroutines / channels / mutexes without `-race`]
 - **Contract:** [OpenAPI / Pact without verification]
+- **Infrastructure:** [Step 8 hygiene boxes that fail: no `TestMain`, no `-race` in CI, no `//go:build integration` split, no coverage command or thresholds, mocks not regenerated, suite does not build]
 
 **Recommended pyramid balance:** Unit [target] / Handler + integration [target] / E2E [target - keep small]
 
@@ -203,7 +263,7 @@ Measure, don't guess: `go test -coverprofile=cover.out ./...` when the suite run
 5. **P5 - Plumbing:** [pass-through handlers / simple CRUD]
 ```
 
-**Test Scaffolds:** ready-to-run files using project conventions:
+**Test Scaffolds:** the header block, then a file manifest (path, layer, test funcs / cases), then the scaffolds themselves, then `**Residuals:**` - prioritized work the request's scope excluded, named so it is not lost. Ready-to-run files using project conventions:
 
 - Right test type (handler / integration / unit / job)
 - Table-driven with `t.Run(tc.name, ...)`
@@ -214,22 +274,33 @@ Measure, don't guess: `go test -coverprofile=cover.out ./...` when the suite run
 - Asynq: idempotency + retry + max-retries when applicable
 - `t.Cleanup` for teardown
 - `go test -race`-safe (no races in the fixture)
-- **Verified before delivery:** `go build ./...` on everything; run the generated tests (`go test <packages>`); skip `-tags=integration` when Docker is unavailable and say so. Never deliver a scaffold that does not compile.
+- **Verified before delivery.** Probe first (`go version`, `docker info`, and `go env CGO_ENABLED` plus a C compiler check if you intend `-race`), then take the matching branch and state which:
+  - Toolchain and Docker present -> `go build ./...` plus `go test <packages>` including `-tags=integration`.
+  - Toolchain present, Docker absent -> build and run everything except `-tags=integration`, **and type-check the tagged files anyway with `go vet -tags=integration ./...`**. Without that they ship never compiled - and they are the riskiest scaffolds, carrying driver-specific error types and version-sensitive container APIs. Name the skipped files and cases.
+  - **No Go toolchain** -> the scaffolds cannot be compiled. Do a static pass (duplicate declarations across the package, build-tag symbol collisions, unused imports, fake-vs-interface conformance), then label the delivery **unverified: not compiled** and say what would verify it. Do not claim a scaffold compiles when nothing compiled it.
+  - **`-race` needs cgo.** With `CGO_ENABLED=0` or no C compiler it cannot run on any branch. Run the suite without it and report the omission with its cause rather than dropping the requirement silently.
+  - **A build repair needed before anything runs** (absent `go.sum`, missing generated mocks) is in scope when it is the only thing between you and a real measurement - make it, and say what you changed. Repairing the build is not the same as changing the code under test.
 
 **Strategy Doc:**
 
 ```markdown
 ## Go Test Strategy
 
+<header block>
+
 **Objective:** [what this strategy achieves]
 
-**Pyramid balance:** Unit {x}% / Handler + integration {y}% / E2E {z}%
+**Pyramid balance:** Unit {x}% / Handler + integration {y}% / E2E {z}% - [the risk that moved it off the default band]
 
-**Tooling:** `testing` + table-driven, `httptest`, Testcontainers Postgres, gomock, `go test -race`, Asynq in-process + real-broker
+**Tooling:** [what this project will use, per the header's Mock framework and Messaging]
 
-**Database isolation:** Testcontainers Postgres + per-test transactional rollback
+**Database isolation:** Testcontainers <engine> + [transactional rollback | unique-per-test prefix, per Step 4's preference order]
 
 **Concurrency:** `go test -race ./...` mandatory in CI; `t.Parallel()` for independent cases
+
+**Prerequisites** _(infrastructure that must exist before any test below can be written - list first, they gate the rest)_:
+
+1. [e.g. `internal/testutil` bootstrap, `//go:build integration` split, CI workflow]
 
 **Gaps to close (prioritized):**
 
@@ -239,12 +310,17 @@ Measure, don't guess: `go test -coverprofile=cover.out ./...` when the suite run
 
 ## Self-Check
 
+Mark a line N/A with its reason when the routing table did not select that deliverable, or when the request's scope excludes it - an N/A line still names what was left undone.
+
 **Always:**
 
-- [ ] Stack confirmed; data-access mix and messaging recorded
-- [ ] Code under test + existing tests + setup files read directly
-- [ ] `go-testing-patterns` consulted
+- [ ] `behavioral-principles` loaded
+- [ ] Stack confirmed; data access, DB engine + driver, messaging, and mock framework all recorded and carried into the header block
+- [ ] Code under test + existing tests + setup files read directly; absent ones named
+- [ ] `go-testing-patterns` consulted; its patterns used, this skill's Output Format kept
+- [ ] Every API name adapted to the detected stack (driver error type, tx injection, queue client) - no construct prescribed that the project does not have
 - [ ] Auth testing approach explicit (test-issued JWT or claims-injecting middleware)
+- [ ] Coverage number stated with its branch (measured / by enumeration / estimated + method)
 
 **Strategy / Coverage:**
 
@@ -264,7 +340,8 @@ Measure, don't guess: `go test -coverprofile=cover.out ./...` when the suite run
 - [ ] Asynq: idempotency + retry; real-broker variant for non-trivial `MaxRetry` / `Timeout`
 - [ ] `t.Cleanup` (not `defer`)
 - [ ] Validator unit tests for non-trivial DTOs with custom tags
-- [ ] Scaffolds compiled and run before delivery; skipped integration subset named when Docker unavailable
+- [ ] Verification branch taken and stated; skipped subset named; delivery labelled `unverified: not compiled` when no toolchain exists
+- [ ] Residuals listed for prioritized work the request's scope excluded
 
 ## Avoid
 

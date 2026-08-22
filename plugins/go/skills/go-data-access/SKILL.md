@@ -26,8 +26,11 @@ user-invocable: false
 - `defer rows.Close()` immediately after a successful query
 - Transactions: prefer the closure form (`db.Transaction(func(tx) error { ... })`); side effects that leave the DB happen after commit, never inside the closure
 - N+1: `Preload` for associations you'll access; `Joins` when filtering by them
-- Repository interfaces live in the consumer (service) package, never in the repo package
-- Pagination: always pair `Limit`/`Offset` with a deterministic `Order`; prefer keyset (`WHERE id < ? ORDER BY id DESC`) over large offsets
+- Repository interfaces live in the consumer (service) package, never in the repo package. The service may still own a transaction boundary - that is the one place a `*gorm.DB` legitimately appears above the repo layer
+- Pagination: always pair `Limit`/`Offset` with a deterministic `Order`; prefer keyset over large offsets
+- Bind every value as a placeholder (`?`, `$1`, `:name`). Interpolating with `fmt.Sprintf` is SQL injection; a column or direction name that must be dynamic comes from an allowlist, never from the request
+- Reading an unbounded result set into a slice (`db.Find(&all)`) sizes memory by the table - batch or stream it
+- Raw SQL bypasses GORM's soft-delete filter. That includes `db.Raw` / `db.Exec`, not just sqlx
 
 ## GORM vs sqlx
 
@@ -218,6 +221,10 @@ if res.RowsAffected == 0 {
 
 `clause.Locking{Strength: "SHARE"}` for `FOR SHARE`. In-process `sync.Mutex` is **not** a substitute - it only serializes within one replica; multi-replica counters/balances require DB-level locking or optimistic versioning.
 
+**Choosing:** pessimistic when the same row is contended by many concurrent writers (a balance, a counter, inventory) - optimistic retry livelocks there. Optimistic when conflicts are rare and a retry is cheap. A `version` column is compatible with both: hold the lock *and* guard the update on the version, so a write that escapes the lock fails loudly instead of silently.
+
+**Lock ordering.** A transaction taking two row locks must take them in a deterministic order - sort by primary key. Two transfers touching accounts A and B in opposite orders deadlock; `Where("id IN ?", sortedIDs).Order("id")` under `FOR UPDATE` makes that impossible.
+
 #### Savepoints (nested transactions)
 
 GORM nested `Transaction(...)` calls become savepoints, letting an inner step fail without aborting the outer tx. Use sparingly - most "keep going on partial failure" cases are better as two top-level transactions plus retry.
@@ -310,7 +317,41 @@ func (r *paymentRepo) List(ctx context.Context, limit, offset int) ([]Payment, i
 }
 ```
 
-`Limit`/`Offset` without `Order` returns rows in undefined order - page 2 may overlap page 1. Tiebreak on a unique column (`id`) when the primary sort can repeat. For tables that grow without bound, prefer keyset pagination.
+`Limit`/`Offset` without `Order` returns rows in undefined order - page 2 may overlap page 1. Tiebreak on a unique column (`id`) when the primary sort can repeat.
+
+Offset paging costs two scans that both grow with the table: `OFFSET n` produces and discards n rows, and `Count` aggregates the whole filtered set on every page. Both are fine on a bounded table and neither is on a growing one.
+
+### Keyset Pagination
+
+The cursor is every column in the `ORDER BY`, compared as a row value so one index descent serves page 5,000 as cheaply as page 1:
+
+```go
+q := db.WithContext(ctx).Model(&Order{}).Order("created_at DESC, id DESC").Limit(limit + 1)
+if cur != nil { // row-value compare, not created_at < ? OR (created_at = ? AND id < ?)
+    q = q.Where("(created_at, id) < (?, ?)", cur.CreatedAt, cur.ID)
+}
+```
+
+Backed by an index on exactly `(created_at DESC, id DESC)` plus any equality filter as the leading column. Fetch `limit + 1` to derive `has_more` without a second query.
+
+Keyset has no page numbers and no total - that is the trade, not an omission. Return `next_cursor` + `has_more`; if a count is genuinely needed, serve an estimate (`reltuples`) or a cached rollup rather than `COUNT(*)` per request. Sign or opaquely encode the cursor: its contents land in a `WHERE` clause.
+
+### Streaming Large Reads
+
+`Find(&all)` materializes every row before returning, so peak memory is the result set. Batch instead:
+
+```go
+err := db.WithContext(ctx).Where("status = ?", "pending").
+    FindInBatches(&batch, 1000, func(tx *gorm.DB, _ int) error {
+        return process(ctx, batch) // batch is reused between calls - do not retain it
+    }).Error
+```
+
+`FindInBatches` advances by primary key, so it does not degrade the way an offset loop does. sqlx's `SelectContext` materializes too - stream with `QueryxContext` + `rows.StructScan` and `defer rows.Close()`.
+
+### Indexing the Access Path
+
+An index serves a query only when its column order matches: equality columns first, then the range or sort column, in the same direction as the `ORDER BY`. A partial index (`WHERE deleted_at IS NULL`) matches the predicate GORM auto-appends for `gorm.Model` tables and keeps the index off dead rows. Build with `CREATE INDEX CONCURRENTLY` (see `go-migration-safety`), and confirm with `EXPLAIN (ANALYZE, BUFFERS)` that the plan is an index scan rather than a seq scan plus sort.
 
 ### Hooks (Sparingly)
 
@@ -389,7 +430,11 @@ sqlDB.SetConnMaxLifetime(5 * time.Minute)  // recycle for LB failover
 sqlDB.SetConnMaxIdleTime(1 * time.Minute)
 ```
 
-**Replica fan-in math.** `replicas * SetMaxOpenConns < DB max_connections - reserved`. Example: Postgres `max_connections=100`, reserve 10 for admin/migrations, 8 service replicas → `SetMaxOpenConns((100-10)/8) ≈ 11`. Front the DB with PgBouncer (transaction pooling) when the worker count makes per-replica limits too tight.
+**Replica fan-in math.** `replicas * SetMaxOpenConns < DB max_connections - reserved`. Example: Postgres `max_connections=100`, reserve 10 for admin/migrations, 8 service replicas → `SetMaxOpenConns((100-10)/8) ≈ 11`. Count API and worker pods separately - a worker's pool should track its concurrency, not the pod count.
+
+When that arithmetic yields a per-replica limit too small to serve peak traffic, the answer is PgBouncer in **transaction** pooling mode, and the formula changes: the app pools now size against PgBouncer's `max_client_conn`, and only `default_pool_size` counts against `max_connections`. Session mode does not multiplex - it holds one server connection per client connection for that connection's whole life, so it is a pass-through and the fan-in math still binds. Transaction mode has a prerequisite: session state stops working. Use the simple protocol (`PreferSimpleProtocol` on GORM's Postgres driver, or pgx `default_query_exec_mode=simple_protocol`) and audit for `SET`, session advisory locks, and `LISTEN`/`NOTIFY`. `FOR UPDATE SKIP LOCKED` is transaction-scoped and safe.
+
+Set `idle_in_transaction_session_timeout` server-side as containment: it caps the damage from any transaction that starts holding a connection across external I/O.
 
 ## Edge Cases
 
@@ -398,18 +443,39 @@ sqlDB.SetConnMaxIdleTime(1 * time.Minute)
 
 ## Output Format
 
+Design engagements emit `## Data Access Design`. Review and debug engagements emit `## Findings` first, then the design tables describing the layer **as it exists today**.
+
 ```
 ## Data Access Design
 
 ### Models
 | Model | Table | Associations | Soft Delete? |
+|-------|-------|--------------|--------------|
 
 ### Repository Interface
 | Method | GORM/sqlx | Query Type |
+|--------|-----------|------------|
 
 ### Pool
 | Setting | Value | Rationale |
+|---------|-------|-----------|
 ```
+
+Cell values: `Soft Delete?` is `Yes | No | unknown` - `unknown` when the struct was not supplied, never inferred from the table name. `GORM/sqlx` is `GORM | sqlx | raw SQL`; `db.Raw` and `db.Exec` are `raw SQL`. A `Pool` setting that is never called is `not configured (default: <the database/sql default>)`, since the default is the value in force. `Query Type` is `PK lookup | Locking read | List | Keyset page | Aggregate | Stream | Write | Transactional write | Upsert | Claim`. When the design turns on a transaction boundary, a lock strategy, an index, or an event-dispatch mechanism, state each in a sentence under the tables - those decisions have no column and must not be dropped. `Pool` includes the proxy and server settings the fan-in math depends on (`pool_mode`, `default_pool_size`, `max_connections`) when one is in front of the database.
+
+```
+## Findings
+
+### [Must] file:line
+
+- Defect: {what happens at runtime - wrong rows, leaked connection, unbounded memory, injectable query}
+- Rule: {the data-access rule violated}
+- Fix: {concrete edit}
+```
+
+`[Must]` for injectable SQL, a leaked or long-held connection or transaction, unconfigured or oversubscribed pool limits, `AutoMigrate` on a production path, a dual write across the transaction boundary, data loss or corruption, unbounded memory, or a query that returns the wrong rows (missing tenant scope, missing soft-delete filter, page overlap); `[Recommend]` otherwise. Those are examples - judge by consequence, and a violated `Rules` line is a `[Must]` unless its consequence here is genuinely cosmetic. A defect spanning every method of a layer is one finding citing the first site and naming the rest. Order `[Must]` first, then by file and line; cite `file:<symbol>` or the named subsystem when the input is telemetry rather than source.
+
+A debug engagement opens with two lines before the findings: what is failing, and which fix must land first. Several fixes here are prerequisites for others - re-sizing a pool is inert while transactions still hold connections across external I/O - and a bare finding list cannot express that.
 
 ## Avoid
 

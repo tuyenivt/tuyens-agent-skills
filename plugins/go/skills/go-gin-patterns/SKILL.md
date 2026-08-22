@@ -21,21 +21,27 @@ user-invocable: false
 
 ## Rules
 
-- Handlers orchestrate; services execute. No business logic or `c.JSON` outside handlers
+- Handlers orchestrate; services execute. No business logic in handlers - a handler binds, calls one service method, and writes the response. Middleware writes only its own rejection (`AbortWithStatusJSON`); success bodies come from handlers
 - Use `gin.New()` with explicit middleware; never `gin.Default()` in production
 - `net.JoinHostPort(host, port)`, never string concat
-- One response envelope for success and error across all endpoints
+- One JSON envelope for success and error on every endpoint that returns a JSON body. Exempt: 204s, probe endpoints, and non-JSON content types (SSE, file downloads) - name each exemption rather than letting shapes drift
+- Every `http.Server` sets `ReadHeaderTimeout`; a body-carrying route caps the body with `http.MaxBytesReader`
+- Group middleware is additive - a child group can never remove a parent's. Build the stack as a `[]gin.HandlerFunc` value and hang divergent groups off the engine root
 - Webhooks: read raw body before any binding (`ShouldBindJSON` consumes the body and breaks signatures)
-- Webhook routes live outside the JWT auth group
+- Webhook routes live outside the JWT auth group, and handlers tolerate redelivery - providers retry on non-2xx and on timeout
 
 ## Patterns
 
 ### Router Structure
 
 ```go
-func NewRouter(cfg *Config, deps *Dependencies) *gin.Engine {
+func NewRouter(cfg *Config, deps *Dependencies) (*gin.Engine, error) {
     r := gin.New()
-    r.SetTrustedProxies(cfg.TrustedProxies) // default trusts every proxy - ClientIP() is spoofable via X-Forwarded-For until set
+    // Default trusts every proxy - ClientIP() is spoofable via X-Forwarded-For until set.
+    // Check the error: a typo'd CIDR otherwise starts the service wide open.
+    if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+        return nil, fmt.Errorf("trusted proxies: %w", err)
+    }
     r.Use(middleware.Logger(), middleware.Recovery(), middleware.ErrorHandler())
 
     r.GET("/health", handlers.Health)
@@ -51,9 +57,11 @@ func NewRouter(cfg *Config, deps *Dependencies) *gin.Engine {
         users.GET("", handlers.ListUsers(deps.UserService))
         users.POST("", handlers.CreateUser(deps.UserService))
     }
-    return r
+    return r, nil
 }
 ```
+
+Building the stack as a `[]gin.HandlerFunc` value lets two groups on the same prefix carry different chains - but build each with a fresh slice (`slices.Concat`, or copy before appending). Two `append(base, ...)` calls share `base`'s backing array, and the second silently overwrites the first group's last handler.
 
 ### Request Binding
 
@@ -101,9 +109,17 @@ type ErrorResponse struct {
     Code  string `json:"code,omitempty"`
 }
 type PaginationMeta struct {
-    Page, PageSize, TotalItems, TotalPages int
+    PageSize   int    `json:"page_size"`
+    Page       int    `json:"page,omitempty"`        // offset mode only
+    TotalItems int    `json:"total_items,omitempty"` // offset mode only
+    TotalPages int    `json:"total_pages,omitempty"` // offset mode only
+    NextCursor string `json:"next_cursor,omitempty"` // keyset mode only
 }
 ```
+
+The two modes are mutually exclusive, so every field but `PageSize` carries `omitempty` - a keyset response emitting `"page":0,"total_pages":0` is a contract clients will code against and that cannot be removed later.
+
+Untagged fields serialize as `Page` / `PageSize`, which no client expects and which cannot be corrected later without breaking them. Tag every response struct at creation.
 
 ### Pagination
 
@@ -193,7 +209,12 @@ func PerClientRateLimit(rps int) gin.HandlerFunc {
 }
 ```
 
-The `clients` map grows one entry per unique key forever - scanner traffic makes it a slow leak. Evict via a last-seen sweep or LRU. Anything keyed on `ClientIP()` also requires `SetTrustedProxies` (see Router Structure).
+The `clients` map grows one entry per unique key forever - scanner traffic makes it a slow leak. Evict via a last-seen sweep or LRU.
+
+- `rate.Limit` is per second; a per-minute quota is `rate.Every(time.Minute/N)` with burst `N`.
+- Key on the authenticated principal once one exists (`user:<id>`, `key:<id>`); `ClientIP()` puts a whole NAT behind one bucket and gives one API key N buckets. That means the limiter runs *after* auth; put a cheap IP limiter before auth to shed unauthenticated floods.
+- `ClientIP()` needs `SetTrustedProxies` covering **every** hop (ingress *and* CDN ranges) - listing only the nearest proxy stops the `X-Forwarded-For` walk at the CDN edge. Gin's default `RemoteIPHeaders` also trusts `X-Real-IP`, which a proxy typically sets to its own address; drop it when `X-Forwarded-For` is authoritative. `TrustedPlatform` skips the proxy check entirely and is forgeable by anything that can reach the origin directly.
+- In-process buckets are per replica: the effective ceiling is `rps * replicas`. Move to Redis when the quota is contractual.
 
 ### Health and Readiness
 
@@ -214,8 +235,16 @@ func Ready(db *sql.DB) gin.HandlerFunc {
 ### Graceful Shutdown
 
 ```go
-func Run(r *gin.Engine, cfg *Config) error {
-    srv := &http.Server{Addr: net.JoinHostPort(cfg.Host, cfg.Port), Handler: r}
+func Run(r *gin.Engine, cfg *Config, ready *atomic.Bool) error {
+    srv := &http.Server{
+        Addr:              net.JoinHostPort(cfg.Host, cfg.Port),
+        Handler:           r,
+        ReadHeaderTimeout: 10 * time.Second, // Slowloris; gosec G112 flags its absence
+        ReadTimeout:       cfg.ReadTimeout,
+        IdleTimeout:       cfg.IdleTimeout, // set above the load balancer's idle timeout so the LB closes first
+        // WriteTimeout is absolute from the start of the request, so any finite value
+        // truncates long polls, SSE, and slow downloads. Bound those per handler instead.
+    }
 
     go func() {
         if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -223,43 +252,73 @@ func Run(r *gin.Engine, cfg *Config) error {
         }
     }()
 
-    quit := make(chan os.Signal, 1)
-    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-    <-quit
+    ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+    defer stop()
+    <-ctx.Done()
+    stop() // a second signal now kills the process outright
 
-    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    ready.Store(false)             // /ready fails first so the LB stops routing
+    time.Sleep(cfg.PreStopDelay)   // one probe interval, while still serving
+    close(cfg.Drain)               // long-lived handlers (SSE, streams) end themselves
+
+    sctx, cancel := context.WithTimeout(context.Background(), cfg.DrainTimeout)
     defer cancel()
-    return srv.Shutdown(ctx)
+    if err := srv.Shutdown(sctx); err != nil {
+        return srv.Close() // Shutdown waits forever on a stuck connection; Close is the floor
+    }
+    return nil
 }
 ```
 
+`PreStopDelay + DrainTimeout` must be under the platform's kill deadline (k8s `terminationGracePeriodSeconds`), and `DrainTimeout` above the slowest normal request. `Shutdown` waits on connections but never on goroutines a handler detached - drain those separately.
+
 ## Edge Cases
 
-- `/:id` and `/new` on the same group conflict - reorder or change prefix
+- A static route and a wildcard sibling (`/orders/export` next to `/orders/:id`) are supported from Gin v1.7 (mixed static/param routing, gin#2663); earlier versions panic at registration with `conflicts with existing wildcard`. Registration order changes neither outcome - on a version that panics the only fix is a different prefix
 - `ShouldBindJSON` with an empty body errors - skip for POSTs with no body
-- Long-running handlers should poll `c.Request.Context().Err()` for client disconnects
+- **Client disconnect: decide abandon or survive.** Abandon (reads, queries) - poll `c.Request.Context().Err()` and return; the request context is cancelled both on hangup and when the handler returns. Survive (a submitted job, a payment already taken) - hand the work to a durable queue and return 202. If it must stay in-process, `c.Copy()` first (Gin recycles `*gin.Context` through a pool the moment the handler returns) and derive from `context.WithoutCancel(cp.Request.Context())` plus your own timeout, so trace and tenant values survive but the cancellation does not
+- Cap request bodies with `http.MaxBytesReader` before anything reads them; `*http.MaxBytesError` maps to 413. `MaxMultipartMemory` only decides heap-vs-tempfile, it is not a size limit
 - Validate webhook timestamps to reject replays (most libraries handle this within tolerance)
 
 ## Output Format
+
+Design or change-set engagements emit `## API Design`; review engagements emit `## Findings` first, then `## API Design` describing the surface **as it exists today**.
 
 ```
 ## API Design
 
 ### Endpoints
-| Method | Path | Auth | Request | Response | Status |
+| Method | Path | Auth | Request | Response | Status | Change |
+|--------|------|------|---------|----------|--------|--------|
 
 ### Middleware Stack
-| Middleware | Scope | Purpose |
+| Order | Middleware | Scope | Purpose |
+|-------|------------|-------|---------|
 
 ### Response Envelope
-- Success: `{"data": ..., "meta": ...}`
-- Error: `{"error": "...", "code": "..."}`
+| Shape | Body |
+|-------|------|
 ```
+
+Cell values: `Status` lists the HTTP codes the endpoint returns. `Change` is `New | Changed | Unchanged | Removed` - omit the column entirely on a greenfield design. `Order` is the execution position within `Scope`, numbered from 1. `Scope` is `engine | group <prefix> | route <method path>`. `Response Envelope` rows are the shapes actually emitted, one row per distinct shape, with any exemption (204, probe, SSE, file) named as its own row. Anything the input does not supply is `unknown`; a handler not provided is `not supplied`.
+
+```
+## Findings
+
+### [Must] file:line
+
+- Defect: {what breaks - wrong status, lost request, spoofable input, dropped work}
+- Rule: {the Gin rule or pattern violated}
+- Fix: {concrete edit}
+```
+
+`[Must]` when the service fails to start, a security control is void, work is silently lost, or a client-visible contract is wrong; `[Recommend]` otherwise. Order `[Must]` first, then by file and line. A defect this skill does not own (transactions, goroutines, crypto choice) is still reported, in one closing `[Recommend]` block naming the owning concern - never dropped.
 
 ## Avoid
 
 - Business logic in handlers
 - `gin.Default()` in production
-- Unbounded list endpoints
+- Unbounded list endpoints, and deep `OFFSET` paging on a growing table - switch to a keyset cursor
 - `ShouldBindJSON` on webhook endpoints
 - Webhook routes inside the JWT auth group
+- Detaching a goroutine from a handler without `c.Copy()` - Gin pools and reuses `*gin.Context` the moment the handler returns

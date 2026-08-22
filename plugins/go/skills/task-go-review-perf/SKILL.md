@@ -29,17 +29,21 @@ Go-aware review naming GORM `Preload` / `Joins` / `Select`, sqlx `In` / `NamedEx
 | Depth | When | Runs |
 |-------|------|------|
 | `standard` | Default | All steps |
-| `deep` | Profiling-driven with pprof / OTel / benchmark data | All + capacity guidance + load plan (emitted as a `### Capacity & Load Plan` subsection under Recommendations) |
+| `deep` | Requested, handed down by `task-go-review`, or profiling data (pprof / OTel / benchmark) is available | All + `### Capacity & Load Plan` subsection under Recommendations |
+
+Request deep by appending `deep` to the invocation (e.g. `/task-go-review-perf <branch> deep`). At `deep` the Capacity & Load Plan carries four things: current measured state per breached signal, the connection budget (`replicas * SetMaxOpenConns` against `max_connections - reserved`), projected post-fix numbers labelled as projections, and a numbered re-measure plan naming which signal confirms which fix.
+
+**Whole-service sweep** (the quarterly N+1 / pool / leak pass, with no feature branch): when Step 2 fails fast on trunk, do not stop - skip the diff gate and run Steps 3-10 repo-wide at `HEAD` (Step 3's categories read in full, not per changed file); findings cite current code; checkpoint `base_sha` = `head_sha` = `HEAD`; fill the Summary's `Target:` slot with what was swept.
 
 ## Invocation
 
 | Form | Meaning |
 |------|---------|
-| `/task-go-review-perf` | Current branch vs base; fails fast on trunk |
+| `/task-go-review-perf` | Current branch vs base; on trunk, runs the whole-service sweep above |
 | `/task-go-review-perf <branch>` | `<branch>` vs base (3-dot) |
 | `/task-go-review-perf pr-<N>` | PR head fetched into local branch `pr-<N>` |
 
-When invoked as subagent (e.g. by `task-go-review`), Step 2 is skipped, the pre-read diff is reused, and Step 11 returns findings instead of writing - the parent owns the report.
+**Subagent runs** (e.g. spawned by `task-go-review`). The parent passes `base_ref`, `head_ref`, the pre-read diff and commit log, depth, the pre-confirmed stack, and the data-access mix. Step 2 is skipped whole (including its SHA capture - never re-run git), the verify pass in Step 10 is skipped, and Step 11 returns the Output Format below to the parent instead of writing. Derive `Messaging` from the diff and `go.mod` when the parent did not send it.
 
 ## Workflow
 
@@ -49,9 +53,15 @@ Use skill: `stack-detect`. Accept pre-confirmed from parent. Record `Data Access
 
 ### Step 2 - Resolve Diff
 
-Use skill: `review-precondition-check`. Read diff + log once; reuse. Skip if subagent received handle.
+Standalone only - skip the whole step, SHA capture included, when a subagent received the handle.
 
-Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
+Use skill: `review-precondition-check`. Read diff + log once; reuse. Capture for the report checkpoint: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
+
+**Resolve the round now, before any analysis.** Stat `review-perf-<branch>.md` in the writer's output directory (sanitizing the branch name per `review-report-writer`). Absent or frontmatter-less -> `round: 1`. Present and valid -> `round = prior.round + 1`, with its `head_sha` as `prior_head_sha`. **When that `head_sha` equals the current head and the invocation asks for nothing more (no deeper depth, no sweep where the prior was a diff review), print `No new commits on <branch> since prior perf review at <sha_short>. Prior report unchanged.` and stop** - do not re-review and do not overwrite. Doing this at Step 11 instead wastes the whole pass and destroys the prior round's findings.
+
+If it fails fast on trunk, switch to the whole-service sweep under **Depth** - that is the quarterly-sweep path, not a stop.
+
+If the clean-tree gate fails and **the only untracked file is this workflow's own prior report** (`review-perf-<branch>.md`), the gate is tripping on the artifact the last run wrote; every round-2 review would be unreachable. Say so, treat the tree as clean, continue, and tell the user to gitignore the report path. Any other fail-fast: surface verbatim and stop.
 
 ### Step 3 - Read the Performance Surface
 
@@ -61,7 +71,7 @@ Cite real `file:line`. Open:
 
 **sqlx:** changed queries (raw SQL, named, `In`, `Select`, `Get`, `NamedExec`); changed repos for `*Context` variants; `*sqlx.DB` setup; prepared statement reuse.
 
-**Both:** `migrations/`; Asynq / Kafka producers + consumers; worker concurrency; new goroutines / `errgroup.Go` / `wg.Go`; channel patterns; `sync.Pool`.
+**Both:** `migrations/`; Asynq / Kafka producers + consumers; worker concurrency; new goroutines / `errgroup.Go` / `wg.Go`; channel patterns; `sync.Pool`; pool config wherever it lives (`internal/db/*.go`, `cmd/*/main.go`). Pool sizing needs two numbers the diff rarely carries - replica count (deploy manifest, `values.yaml`) and DB `max_connections` (`CLAUDE.md`, infra config). Read them; if still unknown, run the check and state the assumption in the finding rather than skipping it.
 
 If the diff is small but ripples into unchanged code (a new endpoint calling an existing repository with an N+1), read the unchanged file - the regression lives there.
 
@@ -77,7 +87,7 @@ Use skill: `go-data-access`. Skip sqlx subsection on GORM-only projects and vice
 - [ ] **Existence checks:** `db.Select("id").Where(...).First(...)` over fetch-then-`len`
 - [ ] **`db.WithContext(ctx)` / sqlx `*Context`** - bare variants ignore `ctx.Done()`
 - [ ] **`defer rows.Close()`** immediately after `QueryContext` / `QueryxContext`
-- [ ] **Pool sized:** `db.SetMaxOpenConns(N) * replicas <= DB max_connections` (GORM default unlimited)
+- [ ] **Pool sized:** `db.SetMaxOpenConns(N) * replicas <= DB max_connections - reserved` (GORM default unlimited). Severity comes from the arithmetic, not from whether the pool line is in the diff: when the diff changes either side of that inequality - the pool value, the replica count, or worker `Concurrency` - anchor the finding on the changed line, cite the unchanged constraint, and rate it on the measured or computed consequence. Only a pool that is untouched on both sides drops to a Recommendation
 - [ ] **Prod-unsafe config:** GORM `Logger: logger.Info` in prod (every query at INFO); `db.Debug()` in hot path
 
 ### Step 5 - Indexes and Migrations
@@ -88,7 +98,7 @@ Use skill: `go-migration-safety` for changes in `migrations/`.
 - [ ] Composite indexes match leftmost-prefix
 - [ ] FK columns indexed (Postgres does not auto-index FKs)
 - [ ] Large-table indexes use `CREATE INDEX CONCURRENTLY`
-- [ ] `SET lock_timeout = '2s'` before DDL on large tables
+- [ ] `SET lock_timeout = '3s'` before DDL on large tables
 - [ ] Unique constraints at DB level, not just `gorm:"uniqueIndex"`
 - [ ] Partial indexes for boolean/enum filters selecting a small subset
 - [ ] No DDL on hot tables in a single migration (expand-then-contract)
@@ -100,7 +110,9 @@ Use skill: `go-migration-safety` for changes in `migrations/`.
 
 **Reasoning rule.** When the diff _adds_ an index, validate the index is needed (selectivity, shape), then assess safety. When the diff _adds a column_ that will be queried, flag the missing index proactively.
 
-**Migration impact template.** State impact before approving DDL on a hot table: _"DDL on a 50M-row table without `CONCURRENTLY` blocks writes for 5-30 min at this scale. Acquires `ACCESS EXCLUSIVE`; every transaction queues."_ If row count unknown, ask or note "row count not in diff - confirm before deploy."
+**Migration impact template.** State impact before approving DDL on a hot table, naming the lock the statement actually takes - `go-migration-safety` owns the lock-level table: a non-concurrent `CREATE INDEX` takes `SHARE` (blocks writes, allows reads), while `ALTER TABLE` DDL takes `ACCESS EXCLUSIVE` (blocks both). _"`CREATE INDEX` without `CONCURRENTLY` on a 40M-row table takes `SHARE` for 5-30 min at this scale; every write queues."_ If row count unknown, note "row count not in diff - confirm before deploy."
+
+**Consolidation.** Group by the edit that fixes it, not by the row that caught it. Several safety rows failing in one migration version - no `CONCURRENTLY`, no `lock_timeout`, DDL not separated from DML, unbatched backfill - are **one** finding at the strongest severity listing the failed rows, and the version's `up` and `down` files count as one version. A defect whose fix is a **different** file (a missing index that needs its own new migration) stays a separate finding even when the same version exposed it.
 
 ### Step 6 - Goroutine Lifecycle and Concurrency
 
@@ -140,7 +152,7 @@ Use skill: `go-concurrency`.
 
 ### Step 9 - Asynq / Kafka / Background Work
 
-Use skill: `go-messaging-patterns`.
+Skip when `Messaging` is `none` and the diff adds no producer or consumer; mark the step N/A. Otherwise use skill: `go-messaging-patterns`.
 
 **Asynq:**
 
@@ -165,69 +177,114 @@ Depth belongs to `task-go-review-observability`. Confirm only:
 
 Beyond presence/absence -> `task-go-review-observability` owns it.
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+**Checks that ran clean.** A checklist row that was evaluated and passed goes in the `## Verified Clean` section, naming the row and its evidence. A reader cannot otherwise tell "checked and fine" from "never checked", and on a well-tuned service that distinction is most of the review's value.
+
+### Step 10.5 - Verify Findings
+
+Applies to every finding in the review, not just Step 10's. Assign each draft finding its label first (High -> `[Must]`, Medium / Low -> `[Recommend]`), since `review-finding-verify` takes labelled findings and returns adjusted ones.
+
+Use skill: `review-finding-verify` with those findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`. **The label it returns is final** - it de-escalates `[Must]` to `[Recommend]` on untouched pre-existing code, and that survives onto the finding heading and into Next Steps; never re-derive a label from the impact tier after this step. Carry its provenance annotation onto the heading and its tally into the Summary's `Findings verified` slot. Subagent runs skip this - the parent verifies the merged set once - and return findings tagged by tier alone.
+
+**Overlap with a sibling lens.** When a finding is equally owned by `+Rel` (in-tx dual write, unbounded fan-out) or `+Obs` (missing instrumentation), keep it - do not drop it in anticipation of another subagent. Record the overlap in the finding's `Issue` line as `Also owned by: +Rel | +Obs` so the parent's Step 6 merge dedups deliberately rather than by chance.
 
 ### Step 11 - Write Report
 
 Standalone only - subagent runs return findings in the Output Format to the parent, which writes the single merged report.
 
-Use skill: `review-report-writer` with `report_type: review-perf` and every required input: `report_body`, `branch` (from the handle), refs from the precondition handle, `base_sha`/`head_sha` from Step 2, `stack: go-gin`, `scope: +perf`, `depth` as resolved from the Depth table, and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha`. (The handle's `prior_checkpoint` is keyed to the general review report - do not use it here.) Write before ending; print confirmation.
+The round was resolved in Step 2; pass it through. The handle's `prior_checkpoint` is keyed to the general review report - do not use it here.
+
+Use skill: `review-report-writer` with `report_type: review-perf` and every required input: `report_body`, `branch` (from the handle), refs from the precondition handle, `base_sha`/`head_sha` from Step 2 (whole-service sweep: both = `HEAD`), `stack: go-gin`, `scope: +perf`, `depth` as resolved from the Depth table, `mode: full`, and the `round` / `prior_head_sha` resolved above. Write before ending; print confirmation.
 
 ## Self-Check
 
+Mark a line N/A when the diff has no matching surface (no messaging, no migrations, no goroutine fan-out). A whole-service sweep marks the diff-worded lines N/A and runs the rest repo-wide.
+
+- [ ] `behavioral-principles` loaded (or accepted from parent)
 - [ ] Stack confirmed; data-access mix and messaging recorded
-- [ ] `review-precondition-check` ran (or handle received); diff/log read once and reused
+- [ ] `review-precondition-check` ran (or handle received); diff/log read once and reused; trunk fail-fast routed to the whole-service sweep rather than stopping
 - [ ] For `pr-ref` mode: user-run fetch surfaced; ref existed before review continued
 - [ ] When `head_matches_current` was false: user approval obtained (skipped when subagent)
-- [ ] Performance surface read directly (models / repos, handlers, config, migrations, Asynq / Kafka, goroutine launch sites)
+- [ ] Performance surface read directly (models / repos, handlers, config, migrations, Asynq / Kafka, goroutine launch sites); replica count and `max_connections` resolved or assumed explicitly
 - [ ] `go-data-access` consulted; N+1, multi-level, overfetch, projection, upsert idempotency checked
-- [ ] `go-migration-safety` consulted; `lock_timeout`, concurrent index, keyset backfill, expand-contract verified
+- [ ] `go-migration-safety` consulted; `lock_timeout`, concurrent index, keyset backfill, expand-contract verified; per-file findings consolidated
 - [ ] `go-concurrency` consulted; ownership, fan-out, mutex contention, channels audited
-- [ ] `go-messaging-patterns` consulted for Asynq / Kafka; idempotency, retry, post-commit, queue priorities
-- [ ] Pool sizing validated against worker / replica concurrency **if pool config in diff**; otherwise Low / Recommendation
+- [ ] `go-messaging-patterns` consulted when messaging is present; idempotency, retry, post-commit, queue priorities
+- [ ] Pool sizing rated on the arithmetic, anchored on whichever side of the inequality the diff changed
 - [ ] Allocation hotspots assessed when diff touches hot loops / large structs
 - [ ] Caching assessed (in-process vs Redis, single-flight, invalidation)
-- [ ] Every finding states impact - measured (`p95 800ms -> 120ms`) when pprof / APM data exists, estimated otherwise (`adds ~N queries at K rows`)
-- [ ] Findings ordered by impact; quick wins separated from structural
-- [ ] Depth honored: `standard` ran all; `deep` adds capacity + load plan
+- [ ] Every finding states impact, labelled `measured` (observed today), `projected` (post-fix estimate), or `estimated` (derived from row counts) - never a post-fix number labelled measured
+- [ ] Findings ordered by impact; `### Sequencing` names quick wins vs structural
+- [ ] Depth honored: `standard` ran all; `deep` filled all four parts of the Capacity & Load Plan
 - [ ] Next Steps with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend
-- [ ] Report written via `review-report-writer` with all required checkpoint fields (standalone only; subagent runs return findings to the parent); confirmation printed
+- [ ] Report written via `review-report-writer` with the round resolved from `review-perf-<branch>.md` (standalone only; subagent runs return findings to the parent); confirmation printed
 
 ## Output Format
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
+**Fill rules.** `Data Access` carries the detected value with its version (`GORM 1.25`); write `mixed` only when two access layers are both in use, then name them (`mixed - GORM 1.25 + sqlx 1.4`). `Overall` counts by impact tier: `Issues Found - <N> High / <N> Medium / <N> Low`. `Findings verified` is omitted on subagent runs (the parent verifies once). `Target` appears only on a whole-service sweep.
+
+**Impact tiers.** High = the finding accounts for a measured breach, or scales with request volume or row count so it degrades on its own (N+1, unbounded read, pool oversubscription, a lock or transaction held across I/O, an allocation source dominating the profile). Medium = a real cost that is bounded and does not grow (a fixed overfetch, a missing `*Context`, one unbatched write loop, an unclamped client parameter). Low = hardening with no current cost path, or a fix worth making while the file is open. A finding whose evidence is `estimated` rather than `measured` is not capped by that - the tier follows consequence, not evidence quality.
+
+**Each finding is its own numbered block** under its impact heading, headed `#### <n>. [Label] file:line - <short title> _(provenance annotation, when Step 10.5 assigned one)_`, numbered continuously across tiers so Next Steps and Recommendations can cite `finding <n>`. The `[Label]` and any `_(pre-existing)_` / `_(unverified: <reason>)_` come from Step 10.5 verbatim; on subagent runs, which skip that step, derive the label from the tier instead. Medium and Low are separate headings, each omitted when empty.
+
+**Impact is labelled by provenance.** `measured` = a number observed today (pprof, OTel, APM, query log). `estimated` = derived from row counts or cart sizes in the repo. `projected` = a post-fix target. A post-fix number is never labelled measured.
+
 ```markdown
 ## Go Performance Review Summary
 
 - **Stack Detected:** Go <version> / Gin <version>
-- **Data Access:** GORM <version> | sqlx <version> | database/sql | mixed
+- **Data Access:** GORM <version> | sqlx <version> | database/sql | mixed - <both, named>
 - **Messaging:** Asynq | Kafka | none
 - **Scope:** Backend (Go)
-- **Overall:** Clean | Issues Found - [count by impact]
+- **Target:** <what was swept> _(whole-service sweep only; omit on a diff review)_
+- **Depth:** standard | deep
+- **Overall:** Clean | Issues Found - <N> High / <N> Medium / <N> Low
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped _(omit on subagent runs)_
 
 ## Findings
 
 ### High Impact
 
-- **Location:** [file:line]
+#### 1. file:line - <short title>
+
 - **Issue:** [Go idiom: N+1 via per-iteration `db.Find`, missing `Preload`, missing index, sync `bcrypt` on request goroutine, leaked goroutine via missing `<-ctx.Done()`, Asynq `Enqueue` inside transaction]
-- **Impact:** [estimated: "N+1 adds ~200 queries per request at 100 orders" / measured: "p95 800ms -> 120ms after fix"]
+- **Impact:** [measured: "552,914 calls, 418s DB time over the run" / estimated: "adds ~200 queries per request at 100 orders" / projected: "~4 queries after batching"]
 - **Fix:** [Go change with code]
 
-### Medium Impact / Low Impact
+#### 2. file:line - <short title>
 
-[Same structure]
+[Same block]
+
+### Medium Impact
+
+[Same blocks, numbering continues]
+
+### Low Impact
+
+[Same blocks, numbering continues]
 
 _Omit empty sections._
 
 ## Recommendations
 
-[Structural improvements not tied to a finding]
+[Structural improvements not tied to a single finding]
+
+## Verified Clean
+
+Checks that ran and passed, with their evidence - instrumentation present, pool correctly sized, retry policy explicit. Top-level so a parent merging by section heading cannot drop it.
+
+## Sequencing
+
+Quick wins (single-file, mechanical) vs structural (change the shape of the path), each citing finding numbers, plus the order to land them when findings compound.
+
+### Capacity & Load Plan
+
+_(`deep` only - omit at `standard`.)_ Current measured state per breached signal; connection budget (`replicas * SetMaxOpenConns` vs `max_connections - reserved`); projected post-fix numbers, labelled projections; numbered re-measure plan naming which signal confirms which fix.
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
+Each tagged `[Implement]` (localized code change this team owns) or `[Delegate]` (schema/migration work, another lens, or a cross-team dependency), with `[scope: schema | observability | reliability | security | cross-service | ops]` on delegated items. Order: Must > Recommend.
 Impact maps to intent: High -> [Must]; Medium / Low -> [Recommend].
 
 1. **[Implement]** [Must] file:line - [one-line action]
