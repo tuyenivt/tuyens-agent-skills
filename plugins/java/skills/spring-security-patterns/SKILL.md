@@ -18,7 +18,8 @@ user-invocable: false
 
 ## Rules
 
-- One `SecurityFilterChain` bean per `securityMatcher` path scope; order with `@Order`
+- One `SecurityFilterChain` bean per `securityMatcher` path scope; order with `@Order`. Declaring any chain removes Boot's default, so a path matched by no `securityMatcher` runs with **no security filters at all**. The last chain (largest `@Order` value, evaluated last) must therefore be matcher-less and close with `anyRequest()`; add a `denyAll()` chain only when every other chain carries a `securityMatcher`. Permit `/error` there - Spring Security also filters the ERROR dispatch, so denying it replaces every real error response with a 403
+- A `CorsConfigurationSource` bean does nothing until a chain calls `.cors(...)`; a chain that omits it rejects preflight before CORS is ever evaluated
 - STATELESS APIs: `csrf(AbstractHttpConfigurer::disable)` and `sessionCreationPolicy(STATELESS)` together
 - Stateful sessions: keep CSRF on. SPAs reading the token cookie use `CookieCsrfTokenRepository.withHttpOnlyFalse()` (see CSRF pattern); server-rendered forms keep the default session repository + hidden field
 - `@EnableMethodSecurity` on any `@Configuration`; method security uses `@PreAuthorize`/`@PostAuthorize` with SpEL
@@ -109,31 +110,38 @@ JwtAuthenticationConverter jwtAuthenticationConverter() {
 
 Both beans are picked up by `.jwt(withDefaults())` automatically - no explicit DSL wiring. For top-level claims, the properties `spring.security.oauth2.resourceserver.jwt.authorities-claim-name` / `.authority-prefix` achieve the converter's effect with no code; nested claims still need the custom converter below.
 
-Nested claims (Keycloak's `realm_access.roles`) are NOT resolvable by `JwtGrantedAuthoritiesConverter` - it silently yields zero authorities and every `hasRole` fails. Use a custom converter:
+Nested claims (Keycloak's `realm_access.roles`) are NOT resolvable by `JwtGrantedAuthoritiesConverter` - it silently yields zero authorities and every `hasRole` fails. It also reads exactly one claim with one prefix, so mapping roles *and* permissions needs a custom converter too:
 
 ```java
 c.setJwtGrantedAuthoritiesConverter(jwt -> {
     var realm = (Map<String, Object>) jwt.getClaims().getOrDefault("realm_access", Map.of());
     return ((List<String>) realm.getOrDefault("roles", List.of())).stream()
-        .map(r -> new SimpleGrantedAuthority("ROLE_" + r)).toList();
+        // Keycloak realm roles are lowercase and unprefixed; hasRole("ADMIN") matches the
+        // authority ROLE_ADMIN exactly, so "ROLE_" + "admin" would never match.
+        .<GrantedAuthority>map(r -> new SimpleGrantedAuthority("ROLE_" + r.toUpperCase(Locale.ROOT)))
+        .toList();   // explicit <GrantedAuthority> - List<SimpleGrantedAuthority> does not compile here
 });
 ```
 
-Multi-tenant: dispatch by `iss` claim:
+Multi-tenant: dispatch by `iss` claim. Bind the issuer list with `@ConfigurationProperties` (`@Value` cannot bind a YAML sequence), check it against the allowlist **before** building a decoder so an unknown `iss` never triggers an outbound discovery call to an attacker-supplied host, and build lazily so startup does not depend on every tenant's IdP being reachable:
 
 ```java
 @Bean
-JwtDecoder multiTenant(@Value("${jwt.issuer-uris}") List<String> issuerUris) {
-    Map<String, JwtDecoder> decoders = issuerUris.stream()
-        .collect(toMap(identity(), JwtDecoders::fromIssuerLocation));
+JwtDecoder multiTenant(TenantProperties props) {   // record TenantProperties(List<String> issuers, String audience)
+    Set<String> allowed = Set.copyOf(props.issuers());
+    Map<String, JwtDecoder> decoders = new ConcurrentHashMap<>();
     return token -> {
-        var iss = JWTParser.parse(token).getJWTClaimsSet().getIssuer();
-        var d = decoders.get(iss);
-        if (d == null) throw new JwtException("Unknown issuer: " + iss);
-        return d.decode(token);
+        String iss;
+        try { iss = JWTParser.parse(token).getJWTClaimsSet().getIssuer(); }
+        catch (ParseException e) { throw new BadJwtException("Malformed token", e); }
+        if (iss == null || !allowed.contains(iss)) throw new BadJwtException("Untrusted issuer: " + iss);
+        // decoderFor = the single-tenant JwtDecoder above, parameterised by issuer
+        return decoders.computeIfAbsent(iss, i -> decoderFor(i, props.audience())).decode(token);
     };
 }
 ```
+
+`iss` must match byte-for-byte, trailing slash included. A discovery failure for a reachable-but-down tenant must surface as 5xx, not 401 - a valid token is not an invalid one.
 
 ### Method security
 
@@ -229,7 +237,7 @@ http.headers(h -> h
 
 ### Webhook endpoints
 
-External webhooks (Stripe, GitHub) authenticate via HMAC signature, not JWT. Put them in a dedicated chain with `permitAll`, then verify the signature in a filter or the controller - Spring Security doesn't know about provider-specific signing schemes.
+External webhooks (Stripe, GitHub) authenticate via HMAC signature, not JWT. Put them in a dedicated chain with `permitAll`, then verify the signature in a filter or the controller - Spring Security doesn't know about provider-specific signing schemes. Take the body as `@RequestBody String`, never a DTO: the HMAC covers the exact bytes sent, and a parse/re-serialize round trip changes them. An unverifiable payload is 400, not 5xx - a 5xx makes the provider retry it.
 
 ```java
 @Bean @Order(0)
@@ -259,26 +267,35 @@ class OrderControllerSecurityTest {
 
     @Test void jwt_with_role_passes() throws Exception {
         mockMvc.perform(get("/api/orders")
-                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
-                    .jwt(j -> j.subject("user-123"))))
+                // Feed the REAL converter, not a literal authority, or a broken claim mapping
+                // still passes: .authorities(literal) bypasses the converter entirely.
+                .with(jwt().jwt(j -> j.subject("user-123")
+                        .claim("realm_access", Map.of("roles", List.of("user"))))
+                    .authorities(new KeycloakRealmRoleConverter())))
             .andExpect(status().isOk());
     }
 }
 ```
 
+`@MockitoBean` on a service replaces the Spring proxy, so its `@PreAuthorize` does not run - assert method-security rules against the real bean in a `@SpringBootTest`, not through a mocked collaborator. Migrating `@Secured` is not optional either: under `@EnableMethodSecurity` it is off unless `securedEnabled = true`, so existing `@Secured` methods are unenforced today - convert them to `@PreAuthorize` rather than switching enforcement on for code that has never been checked.
+
 ## Output Format
 
-One block per `SecurityFilterChain`; list its endpoints inside (chain-scoped fields are not repeated per endpoint):
+One block per `SecurityFilterChain`, including the matcher-less catch-all; list its endpoints inside, and map each method-security rule into the block of the chain that serves it. Reviews put findings in prose before the blocks and state whether the blocks describe as-is or target state.
 
 ```
-Chain: {securityMatcher pattern} (order {n})
+Chain: {securityMatcher pattern | no securityMatcher - catch-all} (order {n})
 CSRF: {enabled | disabled - reason}
 Session: {STATELESS | IF_REQUIRED}
-CORS Origins: {list or N/A}
-JWT Issuer: {URI | N/A}
+CORS Origins: {list | N/A}
+JWT Issuer: {URI | URI list for multi-tenant | N/A} {+ required aud}
+Headers: {CSP, HSTS, nosniff, frame-options | none - not browser-facing}
 Endpoints:
-- {path pattern}: {permitAll | authenticated | hasRole(X) | @PreAuthorize(expr)}
+- {path pattern}: {permitAll | authenticated | denyAll | hasRole(X) | hasAuthority(X)}
+- {Class.method}: @PreAuthorize({expr})
 ```
+
+Close with a `Cross-cutting:` list for what is not chain-scoped - password encoder, method-security enablement, authority-claim mapping.
 
 ## Avoid
 

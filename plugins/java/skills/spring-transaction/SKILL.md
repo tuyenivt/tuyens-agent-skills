@@ -56,6 +56,10 @@ Prefer extracting to a collaborator bean when the inner method has a distinct re
 
 A 2-second HTTP call inside `@Transactional` holds a HikariCP connection for 2 seconds. Under load: `HikariPool-1 - Connection is not available`.
 
+Size the pool from `connections = arrival rate x hold time`: 120 rps x 30ms of DB work needs ~4 connections, the same 120 rps with a 1.5s call inside the transaction needs ~184 and a pool of 20 supports 13 rps. Two amplifiers make the failure worse than the arithmetic: every row the long transaction wrote stays locked until its single commit, so concurrent requests block on those rows *while holding their own connections*; and with `spring.threads.virtual.enabled=true` Tomcat's bounded thread pool is gone, so overload no longer queues at admission - it queues at Hikari's 30s `connectionTimeout`. Set `connection-timeout` to fail fast, and bound the remote call itself (read timeout + a concurrency limit), because that is now the only bounded resource left.
+
+Confirm the diagnosis before rewriting: `pg_stat_activity` should show a backend `idle in transaction` with an old `xact_start`, plus a cluster of backends with `wait_event_type = 'Lock'`.
+
 ```java
 // Bad
 @Transactional
@@ -78,8 +82,11 @@ void saveOrder(OrderRequest req) {
 }
 
 @TransactionalEventListener(phase = AFTER_COMMIT)
+@Async   // see below - without this the send still holds the connection
 void onPlaced(OrderPlacedEvent e) { kafkaTemplate.send("orders", e.orderId()); }
 ```
+
+`AFTER_COMMIT` runs inside `afterCommit()`, which fires *before* `afterCompletion()` unbinds and returns the JDBC connection - so a synchronous slow send still pins it, just past the COMMIT where it is harder to see. `@Async` moves it off that thread. Two consequences of the hand-off: the listener now needs `@Transactional(propagation = REQUIRES_NEW)` if it writes (a plain `@Transactional` joins the already-completed transaction and never flushes), and an exception escaping a synchronous `AFTER_COMMIT` callback propagates out of `commit()` and 500s a request whose write already succeeded.
 
 If the side effect must survive a crash between commit and publish, use a transactional outbox - see `spring-messaging-patterns`.
 
@@ -128,7 +135,9 @@ void processPayment(Order order) throws PaymentException { ... }
 
 `readOnly = true` lets Hibernate skip dirty-check snapshots and signals the JDBC driver/replica router. Apply at class level for query services, override per method for writes.
 
-An UPDATE inside a `readOnly` method often still commits: the flag only takes effect when this method *starts* the transaction - joining a caller's read-write tx keeps the caller's setting. Fix the annotation anyway; behavior flips silently when the call path changes.
+An UPDATE inside a `readOnly` method often still commits: the flag only takes effect when this method *starts* the transaction - joining a caller's read-write tx keeps the caller's setting. Fix the annotation anyway; behavior flips silently when the call path changes. The inverse bites during cleanup: remove a stray controller-level `@Transactional` without also overriding `readOnly` on the write method, and Hibernate sets `FlushMode.MANUAL` and drops the UPDATE with no error at all. Both edits ship together.
+
+Routing reads to a replica needs `readOnly` to reach a routing `DataSource`, and that only works behind a `LazyConnectionDataSourceProxy` - without it the connection is acquired before the flag is set and every query goes to the primary.
 
 ```java
 @Service @Transactional(readOnly = true) @RequiredArgsConstructor
@@ -200,18 +209,20 @@ PaymentResponse processPayment(PaymentRequest req) {
 
 ## Output Format
 
-One block per method, describing the recommended configuration; on diagnosis tasks, carry the current broken value in `Reason` (`was: ...`):
+One block per method in the recommended design - including methods the fix extracts into new beans - describing the recommended configuration. Carry any current broken value in `Reason` as `was: ...`, on design tasks as well as diagnosis ones. A setting that was considered and rejected (`isolation = SERIALIZABLE`, `REQUIRES_NEW`) goes in `Reason` as `rejected: <setting> - <why>`, not in prose beside the blocks.
 
 ```
 Method: {class.method}
 Propagation: {REQUIRED | REQUIRES_NEW | MANDATORY | none - orchestrator, tx lives in callees | ...}
 Read-Only: {Yes | No | n/a}
 Rollback: {default | rollbackFor=Exception.class | custom | n/a}
-Timeout: {seconds | none | n/a}
+Timeout: {seconds | none - transacted, no bound set | n/a - no transaction}
 External-IO-In-Tx: {Yes | No}
 Post-Commit Hooks: {AFTER_COMMIT events | none}
-Reason: {why this configuration; on diagnosis runs include "was: <current setting>"}
+Reason: {why this configuration; include "was: <current setting>" and "rejected: <setting> - <why>" where they apply}
 ```
+
+`Rollback: default` unless a checked exception can cross that boundary; only then `rollbackFor`.
 
 ## Avoid
 

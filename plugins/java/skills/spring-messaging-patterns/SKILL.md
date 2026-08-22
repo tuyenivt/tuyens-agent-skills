@@ -64,8 +64,13 @@ class OrderPlacedConsumer {
         ack.acknowledge();  // manual_immediate: without this, offsets never commit and every rebalance replays the backlog
     }
 
+    // Payload and headers are optional: a record that failed deserialization reaches the DLT
+    // with a null payload, and a required @Payload would fail the DLT handler itself.
     @DltHandler
-    public void dlt(OrderPlacedEvent e) { alerts.notifyOps("fulfillment-dlt", e.orderId()); }
+    public void dlt(@Payload(required = false) OrderPlacedEvent e,
+                    @Header(name = "eventId", required = false) String eventId) {
+        alerts.notifyOps("fulfillment-dlt", eventId, e);
+    }
 }
 ```
 
@@ -73,9 +78,15 @@ class OrderPlacedConsumer {
 spring:
   threads.virtual.enabled: true           # Boot 3.5: listener containers honor VTs
   kafka:
+    producer:                             # "must never be lost" needs all three, plus
+      acks: all                           # min.insync.replicas=2 on the topic/broker
+      properties:
+        enable.idempotence: true          # no duplicates from internal producer retries
     consumer:
       auto-offset-reset: earliest
       enable-auto-commit: false
+      # Size against max.poll.interval.ms: records x per-record latency must fit inside it,
+      # or a slow batch triggers a rebalance and replays the whole poll.
       max-poll-records: 50
       key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
@@ -112,7 +123,30 @@ public void handle(OrderPlacedEvent e, @Header("eventId") String eventId) {
 }
 ```
 
-Retry/backoff via `spring.rabbitmq.listener.simple.retry.*`; messages that exhaust retries hit `order.dlx` and land in the DLQ bound to it.
+```yaml
+spring:
+  rabbitmq:
+    publisher-confirm-type: simple        # enables waitForConfirmsOrDie inside template.invoke()
+    template:
+      mandatory: true                     # unroutable message -> ReturnsCallback, not a silent drop
+      observation-enabled: true
+    listener:
+      simple:
+        acknowledge-mode: auto            # container acks on return, nacks on exception
+        default-requeue-rejected: false   # Boot defaults this TRUE, which requeues to the head of
+                                          # the queue in a hot loop and never reaches the DLX
+        prefetch: 20
+        observation-enabled: true
+        retry:
+          enabled: true
+          max-attempts: 4
+          initial-interval: 1s
+          multiplier: 2
+```
+
+Two Rabbit-specific traps the Kafka path does not have. Boot auto-configures **no** JSON converter for AMQP - without a `Jackson2JsonMessageConverter` bean both sides fall back to `SimpleMessageConverter`, i.e. Java serialization, which is a deserialization-gadget surface and locks both sides to one class version. And declare exchanges, queues and bindings as `@Bean`s, not by hand in the admin UI - a hand-made queue lacking `x-dead-letter-exchange` fails `PRECONDITION_FAILED` when Spring redeclares it, so apply the DLX with a broker policy first or drain and recreate the queue.
+
+Retry/backoff via `spring.rabbitmq.listener.simple.retry.*`; messages that exhaust retries hit `order.dlx` and land in the DLQ bound to it. Throw `AmqpRejectAndDontRequeueException` for permanent failures - it is the Rabbit analog of `@RetryableTopic(exclude = ...)` and skips retry straight to the DLX.
 
 ### Transactional outbox
 
@@ -163,11 +197,19 @@ class OutboxPublisher {
     @Transactional
     public void publishOne(UUID id) {
         OutboxEvent e = outboxRepo.findById(id).orElseThrow();
-        kafka.send(e.getTopic(), e.getAggregateId(), e.getPayload()).join();  // fail tx on send error
+        // Built as a Message so the eventId header the consumer dedups on is actually present -
+        // a bare send(topic, key, payload) emits none and the consumer's @Header cannot resolve.
+        kafka.send(MessageBuilder.withPayload(e.getPayload())
+                .setHeader(KafkaHeaders.TOPIC, e.getTopic())
+                .setHeader(KafkaHeaders.KEY, e.getAggregateId())
+                .setHeader("eventId", e.getId().toString())
+                .build()).join();                                     // fail tx on send error
         e.setPublished(true);
     }
 }
 ```
+
+The relay sends `payload` as a JSON *string* with `StringSerializer`, so there is no `__TypeId__` header for the consumer's `JsonDeserializer` to read - pair it with `spring.json.use.type.headers: false` and `spring.json.value.default.type` on the consumer, or serialize the typed object instead. Prune `published` rows and the dedup table on a schedule; both grow without bound.
 
 ```sql
 -- Native query (JPQL lacks SKIP LOCKED). The FOR UPDATE lock releases when the claim
@@ -183,6 +225,10 @@ WHERE id IN (
     LIMIT :n FOR UPDATE SKIP LOCKED)
 RETURNING id;
 ```
+
+### No broker available
+
+When the stack has no Kafka or Rabbit, the outbox is still the answer and the queue moves into the database: fan the outbox row out to a `jobs` table keyed `(handler, dedup_key UNIQUE)`, claimed with the same `FOR UPDATE SKIP LOCKED` query. `status = 'DEAD'` after N attempts is the DLQ - alert on its depth and never auto-consume it. Every replica polls; SKIP LOCKED is what makes that safe, so no leader election is needed. Long handlers run **outside** any transaction: claim in a short tx, work untransacted, complete in a second short tx, and size the claim lease above the handler's worst-case runtime. Nothing auto-instruments this hop, so carry `traceparent` on the row and restore it in the worker.
 
 ### Spring Application Events (in-process, same JVM)
 
@@ -239,17 +285,17 @@ public void onPaymentCompleted(PaymentCompletedEvent e) {
 
 ## Output Format
 
-One block per message flow (each consumed or published topic/queue):
+One block per message flow (each consumed or published topic/queue), including a terminal DLQ nothing consumes. Reviews put findings in prose before the blocks and emit an as-is block alongside the target one.
 
 ```
-Broker: {Kafka | RabbitMQ | Spring Events}
+Broker: {Kafka | RabbitMQ | Spring Events | DB queue - Postgres outbox/jobs}
 Topic/Queue: {name}
 Producer: {class}
-Consumer: {class}
+Consumer: {class | none by design - reason}
 Delivery: {at-least-once | at-most-once | effectively-once - outbox + consumer dedup}
 Idempotency: {dedup key + storage}
 DLT/DLQ: {topic/queue name | not needed - reason}
-Retry: {attempts, backoff, excluded exceptions | claim-expiry policy for outbox relay}
+Retry: {attempts, backoff, excluded exceptions} and/or {claim-expiry policy for an outbox relay} - a flow with both states both
 Observability: {observation-enabled | manual instrumentation | n/a}
 ```
 

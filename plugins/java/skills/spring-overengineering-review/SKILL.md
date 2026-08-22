@@ -17,12 +17,13 @@ user-invocable: false
 ## Rules
 
 - Cite the constraint that makes the code redundant: FK, `nullable = false`, unique index, DTO `@Valid` + `@NotNull`, `@RestControllerAdvice`, or framework guarantee. No citation, no finding.
-- Intent:
-  - `[Recommend]` - default; cite the constraint and recommend the edit. Escalate to `[Must]` when measurable cost is present (extra SELECT, masked exception, forced two-file refactor, broken proxy semantics) - record cost in `Cost:` field
-  - `[Recommend]` - plausible justification not visible in the diff; state the assumption and ask the author to confirm rather than asserting removal
-- Code matching multiple patterns (e.g., a blanket catch that also rethrows) gets one finding under the higher-intent pattern (`Must` > `Recommend`)
-- Justification checks (unique index exists, sole write path, second impl, test seam) are repo searches, not diff guesses - search first; only a claim the search cannot resolve stays `[Recommend]` with the open assumption stated
-- Skip when the diff shows justification (non-controller write path, second implementation, async consumer bypassing the DTO)
+- Label, resolved in this order - the first rule that applies wins:
+  1. A `Patterns` entry that states its own label (`[Must]` / `[Recommend]`) - that label stands. The escalation list below does not override it.
+  2. No pattern label: `[Recommend]` by default, escalated to `[Must]` when a measurable cost of *keeping* the code is present (extra SELECT, masked exception, forced two-file refactor, broken proxy semantics).
+  3. A justification check the search could not resolve downgrades any label to `[Recommend]`, with the open assumption stated.
+- Code matching multiple patterns (e.g., a blanket catch that also rethrows) gets one finding under the higher-intent pattern (`Must` > `Recommend`). Several redundant annotations on one field are one finding, not one per annotation.
+- Justification checks (unique index exists, sole write path, second impl, test seam) are repo searches, not diff guesses - search first.
+- Skip when the diff shows justification - but only for the assertions that second write path actually rescues. A Kafka consumer or scheduled job bypassing the DTO rescues *shape* validation (`@Email`, `@Pattern`); it rescues nothing that the database or JPA enforces on every path (`nullable = false`, `optional = false`, unique index), which stays redundant.
 
 ## Patterns
 
@@ -152,15 +153,17 @@ One block per finding:
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `@NotNull` on `Order.user`}
-- Unnecessary because: {FK | `nullable = false` | unique index | DTO `@NotNull` | `@RestControllerAdvice` | framework guarantee | single impl | `Optional` already expresses this | unread/speculative}
-- Cost: {extra SELECT | masked exception | proxy mismatch | forced two-file refactor | speculative surface} _(required for `[Must]`)_
+- Unnecessary because: {FK | `nullable = false` | unique index | DTO `@NotNull` | `@RestControllerAdvice` | framework guarantee | single impl | thin base, <3 subclasses | `Optional` already expresses this | unread/speculative}
+- Cost: {extra SELECT | masked exception | proxy mismatch | forced two-file refactor | speculative surface} _(required for `[Must]`; omit the line entirely on `[Recommend]` when no cost applies)_
 - Recommendation: {concrete edit}
 - Justified when: {one-line note - state it whenever a known exception exists, e.g., "no unique index present", or when the justification is assumed but unverified}
 ```
 
+Anchor findings at `file:line`; when the supplied diff carries no line numbers, anchor at `file:symbol` instead and say so once at the top.
+
 For each of the three categories with no findings, state `No <category> findings.` so the workflow sees the check ran.
 
-When the request asks what should stay (or reviewed code was contested but is justified), close with a keep-list - one line per element:
+Close with a keep-list - one line per element - whenever the request asks what should stay, reviewed code was contested but is justified, or a justification check could not be run (list those as explicitly unverified rather than flagging them):
 
 ```
 Keep: {code element} - {constraint or reason it is necessary}

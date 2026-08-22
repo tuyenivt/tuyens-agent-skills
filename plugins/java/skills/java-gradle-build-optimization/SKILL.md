@@ -23,7 +23,7 @@ user-invocable: false
 
 - Kotlin DSL (`.gradle.kts`) for new projects and active modernizations; keep Groovy only in maintenance-only legacy builds
 - All dependency and plugin versions in `gradle/libs.versions.toml`
-- Parallel + build cache + configuration cache on by default
+- Build cache + configuration cache on by default; `org.gradle.parallel` from the second module on (it is a no-op on a single-module build)
 - Shared logic via convention plugins in `build-logic/`, never `allprojects {}` / `subprojects {}`; single-module builds apply plugins directly and introduce `build-logic/` with the second module
 - Spring Boot plugin only on application modules (it disables `jar` and produces `bootJar`)
 - `implementation()` is the default; `api()` only when a type appears in the module's public API; `runtimeOnly` for deps never referenced at compile time (JDBC drivers, Flyway DB modules); `compileOnly` for compile-time-only (annotation processors, Lombok)
@@ -57,6 +57,8 @@ spring-dep-mgmt = { id = "io.spring.dependency-management", version.ref = "sprin
 ```
 
 Versioning policy: Boot-managed libraries get no `version` entry (the `platform()` BOM aligns them); pin `version`/`version.ref` only for deps outside Boot's BOM.
+
+Pick one BOM mechanism per build and use it everywhere: `platform(libs.spring.boot.bom)` alone, or the `io.spring.dependency-management` plugin (which imports the BOM itself, making an explicit `platform()` redundant). The choice is load-bearing - the `ext["...version"]` override below works only under the plugin.
 
 ```kotlin
 dependencies {
@@ -95,11 +97,15 @@ org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseG1GC
 
 ### Multi-module via convention plugin
 
-Wire the modules and the `build-logic` included build in the root `settings.gradle.kts` first - without `includeBuild` the convention plugin id does not resolve:
+`includeBuild("build-logic")` must sit inside `pluginManagement` - at the top level it gives dependency substitution only and the convention plugin id stays unresolvable:
 
 ```kotlin
+// settings.gradle.kts
+pluginManagement {
+    includeBuild("build-logic")
+    repositories { gradlePluginPortal(); mavenCentral() }
+}
 rootProject.name = "acme"
-includeBuild("build-logic")
 include(":domain", ":app")
 
 dependencyResolutionManagement {
@@ -107,9 +113,10 @@ dependencyResolutionManagement {
 }
 ```
 
-`build-logic/build.gradle.kts` needs the `kotlin-dsl` plugin so its `*.gradle.kts` files compile to plugins, plus its own repositories (an included build does not inherit the main build's):
+`build-logic` is a standalone build: it needs its own `settings.gradle.kts` (`rootProject.name = "build-logic"`) and its own repositories (it inherits neither), plus `kotlin-dsl` so its `*.gradle.kts` files compile to plugins:
 
 ```kotlin
+// build-logic/build.gradle.kts
 plugins { `kotlin-dsl` }
 repositories {
     gradlePluginPortal()
@@ -132,6 +139,8 @@ tasks.withType<Test>().configureEach {
     maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
 }
 ```
+
+Precompiled script plugins cannot see `libs.*` accessors - keep dependency declarations in the module files, and pass any version a convention needs through a plugin extension or a `gradle.properties` value.
 
 Application module:
 
@@ -192,6 +201,9 @@ dependencies {
     }                                    // fails the build if unsatisfiable
 }
 // Multi-module: put the pin in the convention plugin so every module aligns.
+// A pin is a fixed number against a moving BOM: on every Boot upgrade re-check whether the
+// new BOM already clears the floor and delete the pin when it does, or it silently
+// downgrades the newer managed version.
 
 dependencyLocking { lockAllConfigurations() }
 // ./gradlew dependencies --write-locks  (commit gradle.lockfile)
@@ -203,12 +215,13 @@ dependencyLocking { lockAllConfigurations() }
 Detect unused / misdeclared dependencies (api leaking as implementation, etc.):
 
 ```kotlin
-// build-logic/.../java-conventions.gradle.kts
-plugins { id("com.autonomousapps.dependency-analysis") }
+// root build.gradle.kts - the plugin aggregates across modules and is root-project-only;
+// applying it from a convention plugin fails the build
+plugins { alias(libs.plugins.dependency.analysis) }
 // ./gradlew buildHealth
 ```
 
-Run periodically; surface unused deps and incorrect `api`/`implementation` scoping that `api()` rule alone can't catch.
+Run periodically; surface unused deps and incorrect `api`/`implementation` scoping that the `api()` rule alone can't catch.
 
 ### Spring Boot bootJar (application module only)
 
@@ -232,6 +245,7 @@ tasks.processAot { enabled = true }
 // build-logic/.../java-conventions.gradle.kts
 sourceSets.create("integrationTest") {
     java.srcDir("src/integrationTest/java")
+    resources.srcDir("src/integrationTest/resources")
     compileClasspath += sourceSets.main.get().output + configurations.testRuntimeClasspath.get()
     runtimeClasspath += output + compileClasspath
 }
@@ -272,22 +286,27 @@ GitHub Actions local-cache fallback:
     path: |
       ~/.gradle/caches
       ~/.gradle/wrapper
-    key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml') }}
+    key: gradle-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml') }}
+    restore-keys: gradle-    # without this every build-file edit is a cold miss
 ```
+
+This does not carry the configuration cache: that lives in `<project>/.gradle/configuration-cache`, so it never survives an ephemeral runner. Configuration cache is a local and self-hosted-CI win - claim no ephemeral-CI delta for it.
 
 ## Output Format
 
+Emit in this order: the measurement commands, then the full contents of every file the change needs, then one block per optimization.
+
 ```
-Optimization: {dsl-migration | version-catalog | build-cache-local | build-cache-remote | configuration-cache | parallel | convention-plugin | scope | bom-platform | locking | dependency-analysis | toolchain | ci-cache | ci-workflow}
+Optimization: {dsl-migration | version-catalog | build-cache-local | build-cache-remote | configuration-cache | parallel | convention-plugin | scope | bom-platform | security-pin | locking | dependency-analysis | toolchain | test-sourceset | ci-cache | ci-workflow | other:<label>}
 File: {repo path(s) - list all touched files for multi-file optimizations}
 Change: {summary diff - one line per touched file}
 Priority: {High | Medium | Low}
 Effort: {Trivial | Small | Medium | Large}
-Expected Impact: {clean delta | incremental delta | maintainability} - {quantify when estimable, e.g. "clean delta ~-25%"}
+Expected Impact: {clean delta | incremental delta | maintainability | correctness} - {quantify when estimable, e.g. "clean delta ~-25%"}
 Risk: {None | Plugin-incompat | Behavior-change}
 ```
 
-One block per optimization; a file may appear in several blocks (e.g. `gradle.properties` toggles). Priority: High = direct build-time win on its own; Medium = enabler or hygiene with indirect effect; Low = maintainability only. Base Expected Impact numbers on `--scan`/`--profile` data when available; otherwise append "(unmeasured estimate)".
+One block per optimization; a file may appear in several blocks (e.g. `gradle.properties` toggles). Use `other:<label>` when no enum value fits rather than forcing the nearest one. Priority: High = direct build-time win on its own, or a build-breaking / security fix; Medium = enabler or hygiene with indirect effect; Low = maintainability only. Base Expected Impact numbers on `--scan`/`--profile` data when available; otherwise append "(unmeasured estimate)".
 
 Aggregate: `Aggregate: estimated clean-build reduction (%); incremental/no-op reduction (%) when changed`.
 

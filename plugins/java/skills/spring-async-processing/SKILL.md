@@ -19,7 +19,9 @@ user-invocable: false
 
 ## Rules
 
-- Unnamed `@Async` runs on the global executor: VT-per-task when `spring.threads.virtual.enabled=true` (Boot 3.2+), otherwise an unbounded platform-thread `SimpleAsyncTaskExecutor`. Name an executor (`@Async("name")`) whenever the workload differs from that global default
+- Unnamed `@Async` runs on Boot's `applicationTaskExecutor`: VT-per-task when `spring.threads.virtual.enabled=true` (Boot 3.2+), otherwise a `ThreadPoolTaskExecutor` with 8 core threads and an unbounded queue - no back-pressure. Name an executor (`@Async("name")`) whenever the workload differs from that global default
+- Declaring any `Executor` bean backs off `applicationTaskExecutor` (`@ConditionalOnMissingBean(Executor.class)`), and unnamed `@Async` then falls through to an unbounded platform-thread `SimpleAsyncTaskExecutor`. Adding one named executor silently retargets every unnamed `@Async` - keep the global by naming a bean `applicationTaskExecutor`
+- Idempotency for redeliverable work is a stored claim, not an in-memory flag: transition the row (`UPDATE ... WHERE status = 'PENDING' ... FOR UPDATE SKIP LOCKED`) or dedup on a persisted event ID before the side effect runs
 - Pick the executor by workload: `ThreadPoolTaskExecutor` (bounded + queue + back-pressure) for CPU-bound or rate-limited; Virtual Threads for IO-bound fan-out
 - Async handlers should be idempotent where redelivery is possible (`@Retryable`, broker redelivery). In-process `@TransactionalEventListener(AFTER_COMMIT)` events are NOT redelivered - a crash after commit loses them; use a transactional outbox when the side effect must survive (see `spring-messaging-patterns`)
 - `@Async` self-invocation is silently ignored (proxy bypass) - see `spring-transaction`
@@ -44,6 +46,11 @@ With this flag set, the default `applicationTaskExecutor` is a VT-per-task `Simp
 ```java
 @Configuration @EnableAsync
 class AsyncConfig implements AsyncConfigurer {
+
+    // Declaring the beans below backs off Boot's auto-configured applicationTaskExecutor.
+    // Re-declare it under that name so unnamed @Async keeps the intended global default.
+    @Bean(name = {"applicationTaskExecutor", "taskExecutor"})
+    AsyncTaskExecutor applicationTaskExecutor(SimpleAsyncTaskExecutorBuilder b) { return b.build(); }
 
     // CPU-bound or external-API rate-limited: bounded pool with back-pressure
     @Bean("cpuExecutor")
@@ -78,6 +85,8 @@ public CompletableFuture<Void> sendEmail(String to, String body) {
 ```
 
 Virtual Threads do not help CPU-bound work - more context switches, no throughput gain. Use a bounded pool there.
+
+`CallerRunsPolicy` runs the rejected task on the submitting thread. Behind an `AFTER_COMMIT` listener that is the HTTP request thread, so it puts the work back on the response path - use a non-throwing drop-and-count handler there instead (an exception escaping an AFTER_COMMIT callback propagates out of `commit()` and 500s a request whose write already succeeded).
 
 ### Avoid pinning on Virtual Threads
 
@@ -121,20 +130,27 @@ DB writes inside a non-`@Async` AFTER_COMMIT listener are silently lost - the li
 
 ### Retry transient failures
 
-```java
-@Async("ioExecutor")
-@Retryable(retryFor = MailSendException.class, maxAttempts = 3,
-           backoff = @Backoff(delay = 2000, multiplier = 2))
-public void sendConfirmationEmail(Long orderId) { emailClient.sendOrderConfirmation(orderId); }
+`@Retryable` stacked on an `@Async` method does not retry: the retry advisor is ordered outside the async advisor by default, so it sees the immediate hand-off return, observes no exception, and gives up. Split across two beans.
 
-@Recover
-public void recover(MailSendException ex, Long orderId) {
-    log.error("Failed after retries for order {}", orderId, ex);
-    // persist to retry queue or alert ops
+```java
+@Async("ioExecutor")                                    // bean A - dispatch only
+public void sendConfirmationEmail(Long orderId) { mailer.send(orderId); }
+
+@Component
+class Mailer {                                          // bean B - retry advice applies here
+    @Retryable(retryFor = MailSendException.class, maxAttempts = 3,
+               backoff = @Backoff(delay = 2000, multiplier = 2))
+    public void send(Long orderId) { emailClient.sendOrderConfirmation(orderId); }
+
+    @Recover
+    void recover(MailSendException ex, Long orderId) {
+        log.error("Failed after retries for order {}", orderId, ex);
+        // persist to retry queue or alert ops
+    }
 }
 ```
 
-Always define `@Recover` - without it, exhausted retries are swallowed. `@Async` needs `@EnableAsync`, `@Retryable`/`@Recover` need `@EnableRetry` (Spring Retry dependency) on a `@Configuration`; without them the annotations are silent no-ops.
+Without `@Recover`, Spring Retry rethrows the last exception - fine when a caller can see it, invisible behind a `void` `@Async` method where it only reaches `AsyncUncaughtExceptionHandler`. `@Async` needs `@EnableAsync`, `@Retryable`/`@Recover` need `@EnableRetry` (Spring Retry dependency) on a `@Configuration`; without them the annotations are silent no-ops.
 
 ### `@Scheduled`: overlap and error handling
 
@@ -149,7 +165,8 @@ public void reconcileInventory() { ... }
 public void reconcileInventory() { ... }
 ```
 
-- `fixedDelay` does not serialize across replicas - for cluster-wide single execution use ShedLock (`@SchedulerLock(name = "reconcileInventory", lockAtMostFor = "10m")`). ShedLock needs the provider dependency, a `LockProvider` bean, and `@EnableSchedulerLock` - the bare annotation is a silent no-op
+- `fixedDelay` does not serialize across replicas - for cluster-wide single execution use ShedLock (`@SchedulerLock(name = "reconcileInventory", lockAtMostFor = "10m")`). ShedLock needs the provider dependency, a `LockProvider` bean, and `@EnableSchedulerLock` - the bare annotation is a silent no-op. Multi-replica jobs need both: `fixedDelay` for self-overlap, ShedLock for cross-replica
+- `cron` fires in the JVM default zone, which varies per container - set `zone = "Asia/Tokyo"` explicitly, and derive any date inside the job from the same zone
 - Exceptions from a `@Scheduled` method go to the scheduler's `ErrorHandler` (default: log, schedule continues) - the tick's work is lost, so make jobs idempotent/resumable and alert from the `ErrorHandler` when a lost tick matters
 
 ### Context propagation across the async boundary
@@ -159,18 +176,20 @@ public void reconcileInventory() { ... }
 
 ## Output Format
 
-One block per async or scheduled operation:
+One block per async or scheduled operation, describing the recommended configuration; on review or diagnosis runs carry the current value in the slot as `was: ...`.
 
 ```
 Operation: {what runs async/scheduled}
-Executor: {bean name | global VT | bounded pool | scheduler}
+Executor: {bean name | global VT | applicationTaskExecutor - 8 threads, unbounded queue | bounded pool | scheduler | none - @Async bypassed by self-invocation}
 Workload: {IO-bound | CPU-bound | rate-limited}
 Event Phase: {AFTER_COMMIT | AFTER_ROLLBACK | N/A}
-Overlap Policy: {fixedDelay | ShedLock | N/A - not scheduled}
-Error Handling: {AsyncUncaughtHandler | exceptionally | @Recover | scheduler ErrorHandler}
-Idempotent: {Yes | No - rationale | N/A - no redelivery path}
+Overlap Policy: {fixedDelay | ShedLock | fixedDelay + ShedLock | claim-based - SKIP LOCKED | N/A - not scheduled}
+Error Handling: {AsyncUncaughtHandler | exceptionally | @Recover | scheduler ErrorHandler | none}
+Idempotent: {Yes - mechanism | No - rationale | N/A - no redelivery path}
 Pinning Risk: {None | Present - unfixed | Fixed - synchronized -> ReentrantLock}
 ```
+
+`Idempotent: N/A` only when redelivery is structurally impossible; write `No` when adding retry or a broker would introduce one.
 
 ## Avoid
 

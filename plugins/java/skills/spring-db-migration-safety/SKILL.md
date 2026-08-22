@@ -23,8 +23,9 @@ user-invocable: false
 - Destructive changes (NOT NULL, rename, drop) span multiple releases via expand-then-contract.
 - One concern per migration file: DDL and DML separate; one DDL statement per file.
 - Large-table DDL must be non-blocking - Postgres `CONCURRENTLY`, MySQL `ALGORITHM=INPLACE, LOCK=NONE`.
-- DDL on hot tables: `SET lock_timeout = '5s'` - a blocked ALTER queues behind long transactions and blocks all traffic behind it. A timeout abort is safe to retry: re-run the migration once the blocker clears.
-- Batched backfills are jobs, not versioned migrations - Flyway runs at startup in one transaction, so a large DML file stalls the deploy.
+- DDL on hot tables: `SET lock_timeout = '5s'` (MySQL: `SET SESSION lock_wait_timeout = 5`) - a blocked ALTER queues behind long transactions and blocks all traffic behind it. A timeout abort is safe to retry: re-run the migration once the blocker clears.
+- Anything long-running is an ops step, not a startup migration - batched backfills, `CREATE INDEX CONCURRENTLY` and `VALIDATE CONSTRAINT` on a large table all outlast a readiness probe and hold Flyway's lock while every other pod fails startup. Run them out of band, then record them as a guarded, idempotent versioned file (`IF NOT EXISTS` / `DO $$ IF NOT EXISTS ... $$`) so a fresh environment reproduces the schema from the files alone.
+- A `NOT VALID` CHECK or FK is not "unenforced": it applies to every new write immediately. It ships only after the release that populates the column is fully rolled out, or the still-running N-1 pods start failing inserts.
 - `spring.jpa.hibernate.ddl-auto: validate` beyond local; never `update`.
 - Forward-only fixes: amending a merged migration breaks Flyway checksum validation. Ship a new `Vx__revert_*.sql`.
 - Liquibase: declare `<rollback>` for every non-auto-reversible changeset.
@@ -48,7 +49,7 @@ ALTER TABLE orders ADD COLUMN status VARCHAR(50);
 ALTER TABLE orders ALTER COLUMN status SET NOT NULL;
 ```
 
-Batching avoids long-held locks and WAL bloat.
+Batching avoids long-held locks and WAL bloat. Before the constraining step, gate on the rows that can never satisfy it (`SELECT count(*) ... WHERE <join misses or source is null>`) - finding them at `SET NOT NULL` time is far more expensive. Build the index *after* the backfill, not before: every backfilled row otherwise becomes a non-HOT update maintaining an index you are about to bloat. Throttle on replica lag, and expect the heap to roughly double until autovacuum catches up.
 
 `SET NOT NULL` on an *existing* column scans the whole table under an ACCESS EXCLUSIVE lock. Postgres 12+ skips the scan if a validated equivalent CHECK already proves no nulls - add `CHECK (status IS NOT NULL) NOT VALID`, `VALIDATE CONSTRAINT` (lock-free), then `SET NOT NULL` (now instant), then drop the CHECK.
 
@@ -72,15 +73,16 @@ ALTER TABLE orders ADD COLUMN customer_id BIGINT;
 ALTER TABLE orders DROP COLUMN customer_ref;
 ```
 
-During release N both columns are live. Keep them in sync at the app layer until release N+1 is fully rolled out:
+During release N both columns are live. Mirror them unconditionally in **one** direction - from whichever column that release treats as authoritative - and flip the direction at the read switch:
 
 ```java
+// Release N: old column is authoritative (N-1 pods still write only it)
 @PrePersist @PreUpdate
-void syncCustomerColumns() {
-    if (customerId != null && customerRef == null) customerRef = customerId;
-    if (customerRef != null && customerId == null) customerId = customerRef;
-}
+void syncCustomerColumns() { customerId = customerRef; }
+// Release N+1 flips to: customerRef = customerId;
 ```
+
+A fill-the-null-side guard (`if (a == null) a = b`) looks safer and is not: once the backfill has populated both, an update to one column leaves the other permanently stale. `@PrePersist`/`@PreUpdate` also do not fire for bulk JPQL or native updates - dual-write those call sites explicitly, or use a DB trigger when the writers cannot be enumerated.
 
 Gate read-path switches with a feature flag so a bad release can flip back without a migration.
 
@@ -122,7 +124,7 @@ Flyway Community has no automatic undo. Schema is forward-only:
 - Mistakes ship as a forward `Vx__revert_*.sql`; never edit a merged migration (checksum mismatch fails `validate-on-migrate`).
 - "Rollback tested" means: migration applied on a Testcontainers clone of prod-shape data, revert migration applied, N-1 app boots and passes smoke tests.
 
-Liquibase: prefer auto-reversible changes (`addColumn`, `addNotNullConstraint`); for `sql`/`dropColumn` declare an explicit `<rollback>`.
+Liquibase: prefer auto-reversible changes (`addColumn`, `addNotNullConstraint`); for `sql`/`dropColumn` declare an explicit `<rollback>`. Declarative changes cannot carry `ALGORITHM=` / `LOCK=`, so on a large MySQL table use raw `<sql>` plus an explicit `<rollback>` - forcing the algorithm makes an impossible in-place change fail immediately instead of silently copying the table. MySQL commits DDL implicitly, so DDL changesets need `runInTransaction="false"`.
 
 ### CI validation
 
@@ -133,12 +135,21 @@ class MigrationIntegrityTest {
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     @Autowired Flyway flyway;
+    @Autowired JdbcTemplate jdbc;
 
+    // Boot already ran migrate() during context startup - re-invoking it asserts on a no-op.
     @Test
     void allMigrationsApplyAndValidate() {
-        var result = flyway.migrate();
-        assertThat(result.success).isTrue();
-        flyway.validate(); // checksum + ordering
+        flyway.validate();   // checksum + ordering
+    }
+
+    // Guarded ops-step record files are no-ops in prod, so assert the end state, not the file list.
+    @Test
+    void schemaMatchesIntent() {
+        assertThat(jdbc.queryForObject("""
+                SELECT is_nullable FROM information_schema.columns
+                WHERE table_name = 'orders' AND column_name = 'status'""", String.class))
+            .isEqualTo("NO");
     }
 }
 ```
@@ -157,20 +168,22 @@ spring:
 
 ## Output Format
 
-Open multi-release plans with one line mapping releases to steps (`Plan: N: V1 + backfill job; N+1: code switch; N+2: V2`), then one block per migration or job. Reviews: emit blocks for the PR's migrations as written (unsafe fields surface the findings), then the corrected `Plan:` line.
+Open multi-release plans with one line mapping releases to steps (`Plan: N: V1 + backfill job; N+1: code switch; N+2: V2`), then one block per migration, ops step, or job, with any explanation in prose after its block. Reviews: emit one block per DDL/DML statement when a file carries several (a four-statement file cannot fill one `Operation`), then the corrected `Plan:` line.
 
 ```
-Migration: {filename | backfill job}
-Release: {N | N+1 | N+2}
+Migration: {filename | ops step: <command> | backfill job}
+Release: {N | N+1 | N+2 | N+3 | ops step during <release>}
 Type: {DDL | DML}
-Operation: {ADD_COLUMN | ADD_INDEX | BACKFILL | DROP_COLUMN | RENAME | CONSTRAINT}
+Operation: {ADD_COLUMN | MODIFY_COLUMN | ADD_INDEX | DROP_INDEX | BACKFILL | DROP_COLUMN | RENAME | CONSTRAINT | unknown - file not supplied}
 Table: {name}
 Phase: {expand | migrate | contract}
 Locks Table: {yes | brief-metadata | no}
-Concurrency Safe: {yes-CONCURRENTLY | yes-INPLACE | yes-metadata-only | no}
+Concurrency Safe: {yes-CONCURRENTLY | yes-INPLACE | yes-metadata-only | yes-batched | no}
 Backward Compatible With N-1: {yes | no - what changes with code release}
 Rollback: {auto-reversible | liquibase-rollback | forward-fix | restore-from-backup}
 ```
+
+`yes-batched` is the value for a batched DML job: short per-batch row locks, no table lock. Reserve `no` for a statement that blocks traffic.
 
 ## Avoid
 

@@ -27,6 +27,7 @@ user-invocable: false
 - AssertJ over `assertEquals`; `@ActiveProfiles("test")` always explicit
 - No `Thread.sleep()` in async tests - use Awaitility
 - No `@DirtiesContext` - redesign or use `@Sql` cleanup
+- Context-cache fragmentation is the dominant cost in a slow suite, ahead of containers. Every distinct combination of `@MockitoBean`, `@TestPropertySource` and `@DynamicPropertySource` is a separate cache key and a separate context build - declare them on a shared base class so classes collapse onto a handful of contexts, and count the target number before restructuring
 
 ## Slice Selection
 
@@ -39,7 +40,7 @@ user-invocable: false
 | Service (Spring wiring) | `@SpringBootTest` + `@MockitoBean` externals        |
 | Full integration        | `@SpringBootTest` + Testcontainers + WebTestClient  |
 
-"Spring wiring" means the proxy behavior itself is under test (tx rollback, `@PreAuthorize`, listener firing). Injectable collaborators (`ApplicationEventPublisher`, repos) alone don't make it Spring wiring - use plain JUnit.
+"Spring wiring" means the proxy behavior itself is under test (tx rollback, `@PreAuthorize`, listener firing). Injectable collaborators (`ApplicationEventPublisher`, repos) alone don't make it Spring wiring - use plain JUnit. A commit-gated path (`AFTER_COMMIT` listener, outbox relay) is Spring wiring *and* needs the container, because the commit has to be real: `@SpringBootTest` + Testcontainers, no `@Transactional`.
 
 ## Patterns
 
@@ -103,10 +104,11 @@ class OrderDtoJsonTest {
 ### Plain JUnit for service logic
 
 ```java
+@ExtendWith(MockitoExtension.class)   // bare mock() gets no strict stubbing - only the extension does
 class OrderServiceTest {
-    OrderRepository repo = mock(OrderRepository.class);
-    PaymentGateway gateway = mock(PaymentGateway.class);
-    OrderService service = new OrderService(repo, gateway);
+    @Mock OrderRepository repo;
+    @Mock PaymentGateway gateway;
+    @InjectMocks OrderService service;
 
     @Test
     void completesOrder() {
@@ -140,9 +142,13 @@ public abstract class AbstractIntegrationTest {
 testImplementation 'org.springframework.boot:spring-boot-testcontainers'  // @ServiceConnection
 testImplementation 'org.testcontainers:junit-jupiter'
 testImplementation 'org.testcontainers:postgresql'
-testImplementation 'org.awaitility:awaitility'   // not part of spring-boot-starter-test
+testImplementation 'org.awaitility:awaitility'          // not part of spring-boot-starter-test
+testImplementation 'org.wiremock:wiremock-standalone:3.10.0'  // not in the Boot BOM - pin it
+testImplementation 'org.springframework.boot:spring-boot-starter-webflux'  // WebTestClient only
 // remove: testRuntimeOnly 'com.h2database:h2'
 ```
+
+Removing the H2 dependency is the enforcement step: any test still pointing at an H2 URL then fails loudly instead of passing on the wrong engine.
 
 ### Security tests
 
@@ -157,7 +163,10 @@ class OrderControllerSecurityTest {
     @MockitoBean OrderService orderService;
     @MockitoBean JwtDecoder jwtDecoder;   // required once SecurityConfig configures oauth2ResourceServer
 
-    // stateless JWT resource server: use jwt(); no csrf() needed (CSRF disabled)
+    // stateless JWT resource server: use jwt(); no csrf() needed (CSRF disabled).
+    // jwt() maps only the scope/scp claim to SCOPE_* authorities, so a role-based rule
+    // (hasRole('ADMIN')) needs .authorities(...) - or the production converter, which is
+    // the only form that also covers a broken claim mapping.
     @Test
     void jwt_scope_allows_read() throws Exception {
         mockMvc.perform(get("/api/orders/1")
@@ -182,6 +191,23 @@ class OrderControllerSecurityTest {
 
 `@DataJpaTest` auto-rolls back. `@SpringBootTest` does not - add `@Transactional` on the test class for cheap cleanup. But `@Transactional` on the test wraps the whole method in one open tx, so a test exercising `@TransactionalEventListener(AFTER_COMMIT)`, `@Async`, `REQUIRES_NEW`, or any commit-gated path will never see it fire - the commit never happens. For those flows, drop `@Transactional` and clean up explicitly with `@Sql(executionPhase = AFTER_TEST_METHOD)` or an `@AfterEach` truncate; then poll for the post-commit effect with Awaitility (below).
 
+Use `@Sql(executionPhase = AFTER_TEST_METHOD)` when a script already exists; otherwise an `@AfterEach` `TRUNCATE ... RESTART IDENTITY CASCADE` avoids inventing a file. Either way keep `maxParallelForks = 1` while cleanup truncates a shared container, or forks wipe each other's rows mid-test.
+
+### Concurrency and schema assertions
+
+Two things a slice cannot see. `FOR UPDATE SKIP LOCKED` needs two real committed transactions, so the test-managed one must go (`@Transactional(propagation = NOT_SUPPORTED)` on a `@DataJpaTest`) and the second claimant runs on its own thread. And a migration's DDL is asserted from the catalog, not from a query plan - `SELECT indexdef FROM pg_indexes WHERE indexname = ?` proves a partial index kept its predicate, whereas an `EXPLAIN` assertion fails on a ten-row fixture table because the planner correctly prefers a seq scan.
+
+### Kafka round trips
+
+```java
+@BeforeEach
+void waitForAssignment() {   // publishing before the consumer owns its partition is the classic flake
+    registry.getListenerContainers().forEach(c -> ContainerTestUtils.waitForAssignment(c, 1));
+}
+```
+
+Also set `spring.kafka.consumer.auto-offset-reset: earliest` and declare the topic as a `@TestConfiguration` `NewTopic` bean - relying on broker auto-creation makes partition assignment a race.
+
 ### Async with Awaitility
 
 ```java
@@ -195,25 +221,49 @@ void processesAsync() {
 }
 ```
 
+Asserting that async work did *not* happen needs a window, not an instant: `await().during(Duration.ofMillis(500)).atMost(...).untilAsserted(...)` requires the condition to hold throughout, where a bare assertion passes even if the listener fires 50ms later.
+
 ### WireMock for outbound HTTP
 
 Exercises the real `RestClient` / `WebClient` config (timeouts, retries, deserialization) rather than bypassing it via a mocked client.
 
+`@WireMockTest` alone does not work under `@SpringBootTest`: SpringExtension loads the context - evaluating `@DynamicPropertySource` - before WireMock's extension has started and assigned a port, so the base-url override sees nothing. Register the server statically and publish its port instead. Put both on a base class so every HTTP test shares one context customizer, and therefore one context.
+
 ```java
-@SpringBootTest(webEnvironment = RANDOM_PORT)
-@WireMockTest  // dynamic port (inject WireMockRuntimeInfo, override the client base-url property); hardcoded ports collide in parallel CI
-class PaymentIntegrationTest extends AbstractIntegrationTest {
+public abstract class AbstractHttpIntegrationTest extends AbstractIntegrationTest {
+    @RegisterExtension                              // dynamic port: a hardcoded one collides in parallel CI
+    protected static final WireMockExtension WIREMOCK = WireMockExtension.newInstance()
+        .options(wireMockConfig().dynamicPort())
+        .failOnUnmatchedRequests(true)              // an unstubbed call fails the test, not returns 404
+        .build();
+
+    @DynamicPropertySource
+    static void gatewayUrl(DynamicPropertyRegistry registry) {
+        registry.add("payment.base-url", () -> WIREMOCK.getRuntimeInfo().getHttpBaseUrl());
+    }
+}
+```
+
+```java
+@SpringBootTest   // no RANDOM_PORT - nothing inbound is under test here
+class PaymentIntegrationTest extends AbstractHttpIntegrationTest {
     @Test
     void processesPayment() {
-        stubFor(post(urlPathEqualTo("/api/charges"))
-            .willReturn(okJson("""{"status":"success","chargeId":"ch_123"}""")));
+        // WIREMOCK.stubFor, not the static stubFor: WireMockExtension does not point the static
+        // DSL at itself unless .configureStaticDsl(true) is set, so a bare stubFor() silently
+        // targets localhost:8080 and matches nothing.
+        WIREMOCK.stubFor(post(urlPathEqualTo("/api/charges"))
+            .willReturn(okJson("""
+                {"status":"success","chargeId":"ch_123"}""")));   // a text block needs the newline
 
         assertThat(paymentGateway.charge(new ChargeRequest(orderId, amount)).status()).isEqualTo("success");
-        verify(postRequestedFor(urlPathEqualTo("/api/charges"))
+        WIREMOCK.verify(postRequestedFor(urlPathEqualTo("/api/charges"))
             .withRequestBody(matchingJsonPath("$.amount")));
     }
 }
 ```
+
+Assert the timeout itself with a `withFixedDelay` longer than it: if the read timeout is ever widened or dropped, the call returns normally and the test fails on the missing exception. That is the regression a mocked client cannot catch.
 
 ### Fixtures
 
@@ -237,15 +287,17 @@ assertThat(actual).usingRecursiveComparison()
 
 ## Output Format
 
-One block per test class (a suite restructuring emits several):
+Emit suite-level artifacts first - build-file changes, test properties, shared base classes - then one block per test class (a suite restructuring emits several). Base classes and fixtures are not test classes and get no block.
 
 ```
 Layer: {Controller | Service | Repository | JSON | Integration}
 Slice: {@WebMvcTest | @DataJpaTest | @JsonTest | @SpringBootTest | Plain JUnit}
-Containers: {Postgres | Kafka | Redis | WireMock | none}
+Containers: {Postgres | Kafka | Redis | WireMock | none - list all the class uses, inherited from a base class or not}
 Mocking: {mock() | @MockitoBean | WireMock | none}
 Cases: {list}
 ```
+
+A suite restructuring closes with `Contexts: {n}` - the number of distinct Spring context cache keys the new layout produces. Count one per distinct merged configuration: each slice annotation counts separately, `@WebMvcTest(A.class)` and `@WebMvcTest(B.class)` are two, and any class adding its own `@MockitoBean` or property override forks another. Verify with `logging.level.org.springframework.test.context.cache=DEBUG`, which prints the live cache size.
 
 ## Avoid
 

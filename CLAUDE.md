@@ -170,6 +170,20 @@ Every finding carries exactly one label: `[Must]` or `[Recommend]`. No other lab
 
 This is a forward-looking convention. Retrofit opportunistically, when a skill is open for another reason.
 
+#### Dual-Mode Output Formats
+
+An atomic whose `When to Use` covers both authoring and reviewing needs both shapes, or the review deliverable is invented per run. State the split in one sentence above the template:
+
+```
+When authoring, emit this block plus the code it describes. When reviewing, the consuming
+workflow owns the finding envelope (label, severity, `file:line`; invoked standalone, order
+`[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss,
+or a security hole, `[Recommend]` otherwise); emit this block as the target state and one
+finding per deviation from it.
+```
+
+The standalone clause is load-bearing: without it a directly-invoked atomic has no envelope at all, and every run picks a different one. Templates whose slots only make sense while authoring (`Change: {what was applied}`) get a review reading in the same sentence.
+
 #### Authoring for Token Efficiency
 
 Skills load into context on every invocation - longer is not better. Optimize up front so skills ship close to their post-eval state.

@@ -20,7 +20,7 @@ user-invocable: false
 ## Rules
 
 - LAZY by default; never `EAGER` on `@OneToMany` / `@ManyToMany`
-- `spring.jpa.open-in-view=false` (OSIV masks N+1 and `LazyInitializationException`)
+- `spring.jpa.open-in-view=false` (OSIV masks N+1 and `LazyInitializationException`). Flipping it on an existing app turns hidden N+1s into serialization-time failures - sweep the other read endpoints in the same change
 - Read endpoints: project to record/DTO; never return entities
 - List endpoints take `Pageable`; never unbounded `findAll()`
 - Index every column in WHERE / ORDER BY / JOIN
@@ -52,7 +52,7 @@ Fetch join for custom JPQL; `@EntityGraph` for derived methods. Don't combine.
 
 ### Two fetch-join traps
 
-1. **Two `JOIN FETCH` on `List` collections** -> `MultipleBagFetchException` at startup. Fix: change one to `Set`, split into two queries, or use `@BatchSize`.
+1. **Two `JOIN FETCH` on `List` collections** -> `MultipleBagFetchException` at startup. Fix, in order: split into two queries issued in one transaction (N+M rows, entity model untouched); `@BatchSize` once a third collection appears; `Set` only when the collection is genuinely unordered - it legalises the query but keeps the Cartesian product.
 2. **`Pageable` + collection `JOIN FETCH`** -> `HHH90003004` warning; Hibernate paginates in memory (silent OOM).
 
 Read-only endpoint? Drop the fetch join and project to a DTO (see DTO projections) - the trap disappears. When full entities are required:
@@ -114,6 +114,8 @@ Page<OrderRow> findRows(Pageable p);
 
 With `GROUP BY`, the explicit `countQuery` is mandatory, not an optimization: the derived count query counts per group, breaking `totalElements`.
 
+Choose between this and the two-query ID page above by what the aggregate is for: `GROUP BY` when it is the sort key or a filter, two-query otherwise. `GROUP BY` collapses the fan-out logically, not physically - the DB aggregates the whole join before `LIMIT` applies, so at high fan-out (100k+ parents x tens of children) page the scalar columns first and aggregate over the page's IDs only.
+
 ### Pagination
 
 ```java
@@ -146,6 +148,8 @@ static Specification<Order> byRegion(String r) {
 repo.findAll(Specification.allOf(byRegion(region), byStatus(status), inDateRange(from, to)), pageable);
 ```
 
+`JpaSpecificationExecutor` returns entities, and a `@Query` with `GROUP BY` is static - neither alone serves a filtered grid that also needs an aggregate column. That combination needs a custom repository fragment building the Criteria query, feeding the same `Specification` into both the data query and an explicit `countDistinct` count.
+
 ### Bulk writes
 
 ```java
@@ -168,6 +172,8 @@ spring.jpa.properties.hibernate.order_inserts: true
 spring.jpa.properties.hibernate.order_updates: true
 ```
 
+`em.clear()` detaches the whole context, including entities the chunk loaded to compare against - later mutations on them are no longer dirty-checked and vanish silently. Flush and clear at the chunk boundary, never mid-chunk, when the loop reads managed entities. `IN (:ids)` is capped by the driver's bind-parameter limit (PgJDBC: 65,535), so chunk the ID list too. Chunked transactions also give up all-or-nothing: make the write idempotent (upsert by natural key) and checkpoint the last committed chunk so a retry resumes.
+
 Entities with `GenerationType.IDENTITY` disable insert batching; use `SEQUENCE` for batched inserts. Switching an existing entity to `SEQUENCE` is a schema migration, not an annotation swap: create the sequence (starting above `max(id)`) and align `allocationSize` with its increment. PostgreSQL also needs `reWriteBatchedInserts=true` on the JDBC URL to collapse a batch into one multi-row INSERT. For very large jobs, chunk into multiple transactions and consider Hibernate `StatelessSession` (no persistence context, no dirty checking).
 
 ### `@Modifying` queries
@@ -178,7 +184,7 @@ Entities with `GenerationType.IDENTITY` disable insert batching; use `SEQUENCE` 
 int markStatus(@Param("s") String s, @Param("ids") List<Long> ids);
 ```
 
-Without `clearAutomatically`, the persistence context holds stale entities after a bulk update.
+Without `clearAutomatically`, the persistence context holds stale entities after a bulk update - it evicts the *entire* context, so re-read any reference held across the call. `flushAutomatically` is a separate fix, needed whenever pending writes target a different table than the statement: auto-flush only fires when the table spaces overlap.
 
 ### Pessimistic locking
 
@@ -206,14 +212,18 @@ public class Country { ... }
 
 ## Output Format
 
+One block per shipped change - a request carrying two independent fixes emits two blocks.
+
 ```
-Optimization: {N+1 Fix | Projection | Batch Fetch | Pagination | Bulk Write | Locking | Cache}
+Optimization: {N+1 Fix | Projection | Batch Fetch | Pagination | Filtering | Bulk Write | Locking | Cache | Correctness}
   (one value - when several apply, label by the primary mechanism of the shipped change)
 Trigger: {symptom - e.g., "P95 3s on /customers, N queries per request"}
 Entity/Repo: {name(s)}
 Change: {what changed - code + config; list form allowed for multi-part changes}
-Query Count: {before} -> {after}
+Query Count: {before} -> {after} ({measured - hibernate.generate_statistics | derived - counted from query shape})
 ```
+
+Measure when the app can be run. When it cannot, count from the query shape and label the slot `derived` rather than presenting the number as measured.
 
 ## Avoid
 

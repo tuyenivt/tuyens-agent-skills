@@ -39,14 +39,18 @@ user-invocable: false
 | `HttpMediaTypeNotSupportedException`                     | 415    |
 | `MaxUploadSizeExceededException`                         | 413    |
 | `UnprocessableEntityException` (domain)                  | 422    |
-| `RateLimitedException` (domain)                          | 429    |
+| `RateLimitedException` (domain - *our* throttle, not an upstream 429) | 429 |
 | Unhandled `Exception`                                    | 500    |
 | `RetryableException` subtypes (transient upstream failure) | 503  |
 | Vendor-gateway wrapper (unclassified upstream failure, e.g. `PaymentGatewayException`) | 502 |
 
-Spring 6+: the advice extends `ResponseEntityExceptionHandler` (see Global handler) so framework exceptions keep their table statuses as `ProblemDetail`; `spring.mvc.problemdetails.enabled: true` additionally converts Boot's default rendering for errors that never reach the advice (WebFlux: `spring.webflux.problemdetails.enabled`). Use both. One-off cases can throw `ErrorResponseException` directly.
+Split 502 from 503 at the integration boundary, on the cause: timeout, connection failure, upstream 429 or upstream 5xx are transient -> `RetryableException` -> 503; everything else the vendor throws is unclassified -> gateway wrapper -> 502. An upstream 429 never becomes our 429 - that would tell the client it is throttled when it is not. Likewise `DataIntegrityViolationException` is 409 only for a constraint the client can act on (unique key); identify the constraint at the boundary and let the rest fall to 500.
 
-The 401/403 rows are special: exceptions thrown in the security filter chain (failed authentication, filter-level authorization) never reach the advice - wire `AuthenticationEntryPoint` / `AccessDeniedHandler` in the security config for those. Only method-security denials (`@PreAuthorize`) surface as `AccessDeniedException` to an `@ExceptionHandler`.
+Spring 6+: the advice extends `ResponseEntityExceptionHandler` (see Global handler) so framework exceptions keep their table statuses as `ProblemDetail`. Once that advice exists `spring.mvc.problemdetails.enabled` is inert - Boot's `ProblemDetailsExceptionHandler` is `@ConditionalOnMissingBean(ResponseEntityExceptionHandler.class)` and backs off. Set it anyway (WebFlux: `spring.webflux.problemdetails.enabled`) so removing the advice degrades to `ProblemDetail` rather than Boot's default error map. One-off cases can throw `ErrorResponseException` directly.
+
+The 401/403 rows are special: exceptions thrown in the security filter chain (failed authentication, filter-level authorization) never reach the advice - wire `AuthenticationEntryPoint` / `AccessDeniedHandler` in the security config for those (WebFlux: `ServerAuthenticationEntryPoint` / `ServerAccessDeniedHandler`). Only method-security denials (`@PreAuthorize`) surface as `AccessDeniedException` to an `@ExceptionHandler`.
+
+WebFlux differences: extend the reactive `ResponseEntityExceptionHandler` (`org.springframework.web.reactive.result.method.annotation`), override `handleWebExchangeBindException` in place of `handleMethodArgumentNotValid`, return `Mono<ResponseEntity<Object>>`, and drop the JDBC rows - R2DBC failures arrive already translated as `DataAccessException`, never `SQLException`.
 
 ## Patterns
 
@@ -115,18 +119,36 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "An unexpected error occurred");
     }
 
-    private static ProblemDetail problem(HttpStatus status, String code, String detail) {
-        var pd = ProblemDetail.forStatusAndDetail(status, detail);
+    // Framework exceptions the superclass renders arrive without `code`, so clients that
+    // parse it see two envelope shapes. Decorate every body on the way out.
+    @Override
+    protected ResponseEntity<Object> createResponseEntity(Object body, HttpHeaders headers,
+            HttpStatusCode status, WebRequest request) {
+        if (body instanceof ProblemDetail pd && (pd.getProperties() == null || !pd.getProperties().containsKey("code"))) {
+            decorate(pd, status.is5xxServerError() ? "INTERNAL_ERROR" : "REQUEST_REJECTED");
+        }
+        return super.createResponseEntity(body, headers, status, request);
+    }
+
+    static ProblemDetail problem(HttpStatus status, String code, String detail) {
+        return decorate(ProblemDetail.forStatusAndDetail(status, detail), code);
+    }
+
+    // Package-private, not inlined into the advice: the security entry point writes bodies
+    // from inside the filter chain and must emit the identical envelope.
+    static ProblemDetail decorate(ProblemDetail pd, String code) {
         pd.setType(URI.create("urn:problem:" + code.toLowerCase().replace('_', '-')));  // RFC 9457 machine id
-        pd.setTitle(status.getReasonPhrase());                                            // human-readable summary
-        pd.setProperty("code", code);                                                     // machine code for clients
-        pd.setProperty("traceId", MDC.get("traceId"));  // from MDC filter or Micrometer Tracing; null if absent
-        return pd;
+        pd.setTitle(HttpStatus.valueOf(pd.getStatus()).getReasonPhrase());               // human-readable summary
+        pd.setProperty("code", code);                                                    // machine code for clients
+        pd.setProperty("traceId", MDC.get("traceId"));  // MVC: MDC filter or Micrometer Tracing. On WebFlux MDC is
+        return pd;                                      // thread-local and unreliable - use the exchange id or Tracer.
     }
 }
 ```
 
 The `DomainException` handler covers every subclass via Spring's most-specific-type resolution; no per-subclass handler needed.
+
+Replacing a custom envelope on a live API: `ProblemDetail` extension properties serialize as top-level fields, so a `code`/`message` contract survives by adding those properties. The breaking change is the `Content-Type` flip to `application/problem+json` - confirm each consumer before shipping.
 
 ### Wrapping vendor SDK errors
 
@@ -138,8 +160,8 @@ class StripePaymentGateway implements PaymentGateway {
     public PaymentResult charge(PaymentRequest req) {
         try {
             return PaymentResult.success(stripeClient.createCharge(req).getId());
-        } catch (CardException e) {
-            throw new PaymentDeclinedException(req.orderId(), e.getDeclineCode());
+        } catch (CardException e) {                                       // subtype - must precede StripeException
+            throw new PaymentDeclinedException(req.orderId(), e.getDeclineCode(), e);   // cause: logs only
         } catch (com.stripe.exception.RateLimitException e) {
             throw new PaymentRetryableException(req.orderId(), e);
         } catch (StripeException e) {
