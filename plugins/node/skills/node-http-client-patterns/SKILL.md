@@ -20,7 +20,8 @@ Owns the Node bindings for outbound HTTP discipline. `ops-resiliency` owns the s
 
 ## Rules
 
-- Every outbound call has an `AbortSignal.timeout(ms)` - no infinite hangs (Node `fetch` does not time out by default)
+- Every outbound call has an `AbortSignal.timeout(ms)` - Node's `fetch` applies no request deadline (undici's `headersTimeout` of ~300s is a backstop, not a timeout, and never bounds the body)
+- One wrapper per vendor, but retry policy is per **call site**: the same vendor called from a sync handler and from a worker gets two named policy profiles on one client, not two clients
 - Honor `Retry-After` on 429 / 503 - bounded; if it exceeds the in-process budget, delegate to BullMQ
 - Retry only idempotent verbs (`GET`, `HEAD`, `PUT`, `DELETE`) automatically; POST retries require an `Idempotency-Key` header (or skip the retry)
 - In-process retry budget is small (2-3 attempts, exponential with jitter, capped at a few seconds total) - longer waits go to BullMQ where the queue owns scheduling
@@ -41,41 +42,60 @@ const res = await fetch(url);
 // Good - 5s ceiling
 const res = await fetch(url, { signal: AbortSignal.timeout(5_000) });
 
-// Combine app-level cancel + timeout
+// Combine app-level cancel + timeout - GET/HEAD only
 const res = await fetch(url, {
   signal: AbortSignal.any([req.signal, AbortSignal.timeout(5_000)]),
 });
 ```
 
-`axios`: `timeout: 5_000`. `undici`: `bodyTimeout` + `headersTimeout`. `got`: `timeout: { request: 5_000 }`. Pick one library per project; don't mix.
+Never wire `req.signal` into a non-idempotent write. A client disconnect then aborts a request the server may already have accepted, turning a known outcome into an unknown one - which is exactly what produces duplicate charges on the retry.
+
+`axios`: `timeout: 5_000`. `undici`: `bodyTimeout` + `headersTimeout`. `got`: `timeout: { request: 5_000 }`. Pick one library per project; don't mix - and pick it for the whole toolchain: MSW intercepts `fetch`/`axios`/`got` but not `undici.request`, and `got` is ESM-only, which a CJS NestJS build cannot import.
 
 ### Bounded Retry with Jitter, Honoring `Retry-After`
 
+Retry on **thrown** errors as well as status codes: a timeout, DNS failure, or connection reset never produces a response, and a status-only loop silently never retries the most common failure. Wrap whichever library you chose so both paths reach one decision point.
+
 ```typescript
-const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
-const MAX_ATTEMPTS = 3;
-const BASE_MS = 200;
-const MAX_TOTAL_MS = 3_000;          // in-process ceiling - past this, hand to BullMQ
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+const RETRYABLE_CODE = new Set(['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT']);
 
-async function callWithRetry(req: () => Promise<Response>): Promise<Response> {
+type Policy = {
+  attempts: number; baseMs: number; perAttemptMs: number; totalMs: number;
+  // false for a POST with no idempotency key: only failures proven to precede acceptance may retry
+  retryAfterSend: boolean;
+};
+
+async function callWithRetry<T>(call: (signal: AbortSignal) => Promise<T>, p: Policy): Promise<T> {
   const start = Date.now();
-  let last: Response | undefined;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    last = await req();
-    if (last.ok || !RETRYABLE.has(last.status) || attempt === MAX_ATTEMPTS) return last;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call(AbortSignal.timeout(p.perAttemptMs));
+    } catch (e) {
+      // Node `fetch` never throws on status, so the wrapper must throw one itself:
+      //   if (!res.ok) throw new HttpStatusError(res.status, res.headers);
+      // and transport failures arrive as `TypeError: fetch failed` with the real code on `.cause`.
+      const status = e instanceof HttpStatusError ? e.status : undefined;      // axios: e.response?.status
+      const code = (e as { cause?: { code?: string } }).cause?.code ?? (e as { code?: string }).code;
+      // Connect-phase failures are provably pre-acceptance; a 5xx or timeout after the body was
+      // flushed is AMBIGUOUS - the server may have accepted it. Retrying that is what duplicates writes.
+      const preAcceptance = code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'EAI_AGAIN';
+      const retryable = (status ? RETRYABLE_STATUS.has(status) : RETRYABLE_CODE.has(code ?? ''))
+        && (p.retryAfterSend || preAcceptance);
+      if (!retryable || attempt === p.attempts) throw e;
 
-    const retryAfter = parseRetryAfter(last.headers.get('retry-after'));   // ms
-    const backoff = Math.min(BASE_MS * 2 ** (attempt - 1), 1_000);
-    // jitter our own backoff only - never wait less than the server's Retry-After
-    const wait = retryAfter ?? backoff * (0.5 + Math.random() * 0.5);
-    if (Date.now() - start + wait > MAX_TOTAL_MS) return last;      // budget blown
-    await new Promise(r => setTimeout(r, wait));
+      const retryAfter = parseRetryAfter(e instanceof HttpStatusError ? e.headers.get('retry-after') : null);  // ms; header is SECONDS or an HTTP-date
+      const backoff = Math.min(p.baseMs * 2 ** (attempt - 1), 1_000);
+      const wait = retryAfter ?? backoff * (0.5 + Math.random() * 0.5);     // jitter ours only, never undercut Retry-After
+      // the budget must cover the wait AND the next attempt's timeout, or it overruns by a full timeout
+      if (Date.now() - start + wait + p.perAttemptMs > p.totalMs) throw e;
+      await new Promise((r) => setTimeout(r, wait));
+    }
   }
-  return last!;
 }
 ```
 
-If `Retry-After` exceeds the budget, return the failed response and let the caller decide: surface to the user (4xx domain error) or enqueue a BullMQ job that retries with the queue's `attempts` + `backoff`.
+Set `retryAfterSend: true` only for `GET`/`HEAD`/`PUT`/`DELETE`, or for a POST carrying an idempotency key. Two named policies, chosen at the call site: `interactive` (`{ attempts: 2, baseMs: 200, perAttemptMs: 3_000, totalMs: 8_000 }`, sized under the caller's own deadline) and `queued` (`{ attempts: 1, baseMs: 0, perAttemptMs: 10_000, totalMs: 10_000 }`, because the queue owns retry - and the queue's own `attempts` is subject to the same idempotency rule). If `Retry-After` exceeds the budget, throw and let the caller decide: surface a domain error, or enqueue a BullMQ job that retries with the queue's `attempts` + `backoff`.
 
 ### Idempotent vs Non-Idempotent Retries
 
@@ -96,7 +116,23 @@ await stripe.charges.create(
 );
 ```
 
-Internal POST endpoints should accept an `Idempotency-Key` header and store the key + response for a TTL (Redis or a `idempotency_keys` table). Clients send the same key on retry.
+Internal POST endpoints should accept an `Idempotency-Key` header and store the key + response for a TTL (Redis or an `idempotency_keys` table). Clients send the same key on retry.
+
+When the vendor offers no idempotency key at all (Twilio, most SMS and push providers), the dedup has to be yours: claim before you call, and treat an ambiguous outcome as sent.
+
+```typescript
+// Claim first - SET NX makes the second caller a no-op even mid-flight
+const key = `sms:${verificationId}`;
+if (!(await redis.set(key, 'claimed', { NX: true, PX: 600_000 }))) return;   // already sent or in flight
+try {
+  await twilio.messages.create(...);
+} catch (e) {
+  if (isPreAcceptance(e)) await redis.del(key);   // provably not sent - free the key so a retry can send
+  throw e;                                        // ambiguous: KEEP the claim, never re-send
+}
+```
+
+A timeout or 5xx after the request body was flushed is **ambiguous**, not failed: "never sent" and "sent, response lost" are indistinguishable. Retrying an ambiguous non-idempotent write is what produces duplicates - reconcile with an idempotent `GET` first, or accept the loss.
 
 ### Delegating to BullMQ When Budget Blows
 
@@ -201,16 +237,18 @@ server.use(http.post('https://api.stripe.com/v1/charges', () => new HttpResponse
 
 ## Output Format
 
-Reviews emit `ops-resiliency`'s Resiliency Assessment envelope, with a Node binding in every Recommendation. When authoring or describing a vendor integration, emit this block:
+Emit one block per **vendor call site** - a vendor called from both a handler and a processor gets two blocks, since the policy differs. When reviewing, also emit `ops-resiliency`'s Resiliency Assessment envelope with a Node binding in every Recommendation; the block below describes current state, and the envelope carries the finding, severity, and fix.
 
 ```
 Vendor: {Stripe | SendGrid | internal-service-X | ...}
+Call Site: {sync handler file:line | BullMQ processor file:line}
 Wrapper: {file:line of the client class, or "scattered - needs consolidation"}
-Timeout: {ms via AbortSignal.timeout / axios.timeout / got.timeout - or MISSING}
-Retry Policy: {none | in-process N attempts, expo+jitter, cap M ms | delegated to BullMQ}
-Idempotency: {GET/PUT/DELETE only | Idempotency-Key on POST | N/A}
-Error Translation: {what HTTP statuses -> what domain errors}
-Tests: {MSW handler at path/to/setup.ts | missing | mocks global.fetch (bad)}
+Timeout: {per-attempt ms and total budget ms - or MISSING}
+Retry Policy: {none | in-process N attempts, expo+jitter, cap M ms | delegated to BullMQ | UNBOUNDED (defect) | multiplied: N wrapper x M job attempts (defect)}
+Idempotency: {GET/PUT/DELETE only | Idempotency-Key on POST | app-owned claim key | NONE on a retried POST (defect) | N/A}
+Breaker: {open-after / half-open policy, and what it counts | none}
+Error Translation: {what HTTP statuses -> what domain errors | none - vendor error leaks (defect)}
+Tests: {MSW handler at path/to/setup.ts | missing | mocks global.fetch (defect)}
 ```
 
 ## Avoid
@@ -218,7 +256,9 @@ Tests: {MSW handler at path/to/setup.ts | missing | mocks global.fetch (bad)}
 - `fetch(url)` without `AbortSignal.timeout(...)` - Node's `fetch` has no default timeout
 - Retrying POST without an `Idempotency-Key` - duplicate writes
 - Unbounded in-process retry loops (sync handlers must respond in seconds, not minutes)
-- Letting `got`/`axios` retry interleave with your own retry layer - pick one
+- Letting `got`/`axios` retry interleave with your own retry layer - pick one. `axiosRetry(client, opts)` configures by side effect and returns `void`, so passing it to `interceptors.response.use(...)` silently wires nothing
+- Retrying only on status codes - timeouts and connection errors throw and never reach a status check
+- Piping `req.signal` into a POST/PATCH - a client disconnect makes the write's outcome unknown
 - Per-request client instantiation (`got.extend` / `axios.create` in the handler body)
 - Leaking `HTTPError` / `AxiosError` / `TypeError: fetch failed` past the vendor wrapper
 - Mocking `global.fetch` or `axios.get` in tests - use MSW, exercise the real wrapper

@@ -23,10 +23,12 @@ user-invocable: false
 `backend-transaction-patterns` carries the contract. These are the Node-specific bindings and hazards it cannot state:
 
 - Dispatch after `$transaction(...)` (Prisma) or `transaction(...)` (TypeORM) **resolves**, or via `runOnTransactionCommit` when using `typeorm-transactional`
-- Return scalars from the transaction callback, never ORM entities - lazy relations may not be loaded outside the transaction scope
+- Return scalars from the transaction callback, never ORM entities. Under TypeORM a lazy relation accessed afterwards issues a query outside the transaction's snapshot; under Prisma the object is inert but stale, since later writes in the same transaction are not reflected in it
+- I/O whose result **gates** the commit (a payment authorization the row depends on) cannot move after commit and must not run inside. Run it before `BEGIN`, persist an attempt row first, and reconcile orphans with a sweeper - the transaction then only consumes an already-known outcome
 - `SET LOCAL lock_timeout` / `statement_timeout` must run **inside** the transaction; standalone it is a no-op, and plain `SET` leaks to every later query sharing the pooled connection. Under `@Transactional()`, run it through the transactional entity manager's `.query()` as the first statement
-- Prisma's `maxWait` (pool acquisition) and `timeout` (total wall-clock) are separate from the Postgres-side timeouts; set both
-- Outbox consumers dedupe with BullMQ `jobId` or an HTTP `Idempotency-Key`
+- Prisma's `maxWait` (pool acquisition) and `timeout` (total wall-clock) are separate from the Postgres-side timeouts; set both. TypeORM has no wall-clock equivalent - there, `statement_timeout` plus `idle_in_transaction_session_timeout` are the only bounds
+- Outbox consumers dedupe with BullMQ `jobId` or an HTTP `Idempotency-Key`. A `jobId` only dedupes while the job is retained, so `removeOnComplete` must outlive the redelivery window
+- One outbox row per (event, destination). A single row fanning out to two consumers has no way to record partial success, so one failing destination either blocks the other or gets marked done without being delivered
 - Never dispatch from `@AfterInsert`, `@AfterUpdate`, or a pre-commit `EventEmitter2` listener - they fire before `COMMIT` and race it
 
 ## Patterns
@@ -187,15 +189,15 @@ Justified when a non-critical side write (audit log, denormalized view) must not
 
 ## Output Format
 
-Reviews emit `backend-transaction-patterns`' Transaction Assessment envelope, with a Node binding in every Fix line. When authoring or proposing a transaction, emit this block:
+`backend-transaction-patterns`' Transaction Assessment envelope is always emitted - in review it carries the findings, in design it carries the residual risks. The block below is **additional**, not an alternative: emit one per transaction boundary, describing what that boundary will be. Where the two overlap, the envelope wins and the block is the Node detail behind it.
 
 ```
-Pattern: {Post-Commit | Outbox | Lock-Then-Write | Atomic-Guard | Savepoint | Read-Outside-Tx}
+Pattern: {Post-Commit | Outbox | Lock-Then-Write | Atomic-Guard | Savepoint | Read-Outside-Tx} - list every one that applies; a real write path is usually two or three
 ORM: {Prisma | TypeORM}
-Transaction Scope: {what writes are inside, what was moved out}
-Side Effect Dispatch: {after $transaction returns | runOnTransactionCommit | outbox + relay}
-Idempotency: {jobId / Idempotency-Key / unique constraint / N/A}
-Timeouts: {tx.timeout = N ms; SET LOCAL lock_timeout / statement_timeout}
+Transaction Scope: {what writes are inside, what was moved out, and what runs before BEGIN}
+Side Effect Dispatch: {after $transaction returns | runOnTransactionCommit | outbox + relay claim}
+Idempotency: {jobId / Idempotency-Key / unique constraint / atomic guard predicate / N/A}
+Timeouts: {Prisma maxWait + timeout, or TypeORM none; SET LOCAL lock_timeout / statement_timeout - state N/A where the ORM has no equivalent}
 Failure Mode Documented: {what happens on crash between commit and dispatch}
 ```
 

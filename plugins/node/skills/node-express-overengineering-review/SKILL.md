@@ -15,10 +15,11 @@ Reviewing Express diffs that add Zod / class-validator schemas, null guards, mid
 
 ## Rules
 
-- Cite the constraint making the code redundant: FK, `@Column({ nullable: false })`, unique index, TypeORM non-`?` field, TS non-null type, Zod rule, validation middleware, or framework guarantee.
+- Cite the constraint making the code redundant: FK, `@Column({ nullable: false })`, unique index, TypeORM non-`?` field, TS non-null type, Zod rule, validation middleware, or framework guarantee. A premature abstraction is redundant against a simpler construct that already does the job - name that construct.
 - Intent:
-  - **`[Recommend]`** default. Escalate to **`[Must]`** with `Cost:` field for: extra SELECT in hot path, blanket `catch` defeating error middleware, no-arg middleware factory, custom error hierarchy with no `instanceof` branching, Repository wrapper of passthroughs.
-  - **`[Recommend]`** when justification is plausible but not visible in the diff - state the justification being assumed and ask the author to confirm.
+  - **`[Must]`** when the diff shows a concrete cost: an extra query per write, a masked or mis-mapped exception, an unreachable code path, or an abstraction whose every consumer is a passthrough. The predicate decides; these are only its common instances - manual unique-check before `save`, blanket `catch` defeating error middleware, no-arg middleware factory, unbranched custom error hierarchy, Repository wrapper of passthroughs, schema/column nullability mismatch (turns a 400 into a 500).
+  - **`[Recommend]`** otherwise, including when justification is plausible but not visible in the diff - state the justification being assumed and ask the author to confirm. A speculative config key is always `[Recommend]`: unread surface area costs nothing at runtime.
+  - Partial justification exempts only the justified members: if `requireRole(role)` is justified and `requireAdmin()` is not, flag `requireAdmin()` alone.
 - Redundancy with **visible** justification is not a finding. See `Avoid`.
 
 ## Patterns
@@ -182,20 +183,20 @@ Flag schema-validated config keys with zero read sites. Confirm with a repo-wide
 
 ## Output Format
 
-Findings contribute to the consuming workflow's unified output. One block per finding:
+Findings contribute to the consuming workflow's unified output. One block per redundant construct: repeated occurrences of the same construct in one function are one block listing every site in `Code:`; a construct matching two patterns is one block under the pattern with the higher intent; a construct spanning files anchors to its declaration and names the other files in `Code:`. When the diff carries no line numbers, anchor as `file:<enclosing function or export>`.
 
 ```
 ### [Must | Recommend] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `if (!order)` after `findOneOrFail`}
-- Redundant because: {FK name | TypeORM `nullable: false` | unique index | TS strict-null | Zod schema rule | framework guarantee}
-- Cost: {extra SELECT per save | masked exception | speculative surface area | middleware factory of one | repository wrapper passthrough} _(required for `[Must]`; omit otherwise)_
+- Redundant because: {FK name | TypeORM `nullable: false` | unique index | TS strict-null | Zod schema rule | validation middleware | framework guarantee | zero read sites | superseded by <the simpler construct that already does this>}
+- Cost: {extra SELECT per save | masked exception | wrong status code | unreachable code path | speculative surface area | middleware factory of one | repository wrapper passthrough | layered passthrough} _(required for `[Must]`; omit otherwise)_
 - Recommendation: {concrete edit}
 - Justified when: {one-line note if a legitimate reason might apply; otherwise omit}
 ```
 
-For each category with no findings, state `No <category> findings.` so the workflow knows the check ran.
+Group the output under one `##` heading per category, in the order Redundant Validation, Defensive Impossibility, Premature Abstraction. Within a category: `[Must]` blocks, then `[Recommend]` blocks, then one `Cleared:` line listing every construct examined and not flagged with its reason. A category with no findings is `No <category> findings.` followed by its `Cleared:` line - silence is indistinguishable from a skipped check.
 
 ## Avoid
 

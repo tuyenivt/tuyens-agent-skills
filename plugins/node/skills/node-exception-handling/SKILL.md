@@ -21,13 +21,14 @@ Single owner for the application-wide rescue contract. `node-nestjs-patterns` / 
 
 ## Rules
 
-- One global exception filter (NestJS `@Catch()`) or one terminal error middleware (Express) - never per-controller / per-route ad hoc
+- One global exception filter (NestJS `@Catch()`) or one terminal error middleware (Express) - never per-controller / per-route ad hoc. Express detects error middleware by **arity**: exactly four parameters, and registered after every router. Three parameters silently makes it an ordinary handler whose `res` is really `next`; registering it early makes it unreachable and orphans every `next(err)`
 - Domain errors extend a typed `AppError` / `DomainError` base; HTTP translation lives at the boundary, not in services
 - Services `throw` typed exceptions; controllers / handlers translate to HTTP via the global filter / middleware (don't catch-and-rewrap inside the service layer)
 - `Result<T, E>` only when the caller routinely branches on the failure (Stripe charge, idempotency conflict resolution). Default to throw - it preserves stack and lets the filter centralize the response shape
-- BullMQ processors rescue **and stop** on non-retryable domain errors (`ValidationError`, `NotFoundError`, `ConflictError`); let everything else throw so BullMQ applies `attempts` + `backoff`
+- BullMQ processors rescue **and stop** on any non-retryable `AppError` (`retryable === false`); let everything else throw so BullMQ applies `attempts` + `backoff`
 - ORM errors (`P2002`, `P2025`, `QueryFailedError`) translate to domain errors at the repository / service boundary - never leak Prisma / TypeORM types to controllers
-- Sentry captures each error exactly once - at the global filter / middleware. Don't `Sentry.captureException` in the service, then re-throw - the filter doubles it
+- Sentry captures each error exactly once, at the **process's** outermost boundary: the global filter / middleware for HTTP, `worker.on('failed')` for a queue, the backstops for the rest. A standalone worker has no filter - wiring only the filter leaves every exhausted job dark. Don't `Sentry.captureException` in the service, then re-throw - the boundary doubles it
+- Capture the **final** outcome, not each attempt: `attempts: 5` fires five `failed` events, so gate on `job.attemptsMade >= job.opts.attempts`. Domain errors that map to 4xx are logged, never captured
 - No bare `catch (e) { console.log(e) }`, no `catch (e) { throw e }` no-op rethrow, no `catch (e) { /* ignore */ }`
 - `process.on('unhandledRejection')` and `process.on('uncaughtException')` registered once as last-resort backstops that log and exit (let the orchestrator restart)
 
@@ -57,6 +58,9 @@ export class NotFoundError     extends AppError { constructor(m: string, c?: unk
 export class ConflictError     extends AppError { constructor(m: string, c?: unknown) { super(m, 'conflict',      409, false, { cause: c }); } }
 export class InvalidStateError extends AppError { constructor(m: string, c?: unknown) { super(m, 'invalid_state', 422, false, { cause: c }); } }
 export class UpstreamError     extends AppError { constructor(m: string, c?: unknown) { super(m, 'upstream',      503, true,  { cause: c }); } }
+export class InternalError     extends AppError { constructor(m: string, c?: unknown) { super(m, 'internal',      500, false, { cause: c }); } }
+// Raised when a retry finds the work already done - the processor resolves, never marks failed
+export class AlreadySatisfiedError extends AppError { constructor(m: string) { super(m, 'already_satisfied', 200, false); } }
 ```
 
 `retryable` lets BullMQ processors decide retry-vs-stop without sniffing the message. `{ cause }` chains the original error - the filter logs the chain.
@@ -72,7 +76,8 @@ export class UpstreamError     extends AppError { constructor(m: string, c?: unk
 | ConflictError        | 409  | no        | Duplicate / idempotency collision        |
 | InvalidStateError    | 422  | no        | State machine rejection                  |
 | UpstreamError        | 503  | yes       | Third-party 5xx / timeout                |
-| Unknown (`Error`)    | 500  | yes       | Last-resort - log + alert                |
+| InternalError        | 500  | no        | Wrap a deterministic bug (`TypeError`, `RangeError`) at the boundary so it stops instead of retrying |
+| Unknown (`Error`)    | 500  | no        | Untyped escape - translate it to `InternalError` at the nearest boundary; an unwrapped `Error` matches no `retryable` check and retries forever |
 
 ### NestJS Global Filter
 
@@ -104,7 +109,7 @@ export class AppExceptionFilter implements ExceptionFilter {
 { provide: APP_FILTER, useClass: AppExceptionFilter }
 ```
 
-The filter is the single Sentry / OTel capture site - inject the SDK and call it here, nowhere else.
+The filter is this transport's single Sentry / OTel capture site - inject the SDK and call it here, nowhere else. Capture only what the client cannot act on (`status >= 500` and unknown errors); 4xx domain errors get `logger.warn` and no event. `host.switchToHttp()` is HTTP-only - guard with `host.getType()` and delegate before touching `res` when the app also serves GraphQL or RPC.
 
 ### Express Terminal Middleware
 
@@ -184,18 +189,25 @@ export class OrderProcessor extends WorkerHost {
     try {
       await this.orders.fulfill(job.data.orderId);
     } catch (e) {
+      if (e instanceof AlreadySatisfiedError) return;  // duplicate delivery - the work is done, resolve as success
       if (e instanceof AppError && !e.retryable) {
         // Domain rejection - retry won't help. Mark and stop.
         await this.orders.markFailed(job.data.orderId, e.code);
+        if (e.status >= 500) Sentry.captureException(e);  // a resolved job emits no 'failed' event
         return;                                    // resolve = no retry
       }
       throw e;                                     // BullMQ applies attempts + backoff
     }
   }
+
+  @OnWorkerEvent('failed')                         // the worker's capture site - there is no filter in this process
+  onFailed(job: Job, err: Error): void {
+    if (job.attemptsMade >= (job.opts.attempts ?? 1)) Sentry.captureException(err, { extra: { jobId: job.id } });
+  }
 }
 ```
 
-`attempts` and `backoff` configured on the queue (see `node-bullmq-patterns`). The processor's only job is deciding which errors are domain-final (resolve) vs transient (throw).
+`attempts` and `backoff` configured on the queue (see `node-bullmq-patterns`). The processor's only job is deciding which errors are domain-final (resolve) vs transient (throw). BullMQ is at-least-once, so rescue-and-stop must not write a failure over a terminal state: check the aggregate before `markFailed`, and resolve when the row is already in the target state or gone.
 
 ### Sentry Capture-Once
 
@@ -215,20 +227,27 @@ If a service needs structured logging on an intermediate failure, use the logger
 ### Last-Resort Backstops
 
 ```typescript
-process.on('unhandledRejection', (reason) => { logger.fatal({ reason }, 'unhandledRejection'); process.exit(1); });
-process.on('uncaughtException',  (err)    => { logger.fatal({ err },    'uncaughtException');  process.exit(1); });
+const fatal = (err: unknown, kind: string) => {
+  logger.fatal({ err }, kind);
+  Sentry.captureException(err);
+  void Sentry.close(2_000).finally(() => process.exit(1));   // flush first, or the event dies with the process
+};
+process.on('unhandledRejection', (reason) => fatal(reason, 'unhandledRejection'));
+process.on('uncaughtException',  (err)    => fatal(err,    'uncaughtException'));
 ```
 
 Crash and let the orchestrator (PM2, k8s, systemd) restart. Don't try to keep running after these fire - state is undefined.
 
 ## Output Format
 
+When authoring, emit one block per layer touched. When reviewing, the consuming workflow owns the finding envelope (label, severity, `file:line`; invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise); emit one block per deviation, with `Translation` describing the current behaviour and the fix going in the workflow's recommendation slot.
+
 ```
-Layer: {NestJS Filter | Express Middleware | Repository Boundary | BullMQ Processor | Backstop}
-Error Type: {AppError subclass | HttpException | Prisma P-code | QueryFailedError | unknown}
-Translation: {what was applied}
-Capture: {logger.warn | logger.error | Sentry once at filter | none}
-Retry Behavior: {domain-final / transient with attempts+backoff / one-shot}
+Layer: {NestJS Filter | Express Middleware | Route Handler | Service | Repository Boundary | Vendor SDK Boundary | BullMQ Processor | Worker Event Handler | Bootstrap | Backstop}
+Error Type: {AppError subclass | generic untyped `Error` | HttpException | Prisma P-code | QueryFailedError | vendor SDK error | none - wiring defect | unknown}
+Translation: {source error -> domain error, or "none - leaks as-is"}
+Capture: {logger.warn | logger.error | Sentry | console.* (defect) | none} - list every one that applies; logging and capturing are not exclusive
+Retry Behavior: {domain-final (resolve, no retry) | transient (throw; attempts + backoff apply) | one-shot (no retry configured on this path)}
 ```
 
 ## Avoid

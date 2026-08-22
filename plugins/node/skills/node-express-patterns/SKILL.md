@@ -20,11 +20,13 @@ user-invocable: false
 ## Rules
 
 - Middleware order: helmet -> cors -> webhook (raw) -> json -> auth -> validation -> handler -> errorHandler (last)
-- Express 4: wrap every async handler/middleware to forward rejections to `next`. Express 5 does this natively - no wrapper
-- Error middleware must take exactly 4 parameters (Express detects by arity)
+- Express 4: wrap every async handler/middleware to forward rejections to `next`. Express 5 does this natively - there the wrapper is dead code, so strip `asyncHandler` from every example below
+- Error middleware must take exactly 4 parameters (Express detects by arity), and must check `res.headersSent` before writing - a failure mid-stream otherwise throws `ERR_HTTP_HEADERS_SENT`
 - Never expose raw error details to clients in production
 - No business logic in route handlers - delegate to services
-- Webhook routes register before `express.json()` and bypass JWT auth
+- Two independent webhook rules: raw-body routes mount **before** `express.json()`, and signature-authenticated routes mount outside the JWT middleware's scope. Either applies alone - a bodyless signed-link GET needs the auth bypass without the raw parser
+- Bind auth at the router mount (`app.use('/api/v1/orders', requireAuth, ordersRouter)`), never `app.use(requireAuth)` globally - global auth puts webhooks and health probes behind JWT
+- Behind a proxy or ingress, `app.set('trust proxy', 1)` before `express-rate-limit`, or every client shares the proxy's IP and the limiter blocks everyone at once
 
 ## Patterns
 
@@ -63,14 +65,19 @@ const createOrderSchema = z.object({
     customerId: z.string().uuid(),
     items: z.array(z.object({ productId: z.string().uuid(), quantity: z.number().int().positive() })).min(1),
   }),
+  query: z.object({ limit: z.coerce.number().int().min(1).max(100).default(20) }),
+  headers: z.object({ "x-tenant-id": z.string().uuid() }),
 });
 
 const validate = (schema: z.ZodSchema): RequestHandler => (req, _res, next) => {
-  const result = schema.safeParse({ body: req.body, query: req.query, params: req.params });
-  if (!result.success) throw new AppError(400, result.error.issues.map(i => i.message).join(", "));
+  const r = schema.safeParse({ body: req.body, query: req.query, params: req.params, headers: req.headers });
+  if (!r.success) return next(new AppError(400, r.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join(", ")));
+  req.valid = r.data;   // keep the parsed output - coercions and defaults exist only here
   next();
 };
 ```
+
+Parse `headers` and `query` in the same schema, and read `req.valid`, never `req.query`: coerced numbers and defaults live only on the parse result, and on Express 5 `req.query` is a getter that throws on assignment. Declare `req.valid` via the same global-namespace augmentation used for `req.user`. Use `next(err)` rather than `throw` so the handler works unwrapped on Express 4.
 
 ### Error Handling
 
@@ -83,7 +90,8 @@ class AppError extends Error {
   }
 }
 
-const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
+  if (res.headersSent) return next(err);      // mid-stream failure - Node must close the response
   if (err instanceof AppError) return void res.status(err.status).json({ error: err.message });
   console.error(err);
   res.status(500).json({ error: "Internal server error" });
@@ -96,9 +104,11 @@ Domain-to-HTTP mapping:
 | -------------------- | ---- |
 | Validation failure   | 400  |
 | Unauthorized         | 401  |
+| Forbidden / tenant mismatch | 403 |
 | Not found            | 404  |
 | Conflict (duplicate) | 409  |
 | Invalid transition   | 422  |
+| Rate limited         | 429  |
 | External timeout     | 503  |
 
 Also register `process.on('unhandledRejection')` as a last-resort backstop.
@@ -142,44 +152,68 @@ declare global {
 ### Security
 
 - `helmet()` first
-- `cors({ origin: allowedOrigins })` - never bare `cors()` in production
-- `express-rate-limit` on auth endpoints
+- `cors({ origin: allowedOrigins, credentials: true })` - never bare `cors()` in production; `credentials` is required for cookie or `Authorization` cross-origin calls, and is incompatible with `origin: '*'`
+- `express-rate-limit` on auth endpoints (see the `trust proxy` rule)
 
 ### Health and Shutdown
 
+Liveness must not touch dependencies; readiness must, and must flip to failing *before* the server stops accepting, so the load balancer drains first.
+
 ```typescript
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
-app.get("/ready", asyncHandler(async (_req, res) => {
+let ready = true;
+app.get("/health", (_req, res) => res.json({ status: "ok" }));          // liveness - no I/O
+app.get("/ready", async (_req, res) => {                                 // readiness
+  if (!ready) return void res.status(503).json({ status: "draining" });
   await dataSource.query("SELECT 1");
   res.json({ status: "ready" });
-}));
+});
 
 const server = app.listen(port);
-process.on("SIGTERM", () => server.close(() => process.exit(0)));
+process.on("SIGTERM", async () => {
+  ready = false;                                    // fail readiness first
+  await new Promise((r) => setTimeout(r, 5_000));   // let the LB observe it
+  const hard = setTimeout(() => process.exit(1), 25_000).unref();   // bounded drain
+  server.closeIdleConnections?.();                  // keep-alive sockets never close on their own
+  server.close(async () => { clearTimeout(hard); await dataSource.destroy(); process.exit(0); });
+});
 ```
 
+`terminationGracePeriodSeconds` must exceed the readiness delay plus the hard-stop timer.
+
 ## Output Format
+
+When authoring, emit this block plus the wiring code it describes. When reviewing, the consuming workflow owns the finding envelope (label, severity, `file:line`; invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise); emit this block as the target state and one finding per deviation from it.
 
 ```
 ## Express Architecture
 
+Express major version: {4 | 5} - determines whether asyncHandler is required
+
 ### Middleware Stack
-| Order | Middleware | Purpose |
-|-------|-----------|---------|
-| 1 | helmet | security headers |
-| 2 | cors | CORS |
-| 3 | webhook routes | raw body for signature validation |
-| 4 | express.json() | JSON body parsing |
-| 5 | auth | JWT validation |
-| 6 | routes | API handlers |
-| 7 | errorHandler | centralized error handling |
+| Order | Middleware | Scope (app / router) | Purpose |
+|-------|-----------|----------------------|---------|
+| 1 | helmet | app | security headers |
+| 2 | cors | app | CORS |
+| 3 | webhook routes | router | raw body and/or signature auth, outside JWT |
+| 4 | express.json() | app | JSON body parsing |
+| 5 | auth | router mount | JWT validation |
+| 6 | routes | router | API handlers |
+| 7 | errorHandler | app, last | centralized error handling |
 
 ### Router Structure
-| Router | Mount Path | Endpoints |
-|--------|-----------|-----------|
+| Router | Mount Path | Endpoints | Auth |
+|--------|-----------|-----------|------|
 
 ### Validation Schemas
-[Zod schemas per endpoint]
+| Endpoint | body / query / params / headers | Failure status |
+|----------|---------------------------------|----------------|
+
+### Error Mapping
+| Domain error | Status |
+|--------------|--------|
+
+### Shutdown
+[readiness flip, drain delay, hard-stop timer, resources released]
 ```
 
 ## Avoid

@@ -121,6 +121,8 @@ catch (e) { await qr.rollbackTransaction(); throw e; }
 finally { await qr.release(); }
 ```
 
+A nested `startTransaction()` on the same runner emits a `SAVEPOINT`: catching the inner failure and calling `rollbackTransaction()` returns to the savepoint and lets the outer transaction commit. Use it only when a non-critical side write (audit row, denormalised view) must not lose the main write - and do not rethrow from the inner catch, or the outer rolls back anyway.
+
 ### Batch Operations
 
 ```typescript
@@ -132,18 +134,38 @@ await this.repo.createQueryBuilder().update(Order)
   .execute();
 ```
 
-Bulk inserts via `createQueryBuilder().insert()` skip `@BeforeInsert`/`@AfterInsert` listeners.
+`createQueryBuilder().insert()` / `.update()` skip **all** entity listeners and subscribers - `@BeforeInsert`, `@BeforeUpdate`, and `@UpdateDateColumn` alike. When a listener must run, use `save()` and build rows with `manager.create(Entity, {...})`: listeners are methods on the entity instance, so a plain object literal passed to `save()` silently skips them too. `save({ chunk, reload: false, transaction: false })` cuts the per-entity round trips; keep chunks under the 65,535 bind-parameter cap.
 
-### Pagination
+### Pagination With a Collection Join
+
+Paginating while joining a `@OneToMany` is the most common TypeORM performance bug, and the naive form is silently wrong:
 
 ```typescript
-findPaginated(page: number, pageSize: number) {
-  return this.repo.findAndCount({
-    skip: (page - 1) * pageSize, take: pageSize,
-    order: { createdAt: "DESC" }, relations: ["items"],
-  });
-}
+// Bad - `limit`/`offset` page the joined CARTESIAN rows, so a page holds < pageSize orders
+qb.leftJoinAndSelect("order.items", "item").limit(50);
+
+// Bad - `skip`/`take` is correct-by-default but wraps the query in a DISTINCT subquery over
+// the root ids; sorting by a joined or computed column then emits one row per item and the
+// page comes back short. getManyAndCount() counts DISTINCT ids, so the total looks right.
+qb.leftJoinAndSelect("order.items", "item").orderBy("item.price", "DESC").skip(0).take(50);
+
+// Good - two phases: page the roots with no collection join, then hydrate those ids unbounded
+const ids = (await this.repo.createQueryBuilder("order")
+  .select("order.id", "id").where(...)
+  .orderBy("order.createdAt", "DESC").addOrderBy("order.id", "DESC")   // unique tiebreaker, or pages overlap
+  .limit(50).offset(off).getRawMany<{ id: string }>()).map(r => r.id);
+
+const rows = await this.repo.find({ where: { id: In(ids) }, relations: ["items"] });
+// `In()` does not preserve order - restore phase 1's ordering explicitly
+const byId = new Map(rows.map(r => [r.id, r]));
+const page = ids.map(id => byId.get(id)!);
 ```
+
+`relationLoadStrategy: "query"` (TypeORM 0.3, per-query or per-DataSource) loads relations as separate queries instead of one join - it removes the cartesian blow-up and the DISTINCT wrapper entirely, at the cost of one extra round trip per relation. Prefer it over hand-rolling two phases unless the collection must appear in the `WHERE` or the `ORDER BY`.
+
+Aggregates: `getManyAndCount()` does not survive `GROUP BY` - its count query counts grouped rows. Run an explicit `COUNT(*)` over the filtered subquery instead. `orderBy()` is not parameterised, so a user-selectable sort column must come from a fixed whitelist map.
+
+Streaming a large export: `qb.stream()` on a dedicated `QueryRunner`, ordered by a stable key - never `OFFSET` paging over hundreds of thousands of rows.
 
 ### Connection Pooling
 
@@ -157,10 +179,12 @@ See `node-migration-safety` for commands, deploy ordering, and zero-downtime DDL
 
 ## Edge Cases
 
-- **QueryRunner transactions**: load relations via `qr.manager.findOne(...)` - the default repository uses a different connection.
-- **Decimal columns**: some drivers return strings; parse with `parseFloat` or use `decimal.js` for arithmetic.
+- **QueryRunner transactions**: load relations via `qr.manager.findOne(...)` - the default repository uses a different connection, so it sees pre-transaction state and takes no lock.
+- **Decimal columns**: `pg` returns `numeric` as a **string**, and `COUNT`/`SUM` come back as strings too. Never `parseFloat` a money value - it is the float error the `decimal` column exists to prevent. Aggregate in SQL, and use `decimal.js` (or a `ValueTransformer`) at the boundary; transformers do not apply to bound parameters, so serialise those yourself.
 
 ## Output Format
+
+When authoring, emit this block plus the entity and query code it describes. When reviewing or diagnosing, the consuming workflow owns the finding envelope (label, severity, `file:line`; invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise); emit one finding per deviation and use the tables below for the corrected target state. Name any entity referenced but not visible in the input rather than inventing its columns.
 
 ```
 ## TypeORM Design
@@ -174,11 +198,14 @@ See `node-migration-safety` for commands, deploy ordering, and zero-downtime DDL
 |------|--------|
 
 ### Repository Methods
-| Method | Query Type | Relations Loaded | Transaction |
-|--------|-----------|------------------|-------------|
+| Method | Query Type | Relations Loaded | Pagination | Transaction {none / callback / QueryRunner} |
+|--------|-----------|------------------|------------|---------------------------------------------|
+
+### Money and Numeric Handling
+[Column types, where arithmetic happens, string-boundary conversions]
 
 ### Migrations
-[Migration file names and what they create]
+[Migration file names and what they create - commands and ordering per `node-migration-safety`]
 ```
 
 ## Avoid
@@ -189,3 +216,6 @@ See `node-migration-safety` for commands, deploy ordering, and zero-downtime DDL
 - Unbounded connection pool
 - Leaked `QueryRunner` (missing `finally release()`)
 - Enqueuing jobs inside `dataSource.transaction` (fires before commit)
+- `parseFloat` on a `decimal`/`numeric` column
+- `limit`/`offset` on a query that joins a collection, and `getManyAndCount()` over a `GROUP BY`
+- Interpolating a user-supplied sort column into `orderBy()`

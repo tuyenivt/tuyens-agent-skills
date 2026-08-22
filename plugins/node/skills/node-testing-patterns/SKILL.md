@@ -23,8 +23,10 @@ user-invocable: false
 - TypeScript in tests: no `any`, typed mocks, typed assertions
 - Each test independent: no shared mutable state
 - Real PostgreSQL via Testcontainers for integration; never SQLite
-- Prefer DI overrides for mocking over `jest.mock()`
+- Prefer DI overrides for mocking over `jest.mock()`. `jest.mock()` is hoisted to the top of the file regardless of where it is written, so it silently applies to every test in that file - including e2e ones. Set `clearMocks` and `restoreMocks` in the Jest config so spies never leak across tests
 - Test names state behavior: "should return 201 when order is created"
+- Layer boundaries: unit mocks the DB, e2e and integration both use a **real** database. E2e drives HTTP through the app and asserts status plus response shape; integration calls the service or repository directly and asserts persisted rows
+- Runner: run through the project's package manager script (`npm test` / `pnpm test` / `yarn test` / `bun run test`) - never a bare runner binary
 
 ## Patterns
 
@@ -68,14 +70,19 @@ describe("OrderService", () => {
 
 ### NestJS E2E Testing
 
+E2e runs against the real database from the Testcontainers section below, and must mirror `main.ts`'s pipe configuration exactly - a pipe that differs from production tests a system that does not ship. Override the auth guard rather than removing it, or mint a real token from the app's own `JwtService` so the 401 cases still assert something.
+
 ```typescript
 describe("Orders API (e2e)", () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideGuard(JwtAuthGuard)                       // or keep it real and mint a token
+      .useValue({ canActivate: (ctx) => { ctx.switchToHttp().getRequest().user = testUser; return true; } })
+      .compile();
     app = module.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true }));   // same options as main.ts
     await app.init();
   });
 
@@ -110,20 +117,24 @@ it("idempotent payment returns 200 on replay", async () => {
 let container: StartedPostgreSqlContainer;
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer().start();
-  process.env.DATABASE_URL = container.getConnectionUri();
+  // Pin the tag - an unpinned image drifts from the CI/production major version
+  container = await new PostgreSqlContainer("postgres:16-alpine").start();
+  process.env.DATABASE_URL = `${container.getConnectionUri()}?connection_limit=5`;
   execSync("npx prisma migrate deploy", { env: process.env });
 }, 60_000);
 
 afterAll(() => container.stop());
 
-// Per-test isolation: truncate mutated tables. Raw BEGIN/ROLLBACK does NOT isolate -
-// PrismaClient pools connections, so BEGIN and the next query may run on different connections.
-afterEach(() => prisma.$executeRawUnsafe(`TRUNCATE "Order", "OrderItem" RESTART IDENTITY CASCADE`));
+// Per-test isolation: truncate mutated tables in beforeEach, not afterEach - a crashed or
+// filtered-out test leaves rows behind, and reset-on-entry also gives you a guaranteed-empty table.
+// Raw BEGIN/ROLLBACK does NOT isolate: PrismaClient pools connections, so BEGIN and the
+// next query may run on different connections.
+beforeEach(() => prisma.$executeRawUnsafe(`TRUNCATE "Order", "OrderItem" RESTART IDENTITY CASCADE`));
 ```
 
-- Prisma: `prisma migrate deploy` on the container
-- TypeORM: `synchronize: true` only in test config
+- Prisma: `prisma migrate deploy` on the container. TypeORM: `synchronize: true` only in test config - and never when a migration carries hand-written SQL (partial indexes, extensions), which `synchronize` silently drops
+- Start the container once in `globalSetup`, not per spec file, and give each Jest worker its own schema inside it (`JEST_WORKER_ID` in the `search_path`); dropping the container per file multiplies a 10-30s startup by the file count
+- Set `connection_limit` on the test URL - `maxWorkers` x the default pool exhausts a small container's `max_connections` and reads as flakiness
 
 ### Test Data Factories
 
@@ -186,23 +197,30 @@ await request(app).post("/webhooks/stripe").set("stripe-signature", "x").send(pa
 
 ## Edge Cases
 
-- **Testcontainers on CI**: startup 10-30s; set `beforeAll` timeout >=60s. No Docker on CI -> shared DB with per-test truncation and non-overlapping schemas per worker.
+- **Testcontainers on CI**: startup 10-30s; set `beforeAll` timeout >=60s. No Docker on CI -> shared DB, one schema per Jest worker (`JEST_WORKER_ID`) with `search_path` set per connection, plus a run-scoped prefix so concurrent CI jobs on the same instance cannot truncate each other. Drop the schemas in `globalTeardown`.
 - **Port conflicts**: pass the app instance to Supertest, or `app.listen(0)` for an OS-assigned port.
-- **Flaky tests**: usually shared rows or in-memory singletons; reset in `beforeEach`, not `beforeAll`.
-- **BullMQ**: mock the queue, assert on `queue.add()`; do not run real workers.
+- **Flaky tests**: usually shared rows or in-memory singletons; reset in `beforeEach`, not `beforeAll`. Triage by symptom - passes with `--runInBand` means order dependence, fails only with `--randomize` means a hidden ordering assumption, hangs means an unclosed handle (`--detectOpenHandles`).
+- **BullMQ**: on the producer side mock the queue and assert on `queue.add()`. To exercise processor logic, register the `@Processor` class as a plain provider and call `process(job)` with a mock `Job` - never import `BullModule`, which is what opens the Redis socket. Do not run a real Worker for handler logic. The one exception is broker behaviour itself - `attempts` / `backoff` exhaustion, `lockDuration` stall redelivery, DLQ drain - which cannot be observed without a broker: put those in their own file against Testcontainers Redis, with backoff delays overridden to CI-viable values.
+- **Snapshots**: on a response containing generated ids or timestamps, `toMatchObject` with property matchers - a raw `toMatchSnapshot()` re-baselines on every run.
 
 ## Output Format
 
+When planning or authoring, emit this block plus the test and setup code it describes. When reviewing existing tests, the consuming workflow owns the finding envelope (label, severity, `file:line`; invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise); emit one finding per anti-pattern and skip the plan tables.
+
 ```
 ## Test Plan
+
+### Infrastructure
+| Lane | Database | Provisioning | Isolation | Runner command |
+|------|----------|--------------|-----------|----------------|
 
 ### Unit Tests
 | Test | Service Method | Mocks | Assertions |
 |------|---------------|-------|------------|
 
 ### E2E Tests
-| Test | Endpoint | Method | Status | Assertions |
-|------|----------|--------|--------|------------|
+| Test | Endpoint | Method | Status | Auth | Assertions |
+|------|----------|--------|--------|------|------------|
 
 ### Integration Tests
 | Test | Database | Setup | Assertions |
@@ -211,7 +229,7 @@ await request(app).post("/webhooks/stripe").set("stripe-signature", "x").send(pa
 ### Coverage Targets
 - Service layer: {count} unit tests
 - API layer: {count} e2e tests
-- Repository layer: {count} integration tests
+- Persistence layer: {count} integration tests
 ```
 
 ## Avoid

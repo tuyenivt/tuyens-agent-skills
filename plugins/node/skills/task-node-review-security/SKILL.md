@@ -24,14 +24,14 @@ Stack-specific delegate of `task-code-review-security`. Names NestJS Guards / Pa
 
 **Not for:** performance (`task-node-review-perf`), general review (`task-node-review`).
 
-**Depth.** Always full. Security has cliff-edged consequences (auth bypass, RCE); scope by file, not by depth.
+**Depth.** This lens always runs every step - security has cliff-edged consequences (auth bypass, RCE), so it scopes by file, not by depth. A depth argument from the user or a parent changes nothing about what runs; pass `depth: deep` to the report writer, whose enum is `standard | deep` and has no `full`.
 
 ## Severity Rubric
 
 | Severity     | Definition                                                                                                                                              |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Critical** | Unauth RCE, auth bypass, mass exfiltration, working SQLi, secrets/signing keys in source, prototype pollution reaching privileged path. Blocks merge.   |
-| **High**     | Authenticated priv-esc, IDOR on sensitive data, SSRF to metadata/internal, mass assignment of privilege fields, missing authz on user-data endpoints.   |
+| **Critical** | Unauth RCE, auth bypass, mass exfiltration, working SQLi, secrets/signing keys in source, prototype pollution reaching privileged path, credentials stored under a fast or unsalted hash, path traversal reaching an arbitrary filesystem write. Blocks merge. |
+| **High**     | Authenticated priv-esc, IDOR on sensitive data, SSRF to metadata/internal, mass assignment of privilege fields, missing authz on user-data endpoints, no brute-force control on a credential endpoint. |
 | **Medium**   | Hardening gap with mitigating control elsewhere, missing field constraints, weak rate limit on non-critical endpoint, debug exposure on non-prod.       |
 | **Low**      | Defense-in-depth, dependency advisory below actively-exploited threshold, hardening without concrete current attack.                                    |
 
@@ -45,21 +45,25 @@ Mirrors `task-code-review-security`:
 | `/task-node-review-security <branch>` | `<branch>` vs its base (3-dot)                                                |
 | `/task-node-review-security pr-<N>`   | PR head in local branch `pr-<N>` (user fetches first)                         |
 
-When invoked as a subagent of `task-code-review-security`, Step 2 is skipped and pre-read artifacts are reused.
+`task-node-review` spawns this workflow as its `+Sec` subagent; `task-code-review-security` routes to it rather than embedding it. As a subagent, Step 2 is skipped and pre-read artifacts are reused, and Step 10 takes its subagent branch.
 
 ## Workflow
 
-### Step 1 - Confirm Stack and Detect Framework
+### Step 1 - Load Behavioral Principles and Confirm Stack
 
-Use skill: `stack-detect` to confirm Node.js / TypeScript. If invoked as a delegate (parent already detected), accept pre-confirmed stack. If not Node, stop and route to `/task-code-review-security`.
+Use skill: `behavioral-principles` first, before any other delegation. Then use skill: `stack-detect` to confirm Node.js / TypeScript; if invoked as a delegate (parent already detected), accept the pre-confirmed stack. If not Node, stop and route to `/task-code-review-security`.
 
 Detect framework: NestJS (`nest-cli.json` + `@nestjs/*`) vs Express. Record `Framework: NestJS | Express | mixed`. Steps branch on this where idioms differ.
 
 ### Step 2 - Resolve the Diff Under Review
 
-Use skill: `review-precondition-check` with the user's argument. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip entirely as a subagent when parent passes the handle.
+Use skill: `review-precondition-check` with the user's argument; forward `--base <branch>` when passed. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Also capture `base_sha` / `head_sha` via `git rev-parse` on those refs - the writer runs no git of its own. Skip entirely as a subagent when the parent passes the handle.
 
 If `review-precondition-check` fails fast, surface verbatim and stop. Never run state-changing git from this workflow.
+
+**Re-review gate (standalone only).** The handle's `prior_checkpoint` is keyed to `review-<branch>.md`, the general review's report - not this lens's. Check for `review-security-<branch>.md` yourself, sanitizing `branch` the way the writer does (`/` and any character outside `[A-Za-z0-9_-]` becomes `-`). If it exists with valid frontmatter and its `head_sha` equals the current head, print `No new commits on <branch> since prior security review at <sha_short>. Prior report unchanged.` and stop without writing. Otherwise `round` = prior + 1, and pass its `head_sha` as `prior_head_sha`. No such file, or one whose frontmatter is missing or invalid -> `round: 1`, no `prior_head_sha`; that is the common path and it is not an error.
+
+**The reviewable surface is the repo at `head_ref`, not the diff.** Step 3 names files to open whether or not they changed; read them. `not verifiable` is for a file you genuinely could not read - absent, or outside the checkout a parent handed you - never for one that merely sits outside the diff. Note each as you go; they populate the report's `Not verifiable from this diff` block, and they are the reason `Overall Posture` may be `Clean (partial coverage)` rather than `Clean`.
 
 ### Step 3 - Read the Security Surface
 
@@ -76,20 +80,29 @@ When the diff removes a guard or relaxes auth, `git log -p` prior revision to co
 
 ### Step 4 - OWASP Triage (Node Lens)
 
-Triage pass only. One verdict per category (`yes` / `no signal in diff`). Findings go in Steps 5-9; do not duplicate here.
+Triage pass only. Findings go in Steps 5-9; do not duplicate here. One verdict per category:
+
+| Verdict | Meaning |
+| ------- | ------- |
+| `finding` | The diff carries this risk and Steps 5-9 raise it |
+| `clean` | The diff exercises this category and the control is correct - name it (`RolesGuard + tenant-scoped findFirst`) |
+| `no signal in diff` | The diff neither exercises nor affects this category |
+| `not verifiable` | The category depends on a file you could not read at `head_ref` - carry it to the report's `Not verifiable` block |
+
+`clean` is the verdict a well-built PR earns; using `no signal in diff` for a diff that visibly adds two guards states something false and erases the reviewer's actual work.
 
 | Risk                          | Node-specific check                                                                                                                                       |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Broken Access Control         | Every endpoint declares authz: `@UseGuards(AuthGuard('jwt'), RolesGuard)` + `@Roles(...)` or route-level `requireAuth` + `requireRole`. Empty = finding.  |
 | Identification & Auth Failures | Hashing algorithm/cost, rate limit on auth routes, token lifetime/rotation, session cookie flags (depth in Step 5).                                      |
-| Injection                     | Prisma raw via tagged template `$queryRaw` parameterized; `$queryRawUnsafe(string)` not. TypeORM `repository.query(sql, params)` or QB `:name` params.    |
+| Injection                     | Prisma raw via tagged template `$queryRaw` parameterized; `$queryRawUnsafe(string)` not. TypeORM `repository.query(sql, [positional])` or QueryBuilder `:name` params.  |
 | Cryptographic Failures        | `bcrypt` (cost >=10) or `argon2`. Never `md5`/`sha1` for auth. JWT signing key from env, not hardcoded.                                                   |
 | Security Misconfiguration     | `helmet()` applied; CORS origin allowlist (not `*` for credentialed); Swagger gated/disabled in prod.                                                     |
-| SSRF                          | `fetch`/`axios` with user-controlled URL validates host against allowlist; rejects RFC1918, link-local, metadata pre-request.                             |
+| SSRF                          | User-controlled outbound URL: the check must bind to the **resolved IP** at connect time (custom `Agent` / `lookup`), rejecting RFC1918, link-local, and metadata. Validating the hostname then calling `fetch(rawUrl)` re-resolves and does not defeat rebinding. |
 | XSS                           | NestJS auto-escapes JSON; Handlebars/EJS `<%-` flagged; Express raw HTML inspected.                                                                       |
 | Insecure Design               | Default-deny: NestJS `APP_GUARD` global; Express top-level `requireAuth` before route registration.                                                       |
 | Vulnerable Components         | `npm/pnpm/bun audit` clean for High/Critical; Renovate/Dependabot active.                                                                                 |
-| Data Integrity Failures       | `eval` / `new Function` / `vm2` flagged - any occurrence critical. `Object.assign(target, userInput)` = prototype pollution.                              |
+| Data Integrity Failures       | `eval` / `new Function` / `vm2` flagged - any occurrence critical. `Object.assign(target, userInput)` = mass assignment, and reassigns the target's own prototype via `__proto__`; a recursive merge (`lodash.merge`) is what pollutes `Object.prototype` process-wide. |
 | Logging & Monitoring          | Logger never logs `password`/`token`/`authorization`/`cookie`. `@Exclude()` on sensitive fields. Sentry `beforeSend` strips PII.                          |
 
 ### Step 5 - Authentication
@@ -104,14 +117,14 @@ Triage pass only. One verdict per category (`yes` / `no signal in diff`). Findin
 **NestJS:**
 
 - [ ] **JWT signing**: HS256 secret in env/Vault; RS256 key pair preferred cross-service; `JwtModule.register` uses `secretOrKeyProvider` for rotation
-- [ ] **`alg: none` rejected**: `JwtStrategy` declares `algorithms: ['HS256']` (or `['RS256']`) explicitly
+- [ ] **Algorithm allowlist**: `JwtStrategy` declares `algorithms: ['HS256']` (or `['RS256']`) explicitly. On current `jsonwebtoken` this is what blocks RS256->HS256 confusion; `alg: none` is already rejected whenever a key is supplied, so do not write the finding as an `alg: none` bypass
 - [ ] **`issuer` / `audience`** verified in `JwtStrategy` options, not just signature
 - [ ] **Access token lifetime** short (5-15 min); refresh rotation with revocable denylist (track `jti` in DB/Redis)
 - [ ] **`AuthGuard('jwt')` wired correctly**: missing-token returns 401
 
 **Express:**
 
-- [ ] **JWT verification**: `jsonwebtoken.verify(token, key, { algorithms: ['HS256'] })` - allowlist **mandatory**; without it some token shapes accept `alg: none`. Prefer `jose.jwtVerify(token, key, { algorithms, issuer, audience })` (stricter defaults)
+- [ ] **JWT verification**: `jsonwebtoken.verify(token, key, { algorithms: ['HS256'] })` - allowlist **mandatory**. On current versions it is what blocks RS256->HS256 confusion, where a public key or certificate is replayed as an HMAC secret; `jsonwebtoken < 9` additionally accepted `alg: none` without it. Keep the rule unconditional. Prefer `jose.jwtVerify(token, key, { algorithms, issuer, audience })` (stricter defaults)
 - [ ] **Session cookies**: `httpOnly: true`, `secure: true` in prod, `sameSite: 'lax'|'strict'`, signed
 
 ### Step 6 - Authorization
@@ -140,20 +153,20 @@ Triage pass only. One verdict per category (`yes` / `no signal in diff`). Findin
 - [ ] **Every `@Post`/`@Put`/`@Patch`** declares a DTO class - never `@Body() body: any` or `Record<string, unknown>`
 - [ ] **Field constraints**: `@IsString`, `@IsEmail`, `@MinLength`, `@MaxLength`, `@Matches`, `@IsInt`, `@Min`, `@Max` on every user-supplied field
 - [ ] **No privilege fields in input DTOs**: `role`, `isAdmin`, `ownerId`, `userId`, `tenantId`, `verified` - server-set only; admin path uses separate DTO
-- [ ] **`@Exclude()` on response models** for `passwordHash` etc.; `ClassSerializerInterceptor` enforces
+- [ ] **Sensitive columns never reach the wire.** `@Exclude()` + `ClassSerializerInterceptor` only works on an instance of a decorated class - a Prisma model is a plain object and serializes every field regardless, so on Prisma the control is `select` / `omit` at the query, or `plainToInstance(UserDto, row, { excludeExtraneousValues: true })` with `@Expose()` on each field - class-transformer exposes everything by default, so a bare `plainToInstance` copies `passwordHash` straight onto the instance
 - [ ] **`ParseIntPipe`/`@Transform`** on numeric path params (default string)
 
 **Express (Zod or class-validator):**
 
 - [ ] **Zod schemas** for body/query/params with `.strict()` (rejects unknown); validation middleware 400s on failure
 - [ ] **No `req.body` passthrough**: `prisma.user.create({ data: req.body })` is mass-assignment - whitelist: `data: { name: parsed.name, email: parsed.email }`
-- [ ] **`.strict()` (or documented `.passthrough()`)**: Zod silently strips unknown by default; prefer `.strict()` for security-sensitive
+- [ ] **`.strict()` on anything that feeds a write**: `z.object()` strips unknown keys by default, so the parse *result* is safe - the mass-assignment vector is passing `req.body` onward instead of the result. `.strict()` rejects rather than strips, which surfaces the caller's mistake. `.passthrough()` re-opens the vector and is not acceptable on a write path however well documented; a partner that must send extra fields gets them declared, not passed through. (Zod 4 spells these `z.strictObject()` / `z.looseObject()`.)
 - [ ] **express-validator** alternative: `validationResult(req).isEmpty()` checked at top of every handler
 
 **Both:**
 
-- [ ] **File uploads**: type by content (`file-type` magic bytes), not `mimetype` header; per-file size limit (`multer({ limits: { fileSize: ... } })`); stored outside webroot, `Content-Disposition: attachment` on serve; filename sanitized (`path.resolve(base, name).startsWith(base)`); virus scan or accepted-risk documented
-- [ ] **Path traversal**: `path.resolve(baseDir, userInput)` + `startsWith(baseDir)` check; never `path.join` without normalization
+- [ ] **File uploads**: type by content (`file-type` magic bytes), not `mimetype` header; per-file size limit (Express `multer({ limits: { fileSize } })`; NestJS `FileInterceptor('file', { limits: { fileSize } })`); stored outside webroot, `Content-Disposition: attachment` on serve; filename sanitized with the base-plus-separator check in the next bullet, never a bare prefix match; virus scan or accepted-risk documented
+- [ ] **Path traversal**: `path.resolve(baseDir, userInput)` then `startsWith(baseDir + path.sep)` - without the separator, `/var/uploads-evil` passes a `/var/uploads` prefix check. `path.join` normalizes but does not constrain to a base, so it is not the control
 - [ ] **Process exec**: `child_process.execFile([...args])` arg array, never `exec(string)` or `exec(\`... ${userInput} ...\`)`; allowlist binaries; never `shell: true` with user input
 
 ### Step 8 - Common Node.js Vulnerability Patterns
@@ -162,10 +175,10 @@ Canonical "build it right" patterns: Use skill: `node-security-patterns` (JWT si
 
 Surface-specific extras not covered by the atomic:
 
-- [ ] **`JSON.parse` bounded** by body-parser limit (`express.json({ limit: '100kb' })`); unbounded = DoS
+- [ ] **Body size bounded**: body-parser defaults to `100kb`, so a bare `express.json()` is not the finding - a raised `limit`, or `express.raw()` / `express.text()` mounted without one, is (NestJS: `bodyParser` options on the adapter)
 - [ ] **`require(userInput)` / dynamic `import(userInput)`** = RCE (delegate canonical handling to `node-security-patterns`)
 - [ ] **`fs.writeFile`/`fs.unlink` with user input** without path-base check = FS tampering
-- [ ] **Raw SQL injection**: `$queryRawUnsafe(\`...${userInput}\`)` (Prisma) or `repository.query(\`...${userInput}\`)` (TypeORM) = critical. Use tagged template or `:param`
+- [ ] **Raw SQL injection** = critical. Prisma: the `$queryRaw\`...\`` tagged template parameterizes; `$queryRawUnsafe(string)` does not. TypeORM: `repository.query(sql, params)` binds **positionally** (`$1` on pg, `?` on mysql) - `:name` is QueryBuilder-only (`.where('x = :name', { name })`) and passing it to `.query()` leaves the statement unbound
 - [ ] **SSTI**: rendering Handlebars/EJS/Nunjucks with user-controlled template strings = RCE; templates from disk only
 - [ ] **Debug exposure**: NestJS Swagger gated behind auth in prod or skipped (`if (NODE_ENV !== 'production')`)
 - [ ] **BullMQ payloads**: validate with Zod/class-validator inside processor when queue is reachable from untrusted input
@@ -181,56 +194,92 @@ Surface-specific extras not covered by the atomic:
 - [ ] **DB backups encrypted**; access controlled
 - [ ] **Secrets**: from Vault/AWS SM/GCP SM/Doppler; `.env` gitignored; access via typed `ConfigService` so missing-at-startup fails fast
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+**One construct, one finding.** A construct carrying several defects (a handler that is both mass-assignable and unauthorized) publishes once at the worst severity, naming the others in its Issue line. When an exploit chains two constructs, file it once at the point the fix lands and name the other in the attack scenario.
+
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary.
+
+Its `Label` wins over the severity mapping: a `### High` finding tagged `[Recommend]` because it is pre-existing and untouched is the correct output, not a contradiction. Subagent runs skip this step - the parent verifies the merged set once.
 
 ### Step 10 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`. Write the assembled review to file and print the confirmation line.
+**Subagent mode:** if invoked by `task-node-review`, do not write a file - `review-report-writer` is invoked only by the workflow that owns the report. Return exactly four things, and this list supersedes any generic "return your Output Format" instruction in the parent's prompt:
+
+1. The findings, each carrying its `[Must]` / `[Recommend]` label and its `file:line`
+2. `## Next Steps`, tagged and ordered, for the parent to re-sort into its own
+3. `## Recommendations` (the parent's Summary has no security fields, so anything Summary-shaped that still matters goes here as a bullet). The `Not verifiable` items travel in Next Steps only - do not also list them here
+4. The `## OWASP Triage` table only when a row is `finding` or `not verifiable` - a table of eleven `clean` / `no signal` rows is not worth the parent's report
+
+Omit the Summary block - the parent owns it. Skip the rest of this step.
+
+Standalone: use skill: `review-report-writer` with `report_type: review-security` and every field it marks required:
+
+- `report_body` (the assembled Markdown), `branch`, `base_ref`, `head_ref` - from the precondition handle
+- `base_sha` / `head_sha` captured in Step 2 via `git rev-parse`
+- `scope: +sec`, `depth: deep` (this lens always runs full depth; `full` is not a valid `depth` value), `stack = node-typescript`, `mode: full`
+- `round` from Step 2's re-review gate, plus `prior_head_sha` when round > 1
+
+Write the assembled review to file and print the confirmation line.
 
 ## Output Format
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+Every finding carries exactly one label: `[Must]` (Critical / High) or `[Recommend]` (Medium / Low), unless the verify pass returned a different `Label`, which wins. No other label is written.
 
 ```markdown
 ## Node.js Security Review Summary
 
 - **Stack Detected:** Node.js <version> / TypeScript <version>
 - **Framework:** NestJS <version> | Express <version> | mixed
+- **ORM:** Prisma <version> | TypeORM <version>
+- **Target:** <base_ref>...<head_ref>
 - **Auth:** JWT (jsonwebtoken) | JWT (jose) | NestJS Passport JWT | NestJS Passport Local | Session (cookie) | Custom | Hybrid
 - **Authorization:** NestJS Guards | Express middleware | Custom
-- **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped (<F> false positive, <R> resolved by diff) _(omit the parenthetical when K is 0)_
+- **Overall Posture:** Clean | Issues Found - [<N> Critical / <N> High / <N> Medium / <N> Low] - append `(partial coverage)` to either whenever the `Not verifiable` block is non-empty
 
-[2-3 sentence assessment calling out Node-specific risks: missing `whitelist: true`, prototype pollution from `Object.assign(target, req.body)`, exposed Swagger in prod, `csurf` dep.]
+[2-3 sentence assessment calling out Node-specific risks: missing `whitelist: true`, prototype pollution from `Object.assign(target, req.body)`, exposed Swagger in prod, `csurf` dep. On a clean diff, say what the controls actually are rather than restating the verdict.]
 
 ## OWASP Triage
 
-| Category                  | Verdict                 |
-| ------------------------- | ----------------------- |
-| Broken Access Control     | yes / no signal in diff |
-| Identification & Auth Failures | yes / no signal in diff |
-| Injection                 | yes / no signal in diff |
-| Cryptographic Failures    | ...                     |
-| Security Misconfiguration | ...                     |
-| SSRF                      | ...                     |
-| XSS                       | ...                     |
-| Insecure Design           | ...                     |
-| Vulnerable Components     | ...                     |
-| Data Integrity Failures   | ...                     |
-| Logging & Monitoring      | ...                     |
+| Category                       | Verdict                                              | Basis                                    |
+| ------------------------------ | ---------------------------------------------------- | ---------------------------------------- |
+| Broken Access Control          | finding / clean / no signal in diff / not verifiable | [the control seen, or the file not in scope] |
+| Identification & Auth Failures | finding / clean / no signal in diff / not verifiable | [...]                                    |
+| Injection                      | finding / clean / no signal in diff / not verifiable | [...]                                    |
+| Cryptographic Failures         | finding / clean / no signal in diff / not verifiable | [...]                                    |
+| Security Misconfiguration      | finding / clean / no signal in diff / not verifiable | [...]                                    |
+| SSRF                           | finding / clean / no signal in diff / not verifiable | [...]                                    |
+| XSS                            | finding / clean / no signal in diff / not verifiable | [...]                                    |
+| Insecure Design                | finding / clean / no signal in diff / not verifiable | [...]                                    |
+| Vulnerable Components          | finding / clean / no signal in diff / not verifiable | [...]                                    |
+| Data Integrity Failures        | finding / clean / no signal in diff / not verifiable | [...]                                    |
+| Logging & Monitoring           | finding / clean / no signal in diff / not verifiable | [...]                                    |
+
+## Not verifiable
+
+_Controls that could not be confirmed because the file could not be read at `head_ref`. Not findings - each is a "check this separately" item, and together they are why the posture may read `Clean (partial coverage)`. Omit when everything was visible._
+
+- `main.ts` not in diff - global `ValidationPipe` options unconfirmed
+- `package.json` not in diff - no `pnpm audit` signal
 
 ## Findings
 
 ### Critical
 
-- **Location:** [file:line]
-- **Issue:** [vulnerability in Node terms - e.g., "CreateOrderDto lacks `whitelist: true`; client submits `{ ownerId: 999 }` and overrides server-assigned owner via mass assignment"]
-- **Attack scenario:** [pick one and label: (a) concrete exploit walkthrough; (b) "Regression risk: ..." for test/monitoring gaps; (c) "Topology-dependent: ..." for infra-flavored. Do NOT invent exploits when the realistic threat is regression or topology.]
-- **Severity rationale:** [tier] per rubric - [which clause applies]
-- **Fix:** [specific Node remediation with code - `ValidationPipe` config, `@Exclude()`, `@UseGuards(AuthGuard('jwt'))`, etc.]
+1. **[Must]** **Location:** [file:line - add `_(pre-existing)_` or `(unverified: <reason>)` when the verify pass returned one]
+
+   **Issue:** [vulnerability in Node terms - e.g., "the global `ValidationPipe` runs without `whitelist: true`, so `CreateOrderDto` accepts `{ ownerId: 999 }` and the client overrides the server-assigned owner"]
+
+   **Attack scenario:** [pick one and label: (a) concrete exploit walkthrough; (b) "Regression risk: ..." for test/monitoring gaps; (c) "Topology-dependent: ..." for infra-flavored. Do NOT invent exploits when the realistic threat is regression or topology.]
+
+   **Severity rationale:** [tier] per rubric - [which clause applies]
+
+   **Fix:** [specific Node remediation with code - `ValidationPipe` config, Prisma `omit`, `@UseGuards(AuthGuard('jwt'))`, etc. Several fixes on one construct become a numbered list here.]
 
 ### High / Medium / Low
 
-[Same structure. Omit sections with no findings. If all omitted, state "No security issues found."]
+[Same numbered-block structure; numbering continues across tiers. Omit sections with no findings. If all omitted, state "No security issues found."]
 
 ## Recommendations
 
@@ -238,32 +287,36 @@ The fence below delimits the template for display only - it is not part of the r
 
 ## Next Steps
 
-Tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat model). Map severity to intent: Critical / High -> `[Must]`; Medium / Low -> `[Recommend]`. Order: Must > Recommend.
+Tagged `[Implement]` (localized fix) or `[Delegate]` (cross-cutting hardening, dependency upgrade, threat model). Carry each finding's label. Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [action]
 2. **[Delegate]** [Recommend] [scope: dependencies] - [action]
 3. **[Implement]** [Recommend] file:line - [action]
 
-_Omit if no security issues found._
+_With no findings, this section still carries one `[Delegate]` item per `Not verifiable` row, each labelled `[Recommend]` - an unverified control is not a finding, so it never earns `[Must]`. Omit only when there are no findings and nothing was unverifiable._
 ```
 
 ## Self-Check
 
-- [ ] Stack confirmed; framework recorded; diff + log read once; prior revision consulted when guards/auth middleware removed (Steps 1-3)
-- [ ] OWASP triage: one verdict per category; findings not duplicated (Step 4)
+- [ ] `behavioral-principles` loaded first; stack confirmed; framework recorded; diff + log read once, SHAs captured via `git rev-parse`, re-review gate applied; prior revision consulted when guards/auth middleware removed (Steps 1-3)
+- [ ] OWASP triage: one verdict per category from the four-value enum, with its basis; findings not duplicated (Step 4)
 - [ ] Authn / authz drift sweep covered every new endpoint (Steps 5-6)
 - [ ] DTO / Zod validation, mass-assignment fields, `@Exclude()` / `whitelist` / `.strict()` confirmed (Step 7)
 - [ ] When touched: file upload, path traversal, exec, prototype pollution, `eval`, raw SQL, dynamic require, `rejectUnauthorized: false`, open redirect (Step 8)
-- [ ] Severity rubric applied consistently; every finding has attack scenario, regression-risk, or topology-dependent framing
-- [ ] Infra-scope items (CORS, rate limiting, helmet, debug exposure, hashing config, Sentry `beforeSend`, `npm audit`) noted as "could not verify from diff alone - flag for separate audit" when not visible
+- [ ] Data protection assessed: PII at rest, log redaction, secrets sourcing, TLS (Step 9)
+- [ ] Severity rubric applied consistently; every finding carries one label plus an attack scenario, regression-risk, or topology-dependent framing; one construct published one finding
+- [ ] `review-finding-verify` ran and its tally reached the Summary (or the subagent carve-out applied); its `Label` carried, overriding the severity mapping
+- [ ] Every control that could not be seen (CORS, rate limiting, helmet, debug exposure, hashing config, Sentry `beforeSend`, `npm audit`) recorded in `Not verifiable from this diff` and carried into Next Steps
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend
-- [ ] Report written via `review-report-writer`; confirmation printed (Step 10)
+- [ ] Step 10: standalone: every required writer field assembled (`depth: deep`, never `full`), report written, confirmation printed; subagent: labelled findings + Next Steps + Recommendations returned, no file written
 
 ## Avoid
 
 - Running state-changing git from this workflow (user runs fetches/checkouts)
 - Reporting vulnerabilities without an attack scenario - "input not validated" vs "attacker submits `{role:'admin'}` and gains admin via mass assignment because `whitelist: true` is missing"
-- Skipping clean OWASP categories - explicitly state `no signal in diff`
+- Skipping OWASP categories - every row gets a verdict, and a category the diff exercises correctly is `clean`, not `no signal in diff`
+- Reporting `Clean` when the files that carry the controls were never in scope - that is `Clean (partial coverage)`
+- Recommending `:name` parameters for TypeORM `repository.query`, or `@Exclude()` as the control on a Prisma model
 - Generic advice when a Node idiom applies (say "add `@UseGuards(AuthGuard('jwt'))`", not "add an auth check")
 - Suggesting `csurf` (deprecated) - recommend `csrf-csrf` or session-anti-CSRF
 - Suggesting `@Public()` or removing `requireAuth` as a fix for a failing auth-required test - fix the test
@@ -274,4 +327,4 @@ _Omit if no security issues found._
 - Approving `rejectUnauthorized: false` outside test fixtures
 - Approving Swagger UI / `/api-docs` exposed in any non-dev profile
 - Recommending `lodash.merge(target, req.body)` - prototype pollution vector
-- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.
+- Accepting `.passthrough()` on a write path because it was "documented"

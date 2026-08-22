@@ -25,7 +25,7 @@ Staff-level Node.js / NestJS / Express code review umbrella. Covers correctness,
 **Not for:**
 - Pre-implementation design (`task-node-implement`)
 - Single-error debug
-- New-system architecture (`task-design-architecture`)
+- New-system architecture (no existing code to review)
 - Single-scope reviews - delegate to `task-node-review-perf` / `-security` / `-observability` / `-reliability`
 
 ## Depth Levels
@@ -55,7 +55,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 - **+Sec:** file uploads (`multer`, `FileInterceptor`, `@UploadedFile()`), auth strategy / guard changes (`AuthGuard('jwt')`, `JwtStrategy`, `requireAuth`), DTO / Zod schema changes, raw SQL via `$queryRawUnsafe` / `repository.query`, secrets in env / config, BullMQ consuming user input, `Object.assign(target, req.body)`
 - **+Perf:** new Prisma / TypeORM migration, new ORM query (`findMany` / `find` / `createQueryBuilder`), new `include` / `relations`, new pagination, new endpoints with payloads, loops calling DB or HTTP, new `lru-cache` / Redis read paths
 - **+Obs:** new service / module, new external client (`axios.create`, `undici` Pool), new BullMQ producer / processor, logging config change (`pino` / `winston`), new `prom-client`, new lifecycle hook (`OnModuleInit`, `OnApplicationBootstrap`)
-- **+Rel:** new `axios` / `undici` / `fetch` client without an `AbortSignal.timeout`, new `opossum` / `cockatiel` / `p-retry` config, BullMQ processor without an idempotency check, unbounded `Promise.all` over a collection, missing `SIGTERM` / graceful-shutdown drain, dual write (`queue.add` / `stripe.charge` / `mailer.send` inside `$transaction`)
+- **+Rel:** new outbound client with no timeout of any form (`fetch` without `AbortSignal.timeout`, `axios.create` without `timeout`, `undici` without `bodyTimeout`), new `opossum` / `cockatiel` / `p-retry` config, BullMQ processor without an idempotency check, unbounded `Promise.all` over a collection, missing `SIGTERM` / graceful-shutdown drain, dual write (`queue.add` / `stripe.charge` / `mailer.send` inside `$transaction`)
 - **2+ categories → Full**
 
 ## Invocation
@@ -125,7 +125,7 @@ If `upstream` resolves to `<remote>/<branch>` form, split and run:
 git fetch <remote> <branch>
 ```
 
-No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, detached HEAD, no remote configured), skip the fetch silently. If `git fetch` fails (offline, auth, deleted remote branch), continue silently - this is a convenience, not a gate. After a successful fetch, re-resolve `current_head_sha = git rev-parse <head_ref>`.
+This updates `refs/remotes/<remote>/<branch>`, not the local branch. When `head_ref` is a local branch name, re-resolve against the tracking ref (`<remote>/<branch>`) rather than the local one, and re-read the Step 3 diff and log if the SHA moved - otherwise later phases score a stale range while the checkpoint records the new SHA. No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, detached HEAD, no remote configured), skip the fetch silently. If `git fetch` fails (offline, auth, deleted remote branch), continue silently - this is a convenience, not a gate. After a successful fetch, re-resolve `current_head_sha = git rev-parse <head_ref>`.
 
 **Step 3.5b - Compare checkpoints.**
 
@@ -137,6 +137,8 @@ No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, 
 | `prior_checkpoint.base_sha != current_base_sha`                        | `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round>.`       |
 | `prior_checkpoint.base_ref != base_ref`                                | `round = prior.round + 1`. Note in Summary: `Base ref changed since round <prior.round>.`           |
 | None of the above                                                       | `round = prior.round + 1`.                                                                          |
+
+Rows after the first are not exclusive - a rewritten history, an advanced base, and a changed base ref can all hold. Evaluate the no-op row first; if it does not fire, `round = prior.round + 1` and emit the Summary note for **every** row that holds.
 
 **Step 3.5c - Scope expansion handling.**
 
@@ -161,7 +163,7 @@ Surface the decision in Summary; if escalated, append `auto-escalated from Core;
 
 Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req <path>` file when passed, and `prior_checkpoint.report_path` when round > 1.
 
-Its `## Change Brief` block goes into the report verbatim, its `Requirement Source` and `Requirement Fit` lines into Summary, and its findings join the assembled set verified in Step 6.6. With no requirement source the Brief still renders, and the traceability block and its two Summary lines are omitted. Runs before Phase A - acceptance criteria decide what counts as a defect downstream - and the low-risk short-circuit never skips it.
+When a Phase 0 requirement finding and a later phase land on the same `file:line` for the same defect, publish once at the stronger label and cite the requirement in its Issue line. Its `## Change Brief` block goes into the report verbatim, its `Requirement Source` and `Requirement Fit` lines into Summary, and its findings join the assembled set verified in Step 6.6. With no requirement source the Brief still renders, and the traceability block and its two Summary lines are omitted. Runs before Phase A - acceptance criteria decide what counts as a defect downstream - and the low-risk short-circuit never skips it.
 
 ### Phase A - PR Risk Snapshot
 
@@ -170,7 +172,9 @@ Its `## Change Brief` block goes into the report verbatim, its `Requirement Sour
 
 Output risk level and blast radius before any findings.
 
-**Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth strategies / guards, middleware, API contracts, shared base classes, `app.module.ts` / `app.ts`, migrations), skip Phases C-E and produce a streamlined report: Summary (with the Phase A snapshot), the Phase 0 outputs (Change Brief, traceability, requirement findings), High-Impact Findings (Phase B), and Next Steps. Note the short-circuit in Summary.
+**Low-risk short-circuit:** if Risk Level is Low, no Blast Radius dimension other than User Scope is above Narrow, **and** the change does not touch architecture-relevant files (auth strategies / guards, middleware, API contracts, shared base classes, `app.module.ts` / `app.ts`, migrations), skip Phases C-E. User Scope alone does not block the short-circuit - a copy change is seen by everyone and still carries no system risk, which is exactly the case this exists for.
+
+The streamlined report is Summary (with the Phase A snapshot), the Phase 0 outputs, High-Impact Findings, `## Prior Round Reconciliation` when round > 1, and Next Steps. `## Architecture Notes`, `## Maintainability Notes`, `## Key Takeaways`, and `## Scope Reports` are omitted. Record the short-circuit on the Summary's `Notes:` line, and skip Step 5 - a short-circuited review runs Core only regardless of what Step 4 escalated.
 
 ### Step 4.5 - Re-evaluate Depth After Phase A
 
@@ -192,15 +196,15 @@ Apply atomic skills. Each owns the canonical patterns; this phase flags deviatio
 
 - **Test coverage finding (named, not buried).** PR adds logic without Jest coverage -> `[Recommend]`; escalate to `[Must]` when the change is critical path: auth (JWT / Passport / `AuthGuard`), authorization (guards / `requireAuth`), money / billing, multi-table writes, state machines, BullMQ mutators, migrations changing column semantics. Surface as a dedicated finding.
 
-**Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
+**Test files are reviewed for correctness of coverage, not craft.** Two findings are in scope: production logic in the diff that no test exercises (anchor it to the untested production `file:line`), and a test whose assertions cannot fail or no longer match the code they claim to check. Everything else about test code - style, structure, duplication, naming, performance - is out of scope; a passing test with awkward setup is not a finding.
 - **Event-loop blocking in request paths.** `fs.readFileSync` / `crypto.pbkdf2Sync` / large `JSON.parse` / catastrophic regex flagged (presence/absence here; depth - impact heuristic, `worker_threads`, `AbortSignal` - belongs to perf subagent).
-- **Validation strict-mode wired.** NestJS `app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))` in `main.ts`; Express Zod schemas use `.strict()`. Absence is a critical correctness + security gap.
+- **Validation strict-mode wired.** NestJS `app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))` in `main.ts`; Express Zod schemas reject unknown keys (`.strict()`, or `z.strictObject()` on Zod 4). Absence is a critical correctness + security gap.
 - **Authorization + IDOR.** Authn (guard / middleware) proves identity, not object access. Per-owner / per-tenant endpoints must scope at the repository: `where: { id, userId: user.sub }`, `tenantId` injected by middleware/extension.
 - **Response DTO field hygiene.** Compare the DTO against entity columns. Flag `passwordHash` / `mfaSecret` / `recoveryCodes` / `apiKey` / `webhookSecret` / `internalNotes` / `auditLog` / `isAdmin` / `internalCreatedBy` on the wire. Returning a Prisma model or TypeORM entity directly is `[Recommend]` regardless of current fields - a new sensitive column silently leaks later.
 - **HTTP `Idempotency-Key` on retry-prone POSTs.** `/payments`, `/orders`, `/refunds`, `/subscriptions`, `/webhooks` accept an `Idempotency-Key` header and dedupe via DB unique constraint or Redis `SET NX EX`. Distinct from BullMQ `jobId` - the HTTP key protects the client→server boundary.
 - **Multi-replica race safety.** Counters / balances / state transitions use DB locking (`SELECT ... FOR UPDATE`, Prisma `$queryRaw`, TypeORM `setLock('pessimistic_write')`) or optimistic version field, not in-process state.
 - **HTTP client sharing.** `axios.create()` / `undici` Pool shared at module level. Per-request instantiation breaks connection reuse.
-- **SSRF + edge middleware presence.** User-controlled values in outbound URLs flagged here; `helmet`, CORS allowlist, body size limits (`express.json({ limit })`) confirmed when app construction changes. Depth in security subagent.
+- **SSRF + edge middleware presence.** User-controlled values in outbound URLs flagged here; `helmet`, CORS allowlist, body size limits confirmed when app construction changes - body-parser already defaults to `100kb`, so a bare `express.json()` is not a finding; a raised limit or an unbounded `raw`/`text` parser is. Depth in security subagent.
 - **New ORM column with predicate use.** Any new Prisma `@db.*` / TypeORM column referenced in `where` / `orderBy` / `groupBy` has an index migration in the same PR, or an explicit "indexed later" note.
 - **Error handling.** NestJS `@Catch` filters cover validation / not-found / unauthorized / forbidden / unique-constraint consistently; Express has a 4-arg global error middleware. No `catch (e) { console.log(e) }` swallows; Express async handlers wrapped via `asyncHandler` or covered by global error middleware.
 
@@ -269,10 +273,12 @@ If scope is **Core only**, skip. For each extra scope, spawn one independent sub
 
 **Subagent prompt contract** - each must include:
 
-- The resolved review target (`base_ref`, `head_ref`) plus the pre-read diff and commit log (no re-running git)
-- The depth level
+- **The statement that it is running as a subagent of `task-node-review`.** Every lens branches on this to skip its precondition check, skip `review-finding-verify`, and not write a report file. Omit it and four competing report files land on disk.
+- The precondition handle plus `base_ref`, `head_ref`, `base_sha`, `head_sha`, and the pre-read diff, `--name-status`, and commit log (no re-running git)
+- The depth level, and the resolved scope
 - Pre-confirmed stack (Node / TypeScript) + framework (NestJS / Express / mixed) + ORM (Prisma / TypeORM)
-- Instruction to return findings in its own Output Format
+- Authorization to read unchanged files the diff touches, plus `package.json` - several lenses need the full manifest and the call sites a small diff reaches into
+- Instruction to return the payload its own **Subagent mode** clause enumerates. Do not instruct it to "return its Output Format" - each lens's subagent clause deliberately overrides that, and following it literally would return a Summary block this workflow discards.
 
 **Failure isolation:** if a subagent fails or times out, continue with the rest. Note the missing scope in Summary.
 
@@ -280,13 +286,17 @@ If scope is **Core only**, skip. For each extra scope, spawn one independent sub
 
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
 
-- **Deduplicate** cross-cutting findings (one entry citing all scopes that raised it)
-- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend`
-- **Preserve `file:line` citations**
-- **Order by intent**, not by scope
-- **Note missing scopes** in Summary as `Scope incomplete: <scope>`
-- **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by intent
-- **Preserve deep-only sections** returned by subagents (e.g., reliability's `Failure-Mode and Blast-Radius Map`) as their own section after Next Steps - they are not findings; the merge must not drop them
+**Findings** fold into `## High-Impact Findings`:
+
+- **Field mapping.** Each lens names its middle fields differently. Reliability's `Failure Mode` -> `Impact` and `Blast Radius` -> `System Risk`. Security's `Attack scenario` -> `Impact` and `Severity rationale` -> `System Risk`. Perf and observability return `Impact` only - derive `System Risk` from why the finding is systemic (shared pool, shared event loop, undiagnosable incident); if it is genuinely local, it is not a `[Must]`.
+- **Carry the lens's severity** into the finding's `Severity:` line. `[Must]` / `[Recommend]` is the merge key, but a Critical and a High both arriving as `[Must]` must stay distinguishable in the report.
+- **Deduplicate** cross-cutting findings into one entry whose `Scope:` line cites every scope that raised it.
+- **Strongest intent wins** when labels differ for the same finding: `Must` > `Recommend`.
+- **Preserve `file:line` citations**; **order by intent**, not by scope.
+
+**Everything else a lens returns** goes to `## Scope Reports`, verbatim under an `### +<scope>` heading: `## Recommendations`, observability's Surface Map, security's OWASP Triage and `Not verifiable from this diff`, reliability's `Resilience Libraries:`, and every deep-only section (reliability's `Failure-Mode and Blast-Radius Map`, perf's `Capacity Guidance` and `Load Plan`). These are not findings and the merge must not drop them.
+
+**Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by intent. **Note missing scopes** in Summary as `Scope incomplete: <scope>`.
 
 ### Step 6.6 - Verify Findings (second pass)
 
@@ -304,7 +314,7 @@ Skip on round 1. Otherwise use skill: `review-prior-findings-reconcile` with:
 
 The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
 
-Fold any `Still open` rows into `## Next Steps` as `(open since round <prior.round>)`-suffixed entries, ordered by severity alongside this round's new findings. Do not emit a standalone "Carry-Over Open Items" section.
+`Still open` and `Needs re-check` rows are unresolved: carry both into `## High-Impact Findings` at their prior label, suffixed `(open since round <prior.round>)`, and give each a matching `## Next Steps` entry ordered alongside this round's findings. They arrive already labelled and do not pass through Step 6.6, so exclude them from its tally. Do not emit a standalone "Carry-Over Open Items" section.
 
 ### Step 7 - Write Report
 
@@ -332,18 +342,19 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Summary
 
-- **Assessment:** Approve | Request Changes | Discuss
+- **Assessment:** Approve | Request Changes | Discuss _(any `[Must]` -> Request Changes; no `[Must]` -> Approve; Discuss only when the change is sound but a stated tradeoff needs an owner's call)_
 - **Risk Level:** Low | Medium | High | Critical
 - **Blast Radius:** Narrow | Moderate | Wide | Critical
 - **Stack Detected:** Node.js <version> / TypeScript <version>
 - **Framework:** NestJS <version> | Express <version> | mixed
 - **ORM:** Prisma <version> | TypeORM <version>
-- **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
+- **Scope:** Core | Full | one or more of +Perf +Sec +Obs +Rel, space-joined in that order _(if auto-escalated, append: `auto-escalated from <prior scope>; signals: <category -> file:line list>`)_
 - **Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 - **Round:** <N>                                _(include from round 2 onward)_
-- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped (<F> false positive, <R> resolved by diff) _(omit the parenthetical when K is 0)_
 - **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
+- **Notes:** <every `Note in Summary` string this run produced - round, scope, depth, and missing-scope notes - one per line; omit when there are none>
 
 ## Change Brief
 
@@ -373,6 +384,8 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ### [Must] file:line
 
+- Severity: Critical | High | Medium | Low _(from the lens that raised it; Phase B findings state their own)_
+- Scope: Core | +Perf | +Sec | +Obs | +Rel _(every scope that raised it, when deduped across several)_
 - Issue: [name the Node idiom: blocking `crypto.pbkdf2Sync` in async handler, missing `@UseGuards`, ORM entity returned from controller, BullMQ `queue.add` inside transaction, `ValidationPipe` missing `whitelist: true`, `Object.assign(target, req.body)` prototype-pollution surface, etc.]
 - Impact: [user-visible or operational]
 - System Risk: [why this is system-level, not just a local bug]
@@ -397,6 +410,10 @@ _Same rule as Architecture Notes._
 
 - Over-engineering detected:
 - Simplification opportunities:
+
+## Scope Reports
+
+_One `### +<scope>` block per lens that ran, carrying what it returned outside its findings: `## Recommendations`, observability's Surface Map, security's OWASP Triage and `Not verifiable`, reliability's `Resilience Libraries:` and `Failure-Mode and Blast-Radius Map`, perf's `Capacity Guidance` and `Load Plan`. Verbatim; do not summarize. Omit the whole section on a Core-only review._
 
 ## Key Takeaways
 
@@ -432,10 +449,10 @@ _Omit if no actionable findings._
 - [ ] Scope auto-escalation evaluated and recorded; depth auto-promoted on Wide/Critical blast radius (Step 4, 4.5)
 - [ ] Phase 0 - `review-change-intent` ran on the cumulative diff; Change Brief carried into the report; requirement lines in Summary, or all three requirement outputs omitted when no source resolved; its findings verified with the rest
 - [ ] Risk + blast radius stated before any finding (Phase A)
-- [ ] Phase B: atomic skills applied; test-coverage gap raised as named finding; event-loop, validation strict, authz / IDOR, response-DTO hygiene, Idempotency-Key, race safety, migration safety all checked; API contract checks ran when a route, controller, DTO, or OpenAPI spec changed
+- [ ] Phase B: atomic skills applied; test-coverage gap raised as a named finding when the PR adds untested logic (no gap is a valid outcome); event-loop, validation strict, authz / IDOR, response-DTO hygiene, Idempotency-Key, race safety, migration safety all checked; API contract checks ran when a route, controller, DTO, or OpenAPI spec changed
 - [ ] Phases C-E ran (C: layering, DI, settings, listener / middleware, multi-tenant; D: `complexity-review` + framework-matching necessity skill; E: naming, magic numbers, function length, logging hygiene) - or low-risk short-circuit invoked and noted in Summary
 - [ ] Every Must cites system risk; every finding has label + `file:line` + actionable Node fix
-- [ ] Extra scopes ran in parallel; subagent findings merged intent-ordered (no raw reports); missing scope noted as `Scope incomplete: <scope>`
+- [ ] Extra scopes ran in parallel with a prompt that named subagent mode and passed the handle, SHAs, scope, and repo-read authorization; findings merged intent-ordered with Severity and Scope carried; everything a lens returned outside its findings landed in `## Scope Reports`; missing scope noted as `Scope incomplete: <scope>`
 - [ ] Step 6.6 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels applied; tally in Summary
 - [ ] Step 6.5 - on round 2+, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered by intent

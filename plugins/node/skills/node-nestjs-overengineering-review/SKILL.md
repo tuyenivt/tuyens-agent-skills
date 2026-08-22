@@ -16,10 +16,11 @@ user-invocable: false
 
 ## Rules
 
-- Cite the constraint making the code redundant: FK, `@Column({ nullable: false })`, unique index, Prisma `@unique` / non-`?` field, TS non-null type, DTO decorator, `ValidationPipe` whitelist, or framework guarantee.
+- Cite the constraint making the code redundant: FK, `@Column({ nullable: false })`, unique index, Prisma `@unique` / non-`?` field, TS non-null type, DTO decorator, `ValidationPipe` whitelist, or framework guarantee. A premature abstraction is redundant against a simpler construct that already does the job - name that construct.
 - Intent:
-  - **`[Recommend]`** default. Cite the constraint, recommend the edit. Escalate to **`[Must]`** when a measurable cost is present (filled in `Cost:`): extra SELECT in a hot path, broad `catch (e)` defeating the global filter, single-impl service interface, `Scope.REQUEST` on a stateless provider.
-  - **`[Recommend]`** when justification is plausible but not visible in the diff - state the justification being assumed and ask the author to confirm.
+  - **`[Must]`** when the diff shows a concrete cost: an extra query per write, a masked or mis-mapped exception, a per-request allocation, or an abstraction whose every consumer is a passthrough. The predicate decides; these are only its common instances - manual unique-check before insert, broad `catch (e)` defeating the global filter, single-impl service interface, `Scope.REQUEST` on a stateless provider, `BaseService<T>` with one child, a dead `orThrow` null check that turns a 404 into a 500.
+  - **`[Recommend]`** otherwise, including when justification is plausible but not visible in the diff - state the justification being assumed and ask the author to confirm. A speculative config key is always `[Recommend]`: unread surface area costs nothing at runtime.
+  - Partial justification exempts only the justified members: flag the unjustified ones alone.
 - A redundancy with **visible** justification is not a finding. See `Avoid`.
 
 ## Patterns
@@ -152,7 +153,7 @@ export interface OrderService { fulfill(id: string): Promise<OrderResponse>; }
 @Module({ providers: [OrderService], exports: [OrderService] })
 ```
 
-Justified when: a second implementer exists, or the module uses `useClass` / `useFactory` substitution beyond test overrides.
+Justified when: a second implementer exists, or a `useFactory` / `useClass` binding selects among implementations at runtime. A token bound to exactly one class is indirection, not substitution - the `providers` line above is the Bad case, not a carve-out.
 
 #### `BaseService<T>` / `BaseRepository<T>` for one or two children
 
@@ -187,10 +188,12 @@ async findOrder(id: string): Promise<Order | null> {
 
 Justified when: callers branch on multiple distinct failure modes carrying data beyond a literal.
 
-#### AutoMapper-style mapper between identical shapes
+#### `@Injectable()` mapper with no injected dependencies
+
+The target is the DI wrapper, not the mapping. A class with an empty constructor that only reshapes its argument is a function; keep it a class once it injects anything (a config, a formatter, a repository).
 
 ```ts
-// Bad - mapper class for a 1:1 transformation
+// Bad - injectable with no dependencies, field-for-field copy
 @Injectable() export class OrderMapper { toResponse(o: Order): OrderResponseDto { /* trivial */ } }
 
 // Good - plain function
@@ -203,20 +206,20 @@ Flag config keys declared in the Zod/Joi schema but never read via `ConfigServic
 
 ## Output Format
 
-Findings contribute to the consuming workflow's unified output. One block per finding:
+Findings contribute to the consuming workflow's unified output. One block per redundant construct: repeated occurrences of the same construct in one class are one block listing every site in `Code:`; a construct matching two patterns is one block under the pattern with the higher intent; a construct spanning files (interface + module binding) anchors to its declaration and names the other files in `Code:`. When the diff carries no line numbers, anchor as `file:<enclosing class, method, or export>`.
 
 ```
 ### [Must | Recommend] file:line
 
 - Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction}
 - Code: {one-line citation, e.g., `@IsNotEmpty()` on non-optional `customerId: string`}
-- Redundant because: {FK name | Prisma `@unique` | TypeORM `nullable: false` | TS strict-null | class-validator on DTO | framework guarantee}
-- Cost: {extra SELECT per save | masked exception | speculative surface area | request-scope on stateless provider} _(required for `[Must]`; omit otherwise)_
+- Redundant because: {FK name | Prisma `@unique` | TypeORM `nullable: false` | TS strict-null | class-validator on DTO | `ValidationPipe` whitelist | framework guarantee | zero read sites | superseded by <the simpler construct that already does this>}
+- Cost: {extra SELECT per save | masked exception | wrong status code | unreachable code path | speculative surface area | request-scope on stateless provider | layered passthrough | abstraction churn} _(required for `[Must]`; omit otherwise)_
 - Recommendation: {concrete edit}
 - Justified when: {one-line note if a legitimate reason might apply; otherwise omit}
 ```
 
-For each of the three categories with no findings, state `No <category> findings.` so the consuming workflow knows the check ran.
+Group the output under one `##` heading per category, in the order Redundant Validation, Defensive Impossibility, Premature Abstraction. Within a category: `[Must]` blocks, then `[Recommend]` blocks, then one `Cleared:` line listing every construct examined and not flagged with its reason. A category with no findings is `No <category> findings.` followed by its `Cleared:` line - silence is indistinguishable from a skipped check.
 
 ## Avoid
 

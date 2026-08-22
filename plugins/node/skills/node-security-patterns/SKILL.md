@@ -22,12 +22,14 @@ Canonical "build it right" security patterns for NestJS / Express. `task-node-re
 ## Rules
 
 - Every JWT verify call declares `algorithms: [...]` explicitly (`jsonwebtoken<9` accepted `alg: none` without an allowlist; keep the rule unconditional)
-- Every request body has a DTO / Zod schema; whitelist mode strips unknown fields and rejects privilege fields (`role`, `ownerId`, `tenantId`, `isAdmin`)
+- Every request body has a DTO / Zod schema; whitelist mode strips unknown fields. Privilege fields are a **class**, not a list: any field the server assigns (ownership, tenancy, role, entitlement, price, status) is off the input contract entirely
+- Authorization is checked per object, not per route: after loading the record, verify the actor owns or is scoped to it. A route guard proves who is calling, never what they may touch
+- Passwords hashed with `argon2id` (or `bcrypt`); never a bare SHA. Compare with the library's `verify`, and hash a dummy on a missing user so the timing does not reveal account existence
 - Never `Object.assign(target, userInput)`, `_.merge`, or spread untrusted keys onto framework / domain objects - prototype pollution
 - Never `eval`, `new Function(string)`, `vm.runInNewContext`, `require(userInput)`, dynamic `import(userInput)` on user input; `vm2` is deprecated (CVEs)
 - Outbound `fetch`/`axios` with user-controlled URL resolves the host and rejects RFC1918, link-local, `127.0.0.0/8`/`::1`, cloud metadata `169.254.169.254` (re-resolve at request time to defeat DNS rebinding)
 - File uploads validated by magic bytes (`file-type`), not `mimetype` header; stored outside webroot; served with `Content-Disposition: attachment`
-- Webhook signature compared with `crypto.timingSafeEqual` on the raw body (`bodyParser.raw`); never on parsed JSON
+- Webhook signature compared with `crypto.timingSafeEqual` on the raw body (`bodyParser.raw`); never on parsed JSON. Sign the provider's actual signed string (Stripe `t.payload`, Slack `v0:t:body`), strip the scheme prefix (`sha256=`, `v0=`), and reject a timestamp outside a few minutes - a signature with no freshness check is replayable forever
 - Secrets via typed `ConfigService` (NestJS) or Zod-validated env loader (Express); fail at startup on missing keys
 - `child_process.execFile([...args])` arg array only - never `exec(string)`, never `shell: true` with user input
 - `rejectUnauthorized: false` on TLS clients only in documented test fixtures
@@ -39,21 +41,24 @@ Canonical "build it right" security patterns for NestJS / Express. `task-node-re
 
 **NestJS (Passport):**
 
+Pick the algorithm from the topology first: HS256 only when one service both signs and verifies; **RS256 whenever any other service verifies**, so the verifier holds only the public key. Publishing a public key makes the RS256-to-HS256 confusion attack live, which is why the `algorithms` allowlist below is load-bearing rather than hygiene.
+
 ```typescript
-// auth.module.ts - rotation-friendly secret provider
+// auth.module.ts - RS256 (cross-service). For single-service HS256, swap the key pair for `secret:`.
 JwtModule.registerAsync({
   useFactory: (config: ConfigService) => ({
-    secret: config.getOrThrow('JWT_SECRET'),
-    signOptions: { algorithm: 'HS256', expiresIn: '15m', issuer: 'api', audience: 'web' },
+    privateKey: config.getOrThrow('JWT_PRIVATE_KEY'),
+    publicKey: config.getOrThrow('JWT_PUBLIC_KEY'),
+    signOptions: { algorithm: 'RS256', expiresIn: '15m', issuer: 'api', audience: 'web' },
   }),
   inject: [ConfigService],
 });
 
-// jwt.strategy.ts - explicit algorithm allowlist + iss/aud verification
+// jwt.strategy.ts - verifier holds the PUBLIC key only; allowlist must match the signer
 super({
   jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-  secretOrKey: config.getOrThrow('JWT_SECRET'),
-  algorithms: ['HS256'],              // mandatory - or ['RS256'] for asymmetric
+  secretOrKey: config.getOrThrow('JWT_PUBLIC_KEY'),   // the shared secret under HS256
+  algorithms: ['RS256'],              // mandatory, and it is what blocks RS256->HS256 confusion
   issuer: 'api',
   audience: 'web',
 });
@@ -137,25 +142,36 @@ const map = Object.create(null);
 
 ### SSRF Allowlist
 
-```typescript
-import { lookup } from 'node:dns/promises';
-import net from 'node:net';
+Validating a hostname and then handing the raw URL to `fetch` does **not** work: `fetch` resolves again, so an attacker-controlled DNS record can answer public on your check and private on the real request. The address you approve has to be the address the socket dials, so the check belongs inside the connection.
 
-const BLOCKED_CIDRS = ['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16'];
+```typescript
+import { Agent } from 'undici';
+import { lookup } from 'node:dns';
+
+const BLOCKED = ['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16', '::1/128', 'fc00::/7', 'fe80::/10'];
+const isPublic = (ip: string) => !BLOCKED.some((c) => inCidr(ip, c));   // use `ip-address`/`netmask`, not string prefixes
+
+const guardedAgent = new Agent({
+  connect: {
+    lookup: (hostname, opts, cb) =>
+      lookup(hostname, { ...opts, all: true }, (err, addrs) => {
+        if (err) return cb(err, '', 0);
+        // every answer must be public - one private record in a round-robin set is enough to pivot
+        const list = Array.isArray(addrs) ? addrs : [addrs];
+        if (!list.every((a) => isPublic(a.address))) return cb(new Error('blocked'), '', 0);
+        cb(null, list[0].address, list[0].family);      // dial the address we just approved
+      }),
+  },
+});
 
 async function safeFetch(rawUrl: string): Promise<Response> {
   const url = new URL(rawUrl);                          // throws on `\\evil`, unicode tricks
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('protocol');
-
-  const { address } = await lookup(url.hostname);       // re-resolve - defeats DNS rebinding
-  if (net.isIPv4(address) && BLOCKED_CIDRS.some(c => inCidr(address, c))) throw new Error('blocked');
-  if (address === '::1' || address.startsWith('fe80:') || address.startsWith('fd00:ec2:')) throw new Error('blocked');
-
-  return fetch(rawUrl, { signal: AbortSignal.timeout(5_000) });
+  return fetch(url, { dispatcher: guardedAgent, redirect: 'manual', signal: AbortSignal.timeout(5_000) });
 }
 ```
 
-Re-resolve at request time. Watch `URL` quirks: backslash, unicode, `::ffff:127.0.0.1` (IPv4-mapped IPv6).
+`redirect: 'manual'` is required: a public URL that 302s to `169.254.169.254` walks past any pre-flight check. Re-run `safeFetch` on the `Location` header, with a hop limit. Watch `URL` quirks: backslash, unicode, `::ffff:127.0.0.1` (IPv4-mapped IPv6), decimal and octal IP forms. Never echo the upstream status or body length back to the caller - that alone is a port scanner.
 
 ### File Upload Validation
 
@@ -198,14 +214,20 @@ const app = await NestFactory.create(AppModule, { rawBody: true });
 @Post('webhooks/stripe')
 @HttpCode(200)
 async stripe(@Req() req: RawBodyRequest<Request>, @Headers('stripe-signature') sig: string) {
+  // rawBody is undefined when no registered parser matched the Content-Type - fail closed,
+  // or an attacker sends text/plain and the HMAC is computed over an empty buffer
+  if (!req.rawBody?.length) throw new UnauthorizedException();
+  const { t, v1 } = parseStripeSig(sig);
+  // Freshness first - a valid signature with no time bound replays forever
+  if (Math.abs(Date.now() / 1000 - Number(t)) > 300) throw new UnauthorizedException();
+  // Stripe signs `${timestamp}.${rawBody}` - hashing the body alone never matches
   const expected = createHmac('sha256', this.config.getOrThrow('STRIPE_WEBHOOK_SECRET'))
-    .update(req.rawBody!)                    // raw bytes, not parsed JSON
+    .update(`${t}.`).update(req.rawBody!)    // raw bytes, not parsed JSON
     .digest('hex');
-  const got = parseStripeSig(sig).v1;
-  const a = Buffer.from(expected), b = Buffer.from(got);
+  const a = Buffer.from(expected), b = Buffer.from(v1);
   // timingSafeEqual throws on length mismatch - check first or a forged short sig becomes a 500
   if (a.length !== b.length || !timingSafeEqual(a, b)) throw new UnauthorizedException();
-  // ... handle
+  // ... handle, keyed on the provider's event id so a replayed delivery is a no-op
 }
 
 // Express equivalent - mount raw parser only on the webhook path
@@ -264,9 +286,9 @@ Allowlist a fixed string set if dynamic dispatch is genuinely required:
 
 ```typescript
 const handlers = { invoice: handleInvoice, refund: handleRefund } as const;
-const h = handlers[type as keyof typeof handlers];
-if (!h) throw new BadRequestException();
-await h(payload);
+// `handlers['constructor']` is truthy, so a truthiness check does NOT close the dispatch
+if (!Object.hasOwn(handlers, type)) throw new BadRequestException();
+await handlers[type as keyof typeof handlers](payload);
 ```
 
 ### Open Redirect / `child_process` / TLS
@@ -285,8 +307,13 @@ res.redirect(target.origin === env.APP_ORIGIN ? target.pathname + target.search 
 // Bad - shell injection
 exec(`convert ${userInput} out.png`);
 
-// Good - arg array, no shell
-execFile('convert', [userInput, 'out.png']);     // allowlist binaries
+// Bad - no shell, but user input in argv position is still argument injection:
+// a value starting with `-` becomes a flag (`-write /etc/...`, ffmpeg `-i` protocol tricks)
+execFile('convert', [userInput, 'out.png']);
+
+// Good - server-generated paths only, flags fixed, `--` terminator, bounded
+execFile('convert', ['--', srcPath, '-resize', '100x100', outPath],
+  { timeout: 10_000, maxBuffer: 8 << 20, env: {} });
 
 // Bad - disables TLS verification globally
 const agent = new https.Agent({ rejectUnauthorized: false });
@@ -296,11 +323,13 @@ const agent = new https.Agent({ rejectUnauthorized: false });
 
 ## Output Format
 
+When authoring, emit one block per pattern applied. When reviewing, the consuming workflow owns the finding envelope (label, severity, `file:line`; invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise); emit one block per gap, reading `Change:` as the required fix rather than an applied one.
+
 ```
-Pattern: {JWT | Mass Assignment | Prototype Pollution | SSRF | File Upload | Webhook | Secrets | Eval | Open Redirect | Exec | TLS}
-Surface: {file:line - controller/service/middleware}
-Change: {what was applied}
-Risk Mitigated: {auth bypass | mass assignment | prototype pollution | SSRF | RCE | secret exposure | timing oracle | open redirect | TLS bypass}
+Pattern: {JWT | Authorization | Mass Assignment | Prototype Pollution | SSRF | File Upload | Webhook | Secrets | Eval | Open Redirect | Exec | TLS | Password Storage}
+Surface: {file:line - controller/service/middleware, or the module being authored}
+Change: {what was applied, or what must be}
+Risk Mitigated: {auth bypass | broken object-level authorization | mass assignment | prototype pollution | SSRF | RCE | argument injection | path traversal | replay | secret exposure | timing oracle | account enumeration | open redirect | TLS bypass}
 ```
 
 ## Avoid
