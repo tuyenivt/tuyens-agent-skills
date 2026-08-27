@@ -57,7 +57,7 @@ Mirrors `task-code-review-perf`:
 | `/task-react-review-perf <branch>` | Review `<branch>` vs its base (3-dot diff)                           |
 | `/task-react-review-perf pr-<N>`   | Review PR head in local branch `pr-<N>` (user runs the fetch first)  |
 
-When invoked as a subagent of `task-code-review-perf` or `task-react-review`, the parent passes the precondition handle plus already-read diff/log; skip Steps 1-3 re-detection.
+When invoked as a subagent of `task-code-review-perf` or `task-react-review`, the parent passes the pre-confirmed stack and framework, the precondition handle, the pre-read diff and commit log, and the depth level; Steps 2-3 consume those instead of re-running (Step 1 accepts the parent's confirmation without re-loading), and Step 9 returns findings instead of writing.
 
 ## Workflow
 
@@ -79,7 +79,7 @@ Heuristics: `next.config.*` -> Next.js (App Router unless `pages/` without `app/
 
 ### Step 3 - Resolve Diff and Read Surface
 
-Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once; reuse. Skip entirely if parent passed the handle.
+Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once; reuse. Capture `head_sha = git rev-parse <head_ref>` and `base_sha = git rev-parse <base_ref>` for the report checkpoint. Subagent mode skips the precondition and diff re-read only - the surface read below is never skipped.
 
 Open the files that govern rendering, bundle, and data fetching so impact estimates ground in real code:
 
@@ -185,9 +185,11 @@ Confirm presence only (depth belongs to `task-react-review-observability`):
 
 Gaps -> Low / Recommendation with `[Delegate] -> task-react-review-observability`.
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary's `Findings verified` slot. Subagent runs skip this - the parent verifies the merged set once.
 
-Then use skill: `review-report-writer` with `report_type: review-perf`. Write the report to file; print the confirmation line.
+**Subagent mode:** return the complete Output Format document to the parent and write nothing - the parent owns the report. Labels come from the severity mapping in Output Format.
+
+Standalone: use skill: `review-report-writer` with `report_type: review-perf` and every required field: `report_body`, `branch`, `base_ref` / `head_ref` from the precondition handle, `base_sha` / `head_sha` from Step 3, `scope: +perf`, `depth` as resolved, `stack: react`, and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself). Write the report; print the confirmation line after the report body.
 
 ## Output Format
 
@@ -199,15 +201,18 @@ The fence below delimits the template for display only - it is not part of the r
 - **Stack Detected:** React <version> / TypeScript <version>
 - **Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
 - **Data Layer:** Server Components + `fetch` | TanStack Query | mixed
-- **Styling:** Tailwind | CSS Modules | CSS-in-JS
+- **Styling:** Tailwind | CSS Modules | CSS-in-JS | not detected
 - **Scope:** Frontend (React)
 - **Overall:** Clean | Issues Found - [count by impact: High/Medium/Low]
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped _(standalone only; subagents return unverified findings)_
 
 ## Findings
 
+Labels: High -> `[Must]`; Medium / Low -> `[Recommend]` (the verify pass's `Label` column overrides when it ran). Repeat the block per finding, numbered sequentially across tiers.
+
 ### High Impact
 
-- **Location:** [file:line]
+1. **Location:** [file:line]
 - **Issue:** [name the React idiom: `"use client"` at layout root, hero `<img>` blocking LCP, missing virtualization on 1k+ rows, context value rebuilt every render, `recharts` eager-imported, hydration mismatch from `Date.now()`, etc.]
 - **Impact:** [measured (`LCP 2.8s -> 1.4s`) or estimated (`+120KB gzip on every cold visit to /dashboard`, `~40 re-renders per scroll frame`)]
 - **Fix:** [specific React change with code - leaf `"use client"`, `next/dynamic({ ssr: false })`, `useMemo` context value, `@tanstack/react-virtual`, etc.]
@@ -226,7 +231,7 @@ _Omit empty sections._
 
 [Structural items not tied to a single finding - route-level `next/dynamic` for editor pages, split filters context into state + dispatch, add bundle budget to CI, adopt `react-virtual` across list views.]
 
-[**`deep` only:** capacity guidance (virtualization / batched endpoints for large datasets) and a per-route budget plan (LCP / INP / bundle thresholds wired to CI) go here, each prefixed `[deep]`.]
+[**`deep` only:** capacity guidance (virtualization / batched endpoints for large datasets) and a per-route budget plan (LCP / INP / bundle thresholds wired to CI) go here, each prefixed `[deep]`. A structural fix motivated by a specific finding belongs in Recommendations at any depth.]
 
 ## Next Steps
 
@@ -249,7 +254,7 @@ _Omit if no actionable findings._
 - [ ] Step 6 - `react-data-fetching` consulted; `fetch` cache intent, Server-vs-Client fetch placement, TanStack `staleTime` / keys / invalidation audited
 - [ ] Step 7 - LCP image / fonts, INP `useTransition` / `useDeferredValue`, CLS reservations checked when routes or assets changed
 - [ ] Step 8 - hydration sources, Suspense streaming, ISR / SSG / SSR / runtime decisions reviewed (Next.js only; skipped on Vite)
-- [ ] Step 9 - observability presence checked or `[Delegate]` added; report written via `review-report-writer`; confirmation line printed
+- [ ] Step 9 - observability presence checked or `[Delegate]` added; standalone: findings verified, tally in Summary, report written via `review-report-writer` with full checkpoint fields, confirmation printed; subagent: complete Output Format returned, nothing written
 - [ ] Every finding states impact (measured or estimated - never just "this is slow") and cites `file:line`
 - [ ] Depth honored: `standard` ran 1-9; `deep` adds capacity + budget plan
 - [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend (omit when no actionable findings)
@@ -267,5 +272,5 @@ _Omit if no actionable findings._
 - Treating high re-render counts as inherently bad - investigate only when a profile or interaction lag implicates them
 - `useEffect(() => fetch(...), [])` in a Client Component when a Server Component parent could fetch
 - Conflating perf with general / security review - delegate
-- **Dual perf+security findings** (untrusted `dangerouslySetInnerHTML`, `eval`, prototype pollution via spread): emit a single `[Delegate] -> task-react-review-security` line in Next Steps only - no Findings-section entry and no parallel security commentary. If the issue has no independent perf cost, it is Next Steps only; if it also has a real perf cost, file that perf cost as its own Finding and still delegate the security half once
+- **Out-of-lens defects** (security: untrusted `dangerouslySetInnerHTML`, `eval`; correctness: a crash or logic bug spotted en route): emit a single `[Delegate] -> task-react-review-security` / `-> task-react-review` line in Next Steps only - no Findings-section entry and no parallel commentary. If the issue has no independent perf cost, it is Next Steps only; if it also has a real perf cost, file that perf cost as its own Finding and still delegate the other half once
 - Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.

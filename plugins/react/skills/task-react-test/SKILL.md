@@ -32,7 +32,7 @@ Use skill: `behavioral-principles`. These rules govern every step that follows.
 
 Use skill: `stack-detect`. If invoked as a delegate of `task-code-test` (parent already detected React), accept the pre-confirmed stack. If stack is not React, stop and tell the user to invoke `/task-code-test`.
 
-Record `Framework` (Next.js App Router / Pages Router / Vite + React Router), `Runner` (Vitest / Jest), `React: <version>` for the output.
+Record `Framework` (Next.js App Router / Pages Router / Vite + React Router), `Runner` (Vitest / Jest), `React: <version>` for the output. Greenfield (no runner installed): record the Step 3 default suffixed `(greenfield default)`.
 
 ### Step 3 - Read code under test and existing tests
 
@@ -44,11 +44,11 @@ Before producing output, read both production code and a representative sample o
 - `src/test/setup.ts`: MSW `setupServer`, `@testing-library/jest-dom` matchers, shared `renderWithProviders`
 - Next.js: providers in `app/**/layout.tsx` (auth, theme, query client) that tests must replicate
 
-Greenfield (no existing tests): state choices explicitly, do not invent silently. Defaults: Vitest + RTL + `user-event`; MSW with `onUnhandledRequest: 'error'`; Playwright for journeys; `vitest-axe`; `renderWithProviders` in `src/test/render.tsx`; factories in `src/test/factories/`.
+Greenfield - or any single missing piece of tooling: state choices explicitly, do not invent silently. Defaults: Vitest + RTL + `user-event`; MSW with `onUnhandledRequest: 'error'`; Playwright for journeys; `vitest-axe`; `renderWithProviders` in `src/test/render.tsx`; factories in `src/test/factories/`.
 
 Use skill: `react-testing-patterns` for canonical React test forms (`renderWithProviders`, MSW handler reset, `next/navigation` mock, Server Action flavors, React 19 form primitives, TanStack Query isolation, and timer-driven behavior - fake timers + the `userEvent.setup({ advanceTimers })` wiring required for debounce/throttle hooks).
 
-When the project has a server surface (an ORM client, `src/server/**`, Server Actions, or Route Handlers), additionally Use skill: `react-server-testing` for database-backed integration tests, per-test isolation, Route Handler and Server Action tests, and the async-Server-Component testing boundary.
+When the project has a server surface (an ORM client, `src/server/**`, Server Actions, or Route Handlers), additionally Use skill: `react-server-testing` for database-backed integration tests, per-test isolation, Route Handler and Server Action tests, and the async-Server-Component testing boundary. Stated project constraints win over that skill's defaults (e.g., team rules out Testcontainers): follow the constraint and name the coverage forfeited.
 
 ### Step 4 - React test pyramid
 
@@ -80,7 +80,7 @@ When the project has a server surface (an ORM client, `src/server/**`, Server Ac
 
 **Server Action tests (Next.js).** Run both flavors when the action has validation AND a UI surface:
 
-- _Direct unit:_ `await updateProfile(formData)` with constructed `FormData`. Mock session wrapper. Assert validation error shape, authz rejection, happy-path mutation.
+- _Direct unit:_ `await updateProfile(formData)` with constructed `FormData`. Mock session wrapper. Assert validation error shape, authz rejection, happy-path mutation. Intentionally anonymous action: replace the authz case with its actual guard (uniqueness, rate limit, idempotency key) and say so. Action ending in `redirect()`: it throws - mock `next/navigation` and assert the thrown redirect, not a return value.
 - _Component wiring:_ `vi.mock('./actions', () => ({ createOrder: vi.fn() }))`. After `userEvent.click(submit)`, assert action called with expected args. Pair with `useFormStatus` / `useOptimistic` checks.
 
 **React 19 form primitives:**
@@ -91,7 +91,7 @@ When the project has a server surface (an ORM client, `src/server/**`, Server Ac
 
 **TanStack Query:** fresh `QueryClient` per test via `renderWithProviders`; `retry: false`; assert refetched UI after `useMutation` resolves (or spy on `invalidateQueries`).
 
-**`next/navigation` mock (App Router):** stub `useRouter` / `useSearchParams` / `usePathname` at module level; capture `push` spy for navigation assertions. Pages Router uses `next/router` - match the project's existing pattern.
+**Router harness:** App Router - stub `next/navigation` (`useRouter` / `useSearchParams` / `usePathname`) at module level; capture `push` spy for navigation assertions. Pages Router uses `next/router` - match the project's existing pattern. React Router (Vite) - wrap in `MemoryRouter`, or `createMemoryRouter` + `RouterProvider` when routes use loaders/actions (plain `MemoryRouter` does not run them).
 
 **Error tracker mock:** `vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn(), ... }))`; assert capture on error paths; `vi.clearAllMocks()` in `beforeEach`.
 
@@ -115,7 +115,7 @@ When the project has a server surface (an ORM client, `src/server/**`, Server Ac
 - Cancel / reset clears state; "Save Draft" persists separately
 - Submit calls the Server Action with merged payload from all steps
 
-State-machine wizards (XState, Zustand, `useReducer`): unit-test the machine separately; the component test asserts wiring, not transitions.
+State-machine wizards (XState, Zustand, `useReducer`): unit-test the machine separately - export the reducer if private; when the project won't export it, cover transitions through the component test and say so.
 
 **E2E:** auth / onboarding journey, checkout / payment, critical multi-page contracts, real-navigation flows (intercepting / parallel routes).
 
@@ -131,7 +131,7 @@ When coverage is below ~50%, run this **before** scaffolding - choose what to sc
 4. **P4 - High-churn:** files with frequent recent commits (`git log --since="3 months ago"`) or fix history (`git log --grep="fix"`).
 5. **P5 - Plumbing:** pure presentation, simple wrappers - lowest risk.
 
-**Multi-band rule.** When a target qualifies for multiple bands (e.g., checkout form is both P1 money and P2 form), file under the highest band and cover both axes (assert money path AND validation + back-nav).
+**Multi-band rule.** When a target qualifies for multiple bands (e.g., checkout form is both P1 money and P2 form), file under the highest band and cover both axes (assert money path AND validation + back-nav). Empty bands are skipped, not padded; when P1 is empty, fix-history targets (the P4 signals) lead the list.
 
 ### Step 8 - Test infrastructure hygiene
 
@@ -158,6 +158,8 @@ When coverage is below ~50%, run this **before** scaffolding - choose what to sc
 
 Precedence when one ask matches several rows: an explicit verb ("write/scaffold" -> Scaffolds; "strategy/plan" -> Strategy Doc) wins over the coverage-threshold heuristic. "Review coverage" combined with low coverage (no scaffold/strategy verb) is one ask matching two rows: lead with the Coverage Assessment - its Prioritization block already answers "what to write first" - and append the Strategy Doc only if a forward plan was also requested.
 
+The formats below are the only envelope; consulted atomics' own output blocks (e.g., `react-testing-patterns`' Testing Plan) stay internal. One exception: when Step 3 loaded `react-server-testing` during an assessment ask, append its Server Test Assessment block after the Coverage Assessment, separated by `---`.
+
 **Coverage Assessment:**
 
 ```markdown
@@ -178,10 +180,11 @@ Precedence when one ask matches several rows: an explicit verb ("write/scaffold"
 - **Component:** [interactive components without tests; missing empty / error / loading]
 - **Integration:** [pages with multi-component flows lacking integration tests]
 - **Server Action:** [actions without auth / validation / happy-path tests]
+- **Server integration:** [service functions / Route Handlers without DB-backed tests; omit when no server surface]
 - **E2E:** [critical journeys without Playwright coverage]
 - **Accessibility:** [routes without `axe` checks; interactive elements without keyboard / focus tests]
 
-**Pyramid balance:** Unit + Hook [n] / Component + Integration [n] / E2E [n - keep small]
+**Pyramid balance:** Unit + Hook [n files] / Component + Integration [n files] / E2E [n files - keep small]
 
 **Prioritization** _(when coverage < ~50% or > 5 gaps)_
 
@@ -192,12 +195,12 @@ Precedence when one ask matches several rows: an explicit verb ("write/scaffold"
 5. P5 - Plumbing: [list]
 ```
 
-**Test Scaffolds:** ready-to-run Vitest / Playwright files using project conventions. Each scaffold:
+**Test Scaffolds:** ready-to-run Vitest / Playwright files using project conventions. Open the set with one line naming `Framework` / `Runner` / `React` from Step 2. Each scaffold:
 
 - Right test type (unit / hook / component / integration / E2E)
 - Factories for data (no raw object literals)
 - User-centric queries (`getByRole` / `getByLabel`); `userEvent`, not `fireEvent`
-- Component: happy + error + empty + loading + a11y (`axe` at route level)
+- Component: happy + error + empty + loading + a11y (`axe` at route level); a state with no analog for the component type (a form has no empty/loading list state) is skipped, not faked
 - Hook: state transitions + effect cleanup + edge cases
 - Server Action: unit flavor (validation + authz + happy) AND component flavor (`vi.mock` wiring) when both apply
 - React 19 forms: `useFormStatus` in-flight assertion via slow-promise mock; `useOptimistic` rollback branch
@@ -209,15 +212,19 @@ Precedence when one ask matches several rows: an explicit verb ("write/scaffold"
 ```markdown
 ## React Test Strategy
 
+**Stack:** React <version> / <Framework> / Runner: <Runner> _(Step 2 record; greenfield defaults suffixed)_
+
 **Objective:** [what this strategy achieves]
 
 **Pyramid balance:** Unit + Hook {x}% / Component + Integration {y}% / E2E {z}%
 
 **Tooling:** Vitest, React Testing Library, `user-event`, MSW, Playwright, `vitest-axe`
 
+**Setup:** [missing infra to install and wire - runner config, setup file, render helper, CI step; `in place` when none]
+
 **Mocking:** MSW for network; provider wrappers for context; `vi.mock` reserved for non-network module mocks
 
-**Server Component strategy:** [data function in unit; Playwright for rendered route]
+**Server Component strategy:** [data function in unit; Playwright for rendered route | n/a - no server surface]
 
 **Concurrency:** Vitest `--pool=threads`; Playwright sharded across workers
 
@@ -225,6 +232,10 @@ Precedence when one ask matches several rows: an explicit verb ("write/scaffold"
 
 1. [Highest-risk gap, typically auth / Server Action / money path]
 2. [...]
+
+**Skip (does not need tests):** [Step 6 exclusions applied to this repo]
+
+**Rollout:** [phase order for incremental adoption; omit when adopting all at once]
 ```
 
 ## Self-Check

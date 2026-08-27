@@ -18,9 +18,9 @@ Building a new React feature spanning components, state, data fetching, routing,
 
 **Step 2 - Detect stack.** Use skill: `stack-detect`. Confirm React + (Next.js App Router | Vite + React Router); identify styling, state lib, test framework. Halt and ask if mismatched. Vite branch: skip Server Components / Server Actions, use client routing and client fetching.
 
-**Step 3 - Gather.** Ask: feature name, user stories, components, data sources, interactions, routing, form inputs, a11y constraints. UI-only feature: skip data and form steps. Existing components: read and compose, do not duplicate.
+**Step 3 - Gather.** Needed: feature name, user stories, components, data sources, interactions, routing, form inputs, a11y constraints. Ask only for items the request leaves unanswered; when the brief answers everything, proceed without questions. UI-only feature: skip data and form steps. Existing components: read and compose, do not duplicate.
 
-**Step 4 - Design.** Use skill: `react-component-patterns` + `react-routing-patterns`. If the feature embeds into a non-React host (Rails / Django / PHP page, jQuery shell) or composes with other apps (Module Federation, single-spa), additionally Use skill: `react-legacy-integration` for mount, hydration, and routing-boundary rules. Propose component tree with Server/Client boundaries (Next.js), file layout, routes. Request approval before code:
+**Step 4 - Design.** Use skill: `react-component-patterns` + `react-routing-patterns`. If the feature embeds into a non-React host (Rails / Django / PHP page, jQuery shell) or composes with other apps (Module Federation, single-spa), additionally Use skill: `react-legacy-integration` for mount, hydration, and routing-boundary rules. Propose component tree with Server/Client boundaries (Next.js), file layout, routes. Request approval before code: an explicit OK, or a pre-authorization in the request (conditional pre-approval counts when you verify its conditions hold - record the decision as an `Approval:` line in the design). No approval and requester unavailable: stop after the design. The fence shows the Next.js convention; on Vite follow the repo's existing route / feature layout. When Step 6 loads `react-server-data-layer`, its `src/server/<module>` placement wins over `lib/<feature>/` for data and action code:
 
 ```
 app/<feature>/(page.tsx | layout.tsx)            # Next.js route
@@ -30,7 +30,7 @@ lib/<feature>/queries.ts | actions.ts
 types.ts
 ```
 
-**Step 5 - State.** Use skill: `react-state-patterns` (canonical for React-specific guidance) + `frontend-state-management` (framework-neutral; the React skill wins on conflict). Categorize each slice: **local** (one component, `useState`/`useReducer`), **shared** (small subtree, lifted state or scoped context), **global** (cross-feature, Zustand/Redux), **server** (TanStack Query/SWR), **URL** (`searchParams`), **form** (RHF + Zod). Filters and pagination belong in URL state; server data in TanStack Query; no server state in client stores.
+**Step 5 - State.** Use skill: `react-state-patterns` (canonical for React-specific guidance) + `frontend-state-management` (framework-neutral; the React skill wins on conflict). Categorize each slice with this enum - it governs the State Map even where a loaded skill's own category list differs: **local** (one component, `useState`/`useReducer`), **shared** (small subtree, lifted state or scoped context), **global** (cross-feature, Zustand/Redux), **server** (TanStack Query/SWR), **URL** (`searchParams`), **form** (RHF + Zod). Filters and pagination belong in URL state; server data in TanStack Query; no server state in client stores.
 
 **Step 6 - Data.** Use skill: `react-data-fetching` + `frontend-api-integration`. Define query keys, cache invalidation, loading/error/empty states. Optimistic updates: with TanStack Query use the cancel/snapshot/set/rollback/settle mutation flow; with a Server Action over a server-rendered (RSC) list, pass the server data into a Client Component, wrap it in `useOptimistic`, and let the action's `revalidatePath`/`revalidateTag` reconcile the canonical list on re-render. A list rendered by a Server Component is `server` category with mechanism `RSC fetch` (not TanStack Query) in the State Map.
 
@@ -44,9 +44,11 @@ If the feature touches an ORM client, a schema file, or a `src/server/` module -
 
 **Step 10 - Tests.** Use skill: `react-testing-patterns` + `frontend-testing-patterns`. Component tests (RTL), hook tests, integration with MSW. Assert behavior, not internals. List e2e candidates. When Step 6 loaded `react-server-data-layer`, additionally Use skill: `react-server-testing` for database-backed tests of the service functions and the authorization cases on every Server Action added.
 
-**Step 11 - Validate.** Run `npx tsc --noEmit`, lint, test. Fix failures before reporting.
+**Step 11 - Validate.** Run `npx tsc --noEmit`, lint, test. Fix failures before reporting. When the environment cannot run them, never claim a pass: say so, list the exact commands for the user to run, and report the feature as unvalidated.
 
 ## Output Format
+
+The deliverable is the code plus this block. Output blocks defined by the loaded atomic skills are working material - do not emit them. A section with no entries keeps its heading with a single `none` line. Server Actions appear in the Endpoints / Queries table as Method `action`, Path the module path, the revalidation target (`revalidatePath /orders`) in the Query Key column, the pending UI under Loading, the returned error state under Error, and `n/a` under Empty.
 
 ```markdown
 ## Files Generated
@@ -82,23 +84,24 @@ Tests:       (covered above) + e2e/orders.spec.ts (candidate)
 
 ## Tests
 
-- Component: {count} (RTL)
+- Component: {count} (RTL; single-component, even when MSW stubs HTTP)
 - Hook: {count}
-- Integration: {count} (MSW)
+- Integration: {count} (MSW; multi-component flows)
+- Server (DB-backed): {count} _(only when Step 10 loaded `react-server-testing`)_
 - E2E candidates: {list}
 ```
 
 ## Self-Check
 
 - [ ] Step 1-2: behavioral principles loaded; stack confirmed (Next.js or Vite branch chosen)
-- [ ] Step 3-4: requirements gathered; component tree and file layout approved before code
+- [ ] Step 3-4: requirements gathered (asked only for unanswered items); design approved before code (explicit OK or verified pre-authorization, recorded as `Approval:`)
 - [ ] Step 5: state categorized; URL state for filters/pagination; no server state in client stores
 - [ ] Step 6: queries have keys, cache invalidation, and loading/error/empty states
 - [ ] Step 7: TS strict, function components, `"use client"` only where needed, typed props interfaces
 - [ ] Step 8: forms have validation, error display, submit protection, dirty tracking (if applicable)
 - [ ] Step 9: WCAG 2.1 AA - semantic HTML, keyboard, ARIA, focus
 - [ ] Step 10: tests assert behavior (RTL + MSW); critical paths flagged for e2e
-- [ ] Step 11: `tsc --noEmit`, lint, tests pass
+- [ ] Step 11: `tsc --noEmit`, lint, tests pass - or reported unvalidated with the exact commands when the environment cannot run them
 
 ## Avoid
 

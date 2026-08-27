@@ -9,7 +9,7 @@ user-invocable: false
 
 # React Routing Patterns
 
-> Load `Use skill: stack-detect` first to determine the project stack. For data-fetching boundaries defer to `react-data-fetching`; auth/session review belongs to `task-react-review-security`.
+> Load `Use skill: stack-detect` first to determine the project stack. For data-fetching boundaries defer to `react-data-fetching`. Guard mechanics (placement, redirect flow) are owned here; session/token validity and auth-logic review belong to `task-react-review-security`.
 
 ## When to Use
 
@@ -44,7 +44,7 @@ app/
   api/users/route.ts      # Route handler
 ```
 
-Special files compose top-down: `error.tsx` catches throws in its segment and below; a deeper `error.tsx` overrides the ancestor.
+Special files compose top-down: `error.tsx` catches throws in its segment and below; a deeper `error.tsx` overrides the ancestor. A segment whose children are tabs gives its index `page.tsx` a redirect to the default tab.
 
 ### Layouts Persist State
 
@@ -100,7 +100,7 @@ export default function Layout({ children, analytics, notifications }: {
 // Slots resolve to app/dashboard/@analytics/page.tsx, @notifications/page.tsx
 ```
 
-Each parallel slot needs a `default.tsx` (often returning `null`) so the slot resolves on routes that don't fill it - otherwise navigation 404s.
+Each parallel slot needs a `default.tsx` (often returning `null`) so the slot resolves on routes that don't fill it - otherwise navigation 404s. A slot that must also render on hard loads and deep links (a persistent side panel) needs a `default.tsx` that renders the slot content, not `null`.
 
 ### Intercepting Routes (modal-over-page)
 
@@ -178,7 +178,7 @@ Loading UI in React Router: read `useNavigation().state === "loading"` for a glo
 
 ### Route Guards
 
-- **Next.js:** `middleware.ts` for redirect-style guards; Server Component layout for richer checks (`if (!user) redirect("/login")`).
+- **Next.js:** `middleware.ts` for redirect-style guards; Server Component layout for richer checks (`if (!user) redirect("/login")`). Redirect-if-authed (`/login` for a signed-in user) is the inverse branch of the same middleware.
 - **React Router:** loader throws a `redirect()` Response, or wrap the element in a guard component:
 
 ```tsx
@@ -194,6 +194,8 @@ Prefer loader-throw over client wrappers - it runs before render and avoids the 
 
 ## Output Format
 
+Both modes emit the Route Map (the Layout column names the nearest layout). When designing, add a `### File Tree` section after the Route Map (the `app/` or router-config skeleton, middleware `matcher` included); Issues Found flags risks in the requirements and `File:` names the proposed path. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, order Issues by severity and `File:` anchors the reviewed file (`(not shown)` for files referenced but not provided). An intercepted URL takes two Route Map rows (soft-nav modal, hard-load page); parallel slots use `@slot` as Path; absent Loading/Error artifacts are `None`. Auth records enforced behavior - a broken guard is `Public` plus an Issue.
+
 ```
 ## Routing Design
 
@@ -203,14 +205,14 @@ Stack: {Next.js App Router | React Router (Vite) | Other}
 
 | Path | Component | Layout | Loading | Error | Auth |
 | ---- | --------- | ------ | ------- | ----- | ---- |
-| ...  | ...       | ...    | ...     | ...   | {Public|Protected} |
+| ...  | ...       | ...    | ...     | ...   | {Public|Protected|Public (redirect-if-authed)} |
 
 ### Issues Found
 
-- [Severity: {Blocker|High|Medium|Low}] [Category: {Layout|Loading|Error|Guard|Middleware|DynamicParam|Parallel|Nesting}]
+- [Severity: {Blocker|High|Medium|Low}] [Category: {Layout|Loading|Error|Guard|Middleware|DynamicParam|Parallel|Nesting|Navigation|Loader}]
   File: <path>
   Issue: <one-line>
-  Fix: <referencing a Pattern by name>
+  Fix: <referencing a Pattern by name, or the governing Rule when no Pattern covers it>
 
 ### Recommendations
 
@@ -218,9 +220,9 @@ Stack: {Next.js App Router | React Router (Vite) | Other}
 ```
 
 Severity rubric:
-- **Blocker**: route fails to compile/run (e.g., async Client Component, wrong `params` shape), or middleware does DB/heavy work on every edge request.
-- **High**: client layout used for trivial state; missing error boundary on a fetching segment; unvalidated dynamic params reaching ORM; missing `default.tsx` for a parallel/intercepting slot (404s on unfilled routes).
-- **Medium**: missing loading UI; auth duplicated client-side that middleware/layout should own; over-broad `matcher` even with cheap logic (excess per-request work).
+- **Blocker**: route fails to compile/run (e.g., async Client Component, wrong `params` shape, `error.tsx` without `"use client"`, a layout missing `<Outlet />` so children never mount), or middleware does DB/heavy work on every edge request.
+- **High**: client layout used for trivial state; missing error boundary on a fetching segment; effect-fetch in place of a loader leaving 404/error states unrendered (`Loader`); a guard that fails open; a parallel slot the layout never renders; unvalidated dynamic params reaching ORM; missing `default.tsx` for a parallel/intercepting slot (404s on unfilled routes).
+- **Medium**: missing loading UI; auth duplicated client-side that middleware/layout should own; `window.location` navigation (`Navigation`); over-broad `matcher` even with cheap logic (excess per-request work).
 - **Low**: minor convention drift.
 
 If stack is neither Next.js App Router nor React Router, apply only the stack-neutral Rules (validate params, error/loading boundaries, no `window.location` navigation).

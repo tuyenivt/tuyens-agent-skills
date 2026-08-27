@@ -173,7 +173,7 @@ Output risk level and blast radius before any findings.
 
 **Auto-promote depth:** if Blast Radius is Wide / Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E (so historical pattern matching, cross-PR context, and anemic-prop assessment are in scope). On round 2+ nothing is inherited; when the resolved depth falls below the checkpoint's (round 1 was user-flagged `deep`), note in Summary: `Depth narrowed vs round <prior.round> - re-run with deep to re-cover.`
 
-**Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth config, middleware, route layouts, shared providers / contexts, `next.config.*`, `vite.config.*`, top-level `App.tsx` / `app/layout.tsx`), skip Phases C-D and produce a streamlined report: Summary, the Phase 0 outputs (Change Brief, traceability, requirement findings), High-Impact Findings (Phase B), and Next Steps.
+**Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth config, middleware, route layouts, shared providers / contexts, `next.config.*`, `vite.config.*`, top-level `App.tsx` / `app/layout.tsx`), skip Phases C-D and produce a streamlined report: Summary, the Phase 0 outputs (Change Brief, traceability, requirement findings), High-Impact Findings (Phase B), and Next Steps - each omitted when empty, per the Output Format's Omit-empty-sections rule.
 
 ### Phase B - React Correctness and Safety
 
@@ -276,6 +276,8 @@ For each selected scope, spawn one independent subagent **in parallel** with the
 
 **Failure isolation:** if a subagent fails or times out, continue with the rest. Note the missing scope in Summary.
 
+**No-subagent runtime:** if the runtime cannot spawn subagents, run each selected lens inline in sequence and merge identically - the Step 6 contract is agnostic to how findings were produced.
+
 ### Step 6 - Synthesize (only if Step 5 ran)
 
 Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
@@ -328,6 +330,8 @@ No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise
 ## Output Format
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+
+**Assessment follows the open-label set, not a mood:** `Request Changes` when any `[Must]` is open (new this round or carried); `Approve` when no `[Must]` is open, even if `[Recommend]`s remain; `Discuss` when the blocker is a design disagreement a finding cannot settle.
 
 ```markdown
 ## Summary

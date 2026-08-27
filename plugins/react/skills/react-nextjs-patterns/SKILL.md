@@ -17,7 +17,7 @@ user-invocable: false
 - Splitting work between Server Components, client islands, Server Actions, and Route Handlers
 - Configuring caching (fetch options, `unstable_cache`, `revalidatePath`/`revalidateTag`), ISR, streaming, metadata, and `next/image`
 
-Out of scope: Pages Router, generic React state, framework-neutral SEO.
+Out of scope: Pages Router maintenance, generic React state, framework-neutral SEO. The Pages -> App migration itself is in scope.
 
 ## Rules
 
@@ -78,6 +78,8 @@ export const getProduct = unstable_cache(
 );
 ```
 
+Next 15 default: `fetch` responses are uncached unless you opt in (`next: { revalidate | tags }`); routes without dynamic APIs still prerender statically. Never wrap per-user reads in `unstable_cache` - the cross-request cache serves one user's data to another (`react-server-data-layer` owns the ORM-side rules). Per-entity tags require building the wrapper per call: `unstable_cache(fn, ["product", slug], { tags: ["product:" + slug] })(slug)`. Periodic and event-driven caching combine: tags carry the event path, `revalidate` is the TTL backstop.
+
 Invalidate from a Server Action or webhook handler:
 
 ```tsx
@@ -90,7 +92,7 @@ export async function publishProduct(id: string) {
 }
 ```
 
-Bad: `export const dynamic = "force-dynamic"` on a page whose data changes hourly - use `revalidate: 3600` and keep it static-ish.
+Bad: `export const dynamic = "force-dynamic"` on a page whose data changes hourly - use `revalidate: 3600` and keep it static-ish. On a genuinely personalized page Dynamic is correct; a mostly-shared page with one personal widget wants PPR, not `force-dynamic`.
 
 ### Server Actions: validation, auth, revalidation
 
@@ -163,6 +165,8 @@ export async function POST(req: Request) {
 | Dynamic    | `cookies()`, `headers()`, `searchParams`                  | Personalized, auth-gated pages           |
 | Streaming  | `Suspense` around async children                          | Slow data alongside fast shell           |
 | PPR        | `experimental_ppr = true` + `Suspense` over dynamic holes | One mostly-static page with a per-user widget; avoids `force-dynamic` |
+
+Static and ISR routes with dynamic segments enumerate their paths via `generateStaticParams()`.
 
 ```tsx
 // Stream slow widgets without blocking the shell.
@@ -253,7 +257,7 @@ Rules: every dynamic subtree (anything reading `cookies()` / `headers()` / `sear
 
 ### Pages Router -> App Router Migration
 
-Routes coexist: `pages/` and `app/` ship in the same build, so migrate route-by-route. App Router wins when both define the same path.
+Routes coexist: `pages/` and `app/` ship in the same build, so migrate route-by-route - but the same path defined in both fails the build (`Conflicting app and page file`). Delete the `pages/` route in the same change that adds its `app/` replacement.
 
 | Pages Router                       | App Router equivalent                                                          |
 | ---------------------------------- | ------------------------------------------------------------------------------ |
@@ -264,7 +268,7 @@ Routes coexist: `pages/` and `app/` ship in the same build, so migrate route-by-
 | Built-in `i18n` config (`next.config`) | Removed in App Router - use a `[lang]` segment + middleware locale routing (no config-based i18n) |
 | `revalidate: N` (ISR)              | `next: { revalidate: N }` per fetch, or route-level `export const revalidate = N` |
 | `_app.tsx`                         | Root `app/layout.tsx` (shared shell) + per-segment layouts                      |
-| `_document.tsx`                    | `app/layout.tsx` (`<html>` / `<body>` live there)                              |
+| `_document.tsx`                    | `app/layout.tsx` (`<html>` / `<body>` live there; fonts move to `next/font`)   |
 | `pages/api/*` Route Handlers       | `app/api/*/route.ts` Route Handlers, or Server Actions for first-party forms   |
 | `next/router` (`useRouter`)        | `next/navigation`: `useRouter`, `useSearchParams`, `usePathname`, `useParams`  |
 | `next/head`                        | Metadata API (`export const metadata` / `generateMetadata`)                    |
@@ -276,25 +280,25 @@ Gotcha: `next/router` route events (`routeChangeStart`/`routeChangeComplete`) ha
 
 ## Output Format
 
-When auditing, emit one block per finding. Consuming workflows synthesize the route/mutation summary; do not produce one here.
+When designing, emit one block per surface - {Surface | Strategy (Rendering Strategy row) | Cache mechanism with TTL/tags | Invalidation path} - then findings for risks in the design, using the same envelope, ordering, and `Notes:` line as audits (Location names the planned file). When auditing, emit one block per finding, ordered by severity; Fix references a Pattern by name, or the governing Rule when no Pattern covers it; handoffs and off-enum observations go in one trailing `Notes:` line. Consuming workflows synthesize the route/mutation summary; do not produce one here.
 
 ```
 - Location: <file>:<line>
-  Issue: {RscBoundary | ClientLeak | ServerOnlyImport | UseClientAtRoot | ServerActionAuth | ServerActionValidation | ServerOnlyExport | OrmRowToClient | CachingMisuse | MissingRevalidation | DynamicWithoutSuspense | PprConflict | MetadataManual | ImageRaw | NavigationPush | ParamsNotAwaited}
+  Issue: {RscBoundary | ClientLeak | ServerOnlyImport | UseClientAtRoot | ServerActionAuth | ServerActionValidation | ServerOnlyExport | OrmRowToClient | CachingMisuse | MissingRevalidation | DynamicWithoutSuspense | PprConflict | MetadataManual | ImageRaw | NavigationPush | ParamsNotAwaited | RouteConflict | LegacyRouterInApp | LegacyI18nConfig | MigrationOrder}
   Severity: {Blocker | High | Medium | Low}
   Evidence: <quoted snippet or symbol>
   Fix: <one-line action; reference a Pattern by name>
 ```
 
-`CachingMisuse` is a wrong caching choice (`force-dynamic` for periodic data, `no-store` on cacheable data, missing TTL). `MissingRevalidation` is a write (Server Action / Route Handler) that mutates data without a following `revalidatePath`/`revalidateTag`, so cached views stay stale.
+`CachingMisuse` is a wrong caching choice (`force-dynamic` for periodic data, `no-store` on cacheable data, missing TTL). `MissingRevalidation` is a write (Server Action / Route Handler) that mutates data without a following `revalidatePath`/`revalidateTag`, so cached views stay stale. `ServerOnlyExport` is a `"use server"` file exporting a non-action (every export becomes network-callable). Migration codes: `RouteConflict` = same path in `pages/` and `app/` (build fails); `LegacyRouterInApp` = `next/router` or its route events inside `app/` (crashes at mount, listeners never fire); `LegacyI18nConfig` = config-based i18n serving App Router routes; `MigrationOrder` = shell migrated out of order (`_app`/`_document` still authoritative - fonts or `<html>` diverging from `app/layout.tsx` - while `app/` routes ship). `ServerActionAuth`/`ServerActionValidation` cover Route Handlers too; Location may list two files when the defect spans them.
 
 Severity guide:
-- **Blocker**: server-only import or ORM/secret leak into a client bundle; missing auth on a mutating Server Action; `params`/`searchParams` used without `await` (silent-breaks on Next 15); `"use server"` file exporting a non-action.
-- **High**: `"use client"` at a page/layout root that needs no interactivity; missing input validation on an action; `MissingRevalidation` after a write; dynamic subtree not wrapped in `<Suspense>` under PPR.
-- **Medium**: wrong caching choice (`CachingMisuse`); manual `<head>` instead of Metadata API; raw `<img>` instead of `next/image`.
+- **Blocker**: server-only import or ORM/secret leak into a client bundle; missing auth on a mutating Server Action; `params`/`searchParams` used without `await` (silent-breaks on Next 15); `"use server"` file exporting a non-action; per-user data wrapped in `unstable_cache` or a tagged cache (cross-user leak); `RouteConflict`; `LegacyRouterInApp`.
+- **High**: `"use client"` at a page/layout root that needs no interactivity (an extractable leaf listener does not count as needing it); missing input validation on an action; `MissingRevalidation` after a write; dynamic subtree not wrapped in `<Suspense>` under PPR; `LegacyI18nConfig`.
+- **Medium**: wrong caching choice (`CachingMisuse`); `MigrationOrder`; manual `<head>` instead of Metadata API; raw `<img>` instead of `next/image`.
 - **Low**: `router.push` where `<Link>` fits; minor convention drift.
 
-If the project is not Next.js App Router, emit `No Next.js findings (not App Router).` and apply only framework-neutral rules (server/client boundary, input validation, cache-by-intent).
+If the project is not Next.js App Router, emit `No Next.js findings (not App Router).` and apply only framework-neutral rules (server/client boundary, input validation, cache-by-intent). A hybrid `pages/` + `app/` tree is in scope - audit both sides against the migration table.
 
 ## Avoid
 

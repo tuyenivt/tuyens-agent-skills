@@ -70,7 +70,7 @@ const SidebarOpenContext = createContext(false);
 <Sidebar open={open} />
 ```
 
-Context earns its place at 3+ consumers across the same subtree, *or* when a deep descendant needs the value and intermediate layers don't.
+Context earns its place at 3+ consumers across the same subtree, *or* when a deep descendant needs the value and intermediate layers don't. This bar is deliberately higher than the general two-consumer bar - a prop reaches two consumers cheaply.
 
 ### Mega-Provider Re-Render Bomb
 
@@ -182,24 +182,24 @@ type ButtonProps = { variant?: "primary" | "secondary" | "ghost" | "outline" | "
 
 ## Output Format
 
-When auditing, emit one block per finding:
+When auditing, open with one line `Scope: <files reviewed>`, then emit one block per finding, ordered by severity (a Question sorts with its severity; within a band, file order), one finding per root cause - an under-bar hook's internal memoization folds into the hook finding; an HoC + wrapper + render-prop trio for one concern is one `RedundantHoC` (`RenderPropOverkill` covers a lone render-prop); repeated instances of one Issue in the same component merge into one block listing each location:
 
 ```
-- Location: <file>:<line> (<component / hook / module>)
+- Location: <file>:<line or symbol> (<component / hook / module>)
   Issue: {PrematureMemo | ReactMemoOveruse | ContextSingleConsumer | MegaProvider | StoreForTwoSlices | SingleUseHook | GenericForOneUsage | PrematureCompound | RenderPropOverkill | PropStateEffectSync | SpeculativeConfigurability | RedundantHoC}
   Severity: {High | Medium | Low}
   Verdict: {Finding | Question}
   Evidence: <quoted snippet or symbol>
-  Consumers found: <count + locations; "n/a" when the issue is not consumer-counted, e.g. PrematureMemo, PropStateEffectSync>
+  Consumers found: <count + locations; "n/a" when the issue is not consumer-counted, e.g. PrematureMemo, PropStateEffectSync; a counted value wins over "many (not enumerated)", the provider-bag fallback>
   Fix: <one-line action; reference a Pattern by name>
 ```
 
-Set `Verdict: Question` (not `Finding`) when an abstraction is under-bar now but plausibly justified soon - a second consumer in flight, a design-system component hosted for future use. A Question asks the author to confirm; a Finding asserts overengineering. When in doubt, prefer Question.
+Set `Verdict: Question` (not `Finding`) when an abstraction is under-bar now but plausibly justified soon - a second consumer in flight, a design-system component hosted for future use. A Question asks the author to confirm; a Finding asserts overengineering. When in doubt, prefer Question; design-system intent already documented (a README or spec naming the surface) needs no confirmation - list it under `Cleared:`. A Question carries the severity the issue would have if confirmed. `ContextSingleConsumer` covers any under-bar context (one or two consumers). Close with `Cleared: <reviewed-and-justified items>` (one line covering the Avoid cases, no blocks), `Tally: <N> findings, <Q> questions`, and any off-scope defects noticed in passing in a single trailing `Notes:` line naming the owning skill.
 
 Severity guide:
-- **High**: `PropStateEffectSync` (correctness drift, not just complexity); `MegaProvider` causing measurable re-render cost; `StoreForTwoSlices` adding a global concept the team must learn for trivial benefit.
-- **Medium**: `ContextSingleConsumer`; `SingleUseHook`; `PrematureCompound`; `GenericForOneUsage`.
-- **Low**: `PrematureMemo` on cheap values; `SpeculativeConfigurability` on unused variants; `RedundantHoC` parallel to an existing hook.
+- **High**: `PropStateEffectSync` (correctness drift, not just complexity); `MegaProvider` bundling several unrelated slices (breadth is the evidence; measurement not required); `StoreForTwoSlices` adding a global concept the team must learn for trivial benefit (a single-slice store included).
+- **Medium**: `ContextSingleConsumer`; `SingleUseHook`; `PrematureCompound`; `GenericForOneUsage`; an HoC/wrapper/render-prop trio shipped together for one concern.
+- **Low**: `PrematureMemo` on cheap values; `SpeculativeConfigurability` on unused variants; a lone redundant wrapper beside an existing hook (the shipped-together trio stays Medium).
 
 If no issues, emit a single line: `No overengineering signals found in <scope>.`
 
@@ -209,6 +209,6 @@ If no issues, emit a single line: `No overengineering signals found in <scope>.`
 - Recommending the opposite extreme: "delete all memoization" is as wrong as memoizing everything. The rule is: a named reason.
 - Calling all custom hooks overengineering. A hook with three call sites that cleanly factors state + effect is not the target.
 - Mistaking a *partial* implementation for overengineering. A generic with one usage now and one in the same PR is fine.
-- Recommending inlining a generic component when the team's design system explicitly hosts it for future use - `[Recommend]` confirming the design-system intent instead.
+- Recommending inlining a generic component when the team's design system explicitly hosts it for future use - emit `Verdict: Question` confirming the design-system intent instead.
 - Suggesting Redux / Zustand removal during a refactor without confirming no other slice depends on the same store wiring.
 - Flagging `useCallback` / `useMemo` inside a custom hook whose return value is documented as referentially stable (consumers depend on the contract).

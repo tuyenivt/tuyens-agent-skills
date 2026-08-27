@@ -27,12 +27,12 @@ Stack-specific delegate of `task-code-review-security` for React / Next.js / Vit
 
 | Severity     | Definition                                                                                                                                                                                                                  |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Critical** | Working XSS via `dangerouslySetInnerHTML` on user input, privileged secret in `NEXT_PUBLIC_*`, auth bypass on Server Action / Route Handler, mass exfiltration via RSC passing entire ORM row to Client Component, `eval` / `new Function` on user input. Blocks merge. |
+| **Critical** | Working XSS on user input (`dangerouslySetInnerHTML`, `javascript:` / `data:` URL reaching `href` / `src`, or equivalent sink), privileged secret in `NEXT_PUBLIC_*`, auth bypass on Server Action / Route Handler, mass exfiltration via RSC passing entire ORM row to Client Component, `eval` / `new Function` on user input. Blocks merge. |
 | **High**     | Missing input validation on a Server Action that mutates, missing `auth()` on a privileged handler, IDOR via path param without ownership check, open redirect via unchecked `redirect(userInput)`, CSRF on cookie-session form, `localStorage` for session tokens, reachable SSRF (caller-influenced server-side fetch with a bypassable hostname check or no `redirect: 'manual'`), webhook signature over a re-serialized body or compared without `timingSafeEqual`. |
 | **Medium**   | Hardening gap with mitigating control (CSP missing nonce but no untrusted HTML rendered), weak rate limit on auth route, Sentry collecting PII without redaction, `<meta>`-delivered CSP on SSR app, `npm audit` advisory not yet exploited, missing webhook replay window, missing `AbortSignal.timeout` on a user-triggered outbound fetch. |
 | **Low**      | Defense-in-depth, advisory below actively-exploited threshold, hardening without a concrete current attack scenario.                                                                                                        |
 
-**Combined-finding rule.** When two findings *compose* on the same handler / component / route segment into a worse threat than either alone, file as one finding at the elevated severity citing each component (e.g., missing `auth()` + mass assignment via `Object.fromEntries(formData)` on the same Server Action = Critical unauthenticated admin override; `dangerouslySetInnerHTML` + sanitizer with `ADD_TAGS: ['script']` on the same component = Critical working XSS; `NEXT_PUBLIC_API_KEY` + that key calling an admin API from the browser = Critical exposed admin key). If either is independently exploitable, file separately. When co-location is unclear from the diff, file separately and add `Note: Combined-finding rule applies if both land on the same handler; verify before merge` to the lower-severity entry.
+**Combined-finding rule.** When two findings *compose* on the same handler / component / route segment into a worse threat than either alone, file as one finding at the elevated severity citing each component (e.g., missing `auth()` + mass assignment via `Object.fromEntries(formData)` on the same Server Action = Critical unauthenticated admin override; `dangerouslySetInnerHTML` + sanitizer with `ADD_TAGS: ['script']` on the same component = Critical working XSS; `NEXT_PUBLIC_API_KEY` + that key calling an admin API from the browser = Critical exposed admin key). Composition wins over splitting: parts that are also independently exploitable still merge when they land on the same handler - the merged finding cites each part and its standalone severity. File separately only when the defects sit on different handlers or do not compose into something worse. When co-location is unclear from the diff, file separately and add `Note: Combined-finding rule applies if both land on the same handler; verify before merge` to the lower-severity entry.
 
 ## Invocation
 
@@ -60,7 +60,7 @@ Record for the Summary block: `Framework` (Next.js App Router / Pages Router / V
 
 ### Step 3 - Resolve the Diff Under Review
 
-Use skill: `review-precondition-check` with the user's argument (default: current branch). On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip entirely when the parent passed pre-read artifacts. If precondition fails, surface the message verbatim and stop. Never run state-changing git.
+Use skill: `review-precondition-check` with the user's argument (default: current branch). On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Capture `head_sha = git rev-parse <head_ref>` and `base_sha = git rev-parse <base_ref>` for the report checkpoint. Skip entirely when the parent passed pre-read artifacts. If precondition fails, surface the message verbatim and stop. Never run state-changing git.
 
 ### Step 4 - Read the Security Surface
 
@@ -90,22 +90,22 @@ One-row-per-category verdict that funnels which downstream checks run carefully.
 
 | Risk                          | React signal in diff                                                                                                                       |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Broken Access Control         | New Server Action / Route Handler without `await auth()`; missing ownership filter; widened `middleware.ts` `matcher`                       |
+| Broken Access Control         | New Server Action / Route Handler without `await auth()`; missing ownership filter; widened `middleware.ts` `matcher`; `redirect(returnTo)` / `navigate(returnTo)` without allowlist |
 | Injection                     | `prisma.x.update({ data: Object.fromEntries(formData) })`; raw `formData.get(...)` into ORM without Zod                                    |
 | XSS                           | `dangerouslySetInnerHTML={{ __html: userInput }}`; markdown render with `rehype-raw`; `DOMPurify` `ADD_TAGS` including `script`/`iframe`   |
 | Cryptographic Failures        | Custom crypto on auth path; `crypto.createHash('sha256')` for passwords; `alg: none` accepted in JWT verify                                |
-| Security Misconfiguration     | Missing CSP / HSTS; `unsafe-eval` / `unsafe-inline` / wildcard `*` in `script-src`; `<meta>`-delivered CSP; `remotePatterns` wildcard host  |
+| Security Misconfiguration     | Missing CSP / HSTS; `unsafe-eval` / `unsafe-inline` / wildcard `*` in `script-src`; `<meta>`-delivered CSP; `remotePatterns` wildcard host; `postMessage` listener without origin check |
 | SSRF                          | `fetch(searchParams.get('url'))` in Route Handler / Server Component without host allowlist                                                |
 | Insecure Design (A04)         | Middleware allows by default; auth enforced per-route instead of router-level default-deny                                                 |
 | Vulnerable Components (A06)   | `package.json` / lockfile change with stale advisory; Dependabot disabled                                                                  |
-| Data Integrity Failures (A08) | `eval` / `new Function`; `JSON.parse(userInput)` spread into Prisma; `'use server'` file re-exporting non-action utility; webhook handler with missing, post-parse, or non-raw-body signature verification |
+| Data Integrity Failures (A08) | `eval` / `new Function`; `JSON.parse(userInput)` spread into Prisma; `'use server'` file re-exporting non-action utility; webhook handler with missing, post-parse, non-raw-body, or skipped-when-secret-unset signature verification |
 | Logging & Monitoring (A09)    | Sentry browser SDK without `beforeSend` PII strip; client / server logs containing `password` / `token` / `authorization`                  |
 
 Mark each category `yes` or `no signal in diff`.
 
 ### Step 6 - Diff-Specific Checks
 
-Apply against changed files. **Gate**: only run a sub-block when its Step 5 row is `yes` or its files appear in the diff. Skip sub-blocks whose triggering category is `no signal in diff`. This keeps Step 6 a targeted check, not a full OWASP audit.
+Apply against changed files. **Gate**: run a sub-block when a related Step 5 row is `yes`, or when its surface appears in the diff regardless of triage verdicts - outbound requests / webhooks: any server-side fetch or webhook handler added or changed; Common React vulnerability patterns: any client component or markup changed; data protection: any logging, analytics, or env change. Skip a sub-block only when nothing triggers it. This keeps Step 6 a targeted check, not a full OWASP audit.
 
 **Authn / authz**
 - [ ] Auth library chosen and consistent (Auth.js / Clerk / Lucia / iron-session); not mixed
@@ -142,7 +142,7 @@ Apply against changed files. **Gate**: only run a sub-block when its Step 5 row 
 **Common React vulnerability patterns**
 - [ ] `dangerouslySetInnerHTML` on user input wrapped in `DOMPurify.sanitize(html)` with default config; flag `ADD_TAGS` containing `script` / `iframe` / `object` / `embed` / `style`; flag `ADD_ATTR` containing event handlers (`onload`, `onclick`, `onerror`) or URL attrs (`src`, `href`)
 - [ ] `href={userInput}` (Next.js `<Link>` and `<a>`) - scheme validated as `http(s):` (block `javascript:`, `data:`, `vbscript:`)
-- [ ] Open redirect: `redirect(searchParams.get('returnTo'))` / `navigate(returnTo)` validated against allowlist or relative-path-only check
+- [ ] Open redirect: `redirect(searchParams.get('returnTo'))` / `navigate(returnTo)` validated against allowlist or relative-path-only check (React Router `navigate()` is same-origin path navigation - Medium unless the value reaches `window.location` or an anchor `href`)
 - [ ] `NEXT_PUBLIC_*` audit: any `NEXT_PUBLIC_*` naming an API key / DB URL / signing secret is Critical - those compile into every browser bundle
 - [ ] `'use server'` files export only Server Actions; re-exported non-action utilities become network-callable mutations
 - [ ] Server Component -> Client Component prop projection: never pass entire ORM rows; project via DTO or Prisma `select` / `omit`
@@ -166,7 +166,7 @@ Apply against changed files. **Gate**: only run a sub-block when its Step 5 row 
 
 ### Step 7 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review-security`. Write the assembled output to the report file; print the confirmation line.
+Subagent runs return the complete Output Format document to the parent and write nothing. Standalone: use skill: `review-report-writer` with `report_type: review-security` and every required field: `report_body`, `branch`, `base_ref` / `head_ref` from the precondition handle, `base_sha` / `head_sha` from Step 3, `scope: +sec`, `depth: standard` (this workflow has no depth knob; the writer still requires the field), `stack: react`, and `mode: full`, `round: 1` - unless `review-security-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself). Write the report; print the confirmation line after the report body.
 
 ## Output Format
 
@@ -179,7 +179,8 @@ The fence below delimits the template for display only - it is not part of the r
 - **Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
 - **Auth:** Auth.js | Clerk | Lucia | iron-session | Custom | backend-only
 - **Sanitizer:** DOMPurify | sanitize-html | none
-- **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped _(standalone only; subagents return unverified findings)_
+- **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count, +N unverifiable]
 
 [2-3 sentence assessment calling out React-specific risks: `dangerouslySetInnerHTML` on user input, `NEXT_PUBLIC_*` secret leak, missing Server Action validation, RSC passing ORM rows to Client Components, missing / weak CSP, open redirect via `returnTo`.]
 
@@ -241,7 +242,7 @@ Aligns 1:1 with the Workflow steps above.
 - [ ] **Step 4**: Security surface (middleware, `next.config.js` headers, auth config, changed Server Actions / Route Handlers / RSC / Client Components, `dangerouslySetInnerHTML` sites, env vars, `package.json`) read directly; prior revision consulted when middleware or CSP relaxed
 - [ ] **Step 5**: OWASP triage produced one verdict per category (`yes` / `no signal in diff`); not duplicated as standalone findings
 - [ ] **Step 6**: Diff-specific checks applied for authn/authz, input validation / mass assignment, common React vulnerability patterns, data protection; severity rubric applied consistently; Combined-finding rule applied where two findings compose on the same handler; every finding has an attack scenario, regression-risk, or topology-dependent label
-- [ ] **Step 7**: Report written to file via `review-report-writer`; confirmation line printed
+- [ ] **Step 7**: Standalone: report written via `review-report-writer` with full checkpoint fields (`scope: +sec`, `depth: standard`, `stack: react`); confirmation line printed. Subagent: complete Output Format returned, nothing written
 
 **Requires repo / infra access (when not visible in the diff, list under `## Could Not Verify From Diff` and mirror as a `[Delegate]` Next Step):**
 

@@ -23,7 +23,7 @@ user-invocable: false
 - **Build in CI, never on the production host.** A production build peaks well above a gigabyte and will contend with the database for memory on a small machine.
 - `NEXT_PUBLIC_` variables are **inlined at build time**. One image cannot serve two environments that differ in any public variable. Anything that must vary per environment is read at runtime on the server and passed down.
 - **The ISR cache is on local disk.** A second instance has its own copy, so revalidation on one leaves the other stale. Running more than one instance requires a shared cache handler.
-- The CDN must bypass cache when the session cookie is present - matched **by name** (`next-auth.session-token`, the app's session cookie). A path-only rule serves an authenticated page to the next visitor; an any-cookie rule lets consent and analytics cookies bypass every request.
+- The CDN must bypass cache when the session cookie is present - matched **by name** (the app's observed session cookie; `next-auth.session-token` under Auth.js. When the auth stack is unknown, state the bypass requirement and flag the cookie name unverified). A path-only rule serves an authenticated page to the next visitor; an any-cookie rule lets consent and analytics cookies bypass every request.
 - Image optimization consumes origin CPU per distinct source and size. On a small host this saturates before anything else.
 - Handle the termination signal: stop accepting connections, finish in-flight requests, close the database pool, then exit.
 
@@ -95,9 +95,9 @@ Treat the shared handler as the trigger condition for horizontal scaling: until 
 | `/_next/image*`                  | Cache long   | Each miss costs origin CPU                   |
 | Server Action POST               | Bypass       | Mutations                                    |
 
-"Cache" means honor the origin `Cache-Control` - ISR pages already emit `s-maxage`; never force an edge TTL onto HTML the origin marked `no-store`.
+"Cache" means honor the origin `Cache-Control` - ISR pages already emit `s-maxage`; never force an edge TTL onto HTML the origin marked `no-store`. A default edge TTL that applies only when the origin sends no header is not forcing - `ForcedEdgeTtlOnHtml` fires when a floor or override discards the origin header. Bypass means the cookie is in the cache key, not merely forwarded to the origin; on CloudFront those are separate policies (cache policy vs origin request policy).
 
-Purge by tag on publish rather than purging everything. A full purge sends every page to the origin at once, and the resulting render storm looks exactly like the traffic spike it actually is.
+Purge scoped to what changed on publish - by surrogate key/tag where the CDN supports it (Fastly, Cloudflare), by the changed paths on CloudFront, whose invalidations are path-only. A full purge sends every page to the origin at once, and the resulting render storm looks exactly like the traffic spike it actually is.
 
 ### Image Optimization Cost
 
@@ -116,14 +116,15 @@ Keep the default only when the image set is small and mostly cached. Measure bef
 ### Graceful Shutdown
 
 ```ts
+// run stage: ENV NEXT_MANUAL_SIG_HANDLE=true - without it the standalone server.js
+// installs its own SIGTERM/SIGINT handlers and exits before any draining happens
 // instrumentation.ts
 export async function register() {
-  const shutdown = async () => {
-    await db.$disconnect();
+  process.on("SIGTERM", async () => {
+    await drainInFlight();     // the LB has stopped routing; bounded wait for open requests
+    await db.$disconnect();    // close the pool only after the last response
     process.exit(0);
-  };
-  process.on("SIGTERM", shutdown);
-  process.on("SIGINT", shutdown);
+  });
 }
 ```
 
@@ -131,12 +132,14 @@ Without this the old container holds its pool through the deploy overlap, which 
 
 ## Output Format
 
+When setting up a deployment (authoring), emit the build and run artifacts with a one-line justification each, then this assessment block covering what remains. When reviewing, emit the block alone: findings ordered by severity, user-facing blast radius breaking ties, one finding per root cause (a config defect with several symptoms is one finding carrying them in Risk); then the `Not assessed:` and `Notes:` slots as templated. No prose outside the template.
+
 ```
 ## Self-Host Assessment
 
-**Target:** {VPS | container host | unknown}
+**Target:** {VPS | container host | unknown | <current> -> <planned>}
 
-**Instances:** {1 | N}
+**Instances:** {<count> | unknown (assumed 1)}
 
 **CDN:** {present | absent}
 
@@ -146,6 +149,10 @@ Without this the old container holds its pool through the deploy overlap, which 
   - Issue: {NotStandalone | BuildOnHost | PublicEnvBakedIn | UnsharedIsrCache | CdnCookieBypassMissing | ForcedEdgeTtlOnHtml | FullPurgeOnPublish | ImageOptimizerUnbounded | MissingStaticCopy | NoGracefulShutdown}
   - Risk: {what fails in production}
   - Fix: {concrete change; reference a Pattern by name}
+
+Not assessed: {surfaces the input never showed - Dockerfile, shutdown handling, image config; omit when all shown}
+
+Notes: {single line - out-of-scope observations naming the owning skill; omit when none}
 
 ### No Findings
 
@@ -158,7 +165,7 @@ Severity:
 - **Medium**: `NEXT_PUBLIC_` values that must vary per environment; full purge on publish; unbounded image optimization on a small host; missing graceful shutdown.
 - **Low**: not using standalone output; missing static asset copy in an image not yet serving traffic (High once deployed - it is a no-CSS outage).
 
-Omit "No Findings" when findings were listed. When instance count is unknown, assume one and say so. If the project is not self-hosted Next.js, emit `No self-host findings (managed platform or SPA).` and stop.
+Omit "No Findings" when findings were listed. When instance count is unknown, assume one and say so. If the project is not self-hosted Next.js, emit `No self-host findings (managed platform or SPA).` bare - no envelope - and stop; one `Notes:` line naming the evidence read and any handoff may follow. The gate reads deployed state: platform config (`vercel.json`, Netlify/Amplify config) with no self-host artifact stops; any self-host artifact (Dockerfile, compose file, `output: "standalone"`), even beside a platform config, gets the full assessment of that artifact.
 
 ## Avoid
 

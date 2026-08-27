@@ -22,9 +22,9 @@ user-invocable: false
 - Test service functions directly. They are plain async functions with no request context, which is what makes them the cheapest thing in the codebase to test.
 - **Use a real database, never a mocked ORM.** A mocked client asserts that you called it the way you expected, which is the one thing that was never in doubt. Constraints, cascades, transactions, and `null` handling are what break.
 - Every test starts from a known state and leaves none behind. Choose one isolation mechanism and apply it everywhere.
-- Mock at the network edge only: external HTTP, payment providers, mail. Never mock your own modules to make a test pass.
+- Mock at the network edge only: external HTTP, payment providers, mail - plus two sanctioned stubs: the session boundary (`requireUser`/`requireAdmin`) and Next framework modules with request-scoped side effects (`next/cache` revalidation, which throws outside a request). Never mock other own modules to make a test pass.
 - **Async Server Components are not unit-testable** with a component renderer. Test the data function underneath, and cover the rendered page with a browser test.
-- Route Handlers are tested by constructing a `Request` and calling the exported method. No HTTP server is needed. A handler that reads `cookies()` or `headers()` from `next/headers` needs the same session-boundary stub as a Server Action.
+- Route Handlers are tested by constructing a `Request` and calling the exported method. No HTTP server is needed. A handler that reads `cookies()` or `headers()` from `next/headers` needs the same session-boundary stub as a Server Action. Webhook handlers run real signature verification against a test-signed payload (e.g. Stripe's test header helper), never a mocked verifier, and get a replay test: the same event delivered twice, the second a no-op - which forces event-id dedupe in the handler.
 - A Server Action's authorization path is a required test case, not an optional one. Assert that an unauthorized caller is rejected before asserting that an authorized one succeeds.
 
 ## Patterns
@@ -42,7 +42,8 @@ Default to truncation. Transaction rollback is faster but silently cannot test t
 ### Database Setup
 
 ```ts
-// vitest.config.ts: globalSetup: ["test/global-setup.ts"], setupFiles: ["test/setup.ts"]
+// vitest.server.config.ts - own node-env project beside the jsdom component config
+// globalSetup: ["test/global-setup.ts"], setupFiles: ["test/setup.ts"]
 
 // test/global-setup.ts - main process, before workers fork
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
@@ -50,7 +51,7 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 export default async function () {
   const container = await new PostgreSqlContainer("postgres:16-alpine").start();
   process.env.DATABASE_URL = container.getConnectionUri();
-  await runMigrations();                      // the real migrations, not db push
+  await runMigrations();                      // e.g. execSync("npx prisma migrate deploy") - the real migrations, not db push
   return async () => { await container.stop(); };
 }
 ```
@@ -58,7 +59,7 @@ export default async function () {
 ```ts
 // test/setup.ts - per test file
 beforeEach(async () => {
-  const tables = await publicTableNames();    // introspect information_schema; a hand-maintained list rots silently
+  const tables = await publicTableNames();    // introspect information_schema, excluding _prisma_migrations; a hand-maintained list rots silently
   await db.$executeRawUnsafe(`TRUNCATE ${tables.join(", ")} RESTART IDENTITY CASCADE`);
 });
 ```
@@ -66,6 +67,8 @@ beforeEach(async () => {
 The container starts in `globalSetup` because that runs in the main process before workers fork: workers inherit `DATABASE_URL`, so the module-scope client singleton captures the container URI. Starting it in a per-file `beforeAll` both spins one container per file (the slow row of the isolation table) and loses the race with the singleton, which reads the env at import time.
 
 Running the real migrations rather than a schema sync means the test suite also verifies that the migrations produce the schema the code expects, which is otherwise only discovered in production.
+
+One shared database plus parallel workers race on truncation: set `fileParallelism: false`, or give each worker its own schema (derive it from `VITEST_POOL_ID`) when suite time matters.
 
 ### Testing a Service Function
 
@@ -126,6 +129,8 @@ Splitting the page's data function out of the component, as `react-server-data-l
 
 ## Output Format
 
+When standing up testing (authoring), emit the isolation choice with its table-derived justification, the setup files, then the first tests as a `Tests to Write` list (test name plus the assertion that matters) - and close with this assessment block covering what remains, its headers naming the authored setup. When assessing, headers describe the layer as found: a split suite lists each observed value (`mocked (unit) / real (containerized, integration)`); with no server tests, Isolation is `none` and Database is `none - no server tests exist`. Open the block with `Scope: <files assessed>` directly under the heading and, when the caller asked a direct question (a yes/no or either/or ask), one `Verdict:` line answering it. Order gaps by severity, blast radius breaking ties (payment and webhook surfaces first), one gap per surface (function or route). Absent or defective infrastructure is one gap of its own listing each defect; per-surface gaps assume it lands.
+
 ```
 ## Server Test Assessment
 
@@ -133,12 +138,12 @@ Splitting the page's data function out of the component, as `react-server-data-l
 
 **Database:** {real (containerized) | real (shared test DB) | mocked}
 
-**Client-side coverage:** {not assessed - react-testing-patterns scope | none present}
+**Client-side coverage:** {present (not assessed - react-testing-patterns scope) | none present}
 
 ### Gaps
 
 - [Severity: High | Medium | Low] {function or route} - {gap description}
-  - Missing: {authorization case | database-backed test | isolation | migration coverage | error path | ownership/IDOR case}
+  - Missing: {one or more of: authorization case | database-backed test | isolation | migration coverage | error path | ownership/IDOR case | harness (container lifecycle, env race, stale table list)}
   - Risk: {what ships broken}
   - Recommendation: {concrete test to add}
 
@@ -149,7 +154,7 @@ Splitting the page's data function out of the component, as `react-server-data-l
 
 Severity:
 
-- **High**: a mutating Server Action or Route Handler with no authorization test; a mocked ORM standing in for database behavior; no isolation between tests.
+- **High**: a mutating Server Action or Route Handler with no authorization test; a mocked ORM standing in for database behavior; no isolation between tests; a setup race that can point destructive cleanup (TRUNCATE) at a non-test database.
 - **Medium**: happy path only; migrations not exercised; ownership and IDOR paths untested.
 - **Low**: missing edge cases on an otherwise covered function.
 

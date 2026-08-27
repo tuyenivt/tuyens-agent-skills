@@ -41,7 +41,7 @@ Client reliability: what the UI does when a request hangs, a mutation fails afte
 
 At `deep`, trace each new or changed data dependency with `failure-propagation-analysis` and name, per dependency, what the user sees when it is slow, absent, or returns something unexpected, and what contains it.
 
-**Whole-app sweep** (reliability-debt pass with no feature branch): when Step 3 fails fast on trunk, do not stop - skip the diff gate and run Steps 4-11 repo-wide at `HEAD` (Step 4's categories read in full, not per changed file); findings cite current code; checkpoint `base_sha` = `head_sha` = `HEAD`.
+**Whole-app sweep** (reliability-debt pass with no feature branch): when Step 3 fails fast on trunk, do not stop - skip the diff gate and run Steps 4-11 repo-wide at `HEAD` (Step 4's categories read in full, not per changed file); findings cite current code; checkpoint `base_sha` = `head_sha` = `HEAD`, and with no handle the writer's `branch` / `base_ref` / `head_ref` are all the trunk branch name. The Step 10 verify pass checks claims only - skip diff-attribution and its de-escalation, since in a sweep everything is pre-existing by construction.
 
 ## Invocation
 
@@ -57,7 +57,7 @@ Append `deep` for the deep pass; `--base <branch>` for a non-trunk base. When in
 
 ### Step 1 - Behavioral Principles
 
-Use skill: `behavioral-principles`. Governs every step that follows; accept the parent's confirmation when invoked as a subagent.
+Use skill: `behavioral-principles`. Governs every step that follows; accept the parent's confirmation when invoked as a subagent (no re-load).
 
 ### Step 2 - Confirm Stack and Detect Framework
 
@@ -89,6 +89,8 @@ Read every changed file in these categories plus any unchanged file the diff cal
 - `next.config.*` and deploy config where chunk retention / `deploymentId` is set
 
 Use skill: `react-data-fetching` - it owns the canonical query, mutation, invalidation, and optimistic-rollback patterns. Use skill: `ops-resiliency` for retry / backoff / fallback framing, applied to browser-to-API calls. Use skill: `failure-propagation-analysis` to trace how each new or changed dependency's failure reaches the user - this gives each finding its user impact.
+
+Consulted skills inform findings; this workflow's Output Format is the only envelope emitted (`failure-propagation-analysis` supplies the tracing method, not its own incident-shaped sections). Subagent mode: read changed files from the parent's pre-read diff; open unchanged files the diff calls into from the working tree.
 
 ### Step 5 - Error Boundaries and Render-Time Failure
 
@@ -183,11 +185,11 @@ useQuery({
 - [ ] **Dynamic `import()` failure has a recovery path.** After a redeploy, a tab open on the old build requests chunks that no longer exist and every lazy route throws `ChunkLoadError` on click. Catch it in a boundary that detects the error and forces `location.reload()`, and keep prior build assets available (or set a stable `deploymentId`) so the window is survivable. This is the most commonly missed React reliability defect and it fires on every deploy.
 - [ ] **Third-party scripts fail closed.** A blocked or timed-out analytics / chat / tag-manager script must not break the page: `next/script` with `strategy="lazyOnload"` and an `onError`, and no render path that assumes `window.<vendor>` exists.
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and put its tally in the Summary's `Findings verified` slot - the verify table itself is not published. Subagent runs skip this - the parent verifies the merged set once.
 
 ### Step 11 - Write Report
 
-**Subagent mode:** when invoked by `task-react-review` or `task-code-review-reliability`, return the findings in this skill's Output Format for the parent to merge and write nothing - the parent owns the report and `review-report-writer` rejects subagent writes. At `deep`, return the Failure-Mode and User-Impact Map with the findings so the parent preserves it as its own section. Skip the rest of this step.
+**Subagent mode:** when invoked by `task-react-review` or `task-code-review-reliability`, return the complete Output Format document (Summary through Next Steps) for the parent to merge and write nothing - the parent owns the report and `review-report-writer` rejects subagent writes. At `deep`, return the Failure-Mode and User-Impact Map with the findings so the parent preserves it as its own section. Skip the rest of this step.
 
 Standalone: use skill: `review-report-writer` with `report_type: review-reliability` and every required field: `report_body`, `branch`, `base_ref` / `head_ref` from the precondition handle, `base_sha` / `head_sha` from Step 3 (whole-app sweep: both = `HEAD`), `scope: +rel`, `depth` as resolved from the Depth table, `stack: react`, and `mode: full`, `round: 1` - unless `review-reliability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Write before ending; print the confirmation line.
 
@@ -195,7 +197,7 @@ Standalone: use skill: `review-report-writer` with `report_type: review-reliabil
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
-**Severity assignment:** High = the user hits an unrecoverable or wrong state on a plausible failure (a route with no error boundary, `ChunkLoadError` with no recovery, an optimistic update with no rollback, a retried non-idempotent mutation or Server Action, an untimed `fetch` in an RSC render, a hydration mismatch, a `reset` that cannot recover); Medium = the failure is bounded but recovery or comprehension is impaired (missing invalidation after a mutation, retry on non-retryable 4xx, no cancellation on unmount, no offline affordance, error fallback with no next action, `loading.tsx` with no sibling `error.tsx`); Low = hardening with no immediate failure path (no jitter, `staleTime` undocumented, no cross-tab propagation on low-stakes state). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]`.
+**Severity assignment:** High = the user hits an unrecoverable or wrong state on a plausible failure (a route with no error boundary, `ChunkLoadError` with no recovery, an optimistic update with no rollback, a retried non-idempotent mutation or Server Action, an untimed `fetch` in an RSC render, a hydration mismatch, a `reset` that cannot recover, a failure rendered as empty content - `data ?? []` making "failed" indistinguishable from "none"); Medium = the failure is bounded but recovery or comprehension is impaired (missing invalidation after a mutation, retry on non-retryable 4xx, no cancellation on unmount, no offline affordance, error fallback with no next action, `loading.tsx` with no sibling `error.tsx` while a boundary exists higher in the tree - with none anywhere it is High's no-boundary case); Low = hardening with no immediate failure path (no jitter, `staleTime` undocumented, no cross-tab propagation on low-stakes state). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is one line on a critical path; Low -> `[Recommend]`. Each finding's `Label` slot carries the result (the verify pass's `Label` column overrides when it ran).
 
 **One finding per root cause:** a defect matching several checklist lines (an uncancelled query that also retries a 403) is reported once at the strongest severity with the other aspects folded in.
 
@@ -205,17 +207,20 @@ The fence below delimits the template for display only - it is not part of the r
 - **Stack Detected:** React <version> / TypeScript <version>
 - **Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
 - **Data Layer:** Server Components + `fetch` | TanStack Query | SWR | mixed
+- **Boundary Library:** `error.tsx` segments | `react-error-boundary` | hand-rolled `componentDidCatch` | none detected
 - **Boundary Coverage:** every remote-data route | PARTIAL: <routes uncovered> | NONE
 - **Timeouts:** all requests bounded | PARTIAL: <where missing> | NONE
 - **Cancellation:** signal threaded at file:line | absent
 - **Offline:** defined per path | partial | undefined
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped _(standalone only; subagents return unverified findings)_
 - **Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
 
 ## Findings
 
 ### High Impact
 
-1. **Location:** [file:line]
+1. **Label:** [Must | Recommend]
+   **Location:** [file:line]
    **Issue:** [name the React idiom: no `error.tsx` above the route, `retry: 3` on a 4xx, `signal` not threaded into `queryFn`, optimistic update with no `onError` rollback, `import()` with no `ChunkLoadError` recovery, hydration mismatch from `Date.now()`]
    **Failure Mode:** [what fails and how: "the orders `fetch` has no timeout, so a stalled API leaves the RSC stream open and the route never resolves"]
    **User Impact:** [what the person in the browser sees: "an indefinite skeleton on /orders; reloading reproduces it"]
@@ -262,7 +267,7 @@ Mark a line N/A when the diff has no matching surface (e.g. no mutations, no dyn
 - [ ] Step 8 - mutations invalidate every affected key, `revalidateTag` / `revalidatePath` called server-side after the write, `staleTime` stated, cross-tab consistency defined where it matters
 - [ ] Step 9 - `navigator.onLine` treated as a hint, offline a distinct state, bounded refetch-on-reconnect, cache used as fallback, offline writes defined, no empty-list-on-failure
 - [ ] Step 10 - hydration-mismatch sources checked, `loading.tsx` / `error.tsx` paired per segment, post-flush streaming failure handled, `ChunkLoadError` recovery present, third-party scripts fail closed
-- [ ] Step 11 - standalone: report written via `review-report-writer` (`scope: +rel`, `stack: react`), confirmation printed; subagent: findings returned to parent, no file written
+- [ ] Step 11 - standalone: report written via `review-report-writer` (`scope: +rel`, `stack: react`), confirmation printed; subagent: complete Output Format document returned to parent, no file written
 - [ ] Every finding names the failure mode and what the user experiences, never just the missing pattern
 - [ ] Client framing held - no connection pools, server middleware, graceful shutdown, or distributed-transaction recommendations
 - [ ] Depth honored: `standard` ran all; `deep` filled the Failure-Mode and User-Impact Map

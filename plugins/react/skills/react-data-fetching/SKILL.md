@@ -23,7 +23,7 @@ user-invocable: false
 - Query keys are arrays containing every variable the query depends on. Same key = same cache entry; different inputs = different keys.
 - Every mutation invalidates or sets the affected queries. Untouched cache after a write is a bug.
 - Components handle `loading`, `error`, and `empty` (`data` exists but is null/empty) explicitly. No blank-screen fallthroughs.
-- Define query/mutation functions at module scope (or via a typed client). Inline closures defeat dedupe and break references.
+- Fetch/transform logic lives in named module-scope functions; the thin `queryFn: () => fetchUser(id)` arrow at the call site is idiomatic. `Inline-Fn` flags fetch logic written inline in the options object, not the thin wrapper.
 - For Next.js App Router: fetch on the server, hydrate to TanStack Query via `HydrationBoundary` when the same data must stay interactive on the client.
 
 ## Fetching Strategy
@@ -37,6 +37,8 @@ user-invocable: false
 | Project already standardised on SWR                 | SWR (URL-keyed, simpler API)                 |
 
 TanStack Query is the default client choice: dependent queries, infinite queries, optimistic updates, and richer cache APIs. SWR is fine where the team has chosen it.
+
+Cache sizing: `staleTime` = how long serving stale data is acceptable (0 only when per-interaction freshness matters; minutes for reference data); `gcTime` > `staleTime`. The client-setup example's 60s/5min are starting defaults, not law. Polling: `refetchInterval` (TanStack) / `refreshInterval` (SWR). SWR vocabulary: `dedupingInterval` ~ staleTime (SWR has no `gcTime` counterpart - omit that slot), `revalidateOnFocus` ~ refetchOnWindowFocus; conditional fetch = null key (`useSWR(id ? key : null)`); cursor pagination = `useSWRInfinite`.
 
 ## Patterns
 
@@ -177,11 +179,11 @@ mutate(`/api/users/${id}`);              // revalidate the affected read key
 
 ## Output Format
 
-Emit one Finding per issue:
+When reviewing, emit one Finding per issue, ordered by severity; emit a finding even when a broader refactor would subsume it, naming the subsuming change in Fix. When consulting (strategy choice, cache sizing), emit one prescription row per data type - {Data type | Strategy | Key | Cache config | Invalidation trigger} - then Findings for any defective code shown; the concluding Summary block covers reviewed code only (omit it in a pure consult).
 
 ```
 ### Finding: <short title>
-Category: {Effect-Fetch | Query-Key | Invalidation | State-Handling | Optimistic | Hydration | Stale-Time | RSC-Boundary | Inline-Fn}
+Category: {Effect-Fetch | Query-Key | Invalidation | State-Handling | Optimistic | Hydration | Stale-Time | RSC-Boundary | Inline-Fn | Client-Setup}
 Severity: {Critical | High | Medium | Low}
 Location: <file>:<line> or <component>
 Issue: <one-line problem>
@@ -193,14 +195,16 @@ Conclude with:
 ```
 Summary: <N> findings (<C> Critical, <H> High, <M> Medium, <L> Low)
 Client Library: {TanStack Query | SWR | Mixed | None}
-RSC Usage: {Server-First | Client-First | Mixed}
+RSC Usage: {Server-First | Client-First | Mixed | N/A (SPA)}
 Invalidation Coverage: <mutations with invalidation> / <total mutations>
 ```
 
+`Client-Setup`: QueryClient construction or provider defects (module-scope client on a server runtime, missing provider). A prefetch/client key mismatch is `Hydration`, not `Query-Key`. `Mixed` Client Library = two libraries, or a library plus raw effect-fetches. A mutation counts as covered only when it invalidates or sets the affected queries on settlement; an `onMutate` optimistic write alone does not count. Non-finding observations (out-of-enum defects, confirmed-fine calls) go in a single trailing `Notes:` line.
+
 Severity guide:
-- **Critical**: data loss, wrong-user data, unbounded refetch loops.
-- **High**: stale data after writes (missing `invalidateQueries`); a `queryFn`-read variable absent from the `queryKey` (cache collision, wrong data shown); race conditions from manual effects.
-- **Medium**: missing empty/error UI; missing optimistic rollback; truly cosmetic key instability (string-vs-array of same data).
+- **Critical**: data loss, wrong-user data, unbounded refetch loops; module-scope `QueryClient` on a server runtime (cross-request leakage).
+- **High**: stale data after writes (missing `invalidateQueries`); a `queryFn`-read variable absent from the `queryKey` (cache collision, wrong data shown; Low when the value is a build-time constant); a prefetch/client key mismatch defeating hydration; race conditions from manual effects.
+- **Medium**: missing empty/error UI (High when a failed load leaves the UI stuck, e.g. a spinner that never clears); missing optimistic rollback; client-fetching public data a Server Component should own (`RSC-Boundary`); truly cosmetic key instability (string-vs-array of same data).
 - **Low**: inline `queryFn` closures; default `staleTime: 0` where freshness isn't required.
 
 ## Avoid

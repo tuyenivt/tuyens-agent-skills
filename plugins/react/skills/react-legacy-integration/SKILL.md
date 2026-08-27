@@ -59,7 +59,7 @@ if (node) {
 
 Rules: read props from `data-*` attributes (already JSON-safe), never from inline `<script>` JSON without parsing through `JSON.parse(node.dataset.payload)`. Use a stable id; for multi-instance islands, use `data-island="cart"` and iterate.
 
-`root.unmount()` is needed only when the host swaps DOM without a full reload (Turbo / pjax / HTMX). Under classic full-page navigation the browser discards the document and the root with it - no unmount handler needed; at most a `pagehide` unmount for bfcache restore. Don't wire an unmount that never fires.
+`root.unmount()` is needed only when the host swaps DOM without a full reload (Turbo / pjax / HTMX). Under classic full-page navigation the browser discards the document and the root with it - no unmount handler needed; at most a `pagehide` unmount for bfcache restore. Don't wire an unmount that never fires. The inverse also holds: Turbo swaps insert fresh mount nodes, so run the mount routine on `turbo:load`, not once at top level - or new pages never mount.
 
 ### Hydrating Server-Rendered HTML
 
@@ -97,7 +97,7 @@ useEffect(() => {
 }, []);
 ```
 
-For richer shared state, expose a typed singleton store (Zustand) on `window` once, then both sides subscribe.
+For richer shared state, expose a typed singleton store (Zustand) on `window` once, then both sides subscribe. The `window` exposure is for non-React consumers; an all-React federation imports the store as a federated singleton module instead.
 
 ```ts
 // shared/store.ts (bundled once, exposed via shared chunk or federated singleton)
@@ -134,7 +134,7 @@ const Checkout = lazy(() => import("checkout/CheckoutApp"));
 <Suspense fallback={<Spinner />}><Checkout /></Suspense>
 ```
 
-Rules: `react` and `react-dom` MUST be `singleton: true` - duplicated copies break hooks. Version-skew across remotes is real; pin a compatible range per remote and fail loudly at load (`requiredVersion`) rather than silently dual-loading. If the remote is offline, the host's `Suspense` boundary needs an `ErrorBoundary` above it to fall back gracefully - federation errors aren't suspense-catchable.
+Rules: `react` and `react-dom` MUST be `singleton: true` - duplicated copies break hooks. Version-skew across remotes is real; pin a compatible range per remote and fail loudly at load (`requiredVersion`) rather than silently dual-loading. A remote below the singleton's range does not federate - upgrade it first; never relax the pin to dual-load React. Every host and remote entry needs the async boundary (`index.ts` doing `import("./bootstrap")`) so shared-module negotiation runs before React loads. If the remote is offline, the host's `Suspense` boundary needs an `ErrorBoundary` above it to fall back gracefully - federation errors aren't suspense-catchable.
 
 ### single-spa (Multi-Framework Shell)
 
@@ -178,6 +178,7 @@ Fixes:
 2. Bundler: alias `react` / `react-dom` to a single resolved path in host config; in monorepos, hoist via workspace or `pnpm.dedupe`.
 3. Module Federation: `shared: { react: { singleton: true, ... } }`.
 4. CDN-loaded React + bundled React: don't mix. Pick one and externalize the other (`externals: { react: "React" }`).
+5. SystemJS / import-map shells: the shell provides `react`/`react-dom` in the import map and children externalize them - never a UMD `<script>` (React 19 ships no UMD build).
 
 ### Style Isolation
 
@@ -189,7 +190,7 @@ Host CSS resets (Bootstrap `reboot`, normalize) collide with island styles. Opti
 
 ## Output Format
 
-When auditing an integration, emit one block per finding:
+When designing an integration (island rollout, federation split), emit `## Integration Design` with sections {Shared/singleton config | URL ownership | Cross-boundary state | Failure behavior | Rollout order}, then render the design's residual risks as the audit-block list below (Location names the design section, Evidence quotes the designed config, Severity rates the defect the risk would realize). When auditing, open with one line `Scope: <files/modules audited>`, then emit one block per finding, ordered by severity, one finding per root cause (a duplicate-React page is one finding listing all copies; a shared global channel is one finding covering producer and consumer; Location may list several modules):
 
 ```
 - Location: <file>:<line> (or <module / federated remote>)
@@ -199,11 +200,15 @@ When auditing an integration, emit one block per finding:
   Fix: <one-line action; reference a Pattern by name>
 ```
 
+`RootLeak`: a root object retained after the host removed its DOM node (re-mount without unmount); when the same defect is the missing teardown itself, prefer `UnmountMissing`, which covers both missing teardown and a mount routine that never re-runs after a host swap. `SuspenseBoundaryMissing` also covers a single-spa child without its `errorBoundary` option (Medium).
+
 Severity guide:
-- **Critical**: duplicate React copies; `createRoot` on server-rendered HTML; two `<BrowserRouter>` on one page.
-- **High**: missing `root.unmount()` on host page swap (memory leak across navigations); ad hoc `window.X = ...` shared state without subscribers; federated remote without `ErrorBoundary` above its `Suspense`.
-- **Medium**: missing CSS scoping (host bleed); single-spa child running its own `<BrowserRouter>`; mount node id not unique on a page with multiple instances.
+- **Critical**: duplicate React copies; `createRoot` on server-rendered HTML; `RouterCollision` with two routers mounted at once or observable navigation breakage (back button, URL desync).
+- **High**: missing `root.unmount()` on host page swap (memory leak across navigations); ad hoc `window.X = ...` shared state without subscribers; federated remote without `ErrorBoundary` above its `Suspense`; island CSS rewriting host-wide elements (Tailwind preflight on in a styled host).
+- **Medium**: host CSS bleeding into the island; a child router that is not the URL owner but shows no navigation breakage yet (`RouterCollision`); mount node id not unique on a page with multiple instances.
 - **Low**: `data-*` props not parsed through a schema; entry script not deferred.
+
+Off-enum hazards (XSS in inlined JSON, an ESM remote loaded via `System.import`) go in a single trailing `Notes:` line, with the handoff named (`task-react-review-security` for injection).
 
 If no issues, emit a single line: `No legacy-integration issues found in <scope>.`
 

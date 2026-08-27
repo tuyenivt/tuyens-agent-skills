@@ -72,7 +72,7 @@ export function Button({ variant, size, className, ...props }: ButtonProps) {
 }
 ```
 
-`twMerge` resolves Tailwind conflicts so parent `className` can override; without it `px-4 px-6` keeps both.
+`twMerge` resolves Tailwind conflicts so parent `className` can override; without it `px-4 px-6` keeps both. Default-palette utilities (`bg-blue-600`) are fine until brand tokens exist; once the theme defines them, palette utilities on brand surfaces are `Token-Literal` findings.
 
 ### Responsive (mobile-first)
 
@@ -100,7 +100,7 @@ function Card({ children }: { children: React.ReactNode }) {
 }
 ```
 
-Toggle by setting `class="dark"` on `<html>` once (e.g., `next-themes`). Avoid `useState`-driven theme branches per component.
+Toggle by setting `class="dark"` on `<html>` once (e.g., `next-themes`). Avoid `useState`-driven theme branches per component. With hybrid tokens, the `.dark` variable swap flips colors; `dark:` utilities are for one-off exceptions.
 
 ### Design Tokens
 
@@ -120,7 +120,9 @@ theme: { extend: { colors: { brand: { 500: "#2563eb", 600: "#1d4ed8" } } } }
 .dark        { --color-brand: #3b82f6; --color-surface: #111827; }
 ```
 
-If both are needed (shared tokens across a Tailwind app and a non-Tailwind marketing site), define CSS vars as the source of truth and reference them from `tailwind.config.ts` (`colors: { brand: "var(--color-brand)" }`).
+If both are needed (shared tokens across a Tailwind app and a non-Tailwind marketing site), define CSS vars as the source of truth and reference them from `tailwind.config.ts` (`colors: { brand: "var(--color-brand)" }`). The `var()` recipe breaks `/alpha` modifiers (`bg-brand/50`) in v3 - store channel triples or accept full-opacity tokens.
+
+Tailwind v4 is CSS-first: `@theme { --color-brand-500: #2563eb; }` in the entry CSS generates `bg-brand-500` (alpha modifiers work natively); the class dark-mode strategy becomes `@custom-variant dark (&:where(.dark, .dark *))`; `tailwind.config.ts` is optional legacy. Greenfield on v4 takes the CSS-first form; map externally-shared vars into utilities with `@theme inline { --color-brand-500: var(--tk-brand-500); }`. The config-file recipe is for existing v3 projects.
 
 ### CSS Modules
 
@@ -156,6 +158,8 @@ For new App Router code, prefer Tailwind or CSS Modules over CSS-in-JS.
 
 ## Output Format
 
+When designing, emit this block plus the artifacts it prescribes (token file, config, component code) after it, each under a `### <file path>` heading; Component Variants rows show the prescribed mechanism; write `Findings: none (greenfield)` when there is nothing to review. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, order Findings by severity, one finding per root cause (an RSC-incompatible import is one finding even when it also mixes approaches), and Component Variants shows the observed mechanism with the target in the Fix. Header fields record the observed state (targets go in Recommendations). The `Notes:` line sits after the last finding; adjacent non-styling defects (raw `<img>`, routing) belong to their owning skills - mention them in `Notes:` only.
+
 ```
 ## Styling Architecture
 
@@ -163,9 +167,9 @@ Stack: {detected framework}
 
 Primary approach: {Tailwind | CSS Modules | Vanilla Extract | styled-components}
 
-Component library: {shadcn/ui | Radix | Headless UI | None}
+Component library: {shadcn/ui | Radix | Headless UI | None} (append "(installed, unused)" when present but unused)
 
-Token source: {Tailwind config | CSS variables | hybrid}
+Token source: {Tailwind config | CSS variables | hybrid | none}
 
 Dark mode: {class strategy | media query | none}
 
@@ -179,7 +183,7 @@ Dark mode: {class strategy | media query | none}
 
 - [Severity: High | Medium | Low] <one-line issue>
   Location: <file>:<line>
-  Category: {Approach-Mix | Variant-Concat | Responsive-Direction | Dark-Mode-Branch | Token-Literal | Inline-Style | RSC-Incompat | A11y | Important-Override}
+  Category: {Approach-Mix | Variant-Concat | Responsive-Direction | Dark-Mode-Branch | Token-Literal | Inline-Style | RSC-Incompat | A11y | Important-Override | Primitive-Reimpl}
   Fix: <minimal correction>
 
 ## Recommendations
@@ -187,10 +191,10 @@ Dark mode: {class strategy | media query | none}
 - <change with rationale>
 ```
 
-`A11y` covers focus indicators (`outline-none` without a `focus-visible` replacement), missing/empty `alt` on images, and insufficient contrast.
+`A11y` covers focus indicators (`outline-none` without a `focus-visible` replacement), missing/empty `alt` on images, and insufficient contrast. `Primitive-Reimpl` is a hand-rolled Dialog/Menu/Tooltip beside an installed headless library - the dropped a11y surface (focus trap, Escape, `aria-modal`) is the defect. When no token source exists at all, emit one `Token-Literal` (Medium) finding for the missing source, not one per literal. Non-finding observations (broken utility combos, dead CSS) go in one trailing `Notes:` line.
 
 Severity guide:
-- **High**: runtime CSS-in-JS in an RSC without `"use client"` + registry (`RSC-Incompat`, ships runtime/FOUC); any `A11y` defect (stripped focus indicator, missing `alt`, insufficient contrast).
+- **High**: runtime CSS-in-JS in an RSC without `"use client"` + registry (`RSC-Incompat`, ships runtime/FOUC); any `A11y` defect (stripped focus indicator, missing `alt`, insufficient contrast); `Primitive-Reimpl`.
 - **Medium**: variant logic via string concat/ternary (`Variant-Concat`); per-component dark-mode/theme-prop branching (`Dark-Mode-Branch`); hex literal where a token exists (`Token-Literal`); desktop-first responsive (`Responsive-Direction`); mixed paradigms (`Approach-Mix`).
 - **Low**: inline `style` for a static value (`Inline-Style`); `!important` overrides (`Important-Override`).
 

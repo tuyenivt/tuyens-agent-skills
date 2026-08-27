@@ -39,9 +39,9 @@ Use skill: `stack-detect`. Confirm React. Record framework: Next.js App Router |
 
 ### Step 3 - Resolve Diff
 
-Use skill: `review-precondition-check`. Read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Skip if a parent workflow passed the handle plus pre-read artifacts.
+Use skill: `review-precondition-check`. Read `git diff <base>...<head>` and `git log <base>..<head>` once and reuse. Capture `head_sha = git rev-parse <head_ref>` and `base_sha = git rev-parse <base_ref>` for the report checkpoint. Skip if a parent workflow passed the handle plus pre-read artifacts.
 
-**Audit mode.** When the request is a full pre-release or post-incident audit (not a single PR), set `audit mode`: every surface is in scope and the per-step diff-touch gates in Steps 7-10 are lifted (same effect as the greenfield exception), so no surface is skipped for not being "touched". Note `Mode: audit` in the Summary.
+**Audit mode.** When the request is a full pre-release or post-incident audit (not a single PR), set `audit mode`: skip `review-precondition-check` entirely - there is no diff to gate; the target is the current branch at `HEAD` and the checkpoint records `base_sha` = `head_sha` = `HEAD`. Every surface is in scope and the per-step diff-touch gates in Steps 7-10 are lifted (same effect as the greenfield exception), so no surface is skipped for not being "touched". Note `Mode: audit` in the Summary.
 
 ### Step 4 - Surface Map
 
@@ -62,7 +62,7 @@ Read instrumentation wiring in the framework-appropriate files below, plus every
 | Structured logging      | Logger module posting to RUM/Sentry; absence shown by `console.log`/`console.error` in prod paths                 |
 | RUM                     | Datadog RUM / Vercel Analytics / Cloudflare Web Analytics / custom SDK init at app entry                          |
 
-**Grouping rule.** If a whole surface is `absent`, produce one High finding listing the missing pieces grouped by target file/symbol - not one finding per sub-check.
+**Grouping rule.** If a whole surface is `absent`, produce one High finding listing the missing pieces grouped by target file/symbol - not one finding per sub-check. It also covers a `partial` surface whose missing half is itself entire (tracker installed, no boundaries - or the reverse): group that half as one finding. An `absent` verdict becomes a finding only when its surface's step runs (diff-touched, greenfield, or audit); otherwise it stays a Surface Map row.
 
 **Greenfield exception.** If 3+ surfaces are `absent`, run Steps 5-10 regardless of diff-touch gate.
 
@@ -151,11 +151,13 @@ _Skip on apps without a chosen RUM provider (or greenfield / audit mode applies)
 - [ ] Synthetic checks (Datadog Synthetics, Checkly) complement RUM for critical journeys
 - [ ] Bundle-size budget per route enforced in CI (`@next/bundle-analyzer`, `bundlesize`) - LCP regressions correlate with bundle growth
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary. Subagent runs skip this - the parent verifies the merged set once.
+### Step 12 - Verify Findings and Write Report
 
-### Step 12 - Write Report
+**Verify (every depth - not gated by Step 11).** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column into each finding's `Label` slot, and put its tally in the Summary's `Findings verified` slot - the verify table itself is not published. Audit mode: verify checks claims only - skip diff-attribution and its de-escalation, since nothing is "pre-existing" when the target is `HEAD`.
 
-Use skill: `review-report-writer` with `report_type: review-observability`. Write the report to file and print the confirmation line.
+**Subagent mode:** skip verification (the parent verifies the merged set once), return the complete Output Format document to the parent, and write nothing.
+
+Standalone: use skill: `review-report-writer` with `report_type: review-observability` and every required field: `report_body`, `branch`, `base_ref` / `head_ref` from the precondition handle (audit mode: all three are the current branch name), `base_sha` / `head_sha` from Step 3, `scope: +obs`, `depth` as resolved, `stack: react`, and `mode: full`, `round: 1` - unless `review-observability-<branch>.md` already exists with valid frontmatter, then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself). The report body is also the chat deliverable; print the confirmation line after it.
 
 ## Output Format
 
@@ -167,6 +169,9 @@ The fence below delimits the template for display only - it is not part of the r
 - **Stack:** React <version> / TypeScript <version>
 - **Framework:** Next.js App Router <version> | Next.js Pages Router <version> | Vite + React Router <version>
 - **RUM:** Datadog RUM | Vercel Analytics | Cloudflare Web Analytics | custom | absent
+- **Depth:** standard | deep
+- **Mode:** PR | audit
+- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped _(standalone only; subagents return unverified findings)_
 - **Overall:** Adequate | Gaps Found [High/Medium/Low counts] | Greenfield - 3+ surfaces absent
 
 ## Surface Map
@@ -184,8 +189,11 @@ _Use `absent` consistently (not `none`/`missing`/`not wired`). Set Overall to `G
 
 ## Findings
 
+Labels: High -> `[Must]`; Medium / Low -> `[Recommend]`; the verify pass's `Label` column overrides when it ran. The bucket tracks impact, the label tracks the merge gate - a pre-existing absence can sit in High Impact carrying `[Recommend]`.
+
 ### High Impact
 
+- **Label:** [Must | Recommend]
 - **Location:** [file:line or config key]
 - **Gap Class:** [missing-wire | misconfigured | unsafe-default | pii-leak | noise]
 - **Surface:** [Web Vitals | Error Tracker | Tracing | Logging | Identity | RUM]
@@ -228,7 +236,7 @@ Prioritized list. Each item tagged `[Implement]` (localized fix) or `[Delegate]`
 - [ ] Step 9: `setUser({ id })`, low-cardinality tags, `extra` projects user to `{ id }`, cross-tool correlation (skipped per gate)
 - [ ] Step 10: RUM SDK init order, SPA nav tracking, custom events, DNT respected (skipped per gate)
 - [ ] Step 11: SLIs, SLOs in code, per-route error alerts, synthetics, bundle budgets (deep only)
-- [ ] Step 12: report written via `review-report-writer`; confirmation printed
+- [ ] Step 12: findings verified at every depth (audit mode: claims only; subagent: skipped, full Output Format returned, nothing written); standalone report written via `review-report-writer` with full checkpoint fields; confirmation printed
 
 ## Avoid
 

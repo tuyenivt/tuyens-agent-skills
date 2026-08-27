@@ -9,7 +9,7 @@ user-invocable: false
 
 # React Component Patterns
 
-> Load `Use skill: stack-detect` first to determine the project stack. For Next.js-specific routing, Server Actions, caching, and metadata defer to `react-nextjs-patterns`; this skill covers component shape and boundaries.
+> Load `Use skill: stack-detect` first to determine the project stack. For Next.js-specific routing, Server Actions, caching, and metadata defer to `react-nextjs-patterns`; for effect, timer, and subscription mechanics to `react-hooks-patterns`; this skill covers component shape and boundaries.
 
 ## When to Use
 
@@ -78,7 +78,7 @@ Bind parts via context; expose as static members (`Tabs.Tab`, `Tabs.Panel`). Use
 
 ### Error boundaries
 
-One per feature region (page section, widget), not per component. Class form is still required for render-phase errors.
+One per feature region (page section, widget), not per component. Class form is still required for render-phase errors. In App Router the class boundary is a Client Component - add `"use client"` to its file (route-level `error.tsx` belongs to `react-nextjs-patterns`).
 
 ```tsx
 class ErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { hasError: boolean }> {
@@ -122,6 +122,8 @@ function TextInput({ ref, ...props }: { ref?: Ref<HTMLInputElement> } & InputHTM
 
 ## Output Format
 
+When designing, emit this block for the proposed tree; a Findings block then flags a risk in the requested design (`Current` = the wiring the requirement naively implies). When reviewing, the consuming workflow owns the finding envelope; invoked standalone, emit this block with the Component Tree and Specifications as the target state (repeat the tree root per disjoint component), and order Findings High first.
+
 ```
 ## Component Design
 
@@ -140,22 +142,23 @@ function TextInput({ ref, ...props }: { ref?: Ref<HTMLInputElement> } & InputHTM
 | --------- | ---- | ----------- | ----- | ------- |
 | {name}    | {Server|Client} | {...} | {none|fields} | {pattern} |
 
-`Pattern` values: `Simple` (no composition concern), `Slot` (accepts `children` or named slots), `Compound` (static sub-members sharing context), `Polymorphic` (`as` prop).
+`Pattern` values: `Simple` (no composition concern), `Slot` (accepts `children` or named slots), `Compound` (static sub-members sharing context), `Polymorphic` (`as` prop). Static sub-members alone are `Slot`; `Compound` requires implicit shared state via context.
 
 ### Findings
 
 - [Severity: {High | Medium | Low}] {one-line issue}
+  Location: {file:line, component, or "design"}
   Current: {what the code does}
   Target: {what should happen}
   Fix: {concrete correction; reference Pattern name}
 ```
 
-One Findings block per issue. Omit no field.
+One Findings block per root cause (a god component's twelve props are one finding, not twelve); omit no field within a block. Severity: **High** = wrong or breaking behavior (non-serializable values crossing the Server/Client boundary, `"use client"` forcing a large static subtree client, compound context consumed without a null guard); **Medium** = design debt that spreads (god components, prop drilling 3+, class components outside error boundaries, `forwardRef` in new React 19 code); **Low** = convention drift (default exports, inline types past the threshold, nested ternaries).
 
 ## Avoid
 
 - `"use client"` at the page or layout root when only a leaf needs it
-- Passing functions, class instances, or Dates without serialization across the Server/Client boundary
+- Passing functions or class instances (Prisma `Decimal`, ORM entities) across the Server/Client boundary - RSC serialization handles plain data plus `Date`/`Map`/`Set`, not class instances
 - Prop-heavy "god" components that grow a new prop per feature instead of a new slot
 - Prop drilling through 3+ levels - lift the composition or introduce context
 - Default exports for non-route components - breaks rename refactors and tooling

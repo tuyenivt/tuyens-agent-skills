@@ -9,7 +9,7 @@ user-invocable: false
 
 # Next.js Server Data Layer
 
-> Load `Use skill: stack-detect` first to determine the project stack. Transaction boundaries are `backend-transaction-patterns`; pool arithmetic is `backend-connection-pooling`; migration sequencing is `backend-db-migration`. This skill owns only what changes because the caller is a Server Component or Server Action.
+> Load `Use skill: stack-detect` first to determine the project stack. Transaction boundaries are `backend-transaction-patterns`; pool arithmetic is `backend-connection-pooling`; migration sequencing is `backend-db-migration`; authorization depth (ownership checks, IDOR) is `task-react-review-security`. This skill owns only what changes because the caller is a Server Component or Server Action.
 
 ## When to Use
 
@@ -20,7 +20,7 @@ user-invocable: false
 ## Rules
 
 - The ORM client is a singleton created in one module that imports `server-only`. Never construct it per request, per component, or per action.
-- **In development, cache the client on `globalThis`.** Hot module replacement re-evaluates modules on every edit, and a plain module-scope client leaks a new connection pool each time until the database refuses connections.
+- **In development, cache the client on `globalThis`.** Hot module replacement re-evaluates modules on every edit, and a plain module-scope client leaks a new connection pool each time until the database refuses connections. A process-restart watcher (`tsx watch`, nodemon) is exempt: each restart is a fresh process, the guard is inert there, and its absence is not a finding.
 - All database access lives under `src/server/<module>/`. Components, actions, and route handlers call those functions; none of them touch the ORM directly.
 - Every exported service function is callable without a request context. Read cookies and headers in the caller and pass the resolved identity as an argument, or the same function cannot be reused by a Route Handler later.
 - Never return an ORM row across the client boundary. Select the fields the client needs, or map to an explicit shape.
@@ -124,7 +124,7 @@ export const getPublishedDecks = unstable_cache(
 );
 ```
 
-Wrapping a per-user query in the cross-request data cache serves one user's data to another. Wrapping a published-content query in request memoization only leaves every uncached request hitting the database. Both mistakes look like caching.
+Wrapping a per-user query in the cross-request data cache serves one user's data to another. Wrapping a published-content query in request memoization only leaves every uncached request hitting the database. Both mistakes look like caching. `cookies()`/`headers()` inside the cached function throw at request time in Next 15; the silent version of the leak reads identity from an argument missing from the key parts.
 
 ### Writes From Server Actions
 
@@ -146,11 +146,11 @@ The action authorizes, delegates to a service function, then invalidates. It con
 
 ## Output Format
 
-Emit one block per finding. A finding is one defect with its own fix; when several Issue values describe the same root cause, emit one block with the dominant value. Consuming workflows synthesize the summary.
+Emit one block per finding, ordered by severity. A finding is one defect with its own fix; when several Issue values describe the same root cause, emit one block carrying the most specific value at the highest applicable severity (the singleton-module trio `ClientNotSingleton`/`MissingHotReloadGuard`/`MissingServerOnly` is one root cause). Repeated call sites of one Issue merge into one block listing each Location; separable fixes stay separate blocks. Invoked standalone, open with `Scope: <files reviewed>`; consuming workflows synthesize their own summary - do not duplicate it for them. After the last finding come, in this order: any `Not assessed:` line (required-but-unseen infrastructure, not a guessed finding), any `Notes:` line (off-enum observations, e.g. an authorization gap -> `task-react-review-security`), for a reuse consult `Reuse readiness: {ready | not ready - <blocker>}` grounded in the service-layer and no-request-context rules (one or two justifying sentences may follow), then `Tally: <N> findings (<B> Blocker, <H> High, <M> Medium, <L> Low)` last.
 
 ```
-- Location: <file>:<line>
-  Issue: {OrmInComponent | ClientNotSingleton | MissingHotReloadGuard | MissingServerOnly | RawRowToClient | RscNPlusOne | WrongCacheScope | PerUserDataCached | ActionBypassesService | RequestContextInService | MissingRevalidation}
+- Location: <file>:<line or symbol>
+  Issue: {OrmInComponent | ClientNotSingleton | MissingHotReloadGuard | MissingServerOnly | RawRowToClient | OverbroadSelect | RscNPlusOne | WrongCacheScope | PerUserDataCached | ActionBypassesService | RequestContextInService | MissingRevalidation}
   Severity: {Blocker | High | Medium | Low}
   Evidence: <quoted snippet or symbol>
   Fix: <one-line action; reference a Pattern by name>
@@ -159,11 +159,11 @@ Emit one block per finding. A finding is one defect with its own fix; when sever
 Severity:
 
 - **Blocker**: per-user data written to the cross-request data cache; an ORM row containing secret fields returned across the client boundary; ORM client imported into a Client Component.
-- **High**: ORM client constructed without the hot-reload guard; database access outside `src/server/`; a Server Action mutating tag-cached content without a following revalidation (a write that touches no cached surface has nothing to revalidate).
-- **Medium**: RSC N+1; a service function reading cookies or headers directly; wrong cache scope with no leak.
-- **Low**: a query selecting whole rows where explicit fields would do.
+- **High**: ORM client constructed per file or without the hot-reload guard (`ClientNotSingleton` / `MissingHotReloadGuard`); database access outside `src/server/` (`OrmInComponent` in view code, `ActionBypassesService` in any HTTP-facing entry - action, route handler, controller); a Server Action mutating tag-cached content without a following revalidation (a write that touches no cached surface has nothing to revalidate).
+- **Medium**: RSC N+1; a service function reading cookies or headers directly; wrong or absent cache scope with no leak (`WrongCacheScope` covers a per-render lookup duplicated for want of `cache()`); a server module missing `import "server-only"` with no observed client import.
+- **Low**: an over-broad select whose rows never cross the client boundary (`OverbroadSelect`; a crossing makes it `RawRowToClient` at the ladder's severity). When the model's fields are unknown, emit the lower severity with the escalation condition named in the block.
 
-If the project is not Next.js App Router, emit `No server data layer findings (not App Router).` and apply only the stack-neutral rules: singleton client, explicit field selection, no persistence logic in view code.
+If the project is not Next.js App Router, apply only the stack-neutral rules - singleton client (the hot-reload guard only under HMR dev), explicit field selection, no persistence logic in view code (HTTP handlers and controllers count as view code) - opening with `Scope: stack-neutral review (not App Router - Next-specific rules skipped)`. The block shape, merge rules, closing lines, and Issue enum apply unchanged - `ActionBypassesService` names any HTTP-facing entry. Emit `No server data layer findings (not App Router).` only when those rules are clean.
 
 ## Avoid
 

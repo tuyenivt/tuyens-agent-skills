@@ -41,7 +41,7 @@ user-invocable: false
 | URL            | Shareable, bookmarkable, back-button-safe state      | Filters, sort, page, search query  |
 | TanStack Query | Server data (fetch, cache, revalidate)               | User profile, product list         |
 
-Identity values (theme, auth, locale) work in either Context or a tiny Zustand store. Pick Context when the value is set once at the app shell; pick a store when multiple writers / persistence / devtools matter.
+Identity values (theme, auth, locale) work in either Context or a tiny Zustand store. Pick Context when the value is written once per session at the app shell; pick a store when it is toggled at runtime, persisted, or written from several places.
 
 ### useReducer for coupled fields
 
@@ -136,7 +136,7 @@ function useFilters() {
 }
 ```
 
-Read filters directly from `searchParams` per render - that *is* the source of truth.
+Read filters directly from `searchParams` per render - that *is* the source of truth. Vite / React Router: same rule via `react-router-dom`'s `useSearchParams` - read `params` per render, write with `setParams`.
 
 ### Redux Toolkit (when justified)
 
@@ -155,12 +155,16 @@ Use only when the project already needs middleware (sagas, RTK Query already in 
 
 ## Output Format
 
+When designing, the State Map and Stores describe the proposed architecture and Findings flag risks in it. When auditing, the consuming workflow owns the finding envelope; invoked standalone, emit the State Map and Stores as the target state, order Findings by severity, one finding per root cause (Location may name several files). `Primary library` is the recommendation, not the incumbent.
+
 ```
 ## React State Architecture
 
 Stack: {framework}
 
 Primary library: {Zustand | Redux Toolkit | Jotai | Context-only}
+
+Secondary (scoped): {client-state library - the one domain it serves | none}
 
 ### State Map
 
@@ -177,10 +181,14 @@ Primary library: {Zustand | Redux Toolkit | Jotai | Context-only}
 ### Findings
 
 - Severity: {Critical | High | Medium | Low}
-  Issue: {Wrong-Mechanism | Server-State-In-Store | Context-Re-render | Mega-Store | Stored-Derived | Mutation | URL-Candidate | Over-Subscription | Hydration-Mismatch}
+  Issue: {Wrong-Mechanism | Server-State-In-Store | Context-Re-render | Mega-Store | Stored-Derived | Mutation | URL-Candidate | Over-Subscription | Hydration-Mismatch | Duplicate-Source}
   Location: {file/component or "design"}
   Fix: {one-line action}
 ```
+
+Derived values are not slices - they never get a State Map row; a stored one is a `Stored-Derived` finding. Jotai atom families take a Stores row with Middleware `-`; Context providers do not get Stores rows. Category `Identity` covers auth/theme/locale; feature-scoped shared values (grid atoms) are `Shared UI`. `Duplicate-Source`: the same state has two owners (URL copied into `useState`, one slice duplicated across stores); the Fix names the surviving owner. Server data mirrored into a store stays `Server-State-In-Store`.
+
+Severity: **Critical** = wrong data shown or updates lost (store mutation without a new reference, two sources of truth disagreeing); **High** = broad re-render or staleness (server data mirrored into a store, context re-rendering per keystroke, SSR hydration mismatch); **Medium** = structure debt (mega-store, stored derived, URL candidate, over-subscription); **Low** = convention drift. A defect matching a named example takes that row's severity; the general clauses cover unnamed cases.
 
 If the project has no React sources, emit `Findings: none (no React detected)` and stop.
 

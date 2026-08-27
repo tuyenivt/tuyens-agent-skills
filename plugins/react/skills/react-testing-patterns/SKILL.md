@@ -9,7 +9,7 @@ user-invocable: false
 
 # React Testing Patterns
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first to determine the project stack. Server code and database-backed tests belong to `react-server-testing`.
 
 ## When to Use
 
@@ -21,8 +21,9 @@ user-invocable: false
 
 - Assert what the user sees and does; never read `useState`, refs, or class names
 - Query by role/label/text; `getByTestId` is a last resort
+- Forms and dialogs carry one axe test alongside role-based queries
 - Mock HTTP at the network boundary with MSW; do not `vi.mock` API modules
-- Data-fetching components require loading, success, error, and empty tests
+- Data-fetching components and hooks require loading, success, error, and empty tests
 - Test hooks with `renderHook`; never reach hook internals through a host component
 - Tests are independent and parallel-safe; no shared mutable state, no order coupling
 
@@ -47,15 +48,16 @@ it("calls onEdit with user id", async () => {
 ### Render with Providers
 
 ```tsx
-function renderWithProviders(ui: ReactElement) {
-  const client = new QueryClient({
+function Providers({ children }: { children: ReactNode }) {
+  const [client] = useState(() => new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
-  });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  }));
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
+export const renderWithProviders = (ui: ReactElement) => render(ui, { wrapper: Providers });
 ```
 
-Reuse this helper for every test that needs context. Hooks pass it as `{ wrapper }` to `renderHook`.
+Reuse `renderWithProviders` for components. Hooks take the component itself: `renderHook(() => useUser("1"), { wrapper: Providers })` - a render helper returns a `RenderResult`, not JSX, and cannot be a `wrapper`.
 
 ### MSW Setup
 
@@ -104,7 +106,7 @@ it("shows empty state", async () => {
 });
 ```
 
-Loading is asserted synchronously before the resolution: `expect(screen.getByRole("status", { name: /loading/i })).toBeInTheDocument()`.
+Loading is asserted synchronously before the resolution: `expect(screen.getByRole("status", { name: /loading/i })).toBeInTheDocument()`. Mutating components additionally cover success feedback (toast, redirect), server rejection, and the in-flight disabled state.
 
 ### Custom Hook
 
@@ -119,9 +121,7 @@ it("caps at max", () => {
 });
 
 it("fetches user via query", async () => {
-  const { result } = renderHook(() => useUser("1"), {
-    wrapper: ({ children }) => renderWithProviders(<>{children}</>),
-  });
+  const { result } = renderHook(() => useUser("1"), { wrapper: Providers });
   await waitFor(() => expect(result.current.data?.name).toBe("Alice"));
 });
 ```
@@ -155,11 +155,13 @@ const result = await submitOrder({}, formDataFrom({ qty: "2" }));
 expect(result).toEqual({ ok: true });
 ```
 
-Prefer covering the full RSC + action render/submit cycle in a Playwright E2E - the function-call approach tests logic, not the server render pipeline.
+Prefer covering the full RSC + action render/submit cycle in a Playwright E2E - the function-call approach tests logic, not the server render pipeline. A client component invoking a Server Action in jsdom has no network boundary for MSW to intercept: mock the action at its import (the one sanctioned own-module mock) or cover it in the E2E.
 
 ### Timer-driven behavior (debounce / throttle)
 
 ```tsx
+afterEach(() => vi.useRealTimers());  // inline restore leaks fake timers when an assertion fails first
+
 it("debounces search", async () => {
   vi.useFakeTimers();
   // user-event uses real timers internally; wire it to the fake clock or it hangs.
@@ -168,11 +170,10 @@ it("debounces search", async () => {
   await user.type(screen.getByRole("searchbox"), "ab");
   await vi.advanceTimersByTimeAsync(300);          // flush the debounce
   expect(await screen.findByText("results")).toBeInTheDocument();
-  vi.useRealTimers();
 });
 ```
 
-The `advanceTimers` option is mandatory under fake timers - without it `userEvent` waits on a clock that never moves.
+The `advanceTimers` option is mandatory under fake timers - without it `userEvent` waits on a clock that never moves. Fake timers also freeze `waitFor` polling and TanStack Query retries - scope them to the single test that needs the clock and advance explicitly before async assertions.
 
 ### Playwright E2E
 
@@ -190,21 +191,25 @@ test("user signs in", async ({ page }) => {
 
 ## Output Format
 
-When reviewing a test suite, emit one finding per issue:
+When reviewing a test suite, open with one line `Scope: <files reviewed>`, then emit one finding per issue, ordered by severity:
 
 ```
 Finding: <one-line summary>
-Category: {Queries | Mocking | Coverage | Hooks | Isolation | Accessibility | E2E}
+Category: {Queries | Mocking | Coverage | Hooks | Isolation | Accessibility | E2E | Environment}
 Severity: {Critical | Major | Minor}
-Location: <path>:<line>
+Location: <path>:<line or range>
 Evidence: <code excerpt>
-Fix: <pattern name from this skill> - <one-line correction>
+Fix: <pattern name from this skill, or the governing Rule when no Pattern covers it> - <one-line correction>
 ```
 
+`Environment` covers render-environment and harness defects: an async RSC rendered in jsdom, a missing provider wrapper, fake timers without `advanceTimers` wiring. `Queries` also covers interaction-API drift (`fireEvent` where `user-event` belongs); snapshots fall under `Coverage`.
+
+Merge identical occurrences of one defect into one finding listing every location. Emit a finding even when another fix would subsume it, naming the subsuming change in Fix; when both a Pattern and a Rule cover it, cite the Pattern. Close with `Tally: <N> findings (<C> Critical, <M> Major, <m> Minor)`; a clean review emits `Scope:` plus `No issues found.`
+
 Severity rubric:
-- **Critical**: test does not exercise the intended behavior (e.g., `vi.mock` declared inside the test body after import; renders a Server Component in jsdom).
-- **Major**: false confidence risk - wrong-axis assertion (CSS class for behavior), `vi.mock` for HTTP modules instead of MSW, hook tested indirectly through a host, missing boundary coverage on a data path.
-- **Minor**: readability / idiom drift - `getByTestId` over `getByRole`, `waitFor` wrapping a query that should be `findBy*`.
+- **Critical**: test does not exercise the intended behavior, or cannot pass/fail as written (e.g., `vi.mock` declared inside the test body after import; renders a Server Component in jsdom; missing provider wrapper; unhandled request under `onUnhandledRequest: "error"`).
+- **Major**: false confidence risk - wrong-axis assertion (CSS class for behavior), `vi.mock` for HTTP modules instead of MSW, hook tested indirectly through a host, missing boundary coverage on a data path, order-coupled tests sharing mutable state.
+- **Minor**: readability / idiom drift - `getByTestId` over `getByRole`, `fireEvent` over `user-event`, `waitFor` wrapping a query that should be `findBy*`, large churn-prone snapshots.
 
 When designing a plan, emit:
 
@@ -216,10 +221,16 @@ When designing a plan, emit:
 **Tooling:** Vitest + RTL + MSW (+ Playwright for critical paths)
 
 ### Tests to Write
-- {component|hook}: {state(s) covered} - {level}
+- {component|hook|flow}: {state(s) covered} - {level: component | hook | E2E}
+
+### Infrastructure
+- {setup files, MSW handlers, provider helpers the plan requires}
+
+### Out of Scope
+- {surface -> owning skill}
 
 ### No Issues Found
-{State explicitly if testing is adequate}
+{When the plan assessed existing coverage and found it adequate, say so explicitly. Omit for a greenfield plan.}
 ```
 
 ## Avoid
