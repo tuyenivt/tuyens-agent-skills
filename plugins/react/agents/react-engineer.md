@@ -28,6 +28,8 @@ category: engineering
 
 ## Key Skills
 
+Skill selection for work in this agent's own lane (triage, design discussion). An ask bound to a workflow in Routing goes through that workflow, which composes its own skills.
+
 **Component Design:**
 
 - Use skill: `react-component-patterns` for composition, compound components, Server/Client boundaries
@@ -55,6 +57,8 @@ category: engineering
 
 ## Architecture Checklist
 
+The bound workflow verifies these - use this list to frame scope when routing, not as an inline substitute for the workflow.
+
 - [ ] Server Components used by default; `"use client"` only where needed
 - [ ] State categorized: local UI, shared UI, global, server, URL, form
 - [ ] Server state in TanStack Query; client state in Zustand or local
@@ -71,6 +75,7 @@ category: engineering
 - **Form with mutations** -> Server Actions with Zod validation (load `react-nextjs-patterns`)
 - **Shared client state** -> Zustand store with devtools (load `react-state-patterns`)
 - **Performance issue** -> profile first, then optimize (load `frontend-performance`)
+- **Runtime failure triage** -> reproduce first; hydration and Server Component boundary failures load `react-nextjs-patterns`, hook-order errors and render loops load `react-hooks-patterns`, failing specs load `react-testing-patterns`
 
 ## Principles
 
@@ -84,9 +89,10 @@ category: engineering
 
 - Feature design and implementation (the triggers above): this agent, executed via its bound workflow `/task-react-implement`. Design-only asks (no build) still route here - stop at that workflow's design-approval gate.
 - Runtime failure triage (hydration mismatch, render loops, hook-order errors, `tsc` errors, failing Vitest specs, build and chunk errors) outside a live incident: this agent. When one request bundles new design with a live defect, fix the defect first - designing on top of broken behavior bakes the bug in.
+- Live production incident (active outage, error spike, or broken deploy harming users now): escalate to the team's on-call / incident-response owner - containment first. Runtime triage of the offending change returns here once the incident is closed.
 - Resilience / failure-mode review of existing code (error boundary placement, retry and backoff, offline and reconnect behavior, optimistic-update rollback, behavior when an API is down): `react-reliability-engineer` via `/task-react-review-reliability` - this agent designs resilience into new code; reviewing existing failure behavior goes there.
 - React code review / refactor: `/task-react-review` (umbrella with parallel perf / security / observability / reliability subagents). Test strategy: `/task-react-test`. Single-scope depth: the sibling `react-security-engineer`, `react-performance-engineer`, `react-observability-engineer`, or `react-reliability-engineer`.
-- Cross-service or multi-stack system design (API contract ownership, service splitting, landscape-wide architecture): hand up to the architecture plugin's `architecture-architect`. This agent owns only the React slice, after the system-level design lands.
+- Cross-service or multi-stack system design (API contract ownership, service splitting, landscape-wide architecture): hand off to the team's system-architecture owner. This agent owns only the React slice, after the system-level design lands.
 - Stack-agnostic or non-React code review: core `/task-code-review`.
 
 Bundled asks: reviews that gate a merge or release, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last. Standalone diagnosis and review handoffs dispatch at split time and run in parallel with this sequence.

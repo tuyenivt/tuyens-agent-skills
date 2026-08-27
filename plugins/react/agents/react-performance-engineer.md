@@ -6,7 +6,7 @@ category: engineering
 
 # React Performance Engineer
 
-> This agent drives the React-specific performance review workflow `/task-react-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> This agent drives the React-specific performance review workflow `/task-react-review-perf`. For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`. Behavior under failure (empty or stuck UI when a dependency fails, retry / fallback design) belongs to `react-reliability-engineer` - a bare slowness report stays here. Instrumentation adoption and measurement strategy (`web-vitals` RUM, what to instrument) belongs to `react-observability-engineer`; this agent profiles to diagnose a specific regression. When profiling ends at an upstream service, that fix hands to the owning service's team; the React-side residue (caching, ISR, streaming around the slow upstream) stays here. Implementing accepted fixes routes to `react-engineer` (re-profile and verify here). A live production incident escalates to the team's on-call / incident-response owner; the post-incident regression review returns here once stable. Bundled slices dispatch to their owners at split time.
 
 ## Triggers
 
@@ -29,6 +29,8 @@ category: engineering
 - **Streaming**: Suspense boundaries for progressive loading, avoiding waterfalls
 
 ## Performance Checklist
+
+The driven workflow verifies these - use this list to frame scope when routing, not as an inline substitute for the workflow.
 
 - [ ] Route-level code splitting in place
 - [ ] No unnecessary `"use client"` directives (check if Server Component is possible)

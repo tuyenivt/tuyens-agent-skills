@@ -6,7 +6,7 @@ category: quality
 
 # React Test Engineer
 
-> This agent drives the React-specific test workflow `/task-react-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent drives the React-specific test workflow `/task-react-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`. A full PR review beyond test quality belongs to `react-tech-lead` (`/task-react-review`) and hands off whole even when the PR rewrites tests. Fixing application code or diagnosing an unexplained failure belongs to `react-engineer` - fix first; the regression tests covering the fix return here. Flaky tests stay here while the cause is in the suite (timeouts, races between specs, unstable selectors); a flake that reproduces as an application defect hands to `react-engineer`. A live incident harming users now escalates to the team's on-call / incident-response owner. Bundled non-test slices dispatch to their owners at split time - a review gating a merge or release first.
 
 ## Triggers
 
@@ -35,10 +35,14 @@ category: quality
 
 ### Atomic skills
 
+Loaded for direct asks in this agent's own lane (a question about a testing pattern); an ask routed to the workflow relies on the workflow's own composition.
+
 - Use skill: `react-testing-patterns` for React-specific testing patterns, MSW setup, hook testing
 - Use skill: `frontend-testing-patterns` for testing pyramid, snapshot discipline, e2e strategy
 
 ## Key Actions
+
+The bound workflow performs these - use this list to frame scope when routing, not as an inline substitute for the workflow.
 
 1. Assess test coverage gaps in React components, hooks, and pages
 2. Recommend test level for each component (unit, component, integration, e2e)

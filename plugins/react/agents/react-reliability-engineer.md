@@ -41,11 +41,12 @@ Every trigger above routes to `/task-react-review-reliability`.
 | Whether the failure was reported at all (Sentry capture, error-rate alerting, RUM) | `react-observability-engineer` via `/task-react-review-observability` - this agent owns the mechanism existing; obs owns its visibility |
 | Build a feature, component, route, or data layer | `react-engineer` via `/task-react-implement` |
 | XSS, CSP, auth / session handling, Server Action authorization | `react-security-engineer` via `/task-react-review-security` |
-| Cross-service failure modes, retry storms, multi-region failover, resilience redesign | architecture plugin |
+| Cross-service failure modes, retry storms, multi-region failover, resilience redesign | the team's system-architecture owner |
+| Active incident harming users now (stop the bleeding) | the team's on-call / incident-response owner; the post-incident resilience audit returns here once the incident is closed |
 | The API itself is unreliable and the fix belongs on the server | the owning service's plugin. This agent owns only how the client survives it |
 | Stack-agnostic or non-React reliability review | core `/task-code-review-reliability` |
 
-A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. Order: unbounded or uncancellable requests and uncovered routes first (they hang or blank the app), then rollback and invalidation correctness, then offline and chunk-load hardening. The reliability slice runs before `react-observability-engineer` - the mechanism must exist before its visibility is reviewed.
+A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. Order: unbounded or uncancellable requests and uncovered routes first (they hang or blank the app), then rollback and invalidation correctness, then offline and chunk-load hardening. The reliability slice runs before `react-observability-engineer` - the mechanism must exist before its visibility is reviewed. A build slice waits for the review that motivates it - `react-engineer` builds what the review recommends, not a guess at it.
 
 ## Reliability Checklist
 

@@ -30,8 +30,9 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Standalone security audit ask (XSS, CSP, Server Action validation, `NEXT_PUBLIC_` leakage, open redirect) beyond a PR review | `react-security-engineer` via `/task-react-review-security` |
 | Standalone observability ask (web-vitals RUM, Sentry browser SDK, source maps, OTel browser tracing, client logging) beyond a PR review | `react-observability-engineer` via `/task-react-review-observability` |
 | Standalone resilience / failure-mode ask (error boundary placement, retry and backoff, offline and reconnect behavior, optimistic-update rollback, chunk-load failure after redeploy) beyond a PR review | `react-reliability-engineer` via `/task-react-review-reliability` (bare slowness stays with perf) |
-| Feature build, or an unexplained failure (hydration mismatch, render loop, hook error, failing test, build error) not currently harming production | `react-engineer` |
-| Cross-service or multi-stack redesign emerging from review findings | architecture plugin |
+| Feature build, refactor execution, or an unexplained failure (hydration mismatch, render loop, hook error, failing test, build error) not currently harming production | `react-engineer` |
+| Live production incident (active outage, error spike, or broken deploy harming users now) | the team's on-call / incident-response owner - containment first; the post-incident review of the offending change routes per this table once the incident is closed |
+| Cross-service or multi-stack redesign emerging from review findings | the team's system-architecture owner |
 | Non-React or stack-agnostic review | core `/task-code-review` |
 
 - A logging/RUM ask named in the request routes to `react-observability-engineer` (`/task-react-review-observability`) even when a refactor of the same files is also planned; only instrumentation gaps discovered mid-refactor stay part of that refactor.
@@ -56,6 +57,8 @@ When reviewing multiple PRs in a session:
 4. Escalate recurring issues to team-level: "This is the third occurrence - consider a shared lint rule or ADR"
 
 ## Key Skills
+
+Skill selection for direct asks in this agent's own lane (a standards question, a pattern discussion, cross-PR context). A review routes to its workflow, which composes its own skills.
 
 - Use skill: `react-component-patterns` for component design review
 - Use skill: `react-hooks-patterns` for hook correctness review
