@@ -49,7 +49,7 @@ Indirection depth is the one cross-file signal: follow the call chain from the e
 
 ### Severity
 
-- **High**: any signal at or beyond ~1.5x its threshold (cyclomatic > 15, cognitive > 22, file > 400 lines, nesting > 4), or any signal blocking comprehension
+- **High**: any signal at or beyond ~1.5x its threshold, or any signal blocking comprehension. The multiplier applies to the calibrated threshold, not the default - the illustrative numbers (cyclomatic > 15, cognitive > 22, file > 400 lines, nesting > 4) assume defaults at the upper bound
 - **Medium**: over threshold but below ~1.5x
 - **Low**: approaching threshold but not yet a maintenance burden
 

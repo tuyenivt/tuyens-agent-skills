@@ -167,14 +167,14 @@ ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE USING INDEX idx_users
 
 - Action: {what to drop}
 - Pre-condition: {readers/writers removed and verified}
-- Rollback: {archive copy | restore from backup | not needed}
+- Rollback: {reverse copy from new structure | archive copy | restore from backup | not needed}
 
 ## Risks
 
 - {high-risk operations called out explicitly}
 ```
 
-Single-phase migrations emit one `### Phase 1: Apply` section with the same fields. The header `Lock risk` is the highest across phases. `destructive` means the requested change itself removes data (drop, truncate, lossy type change); a rename's contract-phase drop of the superseded structure stays `non-additive`. When the row count is unknown, write `Backfill required: Yes - row count unknown, treat as large`.
+Single-phase migrations emit one `### Phase 1: Apply` section with the same fields. A release carrying several schema changes emits one assessment block per change, in the release-ordering sequence (additive first, destructive last), never one merged block with mixed enums. The header `Lock risk` is the highest across phases. `destructive` means the requested change itself removes data (drop, truncate, lossy type change); a rename's contract-phase drop of the superseded structure stays `non-additive`. When the row count is unknown, write `Backfill required: Yes - row count unknown, treat as large`.
 
 ## Avoid
 

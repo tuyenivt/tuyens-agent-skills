@@ -28,7 +28,7 @@ For a GraphQL or gRPC API, the transport rules (paths, methods, status codes, pa
 - Responses use DTOs / serializers / response structs. Never return ORM entities directly.
 - Resource IDs live in path segments (`/users/123`). Query params are for filtering, sorting, pagination on collections.
 - Nest sub-resources one level (`/orders/{id}/refunds`). A child that is addressed independently gets its own top-level collection (`/refunds?order_id=`) instead of deeper nesting.
-- Paginate every collection. Use cursor-based for large or write-heavy datasets; offset only for small, stable ones.
+- Paginate every unbounded collection. Use cursor-based for large or write-heavy datasets; offset only for small, stable ones. A collection bounded by the domain itself (a shipment's events, an order's line items) may return whole with a documented maximum; the defect to flag is a collection that grows without bound and has no pagination.
 - Version on breaking change (`/v1/`, `/v2/` or header). Mark deprecated versions with `Sunset` header.
 - Non-idempotent POST endpoints (payments, order creation, message sends) accept an `Idempotency-Key` header; cache the response for the dedup window (typically 24h).
 - Validate input at the boundary using the framework's mechanism (annotations, struct tags, strong params, schema validators).
@@ -94,7 +94,7 @@ After stack-detect, apply these patterns using the detected ecosystem's idioms: 
 
 ## Output Format
 
-Consuming workflows parse this structure. In design mode (no existing code to review), apply Rules as constraints and output, after the same **Stack:** line, the proposed endpoint table instead of the assessment block - columns `| Method | Path | Status codes | Pagination | Idempotency |`, one row per endpoint. Below the table, one `Conventions:` line records the API-wide decisions the table cannot carry: error format, versioning scheme, and rate-limit posture.
+Consuming workflows parse this structure. In design mode (no existing code to review), apply Rules as constraints and output, under a `## API Design` heading and the same **Stack:** line, the proposed endpoint table instead of the assessment block - columns `| Method | Path | Status codes | Pagination | Idempotency |`, one row per endpoint. Below the table, one `Conventions:` line records the API-wide decisions the table cannot carry: error format, versioning scheme, and rate-limit posture.
 
 ```
 ## API Guidelines Assessment
@@ -118,7 +118,7 @@ Consuming workflows parse this structure. In design mode (no existing code to re
 - **Medium**: Wrong method or status code, missing pagination, offset pagination on high-write collection
 - **Low**: Field naming drift, missing version header, missing `Sunset` on deprecated endpoint
 
-These are examples, not a closed list. For unlisted violations, classify by impact: data exposure or unsafe retries = High, wrong semantics or scalability (verbs in paths, missing pagination) = Medium, naming and metadata hygiene = Low. When a finding matches multiple tiers, report the highest. Report one finding per defect: the same rule broken the same way at N endpoints is one finding listing all N sites; one endpoint breaking N rules is N findings.
+These are examples, not a closed list. For unlisted violations, classify by impact: data exposure or unsafe retries = High, wrong semantics or scalability (verbs in paths, missing pagination) = Medium, naming and metadata hygiene = Low. When a finding matches multiple tiers, report the highest - this is the tiebreak for derived cases too: a deviation existing clients would break on (envelope shape, a breaking change without a deprecation cycle) is Medium, not Low, because client breakage is wrong semantics, not hygiene. Report one finding per defect: the same rule broken the same way at N endpoints is one finding listing all N sites; one endpoint breaking N rules is N findings.
 
 A convention the project has documented and built clients against (a response envelope, a field-naming scheme) is the baseline for consistency findings, not a violation - report deviation *from it*, and raise the convention itself only once, as Low, with the migration cost named. Correctness and safety rules (validation, error leakage, idempotency, ORM exposure) hold regardless of local convention.
 

@@ -67,7 +67,7 @@ For test scaffolds, use the project's existing test framework when it matches th
 
 ## Output Format
 
-When Step 3 dispatched: the stack workflow owns the output. When fallback ran, produce every templated section the ask maps to (coverage ask -> Test Coverage Assessment; strategy ask -> Test Strategy; a two-part ask covering both produces both, as does an ask naming no deliverable). A scaffolding ask produces neither templated section - output the test files as fenced code blocks in chat (nothing written to disk), the line `**Assumed framework:** <language> / <test framework>`, and an `Assumptions:` list covering behavior and environment inferred (raise types, rounding, import path, framework choice).
+When Step 3 dispatched: the stack workflow owns the output. When fallback ran, map each component of the ask independently and produce every output it maps to: a coverage component -> Test Coverage Assessment; a strategy component -> Test Strategy; an ask naming no deliverable -> both sections; a scaffolding component -> no templated section of its own, but the test files as fenced code blocks in chat (nothing written to disk), the line `**Assumed framework:** <language> / <test framework>`, and an `Assumptions:` list covering behavior and environment inferred (raise types, rounding, import path, framework choice). A pure scaffolding ask therefore emits only the scaffold output; a combined ask emits its sections plus the scaffold.
 
 ```markdown
 ## Test Coverage Assessment

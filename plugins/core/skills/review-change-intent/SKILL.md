@@ -46,7 +46,7 @@ Not for single-lens reviews (`*-review-perf` / `-security` / `-observability` / 
 | 1     | The file at `--req <path>`                                                                  | Specified     |
 | 2     | Requirement text or file already in context (pasted ticket, PRD, spec)                      | Specified     |
 | 3     | An in-tree spec the change names - a path or ticket ID appearing in the diff, commit log, or context. Follow the reference; never guess a likely path | Specified     |
-| 4     | The `Requirement Source` recorded in the prior report at `prior_report_path`, re-read at its path; a recorded source with no re-readable path (pasted text, PR body) does not resolve | carry the prior authority |
+| 4     | The `Requirement Source` recorded in the prior report at `prior_report_path`, re-read at its path and evaluated at its current content; a recorded source with no re-readable path (pasted text, PR body) does not resolve | carry the prior authority |
 | 5     | Pasted PR/MR body, or commit messages in the range, when either enumerates criteria         | Self-attested |
 | 6     | Nothing resolves                                                                            | omit the block |
 
@@ -78,7 +78,7 @@ A proof must assert the criterion's stated outcome, not just a mechanism compone
 
 Both lists scope Brief bullets and findings alike. Counts: a new or major-bumped dependency, a schema or migration change, a changed public contract, an auth/authz surface change, a changed default or config value, a behavior change to a feature no criterion names, a refactor outside the criteria's footprint.
 
-Does not count: renames and formatting inside files the work already touched, added tests, comments and docs, a dependency a criterion names or implies, and edits mechanically forced by the requested work (call sites updated for a changed signature).
+Does not count: renames and formatting inside files the work already touched, added tests, comments and docs, a dependency a criterion names or implies, and edits mechanically forced by the requested work (call sites updated for a changed signature). Implying a dependency implies adding it at whatever version satisfies the criterion - it never implies a major bump of a dependency the project already had, which stays on the counts list.
 
 ### Findings raised
 
@@ -90,7 +90,7 @@ Does not count: renames and formatting inside files the work already touched, ad
 | Any other unrequested scope                                                                  | `[Recommend]` |
 | `Deferred` or `Untraceable` criterion                                                        | none - table row only |
 
-Anchor every finding to a production `file:line`, never to the requirement document. An `Unmet` criterion has no implementation to cite: anchor it to the construct that would hold the missing behavior - the handler, module, or config the criterion concerns - and name the criterion in the claim.
+Anchor every finding to a production `file:line`, never to the requirement document. An `Unmet` criterion has no implementation to cite: anchor it to the construct that would hold the missing behavior - the handler, module, or config the criterion concerns - and name the criterion in the claim. Unrequested scope spanning many files (a restructure, a sweeping rename) anchors to one representative changed `file:line` and states the extent in the claim (`part of a 14-file email-module restructure`).
 
 **With no requirement source, unrequested-scope findings cap at `[Recommend]`.** The only baseline is the intent inferred from commits, and that is not a specification: a bundled migration is still worth naming, but `[Must]` asserts the work was not asked for, which an inferred baseline cannot establish. Most changes arrive without a ticket - this path is the common one, and it does not manufacture merge blockers.
 

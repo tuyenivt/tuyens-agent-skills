@@ -192,7 +192,7 @@ Capture the path from edit to merge. Read `CONTRIBUTING.md`, `.github/` (PR temp
 - **Reference example PRs** - linked from `README`, `CONTRIBUTING`, or PR template; otherwise omit (do not invent PR numbers).
 - **First-PR safe zones** - cross-reference Step 7 hotspots. List 2-3 well-tested, low-churn, narrow-blast areas; list 2-3 areas to avoid first.
 
-Use skill: `dependency-impact-analysis` when the user names a specific candidate change or file for their first PR, to estimate blast radius - a module-level scope focus alone does not trigger it.
+Use skill: `dependency-impact-analysis` when the user names a specific candidate change or file for their first PR, to estimate blast radius - a module-level scope focus alone does not trigger it. Its result folds into the First-PR Safe Zones / Avoid rationale for that candidate.
 
 ## Output Format
 
@@ -311,7 +311,9 @@ Order findings High -> Medium -> Low. For each:
 ```
 
 **Required env vars:** [list with examples / source; flag any missing from `.env.example`]
+
 **Smoke check:** [verification step - e.g., `curl localhost:3000/health` returns 200]
+
 **Known first-run gotchas:** [platform notes; omit if none documented]
 
 ## Ecosystem and Runtime Topology
@@ -339,6 +341,7 @@ Order findings High -> Medium -> Low. For each:
 | Branch naming          | |
 | PR requirements        | |
 | CODEOWNERS             | [`none` if absent] |
+| Module owners          | [from CODEOWNERS / recent committers; `none discoverable` if absent] |
 | Local quality gates    | [exact commands] |
 | Test commands          | [unit / integration / suite / single file] |
 | CI pipeline            | [PR vs merge; slowness/flake] |

@@ -119,6 +119,7 @@ Fill rules:
 - When impact differs across consumers, split into one row per consumer group so classification stays per consumer.
 - Write `none` only when you have checked and there are no consumers. When the consumer set cannot be enumerated - a library published to a registry, callers in repos you cannot read - write `unenumerable: <where they live>` and plan for the worst case: `none` claims a coordinated rollout is unnecessary, which is the opposite of what an unenumerable set implies.
 - A change that is additive during expand and breaking at contract takes the classification of its **end state**, with the per-phase safety shown in Deployment Order - the column answers "will this break someone," not "is every step safe."
+- A version bump whose release notes cannot prove it additive fills `breaking (unproven)` - the treat-as-breaking rule decides the plan, and the qualifier tells the reader what evidence would downgrade it.
 - When the risk is not sequencing - a behavioral or performance change deployable in one step - Deployment Order reads `Single deploy; ordering is not the risk` and names the verification that is (load test with the tight-loop consumer's profile, canary with consumer monitoring). A numbered list of one step hides that.
 - A blocker strategy (wait / swap / shim / fork) is a numbered Deployment Order step, carrying its removal condition.
 

@@ -89,7 +89,7 @@ All services have issues.
 ```
 ## Failure Propagation Analysis
 
-**Primary failure:** {component and failure type}
+**Primary failure:** {component and failure type; when two independent conditions had to co-occur (a change plus a traffic shift), list both joined by ` + ` and let Containment name which is actionable}
 
 **Cascading components:** {list, or "none - failure is contained"}
 

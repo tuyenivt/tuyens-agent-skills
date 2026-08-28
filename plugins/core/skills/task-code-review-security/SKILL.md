@@ -55,7 +55,7 @@ A row matches only when the detected framework matches it (Java / Micronaut does
 
 Use skill: `review-precondition-check` with the invocation's target and any `--base` override when running standalone (skip if the parent supplied a handle). Read diff and commit log once. Depth `standard` (default): review diff hunks plus immediate context; `deep`: read each touched file in full.
 
-**Round gate (standalone only).** Before reviewing, check `review-security-<branch>.md` (writer filename rules; the handle's `prior_checkpoint` is keyed to the general review report - never use it here). If it exists with valid frontmatter, its `head_sha` equals the current head, and the requested depth does not exceed its `depth` (`deep` exceeds `standard`), print `No new commits since prior security review.` and stop - no review, no report. Otherwise set `round` = its `round` + 1 and `prior_head_sha` = its `head_sha`; absent file -> `round: 1`, no `prior_head_sha`.
+**Round gate (standalone only).** Before reviewing, check `review-security-<branch>.md` (`<branch>` = head short name, for `head_ref: HEAD` the handle's `current_branch`; writer filename rules; the handle's `prior_checkpoint` is keyed to the general review report - never use it here). If it exists with valid frontmatter, its `head_sha` equals the current head, and the requested depth does not exceed its `depth` (`deep` exceeds `standard`), print `No new commits since prior security review.` and stop - no review, no report. Otherwise set `round` = its `round` + 1 and `prior_head_sha` = its `head_sha`; absent file, or frontmatter missing/unparseable (legacy - the Step 5 write overwrites it) -> `round: 1`, no `prior_head_sha`.
 
 **Cover every OWASP Top 10 category explicitly.** State "No issues found" per category when clean - do not silently skip.
 
@@ -80,11 +80,11 @@ Use skill: `review-precondition-check` with the invocation's target and any `--b
 
 Every finding states an attack scenario, not just a code observation. **Severity:** Critical = exploitable now without authentication, or direct credential/financial compromise (injection on reachable input, path traversal, auth bypass); High = exploitable with a common precondition (authenticated user crossing tenancy, on-path attacker, misset env flag) or a secret committed to VCS; Medium = weakens defenses or needs an unlikely precondition (missing rate limit, unsigned webhook, verbose errors); Low = defense-in-depth hardening with no concrete attack path. Sensitive data exposed to log or storage readers at scale is High; when exploitation needs two independent preconditions, rate one tier lower. Next Steps map severity to intent (Critical/High -> `[Must]`, Medium/Low -> `[Recommend]`) and tag each step `[Implement]` (localized fix) or `[Delegate]` (cross-cutting, platform, or dependency-owned).
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and fill the Summary's `Findings verified:` line with its tally - the verify table itself stays internal. On round 2+, after verification, Use skill: `review-prior-findings-reconcile` with the prior report body and the diff; its table renders as `## Prior Round Reconciliation` between Findings and Next Steps. Subagent runs skip both - the parent verifies and reconciles its own merged set once.
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and fill the Summary's `Findings verified:` line with its tally, carried verbatim - the verify table itself stays internal. On round 2+, after verification, re-project the prior report's findings into reconcile's parse shape - a `## High-Impact Findings` section, one `### [Label] file:line` heading per finding (from its label and Location lines) with its Issue line as the smell - then Use skill: `review-prior-findings-reconcile` with that projection, the diff, and `git diff --name-status <base_ref>...<head_ref>`. Its table and tally render as `## Prior Round Reconciliation` between Findings and Next Steps; unresolved rows carry into their prior severity sections at their prior label, noted `carried from round <N>` on the label line. Subagent runs skip both - the parent verifies and reconciles its own merged set once.
 
 ### Step 5 - Write Report
 
-Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-security` and every required input: `report_body`, `branch` (from the handle), refs from the precondition handle, SHAs via `git rev-parse`, `stack` from `stack-detect` (kebab-case `<language>-<framework>`, versions dropped, or `unknown`), `depth` from the invocation (default `standard`), `scope: +sec`, `mode: full`, and `round` plus `prior_head_sha` from the Step 4 round gate.
+Standalone only - subagent runs return findings to the parent instead. Use skill: `review-report-writer` with `report_type: review-security` and every required input: `report_body`, `branch` (head short name from the handle - for `head_ref: HEAD`, the handle's `current_branch`), refs from the precondition handle, SHAs via `git rev-parse`, `stack` from `stack-detect` (kebab-case `<language>-<framework>`, versions dropped, or `unknown`), `depth` from the invocation (default `standard`), `scope: +sec`, `mode: full`, and `round` plus `prior_head_sha` from the Step 4 round gate.
 
 ## Output Format
 
@@ -97,7 +97,7 @@ When Step 3 dispatched: the stack workflow owns the output. Subagent runs return
 
 - **Stack Detected:** [stack-detect result, or unknown] (generic fallback applied)
 - **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low counts]
-- **Findings verified:** [N] confirmed, [M] reattributed, [K] dropped
+- **Findings verified:** [the tally from `review-finding-verify`, carried verbatim]
 
 ## OWASP Coverage
 

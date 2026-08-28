@@ -51,7 +51,7 @@ For each finding, read the cited code at `head_ref` and ask what an author defen
 - Is the fault already handled somewhere the first pass did not read - a guard clause, a caller-side check, a framework default, a decorator or middleware?
 - Does the finding assume a call path that cannot occur?
 
-A cited line that no longer holds the construct is usually a stale cite - the diff shifted lines. Search the file at `head_ref` for the claimed construct; when found, verify there and correct the finding's `file:line`. Only a construct found nowhere in the file is unsupported.
+A cited line that no longer holds the construct is usually a stale cite - the diff shifted lines. Search the file at `head_ref` for the claimed construct; when found, verify there, correct the finding's `file:line`, and open the row's Evidence with `cite corrected from :<old>;`. Only a construct found nowhere in the file is unsupported.
 
 Claim unsupported -> `Dropped`, with the reason. Otherwise continue to Step 2.
 
@@ -75,7 +75,7 @@ Locate the cited construct in the diff.
 
 A finding split across changed and unchanged code (new call into an old unguarded helper) is `Pre-existing (newly reachable)`, cited at the unchanged defect with the new call site named as the trigger. Reachability must change in kind, not in count: one more caller passing data the construct already receives from existing paths leaves it `Pre-existing`.
 
-**Requirement-fit findings attribute to the change, not to the code they cite.** A finding from `review-change-intent` claiming the change did not deliver a stated criterion is `Confirmed` once Step 1 settles that the criterion is unsatisfied at `head_ref`. Its anchor is the construct that would hold the missing behavior - added or unchanged code alike, since the gap *is* what the change failed to add - and on unchanged code the attribution table would read `Pre-existing` and de-escalate, which inverts the claim: unlike a defect the PR did not introduce, this one is exactly what the PR was for. Step 1 still applies in full; a criterion satisfied somewhere the first pass did not read is `Dropped`.
+**Requirement-fit findings attribute to the change, not to the code they cite.** Recognize them by claim content: any finding whose claim names an acceptance criterion or states that something requested was not delivered - `review-change-intent` guarantees its findings name the criterion, but a paraphrase qualifies too. Such a finding is `Confirmed` once Step 1 settles that the criterion is unsatisfied at `head_ref`. Its anchor is the construct that would hold the missing behavior - added or unchanged code alike, since the gap *is* what the change failed to add - and on unchanged code the attribution table would read `Pre-existing` and de-escalate, which inverts the claim: unlike a defect the PR did not introduce, this one is exactly what the PR was for. Step 1 still applies in full; a criterion satisfied somewhere the first pass did not read is `Dropped`.
 
 ### Step 3 - Apply the label adjustment
 
@@ -99,7 +99,7 @@ Annotate every surviving non-`Confirmed` finding - and every unverified one - in
 <N> verified, <M> reattributed, <K> dropped (<F> false positive, <R> resolved by diff)
 ```
 
-`N` counts `Confirmed` rows, `M` both `Pre-existing` verdicts, `K` `Dropped`. Split `K` into `F` (claim disproved) and `R` (evidence `resolved by diff`) - they read as opposite outcomes to an author, and `K` alone hides which happened. Omit the parenthetical when `K` is 0. Consuming workflows publish only rows whose Verdict is not `Dropped`, carrying the `Label` column as the finding's label. The tally line goes in the report Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped (<F> false positive, <R> resolved by diff)`.
+`N` counts `Confirmed` rows, `M` both `Pre-existing` verdicts, `K` `Dropped`. Split `K` into `F` (claim disproved) and `R` (evidence `resolved by diff`) - they read as opposite outcomes to an author, and `K` alone hides which happened. Omit the parenthetical when `K` is 0. When any surviving row carries an `(unverified: ...)` qualifier, append `; <U> of these unverified` to the tally - a Summary reader must not mistake unsettled claims for read-and-confirmed ones. Consuming workflows publish only rows whose Verdict is not `Dropped`, carrying the `Label` column as the finding's label. The tally line goes in the report Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped (<F> false positive, <R> resolved by diff)`, with the same `; <U> of these unverified` suffix when `U` > 0.
 
 The table holds one row per finding received, `Dropped` rows included - it is the audit trail of what was ruled on, and a drop with its disproving evidence is the most useful row in it. Every finding received appears exactly once: two findings that resolve to the same `file:line` stay separate rows when they make different claims. When every finding drops, emit the full table and the tally with `N` and `M` at zero; that is a complete result, not an empty one.
 

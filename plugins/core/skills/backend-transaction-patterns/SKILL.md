@@ -128,6 +128,8 @@ COMMIT
 
 Without a lock timeout, a transaction queued behind a row lock waits forever while holding its connection: pool exhaustion presents as a total outage with no slow query to blame. Do not apply a global statement timeout to the role that runs migrations; it will kill them mid-DDL.
 
+`SET LOCAL` is PostgreSQL. MySQL: the lock bound is `innodb_lock_wait_timeout` (session-scoped - set and reset around the transaction), and there is no server-side statement timeout for writes (`max_execution_time` covers SELECT only) - bound writes with the driver's query timeout. On an unknown engine, state the two bounds as requirements and name the mechanism engine-specific rather than emitting Postgres syntax.
+
 ### Savepoints
 
 Justified only when a non-critical side write must be allowed to fail without rolling back the main one, such as an audit row or a denormalised projection. If the side write genuinely belongs with the main write, use one transaction and no savepoint. Reaching for savepoints to "make it more robust" adds a partial-failure path that then has to be reasoned about forever.
@@ -142,7 +144,7 @@ Justified only when a non-critical side write must be allowed to fail without ro
 ### Findings
 
 - [Severity: High | Medium | Low] {file:line if available} - {description}
-  - Violation: {IoInTransaction | PreCommitDispatch | ReadInTransaction | SplitAtomicUnit | MissingLockTimeout | MissingStatementTimeout | LostUpdate | OutboxClaimAsCompletion | NonIdempotentConsumer | EntityEscapesTransaction | UnjustifiedSavepoint}
+  - Violation: {IoInTransaction | PreCommitDispatch | ReadInTransaction | SplitAtomicUnit | MissingLockTimeout | MissingStatementTimeout | LostUpdate | OutboxClaimAsCompletion | RelayWithoutSkipLocked | MissingPoisonMessageCap | NonIdempotentConsumer | EntityEscapesTransaction | UnjustifiedSavepoint}
   - Risk: {pool exhaustion | side effect survives rollback | dispatch races commit | duplicated side effect | dropped side effect | lost update | unbounded lock wait}
   - Fix: {concrete correction using the detected stack's transaction API}
 
@@ -162,7 +164,7 @@ Crash Behavior: {what happens on a crash between commit and dispatch}
 Severity:
 
 - **High**: I/O inside an open transaction; a side effect dispatched before commit; a lost update with no lock and no atomic guard; an outbox that marks completion at claim time.
-- **Medium**: missing lock or statement timeout on a write path; one atomic unit split across two transactions; a non-idempotent outbox consumer.
+- **Medium**: missing lock or statement timeout on a write path; one atomic unit split across two transactions; a non-idempotent outbox consumer; a relay claiming without `SKIP LOCKED`; no attempts cap / dead-letter on the relay.
 - **Low**: read-only query wrapped in a transaction; a savepoint used where one transaction would do.
 
 Omit "No Findings" when findings were listed. In design mode with no code yet, list the risks the proposed design leaves open as Findings and omit `{file:line}`.

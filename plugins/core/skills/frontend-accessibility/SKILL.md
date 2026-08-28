@@ -131,7 +131,7 @@ For unknown stacks, apply the universal patterns and point the user to the frame
 
 ## Output Format
 
-Consuming workflow skills depend on this structure.
+When building, apply Rules and Patterns as constraints and emit the code alone - the block below is the audit deliverable, never a self-assessment of code just written. When auditing, emit the block; invoked standalone, order rows Critical first. Consuming workflow skills depend on this structure.
 
 Severity: Critical = blocks task completion for keyboard or assistive-technology users; Major = significant barrier with a workaround; Minor = friction or best-practice deviation.
 

@@ -198,7 +198,7 @@ Consuming workflow skills depend on this structure.
 
 Include either `Issues Found` or `No Issues Found`, never both. Severity anchor: High = correctness or data integrity (silent failures, stale data after writes, races); Medium = degraded UX or performance (waterfalls, missing empty state); Low = polish.
 
-In implement or design mode (writing new integration, not reviewing), the Endpoints table documents what was built or planned, and Issues Found carries only residual risks knowingly accepted.
+The Endpoints table covers the integrations in scope - the change's touched endpoints when reviewing, the feature's endpoints when implementing - never a whole-app inventory. In implement or design mode (writing new integration, not reviewing), the table documents what was built or planned, and Issues Found carries only residual risks knowingly accepted.
 
 ---
 

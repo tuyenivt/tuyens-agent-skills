@@ -125,7 +125,7 @@ Consuming workflow skills parse this structure to surface observability gaps.
 ### Gaps
 
 - [Severity: High | Medium | Low] {component or layer} - {description of gap}
-  - Missing: {signal absent - log field | metric | trace span | context propagation | alert | SLO; for a logged secret/PII the slot reads `removal - secret/PII in logs`}
+  - Missing: {signal absent - log field | metric | trace span | context propagation | alert | SLO; for a logged secret/PII the slot reads `removal - secret/PII in logs`; for a signal that exists but targets the wrong thing (cause-based page where a symptom alert belongs) it reads `replacement - <wrong signal> -> <right signal>`}
   - Impact: {what becomes invisible or undetectable}
   - Recommendation: {concrete addition with library/mechanism for the detected stack}
 
@@ -142,7 +142,23 @@ Consuming workflow skills parse this structure to surface observability gaps.
 
 Omit "No Gaps Found" if gaps were listed.
 
-In definition mode (designing SLOs or alerting rather than reviewing), output the SLI / SLO target / error budget / alert rules per critical path instead of the Gaps block; use Gaps only for signals the design still lacks.
+In definition mode (designing SLOs or alerting rather than reviewing), output this block per critical path instead of the Gaps block; use Gaps only for signals the design still lacks.
+
+```
+### {critical path}
+
+SLI: {measurable signal(s)}
+
+SLO: {target over window}
+
+Error budget: {1 - SLO as time or count per window}
+
+Alerts:
+- burn rate: {multi-window rule}
+- latency: {sustained breach rule}
+- saturation: {hard-fail resource thresholds}
+- absence: {heartbeat/staleness rule, or "n/a - no scheduled or event-driven work on this path"}
+```
 
 ## Avoid
 

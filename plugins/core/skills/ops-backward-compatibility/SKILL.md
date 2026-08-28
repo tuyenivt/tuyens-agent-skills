@@ -48,7 +48,7 @@ user-invocable: false
 
 When a change matches more than one row, take the most specific one - `VARCHAR(50)` to `VARCHAR(255)` is a widened value domain (verify consumers tolerate longer values), not a column-type change needing expand-contract, because nothing at the storage layer breaks.
 
-Schema-stable behavioral changes are the ones reviews miss: no diff of fields or types reveals them, so they must be found by reading what the code now does differently.
+Schema-stable behavioral changes are the ones reviews miss: no diff of fields or types reveals them, so they must be found by reading what the code now does differently. Behavioral dependence is also invisible to traffic inspection - logs show that a consumer calls, never that it relies on ordering, a default, or precision - so verification means consumer-side confirmation (their tests, their ack) or an announced grace period; never claim logs as evidence here.
 
 ### Contract Scope
 

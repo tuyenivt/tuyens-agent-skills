@@ -81,13 +81,13 @@ Signals: {comma-separated triggered signals, 1-2 sentences max}
 Action: {split PR | add tests before merge | require additional reviewer}
 ```
 
-`Action:` is optional - include only when a specific action is warranted, and pick exactly one value (the most impactful) from the set above.
+`Action:` maps from what fired, first match wins: size signal -> `split PR`; missing-test signal -> `add tests before merge`; Critical level -> `require additional reviewer`; otherwise omit the line. The `PR:` prefix line in triage mode does not count against the four-line cap.
 
 ### Examples
 
 ```
-Risk Level: High
-Signals: Public API contract change (POST /orders request schema), single module, tests updated.
+Risk Level: Critical
+Signals: Public API contract change (POST /orders request schema) plus auth scope change on the same endpoint.
 Action: require additional reviewer
 ```
 

@@ -23,7 +23,7 @@ user-invocable: false
 - Every guardrail must be enforceable (automated, structural, or alert-backed) and verifiable.
 - Every process change must be actionable, assignable, and tied to a trigger condition.
 - Match the weight of the control to the risk it mitigates; prefer structural enforcement over "be careful".
-- Weigh a guardrail's cost (deploy friction, reviewer load, false positives) against the blast radius it prevents. Reshape blanket manual gates into risk-scoped automated controls instead of adopting or silently dropping them; output the reshaped guardrail and name what it replaces in its Rule.
+- Weigh a guardrail's cost (deploy friction, reviewer load, false positives) against the blast radius it prevents. Reshape blanket manual gates into risk-scoped automated controls instead of adopting or silently dropping them. A *proposed* gate emits one row: the reshaped guardrail, naming what it replaces in its Rule. A gate *already in force* emits the pair: a `[retire]` row for the blanket rule and a row for its risk-scoped replacement.
 - Prioritize by blast-radius reduction; do not ship an unbounded improvement wishlist.
 
 ## Patterns
@@ -43,7 +43,7 @@ user-invocable: false
 
 ### Enforcement Tiers
 
-Prefer higher-tier enforcement. If only manual is feasible, pair it with a plan to automate.
+Prefer higher-tier enforcement. If only manual is feasible, append the automation plan to the row's Enforcement cell: `checklist (automate: <planned mechanism>)`.
 
 | Tier       | Mechanism                  | Reliability |
 | ---------- | -------------------------- | ----------- |

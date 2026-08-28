@@ -118,7 +118,7 @@ Check, in order:
 
 ## Output Format
 
-Consuming workflows parse this structure. When reviewing a diff, report problematic indexes the diff adds under `Existing Index Issues`. In design mode (no existing schema or diff to review), `Missing Indexes` holds the proposed indexes, `Indexes Not Recommended` the declined ones; omit `Existing Index Issues`.
+Consuming workflows parse this structure. When reviewing a diff, report problematic indexes the diff adds under `Existing Index Issues` and gaps the diff leaves under `Missing Indexes`; render `Indexes Not Recommended` only when an index that was proposed or considered is being declined, otherwise omit it. In design mode (no existing schema or diff to review), `Missing Indexes` holds the proposed indexes, `Indexes Not Recommended` the declined ones; omit `Existing Index Issues`. In diagnosis mode (an index exists but the query scans), the defective index goes under `Existing Index Issues` as an `ineffective` row, the corrective index or rewrite under `Missing Indexes`, and a non-index remedy (`ANALYZE`, statistics, planner settings) gets its own `Existing Index Issues` row with the remedy as the recommendation.
 
 ```
 ## Database Indexing Assessment
@@ -132,7 +132,7 @@ Consuming workflows parse this structure. When reviewing a diff, report problema
 
 ### Existing Index Issues
 
-- {table.index_name} - {over-indexed | low-cardinality | unused | duplicate | ineffective (wrong column order, type mismatch, or unmatchable predicate)} - {recommendation}
+- {table.index_name} - {over-indexed | low-cardinality | unused | duplicate | ineffective (wrong column order, type mismatch, unmatchable predicate, or stale statistics)} - {recommendation}
 
 ### Indexes Not Recommended
 

@@ -35,7 +35,7 @@ user-invocable: false
 | Natural business key  | Operation has inherent uniqueness (one payment per order)  | `order_id + payment_type` as composite                  |
 | Client-generated UUID | Generic POST endpoints with no natural key                 | `Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000` |
 | Content hash          | Same payload should always produce the same result         | SHA-256 of normalized request body                      |
-| Message ID            | Event consumer where the broker assigns an ID              | Kafka offset, SQS message ID, event `id`                |
+| Message ID            | Event consumer deduplicating broker redelivery only - a producer publishing the same business event twice mints fresh broker IDs, so end-to-end dedup keys on the payload's event `id` or a natural key | Kafka offset, SQS message ID (redelivery); payload event `id` (end-to-end) |
 
 ### Atomic check-and-act
 
@@ -108,7 +108,7 @@ Consuming workflows parse this structure.
 ### Gaps
 
 - [Severity: High | Medium | Low] {operation or endpoint} - {gap description}
-  - Missing: {idempotency key | dedup table | transactional check | reconciliation sweeper | entity-state guard | request-hash guard | TTL}
+  - Missing: {idempotency key | dedup table | transactional check | reconciliation sweeper | entity-state guard | request-hash guard | TTL (absent or shorter than the retry window)}
   - Risk: {duplicate side effect - e.g., double charge, double publish, double insert}
   - Recommendation: {concrete pattern and mechanism for the detected stack}
 

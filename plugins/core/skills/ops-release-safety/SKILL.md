@@ -123,7 +123,7 @@ State per layer what is reverted and what is deliberately left in place - an add
 Rollout Plan, Rollback Triggers, and Rollback Plan are mandatory. Omit "No Risks Found" if risks were listed.
 
 - **Rollback speed:** report the fastest available control layer (flag kill switch > traffic shift > redeploy); note slower layers in the Rollback Plan.
-- **Bundled releases:** assess each part separately, recommend the split in the Rollout Plan, and report the strategy of the riskiest part.
+- **Bundled releases:** emit one assessment block. The header reports the riskiest part's strategy and speed; the Rollout Plan opens with the split recommendation, then sequences each part with its own monitors; each Rollback Trigger and Rollback Plan step names the part it reverts.
 - **Irreversible releases:** the Rollback Plan states the roll-forward plan and the verification gate that precedes the point of no return - never fabricate rollback steps for state that cannot be restored.
 
 ## Avoid

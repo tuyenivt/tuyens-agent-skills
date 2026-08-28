@@ -161,7 +161,7 @@ A pattern that is present but misconfigured (e.g., retry with no cap or backoff)
 **Severity** - judge by the worst plausible failure mode the gap enables, not by which pattern is absent:
 
 - **High**: unbounded blocking or load (missing timeout, uncapped retry), or unsafe retry of a non-idempotent op without a key.
-- **Medium**: failure is bounded but recovery or containment is impaired - retry without jitter, breaker absent or unmonitored where a timeout exists, missing timeout/retry budget on a chained path, no fallback for a critical dependency.
+- **Medium**: failure is bounded but recovery or containment is impaired - retry without jitter, breaker absent or unmonitored where a timeout exists, missing timeout/retry budget on a chained path, no fallback for a critical dependency, a fallback that does not log the original failure (degradation hidden until it compounds).
 - **Low**: hardening gaps with no immediate failure path - missing bulkhead isolation, fallback that fails fast where stale data would serve.
 
 Omit "No Gaps Found" if gaps were listed.

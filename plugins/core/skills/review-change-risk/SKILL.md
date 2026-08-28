@@ -9,8 +9,6 @@ user-invocable: false
 
 # Change Risk Classification
 
-> Load `Use skill: stack-detect` first to determine the project stack.
-
 ## When to Use
 
 - Pre-implementation: architecture proposals, migration plans, refactor plans, design docs
@@ -25,7 +23,7 @@ If a diff exists, use `review-pr-risk` instead; use both when both apply.
 - A change may trigger multiple primary and secondary domains; both count toward the overall level (primary/secondary marks confidence, not weight).
 - Every domain triggered must cite the evidence that triggered it.
 - Classify Low only when no domain is triggered at Medium or higher effective severity.
-- Underspecified proposal: classify from stated facts, mark inferred domains "(assumed)" in their evidence, and record unknowns that could change the level under Open Questions. Never fail silently into a confident classification.
+- Underspecified proposal: classify from stated facts, mark inferred domains "(assumed)" in their evidence, and record unknowns that could change the level under Open Questions. Assumed domains keep their default severity and count toward the ladder like evidenced ones. Never fail silently into a confident classification.
 - When assumed domains outnumber the evidenced ones, the classification is a prompt for information, not a verdict: keep the level (an alarming level on a vague proposal is the useful signal) and open the Evidence line with `Provisional - N of M domains assumed;` so the reader knows answering the Open Questions is what settles it.
 
 ## Patterns
@@ -59,7 +57,7 @@ If a diff exists, use `review-pr-risk` instead; use both when both apply.
 | One or two medium domains                          | Medium        |
 | No domain at Medium or higher (none triggered, or only justified-downgrade-to-Low domains) | Low           |
 
-4. Amplify: if a shared mutable resource is written by two or more flows touched by the change, raise the level one tier (caps at Critical). Evaluate every phase the proposal includes - a transitional dual-write window counts even if the end state has one writer. Amplify at most once, however many resources qualify. Evaluate each shared resource in turn and amplify on the first one that is not already the sole reason Concurrency triggered - that carve-out prevents counting one resource twice, not amplification itself, so a second qualifying resource still amplifies.
+4. Amplify: if a shared mutable resource is written by two or more flows touched by the change, raise the level one tier (caps at Critical). A flow is a distinct write entry point in the architecture - an endpoint, consumer, scheduled job, or service - not a deploy-time version overlap, and not one code path writing two different resources (that is two resources with one writer each; its risk is already carried by the Data and Deployment domains). Evaluate every phase the proposal includes - a transitional window where two flows write the same resource counts even if the end state has one writer. Amplify at most once, however many resources qualify. Evaluate each shared resource in turn and amplify on the first one that is not already the sole reason Concurrency triggered - that carve-out prevents counting one resource twice, not amplification itself, so a second qualifying resource still amplifies.
 5. Assess reversibility: Irreversible when any triggered domain includes a destructive or non-reversible step (data loss, irreversible migration); Partially reversible when rollback needs manual or multi-step action; Reversible otherwise.
 
 ### Good
@@ -108,7 +106,7 @@ Secondary Risk Domains:
 - {Domain} ({Severity}) - {1-sentence evidence}
 
 Shared State: {what shared resource is involved, or "none"}
-Shared State Amplification: Yes / No
+Shared State Amplification: {Yes | No | Yes (assumed) | No (assumed)}
 Reversibility: {Reversible | Partially reversible | Irreversible} - {1-sentence rollback path or blocker}
 
 Evidence: {key signals driving the overall classification}

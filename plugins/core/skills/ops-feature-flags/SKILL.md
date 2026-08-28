@@ -121,17 +121,19 @@ Use this template when designing or reviewing a flag.
 
 **Flag name**: {descriptive-feature-name-enabled}
 
-**Type**: {boolean | user-targeting | kill-switch}
+**Type**: {boolean | user-targeting}
 
 **Default**: {on | off}
 
 **Owner**: {team or engineer}
 
+**Kill switch**: {this flag - off fully reverts | separate flag `<name>` - why it must disable independently of rollout state}
+
 **Cleanup target**: {date or "within 1 sprint of 100% rollout"}
 
 ## Rollout Plan
 
-Stages come from the Gradual Rollout table's row for the assessed risk; the rows below show a Medium-risk fill.
+Stages come from the Gradual Rollout table's row for the assessed risk; the rows below show a Medium-risk fill. When the row's soak is a range, soak grows with the stage - the range's low end at the first stage, its high end before Full.
 
 | Stage    | Traffic        | Promotion Criteria       | Rollback Trigger      | Soak   |
 | -------- | -------------- | ------------------------ | --------------------- | ------ |

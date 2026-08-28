@@ -100,7 +100,7 @@ Emit a single Markdown table - this is what the workflow inserts under `## Prior
 
 Status column is one of exactly: `Addressed`, `Still open`, `Obsolete`, `Needs re-check`. Notes column is optional per row; keep to one short sentence.
 
-A renamed file's cell carries `<prior path>:<line> -> <new path>:<line>`, preserving the prior path verbatim on the left so rounds stay comparable while the reader sees where the code lives now.
+A renamed file's cell carries `<prior path>:<line> -> <new path>:<line>`, preserving the prior path and line verbatim on the left so rounds stay comparable while the reader sees where the code lives now. The right-side line is where the smell check landed at the new path - the cited construct's current line, or for absence smells the site inspected; repeat the prior line only when no such line can be pinned.
 
 `Still open` and `Needs re-check` rows are unresolved: the workflow carries them into the round's `## High-Impact Findings` so the next round reconciles them again. `Addressed` and `Obsolete` rows are settled and appear only in this table.
 

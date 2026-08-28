@@ -60,7 +60,7 @@ Use skill: `review-precondition-check` with the user's target argument (default 
 | Checkpoint state                                                        | Decision                                                          |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | Absent, or `prior_checkpoint: legacy`                                    | `round: 1` (legacy report is overwritten)                          |
-| `prior head_sha == head_sha`, and the checkpoint's `scope`/`depth` cover the requested ones (covering = superset: `full` covers every scope, `+perf +sec` covers `+sec`; `deep` covers `standard`) | Print `No new commits since prior review.` and stop - no report |
+| `prior head_sha == head_sha`, and the checkpoint's `scope`/`depth` cover the requested ones (covering = superset: `full` covers every scope, `+perf +sec` covers `+sec`, any scope covers `core-only` - flags add lenses to the core review; `deep` covers `standard`) | Print `No new commits since prior review.` and stop - no report |
 | `prior head_sha == head_sha`, requested scope or depth exceeds the checkpoint's | `round: prior + 1` - same commits, wider lens                       |
 | Otherwise                                                                | `round: prior + 1`                                                 |
 
@@ -84,15 +84,15 @@ Use skill: `review-precondition-check` with the user's target argument (default 
 
 **Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
-**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `+rel` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all four) with the read-once diff/log, the precondition handle, the active depth, and the stack-detect output. Run in parallel. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend; highest wins on duplicates); preserve `file:line` citations.
+**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `+rel` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all four) with the read-once diff/log, the precondition handle, the active depth, and the stack-detect output. Run in parallel; when subagents are unavailable, run each sub-scope skill inline in sequence under the same contract. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend; highest wins on duplicates); preserve `file:line` citations.
 
 **Cross-phase dedup.** A single defect can surface in more than one phase or lens - the Phase B contract gate and a sub-scope, Phase 0 and Phase B, Phase B and the Phase C guardrail. Whether or not extra scopes ran, merge before **Verify findings**: publish one entry at the strongest intent whose Issue line names each lens that surfaced it; preserve `file:line`.
 
-**Verify findings.** Use skill: `review-finding-verify` with the assembled findings (including any merged from sub-scopes), the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`. Atomic output blocks (risk, resiliency, guardrail, the verify table) inform the review and are never emitted - the report carries only the slots Output Format names.
+**Verify findings.** Use skill: `review-finding-verify` with the assembled findings (including any merged from sub-scopes), the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its `Findings verified:` Summary tally line verbatim - including the `(<F> false positive, <R> resolved by diff)` split and the `; <U> of these unverified` suffix when the atomic emits them. Atomic output blocks (risk, resiliency, guardrail, the verify table) inform the review and are never emitted - the report carries only the slots Output Format names.
 
 ### Step 5 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review` and every required input: `report_body` (the assembled report per Output Format), `branch` (head short name from the handle - the review target, which is the checkpoint lookup key), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 4), `mode: full` (the writer's only accepted value), `round` (Step 4; plus `prior_head_sha` when round > 1 - on a same-SHA wider-lens round it equals `head_sha`, which is expected), `scope` (writer enum value - `core-only` when no scope flag was passed; combined flags join with single spaces in the canonical order `+perf +sec +obs +rel`; all four = `full`), `depth` (`standard` when no depth flag), `stack` (kebab-case `<language>-<framework>` from the stack-detect output, e.g. `elixir-phoenix`; drop a segment reported unknown; `unknown` only when detection failed entirely).
+Use skill: `review-report-writer` with `report_type: review` and every required input: `report_body` (the assembled report per Output Format), `branch` (head short name from the handle - for `head_ref: HEAD`, the handle's `current_branch`, never the literal `HEAD`; this is the review target and the checkpoint lookup key), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 4), `mode: full` (the writer's only accepted value), `round` (Step 4; plus `prior_head_sha` when round > 1 - on a same-SHA wider-lens round it equals `head_sha`, which is expected), `scope` (writer enum value - `core-only` when no scope flag was passed; combined flags join with single spaces in the canonical order `+perf +sec +obs +rel`; all four = `full`), `depth` (`standard` when no depth flag), `stack` (kebab-case `<language>-<framework>` from the stack-detect output, e.g. `elixir-phoenix`; drop a segment reported unknown; `unknown` only when detection failed entirely).
 
 ## Feedback Labels
 
@@ -111,7 +111,7 @@ The fence below delimits the template for display only - it is not part of the r
 
 When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
-**Assessment** derives from the verified findings: any `[Must]` -> Request Changes; no `[Must]` but at least one `[Recommend]` -> Discuss; none -> Approve.
+**Assessment** derives from the published findings - verified and carried-forward alike: any `[Must]` -> Request Changes; no `[Must]` but at least one `[Recommend]` -> Discuss; none -> Approve.
 
 **Scope** displays combined flags capitalized in the canonical order (`+Perf +Sec`); the writer input keeps the lowercase form in the same order.
 
@@ -125,7 +125,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 - **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full
 - **Depth:** standard | deep
 - **Round:** <N> _(include from round 2 onward)_
-- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Findings verified:** <the tally from `review-finding-verify`, carried verbatim>
 - **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 

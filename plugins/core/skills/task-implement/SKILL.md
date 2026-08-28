@@ -84,7 +84,7 @@ Runs when the stack is unknown, unsupported by any table row, or the matched plu
 
 When dispatched (Step 3): the stack workflow owns the output. On a fullstack split (backend and frontend in different stacks), the stack workflow reports the backend side; the Step 4 output below covers only the frontend side.
 
-When fallback runs (Step 4), emit only the block(s) matching the Stack Type (on a split, the frontend block only - the delegate reports the backend), trimming the combined headings to the side emitted. The file checklist is a floor, not an enum - append rows for artifacts outside the fixed slots (policies, jobs, routes), mark modified files `(updated)`, and emit boxes checked for what was generated. The Tests line carries one count per tier the IMPLEMENT test step defines for the side built (backend: Unit / Integration / API; frontend: Component / Integration / E2E):
+When fallback runs (Step 4), emit only the block(s) matching the Stack Type (on a split, the frontend block only - the delegate reports the backend), trimming the combined headings to the side emitted. The file checklist is a floor, not an enum - append rows for artifacts outside the fixed slots (policies, jobs, routes), mark modified files `(updated)`, and emit boxes checked for what was generated. The Tests line carries one count per tier the IMPLEMENT test step defines for the side built (backend: Unit / Integration / API; frontend: Component / Integration / E2E). On a split whose backend has not landed, the E2E tier reads `pending - runs after the backend lands` instead of a count. The side-specific Validation segment is labeled: `Pagination:` (backend) or `A11y:` (frontend):
 
 ```markdown
 ## Generated Files

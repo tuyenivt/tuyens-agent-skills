@@ -216,7 +216,7 @@ On a codebase far below those targets, a global number is a wish, not a plan: st
 {State explicitly if testing is adequate - do not omit this section silently}
 ```
 
-Severity calibration: High = false confidence (implementation-detail assertions, reflexively updated snapshots, own code mocked out at module level); Medium = fragile or incomplete (brittle selectors, missing error/loading states, order dependence, fixed sleeps); Low = maintainability (inline literals over factories, naming, duplication).
+Severity calibration: High = false confidence (implementation-detail assertions, reflexively updated snapshots, own code mocked out at module level); Medium = fragile or incomplete (brittle selectors, missing error/loading states, order dependence, fixed sleeps); Low = maintainability (inline literals over factories, naming, duplication). A large-tree snapshot rates Medium as fragile; it escalates to High when the history shows reflexive updating (snapshot regenerated alongside unrelated changes, or `--update-snapshot` scripted) - rate the evidence, not the trajectory.
 
 ---
 

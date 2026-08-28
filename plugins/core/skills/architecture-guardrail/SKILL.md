@@ -25,6 +25,7 @@ user-invocable: false
 - One structural violation outweighs many cosmetic issues
 - Use the conventions already present in the codebase as the baseline, not a generic ideal
 - When no baseline exists yet (greenfield, first files of a module), the Layer Violations list *is* the baseline: flag against universal layering, since the first files set the convention every later one inherits. `Drift:` reads "none observed - establishing the pattern."
+- When the established convention itself matches a Layer Violations pattern (controllers routinely hitting the ORM), a change following it is not flagged per site: raise the convention once, `[Recommend]`, anchored on the module, naming the migration cost. A violation the change newly introduces - a boundary the codebase does respect elsewhere - still flags `[Must]`.
 
 ## Patterns
 
@@ -110,7 +111,7 @@ A violation that is a property of a module or a pair of modules - utils accumula
 
 Intent:
 
-- **[Must]**: any Layer Violations pattern, circular dependency, cross-runtime import
+- **[Must]**: any Layer Violations pattern, circular dependency, cross-runtime import - except a site following an established convention that is itself the violation, which falls under the raise-the-convention-once rule in Rules
 - **[Recommend]**: other Module Coupling and Boundary Erosion patterns
 - **[Recommend]**: drift with unclear intent - state the assumption being checked and ask the author to confirm in the same finding
 

@@ -70,7 +70,7 @@ When the answer is phased (e.g. "sync now, async in Q3") record each phase as it
 
 ### Hard Constraints and Incomplete Inputs
 
-- **Hard constraint disqualifies an option:** keep the option in the Alternatives table and lead its Risk cell with `Disqualified: {constraint}` - the row is the evidence of evaluation.
+- **Hard constraint disqualifies an option:** keep the option in the Alternatives table, lead its Risk cell with `Disqualified: {constraint}`, and fill its remaining cells like any evaluated option - the completed row is the evidence of evaluation.
 - **Decision already made ("write it up"):** analyze as if open - generate 2-3 credible alternatives (include the status quo or simplest option) and document genuine costs and risks. If the analysis favors a rejected option, state the mismatch in Rationale instead of justifying backwards.
 - **Options not yet known:** derive candidates from the constraints before analyzing; include at least one simple option and one hybrid or phased option.
 - **Missing context (volume, team, constraints):** ask for the facts that drive the decision, or record `Unknown: {fact}` in Context. Never fabricate numbers to make the Rationale look evidence-based.

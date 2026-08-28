@@ -120,7 +120,7 @@ One Issue entry per defect, not per symptom: when several rules fail on the same
 Severity:
 
 - **High**: data race, lost update across a suspension point, deadlock risk, unbounded concurrency, in-process lock used for a cross-instance race
-- **Medium**: blocking call in cooperative context, missing cancellation or timeout, fire-and-forget without an error path, distributed lock without TTL
+- **Medium**: blocking call in cooperative context, missing cancellation or timeout, fire-and-forget without an error path, distributed lock without TTL, no contention test or race-detector coverage on code holding shared mutable state
 - **Low**: idiomatic drift from the detected stack's conventions
 
 Omit "No Issues Found" only when issues were listed.

@@ -50,6 +50,7 @@ Refinements (apply in this priority):
    - `nuxt.config.{js,ts}` -> Vue (Nuxt)
    - `angular.json` -> Angular
    - `remix.config.*` or `app/root.tsx` with `@remix-run` dep -> React (Remix)
+   - `svelte.config.js` -> Svelte (SvelteKit)
 2. **`package.json` dependency inspection** (when no meta-framework marker):
    - `react` + `next` -> React (Next.js)
    - `react` + `@remix-run/react` -> React (Remix)
@@ -57,6 +58,7 @@ Refinements (apply in this priority):
    - `vue` + `nuxt` -> Vue (Nuxt)
    - `vue` only -> Vue (Vite/custom)
    - `@angular/core` -> Angular
+   - `@sveltejs/kit` -> Svelte (SvelteKit); `svelte` only -> Svelte (Vite/custom)
 3. **`tsconfig.json` alongside `package.json`** -> Language: TypeScript.
    **Lockfile** (sets Build tool for JS/TS): `package-lock.json` -> npm, `yarn.lock` -> yarn, `pnpm-lock.yaml` -> pnpm, `bun.lock`/`bun.lockb` -> bun.
    **Other ecosystems - the marker names the build tool**: `pom.xml` -> Maven, `build.gradle*` -> Gradle, `go.mod` -> go, `Cargo.toml` -> Cargo, `Gemfile` -> Bundler, `mix.exs` -> mix, `composer.json` -> Composer; Python: `poetry.lock` -> Poetry, `uv.lock` -> uv, else pip.

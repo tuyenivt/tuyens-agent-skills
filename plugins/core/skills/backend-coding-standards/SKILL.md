@@ -71,7 +71,7 @@ If stack-detect output is missing, infer the language from file extensions and s
 
 ## Output Format
 
-Consuming workflows parse this structure.
+When authoring, apply Rules as constraints and emit the code alone - the block below is the review deliverable, never a self-assessment of code just written. When reviewing, emit the block; invoked standalone, order `[Must]` first. Consuming workflows parse this structure.
 
 ```
 ## Coding Standards Findings
@@ -101,7 +101,7 @@ Consuming workflows parse this structure.
 
 A defect matching both a Rule and an anti-pattern category is one entry under Violations with its intent label; Anti-Patterns holds only ecosystem-scan findings no Rule covers.
 
-Omit Anti-Patterns only when the scan ran and found none. When the stack is unfamiliar and the ecosystem-specific scan could not run, keep the section and write `not assessed - {stack} anti-patterns require ecosystem knowledge; verify with the stack's linter`. An omitted section reads as a clean result, which is a stronger claim than "not checked."
+Anti-Patterns appears when it has entries or when the scan could not run; a scan that ran and found none omits the section. When the stack is unfamiliar and the ecosystem-specific scan could not run, keep the section and write `not assessed - {stack} anti-patterns require ecosystem knowledge; verify with the stack's linter`. An omitted section reads as a clean result, which is a stronger claim than "not checked."
 
 Omit "No Issues Found" when either Violations or Anti-Patterns has entries - it claims a fully clean result.
 

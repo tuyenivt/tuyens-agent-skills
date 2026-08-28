@@ -21,6 +21,7 @@ This skill **gates only**: it emits ref names, not diffs or SHAs. The consuming 
 - **Local git only.** `git status`, `git rev-parse`, `git symbolic-ref`, `git for-each-ref`. No `gh`, no GitHub MCP, no platform API.
 - **No state-changing git commands.** No `fetch`, `checkout`, `stash`, `commit`. When the user must run one, print the exact command and stop.
 - **Stop on first failed precondition.** Do not collect multiple failures.
+- **Prompts require a user.** The base-candidate question (Step 5) and the approval gate (Step 6) are interactive. When no user can answer (subagent or non-interactive run), stop with the prompt text as the failure message - the consuming workflow decides whether to re-run with an explicit `--base` or on the current branch.
 - **Confirm a non-current head before reviewing.** When the resolved head differs from the current branch, pause for explicit approval. No checkout is required.
 - **Output a minimal handle.** Just `base_ref`, `head_ref`, `current_branch`, `head_matches_current` (plus notes). The consumer composes its own diff/log commands.
 
@@ -74,7 +75,7 @@ Detached `HEAD`: with no argument, stop and ask for an explicit branch or `pr-<N
 
 ### Step 3 - Head must not be a trunk branch
 
-Resolve the short name of `head_ref` and compare to the trunk list (case-insensitive). If it matches:
+Resolve the short name of `head_ref`; when it resolved from `refs/remotes/`, strip the leading `<remote>/` segment first (`origin/develop` is the trunk `develop`). Compare the result to the trunk list (case-insensitive). If it matches:
 
 ```text
 Review target is `<name>`, a trunk branch. Nothing scoped to review against itself.
@@ -156,7 +157,7 @@ Wait for explicit affirmative (`y` / `yes`). On `n` or no response, stop with `R
 
 This step enables flag-free re-review. It only **reads and reports** - it does not decide the round. The consuming workflow decides.
 
-Compute the prior-report filename from the **head** short name; when the head resolved from `refs/remotes/`, strip the leading `<remote>/` segment first, so `origin/feature/x` and a later local review of `feature/x` chain on the same file. Then apply the sanitization rules per `review-report-writer` (replace `/` and chars outside `[A-Za-z0-9_-]` with `-`, collapse, strip):
+Compute the prior-report filename from the **head** short name. When `head_ref` is `HEAD` (no-argument mode), the head short name is the current branch (`git rev-parse --abbrev-ref HEAD`), never the literal `HEAD`. When the head resolved from `refs/remotes/`, strip the leading `<remote>/` segment first, so `origin/feature/x` and a later local review of `feature/x` chain on the same file. Then apply the sanitization rules per `review-report-writer` (replace `/` and chars outside `[A-Za-z0-9_-]` with `-`, collapse, strip):
 
 ```
 review-<sanitized-head>.md

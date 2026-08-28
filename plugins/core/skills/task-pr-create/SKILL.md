@@ -25,7 +25,7 @@ Turns a git diff into a reviewer-ready PR description: title, summary, risk, tes
 | Input                | Required | Source                                          |
 | -------------------- | -------- | ----------------------------------------------- |
 | Git diff / file list | Yes      | `git diff <base>...HEAD` or pasted              |
-| Commit messages      | Yes      | `git log <base>...HEAD --oneline`               |
+| Commit messages      | Yes      | `git log <base>..HEAD --oneline`                |
 | Ticket reference     | No       | Branch name, commit message, or user-supplied   |
 | ADR references       | No       | Commit messages or `docs/adr/`                  |
 | Related PRs          | No       | Commit messages or user-supplied                |
@@ -66,7 +66,7 @@ Use skill: `stack-detect` to inform test commands in the test plan (e.g., `./gra
 Run or accept:
 
 1. `git diff <base_ref>...HEAD`
-2. `git log <base_ref>...HEAD --oneline --no-merges`
+2. `git log <base_ref>..HEAD --oneline --no-merges` (two dots - branch commits only; the three-dot form would include base-side commits once the base advances, polluting ticket extraction and the summary)
 3. `current_branch` from Step 2
 4. `git diff <base_ref>...HEAD --name-only`
 
@@ -100,7 +100,7 @@ Compose using the Output Format below.
 - Up to 5 bullets, each starting with a verb; proportional to the diff (a trivial change needs one)
 - If the *why* is not inferable from diff, commits, or ticket, ask the user - do not invent it
 - Reference ticket/ADR inline only if essential context
-- Stacked PR (base is not a trunk branch): open the Summary with the standalone line `Stacked on <branch>.` (bare branch name, before the bullets) so reviewers set the right merge target
+- Stacked PR (base is not a trunk branch): open the Summary with the standalone line `Stacked on <branch>.` (bare branch name - remote prefix stripped; before the bullets) so reviewers set the right merge target
 
 **Test Plan:**
 - Concrete, runnable steps. Include the exact test command for the detected stack when production code changed (production code = anything shipping or configuring runtime/build behavior; prose and assets alone are docs-only, needing only a relevant verification step such as a render or build check). When no test framework is detected, the stack's build or verification command serves as the runnable command.
@@ -129,6 +129,7 @@ Add a **Linked Context** section only if at least one of: ticket reference, ADR 
 ### Risk
 
 **[Low | Medium | High | Critical]** - [1-2 sentence rationale]
+
 Suggested action: [only if `review-pr-risk` emitted `Action:`; otherwise omit this line]
 
 ### Test Plan
@@ -152,6 +153,7 @@ Suggested action: [only if `review-pr-risk` emitted `Action:`; otherwise omit th
 ### Linked Context
 
 Closes [TICKET-ID](link-if-available)
+
 ADR: [ADR title or path]
 
 Related: #[PR number or branch]

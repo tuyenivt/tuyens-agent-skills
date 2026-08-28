@@ -108,24 +108,30 @@ Workers: replicas R x pool P = T (concurrency C; check C + 2 <= P)
 
 One-shots: total during runs
 
-Deploy peak: {computed value} (old + new overlap)
+Deploy overlap: {computed value} (old + new process tally)
 
 Pooler tier: {none | session mode | transaction mode | managed proxy}
+
+Hazards: {session-scoped constructs the codebase uses that the chosen tier breaks, or "none"}
 
 Steady state: U / effective ({percent}; target <= 75%)
 
 Deploy peak: P / effective ({percent}; must be <= 100%)
 
-Verdict: {Fits | Breaches at deploy peak | Breaches at steady state}
+Verdict: {Fits | Breaches at deploy peak | Breaches at steady state | Unbounded process count}
 
 Action: {ship as is | cap deploy surge | drain old client on shutdown | reduce pool to X | cap worker concurrency at X | route through pooler | defer work off a per-request runtime}
 ```
 
 `Action` lists the minimal set of remedies, comma-joined in fix-preference order - one entry per independent violation, `ship as is` only alone.
 
+`Hazards` carries the tier-compatibility check's result - the check that decides whether transaction mode is usable at all belongs in the deliverable, not in prose around it. With tier `none` or `session mode`, write `none (tier holds session state)`.
+
+`Unbounded process count` is the verdict when process count has no upper bound (a per-request or scale-to-zero runtime connecting directly): no capacity number fits an unbounded tally, so neither breach value applies.
+
 When any input is unknown, state the assumption inline and mark the verdict `Fits (assumed)` rather than omitting the row. A sizing assessment with a silent hole is indistinguishable from one that fits.
 
-With a pooler in front, emit the block twice - once for app pools against the pooler's client cap, once for the pooler's backend pool against `max_connections` - and take the reported `Verdict` from the worse level.
+With a pooler in front, emit the block twice - once for app pools against the pooler's client cap, once for the pooler's backend pool against `max_connections` - and take the reported `Verdict` from the worse level. `Hazards` lives in the app-side block (the constructs are the app's); the backend block writes `n/a`.
 
 ## Avoid
 

@@ -24,7 +24,8 @@ user-invocable: false
 - Overall classification is the maximum across dimensions.
 - One sentence per dimension. No prose padding.
 - If a feature flag or backup materially reduces the effective radius, state both the unmitigated and mitigated levels.
-- When the consumer set cannot be enumerated (shared library or engine, callers in repos you cannot see), classify at the highest plausible level and mark the rationale `(unverified)`.
+- When the consumer set cannot be enumerated (shared library or engine, callers in repos you cannot see), classify each affected dimension at the highest level a named failure mode supports and mark that rationale `(unverified)`. "Plausible" requires a mechanism you can state in the rationale, not mere possibility - an unenumerable consumer set alone justifies Wide, never Critical; Critical still requires one of its two named conditions.
+- A contract is behavior as well as shape: changing defaults, semantics, or error behavior of a surface consumed outside the repository is a contract break for Critical purposes only when existing callers relying on the documented or long-standing behavior would misbehave without a code change on their side.
 
 ## Patterns
 
@@ -98,10 +99,12 @@ Reversibility: {Recoverable | Conditional | Irreversible} ({1-sentence rationale
 
 `N/A` dimensions are skipped when taking the maximum; when every dimension is `N/A`, the overall line is `Narrow`.
 
-When a mitigation materially changes the level, rewrite the affected lines in that same block and append a `Mitigation:` line. It begins with exactly one tag: `in-place:` (the safeguard already exists) or `required:` (an action must be taken first). A safeguard that exists but still needs a step before it counts is `required:`; with multiple mitigations of mixed tags, the line is `required:` until every required action is done.
+When a mitigation materially changes a level, write every line it changes - each affected dimension line and the overall line - in the two-state form `{level} (unmitigated) -> {level} (with {mitigation})`, so the mitigated overall value is re-derivable as the maximum of the printed mitigated dimension values. Lines the mitigation does not change stay single-state. Then append a `Mitigation:` line. It begins with exactly one tag: `in-place:` (the safeguard already exists) or `required:` (an action must be taken first). A safeguard that exists but still needs a step before it counts is `required:`; with multiple mitigations of mixed tags, the line is `required:` until every required action is done.
 
 ```
 Blast Radius: Critical (unmitigated) -> Wide (with feature flag off)
+Code: Wide (unmitigated) -> Narrow (with feature flag off) (new checkout path only runs when flag is on)
+Data: Wide (destructive backfill of order totals)
 Reversibility: Conditional (PITR available for 7 days)
 Mitigation: required: gate behind feature flag and verify PITR backup before proceeding
 ```
