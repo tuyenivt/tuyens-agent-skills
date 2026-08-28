@@ -20,9 +20,9 @@ user-invocable: false
 
 ## Rules
 
-- State traffic assumptions explicitly (steady-state and peak). When no numbers exist, derive them from business facts (seats x active share x actions per active user-hour, plus a burst factor; defaults when no data: B2B 10-20% of seats active per hour; 2-5 actions per active user-hour; burst 2-4x for working-hours B2B, 5-10x for consumer or event-driven traffic - name each pick). Convert actions to requests via a fan-out factor (HTTP calls + queries per action - measure it, or state it as an assumption) and attach a validation action to every derived number. When infra specs are missing, state a baseline configuration as an assumption and validate it the same way
+- State traffic assumptions explicitly (steady-state and peak). When no numbers exist, derive them from business facts (seats x active share x actions per active user-hour, plus a burst factor; defaults when no data: B2B 10-20% of seats active per hour; 2-5 actions per active user-hour; burst 2-4x for working-hours B2B, 5-10x for consumer or event-driven traffic - name each pick). Convert actions to load via two fan-out factors - HTTP calls per action (sets RPS) and queries per action (sets each datastore row's per-request cost) - measure them, or state them as assumptions; attach a validation action to every derived number. When infra specs are missing, state a baseline configuration as an assumption and validate it the same way
 - Identify the bottleneck (lowest saturation point) - it sets system capacity. If it saturates below current (or projected, when pre-launch) steady traffic, lead with that: the system is already over capacity
-- Usable capacity is ~75% of theoretical saturation; queueing effects dominate above that
+- Usable capacity is ~75% of theoretical saturation; queueing effects dominate above that. The derate applies to components you operate; contractual external ceilings are consumed at face value
 - Plan headroom at 2-3x peak: 2x minimum, 3x when growth is expected - name the multiplier used. For queue-absorbed workloads, apply the multiplier to long-run average demand, not the instantaneous burst peak
 - External rate limits (payment gateways, SaaS APIs) are hard ceilings - no internal scaling lifts them. If a ceiling sits below the headroom target, the recommendation is demand shaping (queue, cache, dedupe, negotiate the limit), not more instances
 - Throughput and latency are independent; a system can be high-throughput and high-latency simultaneously
@@ -42,7 +42,7 @@ user-invocable: false
 ### Saturation Math
 
 - **Pool throughput**: `pool_size / avg_query_duration`. Apply at every constraining level - the per-instance pool AND the server's global limit each get a component row. Check aggregate config: `pool_size x max_instances` must stay under the server limit (e.g., HikariCP 50 x 12 pods vs max_connections=200) - horizontal scaling multiplies client demand. Saturated pools queue or reject - increase pool size (up to the server max), reduce query time, offload reads, or add a connection pooler (PgBouncer, ProxySQL, equivalent for the stack).
-- **Async backlog**: effective consumer rate = `min(worker throughput x 0.75, downstream rate limits on the consumption path)` - the usable-capacity derate applies to the worker leg only; external rate limits are contractual ceilings consumed at face value, not queueing-bound. Peak backlog: `(producer_rate - effective_consumer_rate) x burst_duration`. Recovery time: `backlog / (effective_consumer_rate - steady_producer_rate)`; if steady production >= effective consumption, recovery is never - report the divergence rate instead. Consumers cannot keep up if recovery (measured from burst end) exceeds the time to the next burst (start-to-start interval minus burst duration), or if long-run production per interval exceeds long-run consumption.
+- **Async backlog**: effective consumer rate = `min(worker throughput x 0.75, downstream rate limits on the consumption path)` - the usable-capacity derate applies to the worker leg only. Peak backlog: `(producer_rate - effective_consumer_rate) x burst_duration`. Recovery time: `backlog / (effective_consumer_rate - steady_producer_rate)`; if steady production >= effective consumption, recovery is never - report the divergence rate instead. Consumers cannot keep up if recovery (measured from burst end) exceeds the time to the next burst (start-to-start interval minus burst duration), or if long-run production per interval exceeds long-run consumption.
 
 ### Anti-pattern
 
@@ -71,7 +71,7 @@ Consuming workflow skills depend on this structure. Always produce all fields.
 | --------- | ------------------- | ------------------------------ | ------------------- | ----------- |
 | {name}    | {limit}             | {cost/request}                 | {N RPS, or N/A (not limiting)} | Yes / No |
 
-State limits and costs in each component's native unit (ms, connections, ops, external calls). Every constrained component shows its computed saturation; N/A is only for effectively unlimited components.
+State limits and costs in each component's native unit (ms, connections, ops, external calls). Every constrained component shows its computed saturation; N/A is only for effectively unlimited components. Model autoscaled fleets at max scale-out, with scale-up lag as an assumption. Express a ceiling that binds only a sub-flow (e.g., gateway TPS on the checkout fraction of traffic) as a fractional per-request cost, so its saturation lands in system RPS.
 
 ### Scaling Recommendation
 

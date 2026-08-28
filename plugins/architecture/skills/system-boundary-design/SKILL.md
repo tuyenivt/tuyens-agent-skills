@@ -87,7 +87,7 @@ This table is the canonical Pattern enum for the Communication Map.
 | {module} | {module} | Sync API / Async event / Shared cache / Data replication  | {what crosses} | {coupling, latency, consistency} |
 ```
 
-In a partially decomposed system, monolith-resident boundaries get rows too - note "in monolith" under Hidden Internals so the migration seam stays visible. Failure Isolation holds one clause per inbound dependent; move overflow to a note under the table. A boundary with no runtime communication writes "none (shared-nothing)" in Exposed Contract and appears in no Communication Map row. The map holds one row per From -> To pair - an event with N consumers yields N rows.
+In a partially decomposed system, monolith-resident boundaries get rows too - note "in monolith" under Hidden Internals so the migration seam stays visible. Failure Isolation holds one clause per inbound dependent; move overflow to a note under the table. A boundary with no cross-boundary data flow - sync, async, or batch (an ETL-fed module is a Data replication consumer, not shared-nothing) - writes "none (shared-nothing)" in Exposed Contract and appears in no Communication Map row. The map holds one row per From -> To pair - an event with N consumers yields N rows; Data replication rows name the authoritative owner in Data Exchanged.
 
 When the task is a split/merge or placement decision, prepend this section:
 

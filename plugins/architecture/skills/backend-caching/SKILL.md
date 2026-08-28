@@ -104,7 +104,7 @@ Use the framework's cache abstraction (Spring Cache annotations, Rails.cache, Dj
 ### Opportunities
 
 - {component or endpoint} - {what to cache and why}
-  - Strategy: {Cache-aside | Write-through}
+  - Strategy: {Cache-aside | Write-through | Negative (short-TTL not-found)}
   - Level: {In-process | Distributed | CDN}
   - Key: {key pattern, with version segment}
   - TTL: {duration and rationale; jitter/pre-warm if spike-prone}
@@ -121,7 +121,7 @@ Gaps cover existing caches only; safeguards for proposed caches belong inside th
 Severity: High = active correctness or outage risk; Medium = degradation or cost; Low = hygiene. A realized incident makes the gap High.
 
 - [Severity: High | Medium | Low] {cache name or component} - {description}
-  - Missing: {TTL | invalidation strategy | stampede protection | safe key design | safe value type | memory bound | hit-rate observability | other (name it)}
+  - Missing: {TTL | invalidation strategy | invalidation ordering | stampede protection | safe key design | safe value type | memory bound | hit-rate observability | other (name it)}
   - Risk: {unbounded growth | stale data | thundering herd | key collision/injection | stale shared state | other (name it)}
   - Fix: {concrete correction for the detected stack}
 

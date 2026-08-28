@@ -39,7 +39,7 @@ Good: "Errors started 14:23:22 UTC (8 min before alert). 47 timeouts in 3 min on
 - **Failure end**: when logs returned to baseline (if resolved)
 - **Comparison window**: equivalent healthy period (same time of day, same day of week). If none was provided and none can be fetched, set `Comparison Window: unavailable`, skip Step 5, and record the absence in Log Gaps - do not invent a baseline.
 
-Default window: 5-10 min around onset. If either threshold is met (>2000 lines, or span >10 min), sample strategically: first 30s of anomaly (root signal), peak (saturation pattern), last 30s before recovery - or the most recent 30s while ongoing (resolution or current-state pattern).
+Default window: 5-10 min around onset. If either threshold is met (>2000 lines, or span >10 min), sample strategically: first 30s of anomaly (root signal), ~30s at peak (saturation pattern), last 30s before recovery - or the most recent 30s while ongoing (resolution or current-state pattern).
 
 When `query_logs` is available, run two passes: full window for the comparison baseline (Step 5), then the narrowed anomaly window for detail. Server-side filtering beats fetching everything and grepping.
 
@@ -84,6 +84,8 @@ Compare windows on volume change, new error classes (absent in healthy), missing
 
 Missing expected entries observable from the unhealthy window alone still belong in Key Evidence when the comparison window is unavailable.
 
+Single-request investigations compare against a successful request of the same type (a sibling trace or log sequence) instead of a time window; set `Comparison Window: sibling request {id}` and run the same four checks on the two sequences.
+
 ## Output
 
 ```
@@ -91,7 +93,7 @@ Missing expected entries observable from the unhealthy window alone still belong
 
 Time Window: {start} to {end | "ongoing at window end"} ({duration})
 
-Comparison Window: {healthy period | "unavailable"}
+Comparison Window: {healthy period | sibling request {id} | "unavailable"}
 
 ### Correlation Trace
 {Traced path, or "No correlation IDs - observability gap"}

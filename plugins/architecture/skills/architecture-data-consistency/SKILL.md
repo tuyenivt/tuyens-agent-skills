@@ -101,12 +101,15 @@ For each eventually consistent boundary, name the tolerated anomaly and bound th
 | Lost update  | Two writers update same entity concurrently | Never without explicit conflict resolution   |
 | Phantom read | Background saga commits between reads       | Saga ordering or re-query strategy in place  |
 
+Conflict resolution, in preference order: single writer per entity (home region or ownership key); last-write-wins with the tolerated loss documented; merge/CRDT for commutative updates. Name the chosen mechanism on every boundary that admits concurrent writers.
+
 ### Schema Evolution
 
 - Additive only during rolling deploys (new columns nullable, new fields optional)
 - Rename = add new + dual-write/migrate + remove old - three phases, each a separate deploy verified before the next
 - Never remove a column or field active code reads
 - Event consumers tolerate unknown fields; producers never reuse field IDs
+- Rolling deploys create version skew: treat old-version code <-> new schema (and event producer -> consumer) as boundaries in the assessment
 
 ## Output Format
 
@@ -127,6 +130,14 @@ For each eventually consistent boundary, name the tolerated anomaly and bound th
 | ---- | -------------- | ------------ | --------------- |
 | {1. name} | {action} | {pre-pivot: action | pivot step: "pivot - forward-only after this" | post-pivot: "none - retry until success"} | {key} |
 
+### Schema Evolution Plan
+
+{Only when a schema or event-schema change ships during rolling deploys}
+
+| Phase | Change | Verify Before Next Phase |
+| ----- | ------ | ------------------------ |
+| {1..N} | {add / dual-write / migrate readers / remove} | {check that gates the next deploy} |
+
 ### Risks
 
 - [Severity: High | Medium | Low] {boundary} - {description}
@@ -138,7 +149,7 @@ For each eventually consistent boundary, name the tolerated anomaly and bound th
 {State explicitly if all boundaries have explicit strategies - do not omit this section silently}
 ```
 
-Always produce the Boundaries Assessed table. Omit "No Risks Found" only when risks were listed. If boundaries are not yet defined, derive candidates from the described data flows, list each with its likely model, and flag a Medium risk per unconfirmed boundary.
+Always produce the Boundaries Assessed table. A saga gets one row per boundary pair it crosses; its Staleness Tolerance is the end-to-end completion bound. Omit "No Risks Found" only when risks were listed. If boundaries are not yet defined, derive candidates from the described data flows, list each with its likely model, and flag a Medium risk per unconfirmed boundary.
 
 ## Avoid
 

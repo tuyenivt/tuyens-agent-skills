@@ -28,7 +28,7 @@ user-invocable: false
 Precedence, first hit wins:
 
 1. A path or pasted document in the request.
-2. A `## Design Docs` section in `./CLAUDE.md`, `.claude/CLAUDE.md`, `./AGENTS.md`, or `./GEMINI.md` (first file carrying one), parsed as key-value lines: `Template:`, `Reference:`, `Approver:`, `Tool:`. `Approver:` fills the reviewer metadata slot; `Tool:` sets the diagram convention's tool when the references themselves show none; any other key is reported under `Other keys` for the caller.
+2. A `## Design Docs` section in `./CLAUDE.md`, `.claude/CLAUDE.md`, `./AGENTS.md`, or `./GEMINI.md` (first file carrying one), parsed as key-value lines: `Template:`, `Reference:`, `Approver:`, `Tool:`. `Template:` and `Reference:` point at files to read and classify via Step 2 - the classification, not the key name, decides the kind (a `Template:` pointing at a filled doc is an approved design); `Approver:` fills the reviewer metadata slot; `Tool:` sets the diagram convention's tool when the references themselves show none; any other key is reported under `Other keys` for the caller.
 3. Nothing - built-in template.
 
 ### Step 2 - Classify what was supplied
@@ -41,7 +41,7 @@ Extraction differs by kind. Classify before extracting.
 | Approved prior design | Real content about a real system, sign-off names, a version history | Skeleton, per-section depth, diagram types actually used, tone, terminology, what approved docs omit | Every fact, entity, decision, number, and diagram element in it |
 | Not a design doc | It is a PRD, ticket, runbook, or postmortem | Nothing | - |
 
-For "not a design doc": say which artifact it looks like and set it aside; fall back to the built-in template only when no valid reference remains. Either way, continue - do not stop the workflow.
+For "not a design doc": say which artifact it looks like and set it aside; fall back to the built-in template only when no valid reference remains. A fragment matching no kind's signals classifies as the nearest kind at `Confidence: Low`. Either way, continue - do not stop the workflow.
 
 Several references: the most recent approved design wins on depth and tone, a blank template wins on skeleton and metadata slots. Note any divergence in one line.
 

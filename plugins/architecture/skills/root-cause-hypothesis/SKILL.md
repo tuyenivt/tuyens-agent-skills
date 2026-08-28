@@ -15,7 +15,7 @@ Whenever ranked hypotheses with calibrated confidence are needed; typically afte
 
 ## Rules
 
-- Produce Primary + Secondary by default. Primary alone is allowed when all evidence supports one mechanism and nothing contradicts it. Add a Tertiary only when a third candidate is mechanistically distinct and scores ≥15%; otherwise fold its mass into Remaining and name the candidate there in one clause.
+- Produce Primary + Secondary by default. Primary alone is allowed when all evidence supports one mechanism and nothing contradicts it. Add a Tertiary only when a third candidate is mechanistically distinct and holds ≥15% after normalization; otherwise fold its mass into Remaining and name the candidate there in one clause.
 - Hypotheses may share a triggering change when the mechanisms differ (e.g., two distinct failure modes of the same upgrade) - rank them independently.
 - Score each hypothesis independently with the scoring procedure, then reduce non-primary scores proportionally until hypotheses + Remaining (min 5%) sum to 100%; never reduce the primary; when the sum falls below 100%, Remaining absorbs the difference. Round to 5%.
 - For intermittent failures, the mechanism must explain why the failure only sometimes occurs (threshold, race, load-dependent trigger, cache expiry, replication lag accumulation)

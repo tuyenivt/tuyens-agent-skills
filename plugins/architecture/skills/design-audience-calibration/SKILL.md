@@ -12,7 +12,7 @@ user-invocable: false
 ## When to Use
 
 - A design deliverable must be approved by a named reviewer, and approval - not completeness - is the success condition.
-- A reviewer profile is supplied, or the reviewer sits outside the author's fluency band in either direction.
+- A reviewer profile is supplied, the reviewer sits outside the author's fluency band in either direction, or nothing is known about the reviewer (calibrate on the recorded default).
 
 ## Rules
 
@@ -20,7 +20,7 @@ user-invocable: false
 - **Gloss once.** Introduce a term with a one-clause plain meaning at first use, then use the term normally. Avoiding the term costs precision; repeating the gloss costs trust.
 - **Never condescend.** No "simply", "just", "obviously", "as you know", "basically". Never explain the reader's own domain back to them.
 - **An unstated profile is not a skipped calibration.** Default to Architecture: Low / Domain: High, and record it as assumed so the author can correct it.
-- **Mixed readers take the lower value on each axis.** The body serves the least fluent reader; the appendix serves the most fluent one.
+- **Mixed readers take the lower value on each axis.** The body serves the least fluent reader; the appendix carries the union of what each more-fluent reader needs (mechanism depth and domain glossary can coexist).
 
 ## Patterns
 
@@ -84,7 +84,7 @@ Audience calibration:
   Architecture fluency: {High | Low}
   Domain fluency: {High | Low}
   Source: per axis - {stated | inferred: <signal> | assumed default | mixed: lower bound across <readers>}
-  Reader decides: {the quadrant question, one clause}
+  Reader decides: {the quadrant question, one clause; mixed readers in different quadrants: lower-bound question first, then each other reader's question, one clause each}
   Vocabulary: {raw | gloss-once | outcome-and-risk, no mechanism in body}
   Domain context: {assume known | establish current state first}
   Diagram budget: {N} in body, each placed before the prose that explains it

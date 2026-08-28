@@ -137,14 +137,14 @@ flowchart LR
 
 ### Step 8 - Fit and compress
 
-Apply the house skeleton and metadata slots. Hold the body to the calibration's budget: everything over it moves to the appendix, and nothing is deleted. Then check the body for an unglossed architecture term or acronym, a severity enum standing in for a consequence, a condescension marker, and a diagram element with no inventory row.
+Apply the house skeleton and metadata slots. Hold the body to the calibration's budget: everything over it moves to the appendix, and nothing is deleted; the change inventory itself never relocates - it is what the reviewer evaluates on, so overflow comes from other sections. Then check the body for an unglossed architecture term or acronym, a severity enum standing in for a consequence, a condescension marker, and a diagram element with no inventory row.
 
 ## Output Format
 
 ````markdown
 # <Epic> - Design Brief
 
-- **Written for:** <reviewer or group> - architecture <High | Low>, domain <High | Low> (<stated | inferred | assumed | mixed: lower bound>)
+- **Written for:** <reviewer or group> - architecture <High | Low> (<stated | inferred | assumed | mixed: lower bound>), domain <High | Low> (<stated | inferred | assumed | mixed: lower bound>)
 - **The ask:** <what is being asked for, one clause>
 - **Format:** <house template: <name> | built-in>
 - **Status:** <For review (default) | Draft, only when the author asked for a working copy>
@@ -241,7 +241,7 @@ Applied internally, never emitted in the deliverable.
 
 A pasted brief answers two questions in one pass, and they can disagree. Steps 1-3 still run first - the readiness checks consume the calibration's vocabulary policy and budgets; Steps 4-8 do not apply.
 
-**Soundness.** Use skill: `architecture-review-lens` for the severity taxonomy, completeness audit, internal-consistency check, assumptions audit, questions for the author, and verdict. Supply this factor list to the completeness audit; Required factors carry no severity cap, advisory factors cap at Major.
+**Soundness.** Use skill: `architecture-review-lens` - the full lens, per-factor findings included; a step that does not fit a two-page brief (typically criteria scoring) follows the lens's own skip rule. Supply this factor list to the completeness audit; Required factors carry no severity cap, advisory factors cap at Major.
 
 | Factor | Required | What "Present" looks like |
 | --- | --- | --- |
@@ -269,7 +269,7 @@ A pasted brief answers two questions in one pass, and they can disagree. Steps 1
 
 Readiness verdict: **{Ready to send | Send with fixes | Not ready}**. **Not ready** when a lens Blocker exists or an objection leaves the reviewer nothing to act on - no explicit ask, or back-out silent on data. Any other non-empty objection set is **Send with fixes**, each fix tied to its objection; **Ready to send** requires zero objections.
 
-Output header: `# Design Brief Review`. Use the lens's output structure and add a `## Approval Readiness` section carrying the readiness verdict and the predicted objections. The authoring Output template and Self-Check do not apply; these checks replace them:
+Output header: `# Design Brief Review`. Use the lens's output structure and add a `## Approval Readiness` section, after the lens verdict, carrying the readiness verdict and the predicted objections. The authoring Output template and Self-Check do not apply; these checks replace them:
 
 - [ ] Every factor audited with Required marking applied; lens verdict driven by highest severity
 - [ ] Readiness verdict stated separately from the lens verdict, each objection tied to a specific line or omission

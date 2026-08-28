@@ -44,7 +44,7 @@ State the shared problem and its binding constraints (NFRs, team capacity, volum
 
 Close with a named winner - a tie is not a valid output. The recommendation names the decisive criteria (those the stated constraints make non-negotiable), the key trade-off accepted, any gaps the winner must close before adoption, and anything worth carrying over from rejected proposals. When the artifact contains an explicit author recommendation (e.g., an ADR author's pick), explicitly agree with or overturn it with reasoning - a proposal advocating itself is not a recommendation, and with no external recommendation the agree/overturn line is omitted. Do not recommend a hybrid when one proposal is clearly stronger, and do not mistake more detail or better polish for more substance.
 
-The comparison emits as a `## Comparison` section between the lens's Intake and Completeness Audit, in order: problem and binding constraints; eliminations (one line each; omitted when no pre-screen ran); criteria matrix; proposal profiles; recommendation - the funding order and follow-up for complementary proposals live in the recommendation. The lens then runs on the winner only; its criteria-scoring step carries the matrix's scores forward, re-scoring a criterion only where lens findings change it - the step is neither skipped nor re-derived from scratch.
+The comparison emits as a `## Comparison` section between the lens's Intake and Completeness Audit, in order: problem and binding constraints; eliminations (one line each; omitted when no pre-screen ran); criteria matrix; proposal profiles; recommendation - the funding order and follow-up for complementary proposals live in the recommendation. The lens then runs on the winner only; its criteria-scoring step carries the matrix's scores forward, including any added problem-specific criterion, re-scoring a criterion only where lens findings change it - the step is neither skipped nor re-derived from scratch.
 
 Constraints and facts stated in the request are citable evidence (cite: request). When no quantitative target exists for a decisive criterion, derive a working target from the stated symptoms, mark it assumed, and carry it into the winner's gaps-to-close. Because a comparison gates selection rather than deployment, a required factor absent because the winning proposal is pre-design keeps its lens severity but is recorded once, in gaps-to-close, which the verdict's required-changes list mirrors; the expected verdict for a pre-design winner is Approve with changes, and Needs rework is reserved for defects in what the proposal states or absences that would change the selection. Comparison content is not F-numbered - a defect that matters for the winner's review is numbered once, in the owning lens step, and the Comparison references it.
 
@@ -67,12 +67,12 @@ Supply this design-specific factor list to the completeness audit. Required fact
 | Deployment and rollback       | Yes      | Rollout approach, migration order, rollback trigger                                        |
 | Trade-off analysis            | No       | Alternatives considered, why rejected, reversibility                                       |
 | Guardrails                    | No       | Architecture constraints implementation must follow                                       |
-| API contracts                 | Yes*     | Endpoints, auth per endpoint, idempotency, multi-tenancy, RFC 9457 errors, backward compat |
+| API contracts                 | Yes*     | Endpoints, auth per endpoint, idempotency, multi-tenancy, RFC 9457 errors, backward compat, outbound event contracts |
 | Diagrams                      | No       | At minimum a C4 Container; sequence/data-flow/deployment when relevant                     |
 
-*Required only when the design exposes an API surface.
+*Required only when the design exposes an API surface or delivers events/webhooks to external consumers.
 
-The factor list mirrors Design Model Sections 1-12 (Security and auth spans Sections 2, 3, and 11): for per-factor depth, compose that section's atomic skills to evaluate the quality of what the author wrote. Treat performance, deployment, trade-offs, API contracts, and diagrams as first-class review targets - when Present or Under-specified, evaluate their substance; when Missing, the completeness finding carries them. Depth levels apply to New Design only; reviews always run the full lens, using the lens's own skip rule for steps that do not fit.
+The factor list mirrors Design Model Sections 1-12 (Security and auth spans Sections 2, 3, and 11): for per-factor depth, compose that section's atomic skills to evaluate the quality of what the author wrote; a factor with no dedicated atomic (Security and auth) is evaluated directly against its "What Present Looks Like" column. Treat performance, deployment, trade-offs, API contracts, and diagrams as first-class review targets - when Present or Under-specified, evaluate their substance; when Missing, the completeness finding carries them. Depth levels apply to New Design only; reviews always run the full lens, using the lens's own skip rule for steps that do not fit.
 
 Output header: `# Architecture Review` and use the output structure defined in `architecture-review-lens` (tables for audits, lists for findings; report depth as "full"). Skip the New Design output template. In this mode the Review Self-Check below replaces the authoring Self-Check (self-checks are applied internally, never emitted in the deliverable):
 
@@ -117,7 +117,7 @@ The Staff-Level Summary ships at every depth. At `quick`, produce template Secti
 - Every significant decision states at least one trade-off and one rejected alternative with reason
 - No implementation code; describe components, responsibilities, and interactions
 - Make conflicting constraints explicit; propose resolution options
-- Omit empty sections silently - except Sections 11 and 12, which require an explicit skip one-liner at the depths where they run; output is strategic, concise, high-signal
+- Omit empty sections and subsection tables silently - except Sections 11 and 12, which require an explicit skip one-liner at the depths where they run; output is strategic, concise, high-signal
 
 ## Design Model
 
@@ -149,7 +149,7 @@ Use skill: `backend-idempotency` for retry safety at integration points.
 Use skill: `backend-caching` for caching strategy and invalidation.
 Use skill: `ops-resiliency` for fault tolerance and REST client integration patterns.
 
-For each component, state: what it owns (data, state), what it depends on, primary failure mode. The component, communication, and caching tables in the Output template are the contract.
+For each component, state: what it owns (data, state), what it depends on, primary failure mode. State the security model once here - authn mechanism, authz enforcement point, secret/key rotation, rate limiting and abuse controls; per-endpoint auth stays in Section 11. The component, communication, and caching tables plus the Security Model block in the Output template are the contract.
 
 ### 4. Data and Consistency Model
 
@@ -204,12 +204,12 @@ Each constraint must be concrete and detectable: rule, what violation looks like
 
 ### 11. API Contracts
 
-Run at `standard` and `deep` for any design exposing APIs to external clients, services, or browsers. Skip with a one-liner only if there is no HTTP surface (e.g., "Internal event-driven worker").
+Run at `standard` and `deep` for any design exposing APIs to external clients, services, or browsers, or delivering events/webhooks to consumers outside the design's boundary. Skip with a one-liner only if neither surface exists (e.g., "Internal worker; no external consumers").
 
 Use skill: `backend-api-guidelines` for HTTP semantics, naming, pagination, RFC 9457 errors, idempotency, multi-tenancy patterns.
 Use skill: `ops-backward-compatibility` for versioning and breaking-change classification.
 
-The output template (Section 11 in Output) lists the per-endpoint fields the design must produce: endpoint table (method, path, auth, request, response, status), idempotency table for state-sensitive endpoints, multi-tenancy pattern, RFC 9457 error examples, and a backward-compatibility table when modifying existing APIs. Treat these as first-class - reviewers must be able to evaluate auth, idempotency, multi-tenancy, and pagination from the proposal alone. Section 11's idempotency table is authoritative for the HTTP endpoints this design exposes - Communication Model rows for those endpoints write "see Section 11" in the Idempotent cell; every other row (events, queues, outbound HTTP calls to external systems) states Yes/No with its mechanism in Notes. Inbound third-party webhooks fit the endpoint table with auth = signature verification (e.g., Stripe-Signature). Section 8's Backward Compatibility field summarizes deploy-level compatibility; API-change detail lives in Section 11's table.
+The output template (Section 11 in Output) lists the per-endpoint fields the design must produce: endpoint table (method, path, auth, request, response, status), idempotency table for state-sensitive endpoints, multi-tenancy pattern, RFC 9457 error examples, and a backward-compatibility table when modifying existing APIs. Treat these as first-class - reviewers must be able to evaluate auth, idempotency, multi-tenancy, and pagination from the proposal alone. Section 11's idempotency table is authoritative for the HTTP endpoints this design exposes - Communication Model rows for those endpoints write "see Section 11" in the Idempotent cell; every other row (events, queues, outbound HTTP calls to external systems) states Yes/No with its mechanism in Notes. Inbound third-party webhooks fit the endpoint table with auth = signature verification (e.g., Stripe-Signature). Outbound events and webhooks delivered to external consumers are contracts too: the Outbound Events / Webhooks table documents payload schema version, receiver-side auth (e.g., HMAC signature header), ordering, and retry/redelivery semantics. Section 8's Backward Compatibility field summarizes deploy-level compatibility; API-change detail lives in Section 11's table.
 
 ### 12. Diagrams
 
@@ -285,6 +285,16 @@ Downstream Consumers:
 | Cache Target | TTL      | Invalidation  | Staleness Tolerance |
 | ------------ | -------- | ------------- | ------------------- |
 | What         | How long | How refreshed | Acceptable lag      |
+
+### Security Model
+
+Authentication:
+
+Authorization enforcement point:
+
+Secret and key rotation:
+
+Rate limiting and abuse controls:
 
 ## 4. Data and Consistency Model
 
@@ -397,7 +407,7 @@ Feature Flags:
 
 ## 11. API Contracts
 
-_Skip with a one-liner if no public API surface._
+_Skip with a one-liner if the design exposes neither HTTP endpoints nor externally consumed events._
 
 ### Endpoints
 
@@ -423,6 +433,12 @@ Rate limits: per-tenant or global
 ### Error Format
 
 RFC 9457 problem details; example bodies for the error statuses the API actually returns (typically 400, 404, 409, 422).
+
+### Outbound Events / Webhooks _(when the design delivers events or webhooks to external consumers)_
+
+| Contract        | Schema / Version                  | Receiver Auth         | Ordering          | Retry / Redelivery               |
+| --------------- | --------------------------------- | --------------------- | ----------------- | -------------------------------- |
+| invoice.paid v1 | Versioned envelope, additive-only | HMAC signature header | Per-endpoint FIFO | Backoff schedule, dead-letter    |
 
 ### Backward Compatibility (if modifying existing API)
 
@@ -508,7 +524,8 @@ Walk through the failure end-to-end:
 - [ ] Highest-blast-radius scenario has a mitigation; retry amplification and backpressure assessed
 - [ ] Rollback strategy and rollback trigger present; observability plan names an SLO candidate
 - [ ] Guardrails are concrete, detectable rules (one per module boundary minimum)
-- [ ] Section 11 produced if any API surface exists: auth per endpoint, RFC 9457 errors, idempotency on state-mutating endpoints, pagination on collections, multi-tenancy if applicable
+- [ ] Security Model block states authn, authz enforcement point, secret rotation, and abuse controls
+- [ ] Section 11 produced if any API surface exists: auth per endpoint, RFC 9457 errors, idempotency on state-mutating endpoints, pagination on collections, multi-tenancy if applicable; outbound event/webhook contracts documented when the design delivers them
 - [ ] Section 12 produced at standard/deep: at minimum a C4 Container diagram; every diagram element traces to a component/boundary defined in Sections 2-3; Diagram Notes state scope and assumptions
 - [ ] Design grounded in stated requirements - no hypothetical future scope
 - [ ] If depth = deep: capacity model per component, 2+ failure scenarios simulated, evolution notes cover traffic doubling, sequence/data-flow/deployment diagrams added where applicable

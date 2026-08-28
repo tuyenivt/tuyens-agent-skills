@@ -38,7 +38,7 @@ Apply in order. A step that does not fit the artifact (e.g., Section 6 scoring o
 
 ### 1. Intake
 
-State in one sentence each: the problem (per the artifact), stated scope and non-goals, stated NFRs/constraints, the author's recommendation. For multiple artifacts on the same problem - or a single artifact with three or more considered alternatives (an ADR) - compare them first (see `task-design-architecture` Review Mode), then apply the rest of the lens to the recommended option.
+State in one sentence each: the problem (per the artifact), stated scope and non-goals, stated NFRs/constraints, the author's recommendation. For multiple artifacts on the same problem - or a single artifact with three or more considered alternatives (an ADR) - compare them first (see `task-design-architecture` Review Mode; standalone, a table of option x problem fit, top risk, reversibility), then apply the rest of the lens to the recommended option.
 
 ### 2. Completeness Audit
 
@@ -110,7 +110,7 @@ Unresolved, answerable questions grouped by purpose (**Clarification**, **Justif
 | Verdict                  | Criteria                                                                                              |
 | ------------------------ | ----------------------------------------------------------------------------------------------------- |
 | **Approve**              | No Blockers, no Major findings; all required factors Present                                          |
-| **Approve with changes** | No Blockers; Major findings bounded and specifically addressable before merge                         |
+| **Approve with changes** | No Blockers; every Major finding or Under-specified required factor bounded and specifically addressable before merge |
 | **Needs rework**         | One or more Blockers, or structural issues spanning multiple factors                                  |
 
 Required factors are those the workflow marks required; if unmarked, treat every supplied factor as required. The verdict references the driving findings. Any non-Approve verdict lists its required changes as a checkbox list (for Needs rework, the items that drive the Blockers).

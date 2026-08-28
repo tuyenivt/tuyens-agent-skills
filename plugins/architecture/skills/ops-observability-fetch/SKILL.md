@@ -36,7 +36,7 @@ Transport-agnostic evidence gathering for oncall workflows. Detects available MC
 - **Block order:** consumer-requested blocks first in requested order, then input-anchored extras in input order.
 - **Output starts with the first block.** No preamble, no transport narration. Notes and questions (dashboard panel question, skipped/unrecognized URLs) go after the last block, one line each.
 - **Window required** for `query_metrics`, `query_logs`, `list_deploys`. Resolve relative windows ("last 48h") against the current time, convert epoch-ms URL parameters, and display ISO timestamps. Other capabilities carry their own context.
-- **`list_deploys` emits one `deploy_event` block per deploy** (newest first, cap 5, note the total when capped). Unavailable mode emits a single `deploy_event` block whose paste prompt requests the list.
+- **`list_deploys` emits one `deploy_event` block per deploy** (newest first, cap 5, note the total when capped). Unavailable mode emits one `deploy_event` block per requested service, its paste prompt requesting that service's list.
 
 ## Transport Detection
 
@@ -44,7 +44,7 @@ Probe MCP tool namespaces by prefix and verb (`mcp__sentry__*`, `mcp__datadog__*
 
 ## Unavailable Blocks and Paste Prompts
 
-When a capability has no transport, emit the block with `Source: unavailable`, any fields parseable from the input - URL or request text (ID, window, service, filters) - and a one-line `Paste prompt:` naming the tool and the block's minimum fields from this table - nothing more:
+When a capability cannot be fetched - no transport, or a required parameter is missing (metric name, dashboard panel, org/project slugs) - emit the block with `Source: unavailable`, any fields parseable from the input - URL or request text (ID, window, service, filters) - and a one-line `Paste prompt:` naming the tool when known and the block's minimum fields from this table - nothing more. Missing-parameter blocks put the parameter question in the trailing notes and are fetched once answered:
 
 | Block           | Minimum paste fields                                                              |
 | --------------- | --------------------------------------------------------------------------------- |

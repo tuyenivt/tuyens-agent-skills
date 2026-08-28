@@ -23,7 +23,7 @@ Required: error or stack trace, OR a Sentry/Datadog/monitor URL. Optional: log s
 
 ### Step 1 - Frame the Incident (60 seconds)
 
-Use skill: `ops-observability-fetch` when inputs include a URL or ID, or when any of onset, affected scope, or deploy correlation is missing from the paste. Pull `error_event`, `monitor_state`, `metric_series` (error rate + latency; window: onset minus 60 min to now, or last 60 min when onset is unknown), and `list_deploys` for the last 48h on the affected service and any implicated downstream service. Cache the transport.
+Use skill: `ops-observability-fetch` when inputs include a URL or ID, or when any of onset, affected scope, or deploy correlation is missing from the paste. Pull `error_event`, `monitor_state`, `metric_series` (error rate + latency; window: onset minus 60 min to now, or last 60 min when onset is unknown), and `list_deploys` for the last 48h on the affected service and any implicated downstream service. Cache the transport. When no transport is available, state that in the output and proceed on the paste alone.
 
 Extract: symptom onset (timestamp, or relative like "~40 min ago"), duration, affected services with status (degraded/down/healthy), affected percentage - requests or users, whichever the evidence gives; name which. Assign severity; when criteria from multiple rows match, take the highest row.
 
@@ -40,7 +40,7 @@ Extract: symptom onset (timestamp, or relative like "~40 min ago"), duration, af
 
 Pick from this ladder by speed and safety. Prefer fast reversible actions; avoid patching under pressure.
 
-1. **Resource recovery** - restart affected instances; resize pool/thread limits if runtime-configurable; drain slow consumers
+1. **Resource recovery** - restart affected instances; pause or kill an offending workload (batch job, runaway query, backfill); resize pool/thread limits if runtime-configurable; drain slow consumers
 2. **Rollback** - if recent deploy correlates. Use skill: `ops-backward-compatibility` to verify rollback safety (schema/contract changes); attach the verdict to the rollback action line as `rollback safe | unsafe - {reason}`
 3. **Feature flag disable** - surgical isolation; preferred when rollback is unsafe
 4. **Circuit breaker** - stop cascading; critical when downstream latency exhausts upstream resources

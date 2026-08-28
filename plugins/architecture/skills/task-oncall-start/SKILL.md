@@ -70,7 +70,7 @@ Identify risks not yet alerting: elevated error rates, unvalidated deploys, upco
 
 ### Current Health
 - Error rates: {normal / elevated for {service} / unknown - paste from {source}}
-- Recent deploys (48h): {list with timestamps, or "None" / unknown}
+- Recent deploys (48h): {list with timestamps - mark "(per handoff)" when unverified | "None" | unknown - paste from {source}}
 - Queue health: {normal / {queue} lagging / unknown}
 - Dependencies: {all green / {dep} degraded / unknown - not checked}
 - Scheduled changes (this window): {list, or "None known" / unknown}
@@ -94,7 +94,7 @@ Use skill: `stack-detect`
 Use skill: `ops-observability-fetch`.
 
 - If the input contains any recognized URL (Sentry issue, Datadog monitor, log search, trace), fetch it now - even when paste content accompanies it. Do not classify on URL alone. When a monitor was fetched, also pull `query_metrics` for its underlying metric to confirm whether the symptom is ongoing.
-- Also pull `list_deploys` (48h, affected service) whenever the user's input does not mention a recent deploy or config change.
+- Also pull `list_deploys` (48h, affected service) unless the input already carries a verified change record (a deploy ID, PR, or timestamp). A negative or unverified claim ("nothing deployed as far as I know") is not a record - pull.
 - Pure paste (PagerDuty title, Slack message, stack trace - no URLs): proceed to classify on the paste.
 
 The fetched evidence (error_event, monitor_state, log_window, trace, deploy_event) feeds Step 3 classification and the Context Package in the output.
@@ -137,6 +137,8 @@ When criteria from multiple rows match, take the highest row. For Critical/High:
 
 State the classification, severity, recommended workflow, and the context the next workflow needs.
 
+**Routing is execution, not advice.** The skill-named routes are not user-invocable: after emitting the Oncall Classification, load the routed skill (`Use skill: incident-root-cause` / `oncall-investigate` / `task-code-review-perf`) and continue in this session with the Context Package as its input. Stop at the classification only when the user asked for the classification itself ("is this an incident?") - the Recommended Workflow line then names what runs on their go-ahead. The Code-bug route is terminal by design: derive the repro condition from the hydrated evidence into the Context Package and hand off - the fix belongs to the owning engineer.
+
 ### Output
 
 ```
@@ -178,6 +180,7 @@ Triage:
 - [ ] Severity assigned (highest matching row); Critical/High routed without further work-type refinement (Steps 5-6 still run, fast)
 - [ ] Scope check completed (data risk, recent change, prior occurrence)
 - [ ] Context package names symptom, time window, affected scope, recent change, and fetched evidence
+- [ ] Routed skill loaded and continued in-session (or stopped at the classification for a classification-only question); Code-bug route handed off with a repro condition
 
 ## Avoid
 

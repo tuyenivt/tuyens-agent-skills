@@ -125,7 +125,7 @@ Summary Risk Level: High when 2+ factors sit at their worst level (High/Poor/Har
 
 Use skill: `ops-release-safety` for rollback patterns.
 
-Define before the upgrade starts: trigger (specific signal - error rate, latency, failed smoke), procedure, data compatibility (schema/config/message-format changes complicate rollback), time window.
+Define before the upgrade starts: trigger (specific signal - error rate, latency, failed smoke), procedure, data compatibility (schema/config/message-format changes complicate rollback), time window, and exposure control (Step 6's canary/flag option, or "full deploy").
 
 If the upgrade changes schema, config, or message format, an expand-contract strategy is required - "just revert" no longer works.
 
@@ -136,7 +136,7 @@ Produce a clear recommendation:
 | Recommendation | When                                                                             |
 | -------------- | -------------------------------------------------------------------------------- |
 | Go - Now       | Effort S/M and risk Low, no unresolved conflicts                                 |
-| Go - Planned   | Effort M/L or risk Medium - schedule as a dedicated sprint item with testing     |
+| Go - Planned   | Effort M/L, or risk Medium/High with no unresolved blockers - schedule as a dedicated sprint item with testing |
 | Go - Epic      | Effort XL, or cross-team coordination or infrastructure change required          |
 | No-Go - Defer  | Benefit does not justify disruption at this time; reassess in N months           |
 | No-Go - Block  | Compatibility blockers, unresolved conflicts, or critical breaking changes       |
@@ -171,7 +171,7 @@ Specific quality checks beyond the standard lens:
 
 - **Upgrade assumed safe without changelog review** (any version distance): Blocker for ecosystems known to break in minor versions (Spring Boot, Django, Rails); Major otherwise
 - **Effort estimate without breaking change inventory**: Major; the estimate is unbacked
-- **"Just revert" rollback plan**: Major when the upgrade changes schema, config, or message format
+- **"Just revert" rollback plan**: Major when the upgrade changes schema, config, or message format - or when the assessment never established that it does not
 - **No security status for an EOL or vulnerable current version**: Major minimum
 - **Recommendation not actionable for a spike ticket**: Minor; promote to Major when blast radius is Wide (per the artifact, or the reviewer's assessment when the artifact omits it - flag it as reviewer context)
 
@@ -239,10 +239,13 @@ Output header: `# Upgrade Assessment Review` and use the output structure define
 
 ## Rollback Plan
 
+<!-- sequenced multi-dep: replace the bullets with one table: | PR | Trigger | Procedure | Window | -->
+
 - **Trigger**: {error rate threshold or failure condition}
 - **Procedure**: {steps to revert}
 - **Data compatibility**: {whether rollback is clean or requires data handling}
 - **Window**: {how long rollback is feasible post-deploy}
+- **Exposure control**: {canary | feature flag | staged rollout | full deploy}
 
 ## Recommended Next Steps
 

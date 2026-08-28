@@ -64,7 +64,7 @@ Read the design and extract the work it implies. Match the design's content to t
 | **Performance and Capacity** (S7) | Validation tasks - load/burst tests against stated targets; infrastructure tasks for the stated scaling model |
 | **Deployment Strategy** (S8) | Ops-Readiness tasks - rollout mechanism, migration order, rollback drill, flag config |
 | **Guardrails** (S10) | Validation tasks - lint/arch-test rules that enforce each guardrail |
-| **Trade-Off / Significant Decisions** (S9) | Spikes where a decision is deferred or an ADR is still open |
+| **Trade-Off / Significant Decisions** (S9) | Spikes where a decision is deferred; an `analysis` task per decision made but with its ADR still unwritten |
 
 State which design sections you drew from. If a required design section is absent (e.g., no failure analysis for a high-blast-radius change), flag it under Open Questions rather than fabricating tasks.
 
@@ -298,7 +298,7 @@ Any non-Approve verdict lists its required changes as a checkbox list (for Needs
 
 - **Plan reviewed:** <one line>
 - **Source design:** <supplied | none - coverage judged against stated scope | none and no scope - internal soundness only>
-- **Stack:** <detected | unknown>
+- **Stack:** <detected | prompt-stated: <stack> | unknown>
 - **Reviewer assumptions:** <reviewer-context facts; unavailable composed skills, if any>
 
 ## Intake
@@ -313,11 +313,11 @@ Any non-Approve verdict lists its required changes as a checkbox list (for Needs
 
 ## Structural Soundness
 
-- **Dependency graph:** <finding or "sound">
-- **Critical path:** <finding or "correct">
-- **Sizing:** <finding or "sound">
-- **Scope creep:** <finding or "none">
-- **Phasing:** <finding or "sound">
+- **Dependency graph:** <sound | one-line status - see F#>
+- **Critical path:** <correct | one-line status - see F#>
+- **Sizing:** <sound | one-line status - see F#>
+- **Scope creep:** <none | one-line status - see F#>
+- **Phasing:** <sound | one-line status - see F#>
 
 ## Findings
 
