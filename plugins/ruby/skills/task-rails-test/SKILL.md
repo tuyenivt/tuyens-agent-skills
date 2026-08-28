@@ -49,7 +49,7 @@ Use skill: `rails-testing-patterns` for recipes (FactoryBot traits, shoulda-matc
 
 - **Model**: real FactoryBot records, no AR mocking; behavior-focused names
 - **Service**: one example per Result outcome (success / validation failure / external failure); stub HTTP at the boundary, never AR
-- **Request**: one example per `(action, role, outcome)`; "rejects unpermitted attributes" for any `permit`; assert key fields + status + Content-Type, not full body
+- **Request**: one example per `(action, role, outcome)`; "rejects unpermitted attributes" for any `permit`; assert key fields + status + Content-Type, not full body. Signed webhooks: invalid/missing signature is the unauthorized example, malformed payload the validation-error one
 - **Policy**: one example per `(role, action, allow|deny)` - cover every action, no implicit allows
 - **Job**: idempotency (call `perform` twice, side effect once); bounded retry per `sidekiq_options retry:`
 - **System**: one per critical journey; Cuprite over Selenium; query by role/label/text, not CSS
@@ -91,7 +91,7 @@ Judge evidence per item, not per file set: an item whose config is in evidence i
 - [ ] DB isolation: transactional fixtures (default; matches `rails-testing-patterns`) or `database_cleaner-active_record` truncation only for cross-connection state
 - [ ] `Sidekiq::Testing` defaults to `:fake`; `:inline` per-spec when end-to-end needed. A global `inline!` is a finding, not a pass
 - [ ] `WebMock.disable_net_connect!(allow_localhost: true)` in `rails_helper.rb`; existing live third-party calls migrate to boundary stubs (WebMock on the client) or VCR cassettes
-- [ ] **Verify HTTP stubs intercept.** WebMock hooks `Net::HTTP` and the major adapters (Typhoeus, Patron, em-http, Excon, http.rb, Curb) - Faraday on those adapters is intercepted. What bypasses it silently: gRPC, raw sockets, shell-outs (`curl`), SDKs with custom non-Ruby transports, and WebMock simply not required in `rails_helper.rb`. Write one stubbed test, assert `expect(stub).to have_been_requested` - if unmatched, wire WebMock in or stub at the SDK client boundary. Silent passthrough leaks production credentials into CI
+- [ ] **Verify HTTP stubs intercept.** WebMock hooks `Net::HTTP` and the major adapters (Typhoeus, Patron, em-http, Excon, http.rb, Curb) - Faraday on those adapters is intercepted. What bypasses it silently: gRPC, raw sockets, shell-outs (`curl`), SDKs with custom non-Ruby transports, and WebMock simply not required in `rails_helper.rb`. Write one stubbed test, assert `expect(stub).to have_been_requested` - if unmatched, wire WebMock in or stub at the SDK client boundary. Silent passthrough leaks production credentials into CI. No runnable environment: the one-test recipe becomes an `## Infra To Confirm` item, not an emitted scaffold
 - [ ] `example_status_persistence_file_path` for `--only-failures`
 - [ ] `--order random` - tests pass in any order
 - [ ] CI runs full suite; local default runs fast unit + request (use `slow:`/`system:` tags)
@@ -135,6 +135,8 @@ Every mode's deliverable ends with an `## Infra To Confirm` section holding the 
 
 **Framework:** RSpec <version>, FactoryBot, Shoulda-matchers
 
+**Basis:** {SimpleCov line coverage <n>% | per-layer file ratio <n>/<n> | none available}
+
 **Gaps:**
 - **Model:** [uncovered models]
 - **Request:** [uncovered actions; missing unauthorized examples]
@@ -150,9 +152,9 @@ Every mode's deliverable ends with an `## Infra To Confirm` section holding the 
 **Pyramid target:** Unit {x}% / Request {y}% / System {z}%
 ```
 
-**Review (existing specs):** numbered findings tagged `[Critical | High | Medium]`. Assign by consequence: Critical = tests can pass while auth or data-integrity is broken (missing policy or unauthorized-example coverage, HTTP stubs not intercepting); High = green-but-broken risk outside auth (global `Sidekiq::Testing.inline!`, missing validation-error/edge examples, mocked AR); Medium = maintainability (duplicated factories, deep chains, wrong layer). A happy-path-only protected action files two findings: its missing-unauthorized facet at Critical, its missing-validation-error facet at High. Infra findings (Step 8) first, spec findings (checklist) after, severity-ordered within each group; when the user reported a symptom ("CI green, staging breaks"), open with one line tying the top findings to it. Append the Assessment block only when coverage gaps are visible in the evidence.
+**Review (existing specs):** numbered findings tagged `[Critical | High | Medium]`, each citing `file:line` (file alone when the line isn't in evidence). Assign by consequence: Critical = tests can pass while auth or data-integrity is broken (missing policy or unauthorized-example coverage, HTTP stubs not intercepting); High = green-but-broken risk outside auth (global `Sidekiq::Testing.inline!`, missing validation-error/edge examples, mocked AR); Medium = maintainability (duplicated factories, deep chains, wrong layer). A happy-path-only protected action files two findings: its missing-unauthorized facet at Critical, its missing-validation-error facet at High. Infra findings (Step 8) first, spec findings (checklist) after, severity-ordered within each group; when the user reported a symptom ("CI green, staging breaks"), open with one line tying the top findings to it. Append the Assessment block only when the evidence shows coverage gaps beyond those already filed as findings - a gap is stated once.
 
-**Test Scaffolds:** a `**Stack:** / **Basis:**` header line, then ready-to-run RSpec files using project conventions. Each scaffold:
+**Test Scaffolds:** a `**Stack:** / **Basis:**` header line - here **Basis** names the evidence the scaffolds derive from (source files shown; inventions labeled placeholders per the unseen-source rule) - then ready-to-run RSpec files using project conventions. Each scaffold:
 
 - Correct spec type (`type: :model | :request | :policy | :job | :system`)
 - FactoryBot with traits (not `Model.new`); missing factories ship as files alongside the specs

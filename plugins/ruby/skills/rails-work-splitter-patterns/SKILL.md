@@ -225,7 +225,7 @@ Sidekiq default 25 retries is too many for systemic failure. Use `sidekiq_option
 
 ## Output Format
 
-In review mode, precede the block with numbered findings citing the violated rule; the block describes the corrected design.
+In review mode, precede the block with numbered findings citing the violated rule; the block describes the corrected design. `Coordination` lists every mechanism used, joined with ` + ` (the shards-table shape uses a leader lock for seeding plus a row lock per claim).
 
 ```
 Workload: {static backfill | streaming queue | per-tenant batch | one-shot migration}

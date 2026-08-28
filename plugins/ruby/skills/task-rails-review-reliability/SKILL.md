@@ -41,7 +41,7 @@ At `deep`, use skill: `failure-propagation-analysis` to trace each new or change
 
 Invocation forms (`/task-rails-review-reliability [<branch>|pr-<N>] [standard|deep] [--base <branch>]`) follow `task-code-review-reliability` - current branch vs base; fails fast on trunk. When invoked as subagent, the parent passes the pre-confirmed stack, the precondition handle, and pre-read diff and commit log; Steps 2-3 consume those instead of re-running.
 
-**Whole-service sweep** (resilience-debt pass with no feature branch): when Step 3 fails fast on trunk AND the invocation asked for a sweep or named a path, do not stop - skip the diff gate and sweep. On a bare trunk invocation (no sweep intent stated, no path), surface the fail-fast and ask whether to sweep - a wrong-branch mistake should not trigger a whole-app pass. Scope = the named path(s) plus the clients, jobs, services, and config they touch; no path named = the whole `app/` + `config/` surface. Run Steps 4-10 against current code at `HEAD` (Step 4's categories read in full, not per changed file), then Step 11. Atomic-load gates and "diff"-worded rows read as "the in-scope code" (pool config in scope loads `rails-connection-pool-sizing`). Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and write the report body directly.
+**Whole-service sweep** (resilience-debt pass with no feature branch): when Step 3 fails fast on trunk AND the invocation asked for a sweep or named a path, do not stop - skip the diff gate and sweep. On a bare trunk invocation (no sweep intent stated, no path), surface the fail-fast and ask whether to sweep - a wrong-branch mistake should not trigger a whole-app pass. Scope = the named path(s) plus the clients, jobs, services, and config they touch; no path named = the whole `app/` + `config/` surface. Run Steps 4-10 against current code at `HEAD` (Step 4's categories read in full, not per changed file), then Step 11. Atomic-load gates and "diff"-worded rows read as "the in-scope code" (pool config in scope loads `rails-connection-pool-sizing`). Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and emit the report body as the response - no file is written.
 
 ## Workflow
 
@@ -141,7 +141,7 @@ Use skill: `review-finding-verify` with this lens's findings, the diff already r
 
 ### Step 11 - Write Report
 
-Standalone runs (resolved diff): use skill: `review-report-writer` with `report_type: review-reliability`. Assemble every checkpoint field the writer requires: `scope: +rel`, `depth` as invoked, `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-reliability-<branch>.md` already exists with valid frontmatter (filename per the writer's sanitization: `/` and characters outside `[A-Za-z0-9_-]` become `-`), then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Write the report file, then print confirmation. (Whole-service sweep skips the writer and writes the body directly - see Depth.)
+Standalone runs (resolved diff): use skill: `review-report-writer` with `report_type: review-reliability`. Assemble every checkpoint field the writer requires: `scope: +rel`, `depth` as invoked, `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-reliability-<branch>.md` already exists with valid frontmatter (filename per the writer's sanitization: `/` and characters outside `[A-Za-z0-9_-]` become `-`), then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Write the report file, then print confirmation. (Whole-service sweep skips the writer and emits the body as the response - see the sweep paragraph.)
 
 Subagent runs (parent passed pre-read artifacts): skip the writer and return the full Output Format body minus the `Findings verified:` line - the parent consumes Findings and Next Steps, recomputes Summary lines in its merge, and owns the report (`review-report-writer` rejects subagent writes). At `deep`, include the Failure-Mode and Blast-Radius Map with the returned findings - the parent preserves it as its own section.
 
@@ -161,7 +161,7 @@ Fill rules: `Findings verified:` carries the verify tally on standalone runs, th
 - **Resilience Gems:** Stoplight | Retriable | faraday-retry | sidekiq-unique-jobs | none detected
 - **Target:** <path(s)>
 - **Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
-- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Findings verified:** <per fill rules: the `review-finding-verify` tally line verbatim | inline (no diff) | omitted>
 
 ## Findings
 
@@ -214,7 +214,7 @@ Mark a line N/A when the diff has no matching surface (e.g. no external clients,
 - [ ] Step 8: fallback per critical dependency; fallbacks log; partial responses; load shedding verified
 - [ ] Step 9: AR pool + Puma bounded; no unbounded `.all.each`; pooled Redis; cron overlap guarded
 - [ ] Step 10: cross-aggregate compensation rule applied; crash-safety, compensation, locking, post-commit dispatch, migration rollout checked
-- [ ] Step 11: standalone: report written via `review-report-writer` with `report_type: review-reliability`, confirmation printed; subagent: findings returned to parent, no file written; sweep: body written directly
+- [ ] Step 11: standalone: report written via `review-report-writer` with `report_type: review-reliability`, confirmation printed; subagent: findings returned to parent, no file written; sweep: body emitted as the response
 - [ ] Every finding names the failure mode and blast radius, never just the missing pattern
 - [ ] Depth honored: `standard` ran all; `deep` filled the Failure-Mode and Blast-Radius Map (via `failure-propagation-analysis`)
 - [ ] Next Steps tagged and ordered by intent (omit if none)

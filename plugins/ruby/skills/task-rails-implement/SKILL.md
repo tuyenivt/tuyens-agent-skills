@@ -37,7 +37,7 @@ Resolve (ask, or infer per the threshold below):
 5. Authorization rules (admin / owner / public)
 6. Status transitions
 
-Ask-vs-infer threshold: brief-but-unambiguous requests get inferred defaults, confirmed at the design gate (one round trip). Ask first only when a missing decision changes the schema or endpoints (entity fields, relationships, who approves what). Edge cases:
+Ask-vs-infer threshold: when the domain has one defensible conventional shape, infer it and confirm at the design gate - the gate is the round trip. Ask first only when a missing decision changes the schema or endpoints *and* has no conventional default (who approves what, novel entities, custom business rules). Edge cases:
 - Referenced model doesn't exist - ask whether to generate or assume
 - Partial input - ask for entity fields, relationships, operations before design
 
@@ -47,6 +47,7 @@ Use skill: `rails-activerecord-patterns` (associations, scopes, enums). Use skil
 
 Present:
 - Entity model: fields, types, constraints, enum integer mapping
+- Status transitions: allowed edges per stateful entity (from Step 3 item 6)
 - Associations + `dependent:` options
 - Service methods, transaction boundaries, Sidekiq dispatch points
 - Endpoints (method, URI, status, request/response shapes)
@@ -77,7 +78,7 @@ db/migrate/<ts>_create_orders.rb
 
 ### Step 5 - Migrations
 
-Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG). One structural concern per migration (a new table plus its own indexes and constraints is one concern). Indexes on FKs and frequently-filtered columns; partial indexes for non-terminal status (PG; on MySQL composite the flag with the range/sort column instead); `null: false` + defaults where appropriate. Monetary values: integer cents columns (`amount_cents`) by default; `decimal` precision/scale only when matching an existing project convention.
+Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG). One structural concern per migration (a new table plus its own indexes and constraints is one concern). Indexes on FKs and frequently-filtered columns; partial indexes for non-terminal status (PG; on MySQL composite the flag with the range/sort column instead); `null: false` + defaults where appropriate. Monetary values: integer cents columns (`amount_cents`) by default; `decimal` precision/scale only when matching an existing project convention; never float for money or percentages (integer percent / basis-point columns).
 
 ### Step 6 - Models
 
@@ -87,7 +88,7 @@ File uploads: decided at the Step 4 design - load skill `rails-active-storage-pa
 
 ### Step 7 - Services
 
-Use skill: `rails-service-objects`. Use skill: `rails-transaction-patterns` for boundary discipline (`after_commit` dispatch, nested transactions). If Sidekiq needed: use skill `rails-sidekiq-patterns`. If a rake/backfill task is needed: use skill `rails-rake-task-patterns`.
+Use skill: `rails-service-objects`. Use skill: `rails-transaction-patterns` for boundary discipline (`after_commit` dispatch, nested transactions). If Sidekiq needed: use skill `rails-sidekiq-patterns`. If a rake/backfill task is needed: use skill `rails-rake-task-patterns`. A mutation that is one AR write with no orchestration takes no service - `rails-service-objects` forbids the hollow wrapper; the controller writes directly.
 
 Canonical shape (no external calls in the flow):
 
@@ -102,7 +103,7 @@ def call
 end
 ```
 
-When externals enter the flow, `rails-service-objects`' ordering arbitrates. Discriminator: abort-critical = the caller's success depends on the provider's answer right now (charging at checkout) - call *before* the transaction with an idempotency key; a call whose result the caller does not wait on (refund execution, notification, sync) is deferrable - post-commit Sidekiq job whose own service applies the same call-before-txn rule internally.
+When externals enter the flow, `rails-service-objects`' ordering arbitrates. Discriminator: abort-critical = the caller's success depends on the provider's answer right now (charging at checkout) - call *before* the transaction with an idempotency key; a call whose result the caller does not wait on (refund execution, notification, sync) is deferrable - post-commit Sidekiq job whose own service applies the same call-before-txn rule internally. A deferred-external job owns its terminal failure: `sidekiq_retries_exhausted` flips the domain status to its failure state and alerts - name that terminal state in the Step 4 transitions.
 
 Cross-row invariants (per-user caps, quotas): enforce in the service under a row lock, with a DB backstop where declaratively expressible (constraint, unique/partial index - not triggers) - a model validation alone races.
 
@@ -127,6 +128,7 @@ Strong params; pagination on list endpoints (match the project's paginator; none
 | Validation failure (incl. quota/cap)  | 422  |
 | RecordNotFound                        | 404  |
 | Conflict (duplicate)                  | 409  |
+| Invalid state transition              | 409  |
 | Upstream dependency down / timed out  | 503  |
 | Unauthenticated                       | 401  |
 | Forbidden                             | 403  |
@@ -164,6 +166,7 @@ Use skill: `rails-testing-patterns`. Minimum coverage - add rows the feature's b
 - Mailer: per email action; enqueued via `deliver_later` (if emails sent)
 - ViewComponent (server-rendered): `render_inline` per state
 - Turbo Stream / broadcast (server-rendered live updates): response format + `have_broadcasted_to`
+- System (server-rendered): critical user flows only, per `rails-testing-patterns`' speed ladder - not per CRUD action
 - Factories: traits per status/state
 
 ### Step 14 - Validate
@@ -211,7 +214,7 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presentin
 - [ ] Step 10: serializer per resource (or skipped for server-rendered)
 - [ ] Step 11: views in existing engine via `rails-view-templates` (or skipped for API)
 - [ ] Step 12: Pundit policies + `rescue_from` ladder; Active Storage / ActionCable patterns when applicable
-- [ ] Step 13: model + service + policy + request + job + mailer + client + component + broadcast specs as applicable; factory traits
+- [ ] Step 13: model + service + policy + request + job + mailer + client + component + broadcast + system specs as applicable; factory traits
 - [ ] Step 14: `rspec` and `rubocop` pass (or reported "written, not executed" when the environment can't run them)
 
 ## Avoid

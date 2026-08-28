@@ -125,6 +125,8 @@ class ProcessUploadJob
 end
 ```
 
+This job is the attach point: the controller passes the direct-upload `signed_id` to it instead of attaching inline, and sensitive uploads run the magic-byte sniff (Rules) here, before the variants. When the controller does attach inline, drop the attach lines and enqueue with the record gid only - the job then just warms.
+
 Non-image previews (PDF first page, video frame): `attachment.preview(resize_to_limit: [320, 320])` requires the system dependency (`poppler`/`mupdf` for PDF, `ffmpeg` for video) and only works when `attachment.previewable?`; guard rendering with `previewable?` and warm previews in the same background job as variants.
 
 ### Purge Semantics

@@ -197,7 +197,7 @@ Tools: `get_process_mem`, `memory_profiler` (allocation reports), `derailed_benc
 
 ## Output Format
 
-In review or diagnosis mode, precede the block with numbered findings citing the violated rule or shape (A/B/C); any field may carry `- GAP` with the observed non-compliant value (`Transaction shape: single outer - GAP`).
+In review or diagnosis mode, precede the block with numbered findings citing the violated rule or shape (A/B/C); any field may carry `- GAP` with the observed non-compliant value (`Transaction shape: single outer - GAP`). `Memory mitigations` and `Telemetry` list every applied value, joined with ` + `.
 
 ```
 Workload: {backfill | recompute | export | migration}

@@ -218,7 +218,7 @@ Tasks are thin shells; service spec owns behavior, rake spec verifies wiring. `R
 
 ```ruby
 RSpec.describe "orders:fulfill_pending" do
-  before(:all) { Rails.application.load_tasks }
+  before(:all) { Rails.application.load_tasks if Rake::Task.tasks.empty? }  # re-loading appends duplicate task bodies
   let(:task) { Rake::Task["orders:fulfill_pending"] }
   after { task.reenable }
 

@@ -244,7 +244,7 @@ Then `DROP INDEX CONCURRENTLY` and rerun.
 
 ## Output Format
 
-One block per operation, in execution order (multi-step plans emit a numbered sequence; rake backfills get blocks too). In review mode, precede the blocks with numbered findings, each citing the violated rule; `Reject - rewrite required` attaches to findings on the original, while blocks describe the corrected operations.
+One block per operation, in execution order (multi-step plans emit a numbered sequence; rake backfills get blocks too, citing the rake file in `Migration:`). In review mode, precede the blocks with numbered findings, each citing the violated rule; `Reject - rewrite required` attaches to findings on the original, while blocks describe the corrected operations.
 
 ```
 Migration: {file name}

@@ -97,7 +97,7 @@ User.where(email: x).exists?                  # LIMIT 1
 user.orders.size                              # uses counter_cache if available
 ```
 
-Index endpoints computing per-row aggregates (`sum`, `count` per parent) at scale: aggregate in SQL (`group` + `sum` select, or a `counter_cache` column) and paginate - preloading every child row moves the N+1 into memory.
+Index endpoints computing per-row aggregates (`sum`, `count` per parent) at scale: aggregate in SQL (`Order.group(:customer_id).sum(:total_cents)`, or a `counter_cache` column) and paginate - preloading every child row moves the N+1 into memory.
 
 `find_each` / `in_batches` ignore custom `ORDER BY` and force `ORDER BY id ASC`. If order matters, paginate with explicit `where("id > ?", cursor)`.
 

@@ -252,7 +252,7 @@ end
 
 ## Output Format
 
-One block per operation, in execution order (a multi-step plan emits a numbered sequence of blocks; rake backfills and gh-ost runs get blocks too - use `Operation: Backfill`, `Algorithm: batched rake` / `gh-ost`). In review mode, precede the blocks with numbered findings, each citing the violated rule; `Reject - rewrite required` attaches to findings on the original, while blocks describe the corrected operations.
+One block per operation, in execution order (a multi-step plan emits a numbered sequence of blocks; rake backfills and gh-ost runs get blocks too - use `Operation: Backfill`, `Algorithm: batched rake` / `gh-ost`; `Migration:` cites the rake file, or `n/a (out-of-band)` for gh-ost). In review mode, precede the blocks with numbered findings, each citing the violated rule; `Reject - rewrite required` attaches to findings on the original, while blocks describe the corrected operations.
 
 ```
 Migration: {file name}

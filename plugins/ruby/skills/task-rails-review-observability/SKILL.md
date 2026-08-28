@@ -28,7 +28,7 @@ Rails PR observability check; pre-release for new service or major feature; post
 
 `/task-rails-review-observability [<branch>|pr-<N>] [standard|deep]` - current branch vs base; fails fast on trunk. Subagent invocation with pre-read artifacts skips Steps 2-3 (Step 1 still runs - behavioral rules are per-context).
 
-**Investigation mode** (no PR/diff: post-incident "diagnosis was slow" audit): skip Step 3. Scope = the paths involved in the incident (controllers, jobs, clients) plus their logging/tracing/tracker config; run Steps 4-10 against current code ("diffed" checks apply to every callsite in scope; a step whose surface doesn't exist in scope states N/A; Step 10 runs regardless of depth). There is no merge to block in this mode: the pre-existing-gap carve-outs don't apply - everything in scope files at its severity. Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and write the report body directly.
+**Investigation mode** (no PR/diff: post-incident "diagnosis was slow" audit): skip Step 3. Scope = the paths involved in the incident (controllers, jobs, clients) plus their logging/tracing/tracker config; run Steps 4-10 against current code ("diffed" checks apply to every callsite in scope; a step whose surface doesn't exist in scope states N/A; Step 10 runs regardless of depth). There is no merge to block in this mode: the pre-existing-gap carve-outs don't apply - everything in scope files at its severity. Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and emit the report body as the response - no file is written.
 
 ## Workflow
 
@@ -51,7 +51,7 @@ Inspect `config/environments/*.rb`, `config/initializers/lograge*.rb`/`semantic_
 
 `filter_parameters` coverage belongs to `task-rails-review-security`. Cross-flag here only when a new log line clearly leaks fields the security review wouldn't catch (e.g., custom `params.to_unsafe_h` log).
 
-The pre-existing-gap rule generalizes across Steps 4-9: config or instrumentation the diff doesn't touch files as `[Recommend]` context, never a merge blocker (investigation mode suspends this - see Invocation).
+The pre-existing-gap rule generalizes across Steps 4-9: config or instrumentation the diff doesn't touch files as `[Recommend]` context, never a merge blocker (investigation mode suspends this - see Invocation). Exception: a pre-existing gap that a **new surface in the diff newly depends on** (a new job with no middleware bridge to restore its context, a new outbound call with no propagation) files at full severity, anchored to the new callsite - the diff created the blind spot even though the config predates it.
 
 ### Step 5 - Business Events (AS::Notifications & custom spans)
 
@@ -135,7 +135,7 @@ Fill rules: `Findings verified:` carries the verify tally on standalone runs, th
 - **Error tracker:** Sentry | Honeybadger | Rollbar | none
 - **Target:** <path(s)>
 - **Overall:** Adequate | Gaps Found - [High/Medium/Low count]
-- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Findings verified:** <per fill rules: the `review-finding-verify` tally line verbatim | inline (no diff) | omitted>
 
 ## Findings
 
@@ -173,7 +173,7 @@ _Omit empty sections._
 - [ ] Step 9: scrub/user-context/Sidekiq capture every PR; setup checks only on initializer change
 - [ ] Step 10 ran when triggered (deep / explicit request / service-introducing PR / investigation mode) via `ops-observability`, or skip stated
 - [ ] Verify pass ran (inline in investigation mode; skipped as subagent - the parent verifies); tally or omission per fill rules
-- [ ] Step 11: report via `review-report-writer` (subagent: findings returned to parent; investigation mode: body written directly); confirmation printed when the writer ran
+- [ ] Step 11: report via `review-report-writer` (subagent: findings returned to parent; investigation mode: body emitted as the response); confirmation printed when the writer ran
 - [ ] Every finding states the missing signal AND what becomes invisible; Next Steps ordered Must > Recommend
 
 ## Avoid

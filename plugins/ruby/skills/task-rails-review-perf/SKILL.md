@@ -28,7 +28,7 @@ Reviewing a Rails PR for perf regressions; investigating a slow controller/view/
 
 `/task-rails-review-perf [<branch>|pr-<N>] [standard|deep]` - current branch vs base; fails fast on trunk. When invoked as subagent with pre-read artifacts, Steps 2-3 are skipped (Step 1 still runs - behavioral rules are per-context).
 
-**Investigation mode** (no PR/diff: slow endpoint, quarterly N+1 sweep): skip Step 3. Scope = the named path(s) plus the models, serializers, views, helpers, and jobs they touch; run Steps 4-9 against current code - "diff"-worded checks and skip predicates read as "the in-scope code". Impact numbers: use APM/log figures the user supplied; otherwise estimate and label them. Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and write the report body directly.
+**Investigation mode** (no PR/diff: slow endpoint, quarterly N+1 sweep): skip Step 3. Scope = the named path(s) plus the models, serializers, views, helpers, and jobs they touch; run Steps 4-9 against current code - "diff"-worded checks and skip predicates read as "the in-scope code". Impact numbers: use APM/log figures the user supplied; otherwise estimate and label them. Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and emit the report body as the response - no file is written.
 
 ## Workflow
 
@@ -103,7 +103,7 @@ Skip the connection-pool checks unless the diff changes pool config, Puma/Sideki
 
 ### Step 9 - Observability Hooks
 
-If a new hot path lands without instrumentation, flag it (file as Low / Quick Win):
+If a new hot path lands without instrumentation, flag it (file under Quick Wins):
 
 - [ ] Slow paths emit `ActiveSupport::Notifications` or APM custom spans; `query_log_tags_enabled = true` so APM attributes queries; Bullet enabled in non-prod (flag any change disabling it)
 
@@ -128,7 +128,7 @@ Fill rules: `Findings verified:` carries the verify tally on standalone runs, th
 - **Scope:** Backend (Rails)
 - **Target:** <path(s)>
 - **Overall:** Clean | Issues Found - [High/Medium/Low count]
-- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Findings verified:** <per fill rules: the `review-finding-verify` tally line verbatim | inline (no diff) | omitted>
 
 ## Findings
 
@@ -168,7 +168,7 @@ _Omit if no actionable findings._
 - [ ] Step 7: caching/rendering applied when diff touches views/serializers/cache
 - [ ] Step 8: pool sizing skipped unless config changed; locking / batching / memory applied where relevant
 - [ ] Step 9: instrumentation gap flagged on new hot paths
-- [ ] Step 10: report via `review-report-writer` (subagent: findings returned to parent; investigation mode: body written directly); confirmation printed when the writer ran
+- [ ] Step 10: report via `review-report-writer` (subagent: findings returned to parent; investigation mode: body emitted as the response); confirmation printed when the writer ran
 - [ ] Every finding states impact - measured when APM data exists, estimated otherwise (`adds ~N queries at K rows`)
 - [ ] Findings ordered by impact; Next Steps `[Implement]`/`[Delegate]` ordered Must > Recommend
 

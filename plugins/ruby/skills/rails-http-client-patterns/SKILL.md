@@ -227,7 +227,7 @@ Retry: {faraday | retriable | none}, max={N}, backoff={strategy}
 Idempotency: {how POST/PATCH replay safety is achieved}
 Error taxonomy: {domain error classes}
 Circuit breaker: {none (justified) | Stoplight threshold/cool-off; open-circuit fallback per call site}
-Tests: {WebMock unit | VCR cassettes - file paths}
+Tests: {WebMock unit | VCR cassettes | both - file paths}
 ```
 
 ## Avoid

@@ -178,7 +178,7 @@ Domain errors: <ApplicationError::X | framework only>
 SDK translation: <at boundary | leaked into service (FIX) | N/A>
 rescue_from coverage: <listed classes | missing: ...>
 Sidekiq retry: <propagate | swallow with reason | N/A>
-Reporter call: <Rails.error / Sentry at <layer> | none | double-reported (FIX)>
+Reporter call: <Rails.error / Sentry at <layer> | none (auto middleware reports) | double-reported (FIX)>
 ```
 
 ## Avoid

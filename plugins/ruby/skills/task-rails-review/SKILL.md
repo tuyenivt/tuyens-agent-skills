@@ -121,7 +121,7 @@ Use skills: `review-pr-risk`, `review-blast-radius`. State **Risk Level** and **
 
 **Resolve scope now** (round 1): union of user flags and signals firing on the Step 3 diff; `core-only` suppresses signal escalation. Record firing signals in Summary. (Round 2+ precedence: Step 3.5c.)
 
-**Low-risk short-circuit:** Risk: Low + Blast Radius: Narrow + change does not touch auth, middleware, API contracts, shared concerns, `app/services/`, or `lib/` -> skip Steps 6-8, produce Step 5 only (with its atomic skills); Step 9 still follows its own scope rules, and Steps 9.4 (and 9.5 on round 2+) still run; Step 10 still writes the report (Summary + the Step 3.7 outputs (Change Brief, traceability, requirement findings) + Step 5 findings + Next Steps). Note `Low-risk short-circuit: Steps 6-8 skipped` in Summary. When `core-only` suppressed a firing escalation signal, record the suppressed signal in Summary and emit a `[Delegate]` Next Step naming the matching `/task-rails-review-*` command.
+**Low-risk short-circuit:** Risk: Low + Blast Radius: Narrow + change does not touch auth, middleware, API contracts, shared concerns, `app/services/`, or `lib/` -> skip Steps 6-8, produce Step 5 only (with its atomic skills); Step 9 still follows its own scope rules, and Steps 9.4 (and 9.5 on round 2+) still run; Step 10 still writes the report (Summary + the Step 3.7 outputs (Change Brief, traceability, requirement findings) + Step 5 findings + Next Steps). Note `Low-risk short-circuit: Steps 6-8 skipped` in Summary. When `core-only` suppressed a firing escalation signal, record the suppressed signal in Summary and emit a `[Delegate]` Next Step naming the matching `/task-rails-review-*` command; a Step 5 carve-out finding on the same defect keeps its own `[Implement]` entry - the lens sweep and the point fix are separate steps, never merged.
 
 ### Step 5 - Rails Correctness
 
@@ -216,7 +216,7 @@ Skip if `core-only`. For each selected scope, spawn one independent subagent in 
 
 **Failure isolation:** if a subagent fails or times out, continue with remaining results; note `Scope incomplete: <scope>` under Summary.
 
-**No-spawn fallback:** when the environment can't spawn subagents, run each selected scope's checks inline and sequentially using the same `task-rails-review-*` skills, label the findings per scope, and note `Scopes run inline` in Summary. Inline runs behave as subagent runs: their Steps 1-3 are pre-satisfied and their report writers are skipped - this workflow owns the report. Depth propagates to delegates (security always runs full depth regardless).
+**No-spawn fallback:** when the environment can't spawn subagents, run each selected scope's checks inline and sequentially using the same `task-rails-review-*` skills, label the findings per scope, and note `Scopes run inline` in Summary. Inline runs behave as subagent runs: their Steps 1-3 are pre-satisfied and their report writers are skipped - this workflow owns the report. Depth propagates to delegates (the security lens ignores the depth knob by its own contract - it always runs every check).
 
 Scopes added by *firing signals* and by *user flag* alike review the full range; Step 3.5c records the expansion for the reconciliation table.
 
@@ -224,7 +224,7 @@ Scopes added by *firing signals* and by *user flag* alike review the full range;
 
 Use skill: `review-finding-verify` with the assembled findings (including any merged back from subagents), the diff already read, and `base_ref` / `head_ref`.
 
-Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`; the tally counts each distinct defect once, not once per scope that raised it.
+Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally line into Summary's `Findings verified:` slot verbatim, parenthetical included; the tally counts each distinct defect once, not once per scope that raised it.
 
 ### Step 9.5 - Reconcile Prior Findings (round 2+ only)
 
@@ -233,7 +233,7 @@ Skip on round 1. Otherwise use skill: `review-prior-findings-reconcile` with:
 - `prior_report`: the loaded body of `review-<branch>.md` (frontmatter excluded)
 - `diff`: the full-range diff from Step 3
 - `name_status`: the full-range `git diff --name-status <base_ref>...<head_ref>` from Step 3
-- `head_files`: the file list at `current_head_sha` (`git ls-tree -r --name-only <head_ref>`), when the reconcile skill requests it
+- `head_files`: the file list at `current_head_sha` (`git ls-tree -r --name-only <head_ref>`), when `name_status` contains any `D` entry - it disambiguates undetected moves; otherwise omit
 
 The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
 
@@ -273,14 +273,14 @@ The fence below delimits the template for display only - it is not part of the r
 ## Summary
 
 **Assessment:** Approve | Request Changes | Discuss
-_(Request Changes = any [Must]; Discuss = no [Must] but an unresolved assumption in a [Recommend] gates the verdict; Approve = neither - [Recommend]s alone don't block.)_
+_(Request Changes = any open [Must] - this round's findings and round 2+ `Still open` reconciliation rows count alike; Discuss = no open [Must] but an unresolved assumption in a [Recommend] gates the verdict; Approve = neither - [Recommend]s alone don't block.)_
 - **Risk Level:** Low | Medium | High | Critical
 - **Blast Radius:** Narrow | Moderate | Wide | Critical
 - **Stack Detected:** Ruby <version> / Rails <version>
 - **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(append `auto-escalated from Core; signals: <list>` or `user-flagged; signals also firing: <list>` as applicable)_
 - **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
 - **Round:** <N>                                _(include from round 2 onward)_
-- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
+- **Findings verified:** <the tally line from `review-finding-verify`, carried verbatim>
 - **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Step 3.7 resolved no source)_
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 - **Notes:** <every note line mandated by Steps 3.5/3.5c/4/9 - narrowing, expansion, suppressed signals, short-circuit, incomplete scopes; omit the line when none>

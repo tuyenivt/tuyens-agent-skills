@@ -101,9 +101,11 @@ Use a dedicated Redis instance for ActionCable in high-volume apps - sharing wit
 
 ```ruby
 class Order < ApplicationRecord
-  after_commit -> { broadcast_replace_to [user, :orders], target: dom_id(self, :card) }, on: :update
+  after_commit -> { broadcast_replace_later_to [user, :orders], target: ActionView::RecordIdentifier.dom_id(self, :card) }, on: :update
 end
 ```
+
+`dom_id` is a view helper - in model context call it module-qualified as above (or `include ActionView::RecordIdentifier`); bare `dom_id` raises NoMethodError.
 
 `after_save` fires inside the transaction; subscribers re-querying see the pre-commit state, or nothing if the txn rolls back.
 
@@ -131,7 +133,7 @@ def send_message(data)
 end
 ```
 
-Non-`later` broadcast helpers render the partial in the caller's thread. Use the `_later_to` variants (`broadcast_replace_later_to`) from model callbacks and request-path code so rendering happens on Active Job; inline variants are fine from jobs, which already run off-thread. The Turbo `broadcasts` directive wires the `later` form by default.
+Non-`later` broadcast helpers render the partial in the caller's thread. Use the `_later_to` variants (`broadcast_replace_later_to`) from model callbacks and request-path code so rendering happens on Active Job; inline variants are fine from jobs, which already run off-thread. The Turbo directive form (`broadcasts_to ->(o) { [o.user, :orders] }`) wires the `later` variants by default.
 
 ### Testing
 
@@ -153,9 +155,12 @@ RSpec.describe OrderChannel, type: :channel do
   end
 end
 
-# From a model/service spec
+# From a model/service spec. Pass the computed stream-name string - a non-string
+# target makes have_broadcasted_to raise "Broadcasting channel can't be inferred".
+# perform_enqueued_jobs (ActiveJob::TestHelper) runs the _later_to render job.
 it "broadcasts the updated card" do
-  expect { order.update!(status: :paid) }.to have_broadcasted_to([order.user, :orders])
+  expect { perform_enqueued_jobs { order.update!(status: :paid) } }
+    .to have_broadcasted_to("#{order.user.to_gid_param}:orders")
 end
 ```
 
