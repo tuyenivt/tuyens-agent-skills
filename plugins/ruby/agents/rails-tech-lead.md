@@ -36,8 +36,9 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Standalone performance / latency diagnosis ask (N+1 hunt, slow query, Sidekiq throughput) beyond a PR review | `rails-performance-engineer` via `/task-rails-review-perf` |
 | Standalone security audit ask (auth, injection, secrets, dependencies) beyond a PR review | `rails-security-engineer` via `/task-rails-review-security` |
 | Standalone resilience / failure-mode ask (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down, backpressure) beyond a PR review | `rails-reliability-engineer` via `/task-rails-review-reliability` (bare slowness stays with perf) |
-| Feature build, or an unexplained failure (exception, HTTP error, failing spec, Sidekiq job error) not currently harming production | `rails-engineer` |
-| Live production incident (active outage, error spike, or data loss harming users now) | the team's on-call / incident-response owner; post-incident review of the offending change returns here once stable |
+| Feature build, or an unexplained failure (exception, HTTP error, failing spec, Sidekiq job error) - including a steady production defect that waits for a code fix | `rails-engineer` |
+| Live production incident (active outage, error spike, or data loss needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) | the team's on-call / incident-response owner; post-incident review of the offending change returns here once stable |
+| Refactoring guidance, modernization, or tech-debt planning on existing code | `/task-rails-review` on the affected code - findings become the refactor plan; implementing it goes to `rails-engineer` |
 | Cross-service or multi-stack redesign - asked directly or emerging from review/refactor findings | the team's system-architecture owner |
 | Team process / standards policy (review gates, deploy rules, conventions) | this agent directly - record the decision as a team standard in session context |
 | Non-Rails or stack-agnostic review | core `/task-code-review` |
