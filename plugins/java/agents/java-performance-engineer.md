@@ -32,7 +32,10 @@ category: engineering
 | Ask | Route |
 | --- | ----- |
 | Gradle build performance | `java-gradle-build-optimization` (java-engineer's domain) - this agent owns runtime performance only |
-| Cross-service capacity or scaling architecture | architecture plugin |
+| Behavior under dependency failure or saturation (timeouts, retries, breakers, load shedding, backpressure) | `java-reliability-engineer` (`/task-spring-review-reliability`) - this agent owns speed under normal load |
+| Cross-service capacity or scaling architecture | the team's system-architecture owner |
+
+A bundled ask splits per this table and handoffs dispatch at split time; slices in this agent's scope run as one review pass, an active latency or memory regression before any pre-merge or sweep slice.
 
 ## Performance Checklist
 

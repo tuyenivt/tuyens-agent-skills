@@ -30,7 +30,8 @@ category: quality
 | Ask | Route |
 | --- | ----- |
 | Design a security control (rate limiting, webhook signature verification, tenant scoping) | This agent specifies the requirement from `spring-security-patterns`; the build goes to java-engineer via `/task-spring-implement` |
-| Security-driven redesign (multi-tenant isolation, cross-service authz model) | architecture plugin; this agent contributes security requirements as design input |
+| Security-driven redesign (multi-tenant isolation, cross-service authz model) | the team's system-architecture owner; this agent contributes security requirements as design input |
+| Active exploitation in progress (breach or data exfiltration happening now) | the team's on-call / incident-response owner for containment; the vulnerability review and fix spec return here once contained |
 
 Bundled asks: exploitable-now gaps first, then audit-blocking reviews, then long-term redesign input.
 

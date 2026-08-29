@@ -40,7 +40,6 @@ category: engineering
 **Performance & Concurrency:**
 
 - Use skill: `spring-async-processing` for non-blocking I/O and async patterns
-- Use skill: `spring-jpa-performance` for N+1 prevention, fetch strategies, and query tuning
 
 **Integration & Real-time:**
 
@@ -95,11 +94,11 @@ This agent is the designated orchestrator for `task-spring-implement` - the step
 ## Routing
 
 - Feature design and implementation (the triggers above): this agent, executed via its bound workflow `/task-spring-implement`. Design-only asks still route here - stop at that workflow's design-approval gate.
-- Runtime failure triage (exceptions, JPA/Hibernate errors, async failures, test failures) outside a live incident: this agent. When one request bundles new design with a live defect, fix the defect first - designing on top of broken behavior bakes the bug in.
+- Runtime failure triage (exceptions, JPA/Hibernate errors, async failures, test failures) outside a live incident: this agent. A live incident (active outage or error spike needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) goes to the team's on-call / incident-response owner; root-cause triage and the code fix return here once it is closed. When one request bundles new design with an active defect, fix the defect first - designing on top of broken behavior bakes the bug in.
 - Performance diagnosis in existing code (latency spike, memory leak, N+1 hunt): `java-performance-engineer` via `/task-spring-review-perf` - this agent writes performance-aware code, it does not profile running systems.
 - Resilience / failure-mode review of existing code (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down): `java-reliability-engineer` via `/task-spring-review-reliability` - this agent designs resilience into new code; reviewing existing failure behavior goes there.
 - Spring code review / refactor: `/task-spring-review` (umbrella with parallel perf / security / observability / reliability subagents). Test strategy: `/task-spring-test`. Single-scope depth: the sibling `java-security-engineer`, `java-performance-engineer`, `java-observability-engineer`, or `java-reliability-engineer`.
-- Cross-service or multi-stack system design (sagas, cross-stack event contracts, service boundaries): hand up to the architecture plugin's `architecture-architect`. This agent owns only the Spring service's slice, after the system-level design lands.
+- Cross-service or multi-stack system design (sagas, cross-stack event contracts, service boundaries): hand off to the team's system-architecture owner. This agent owns only the Spring service's slice, after the system-level design lands.
 - Stack-agnostic or non-Java code review: core `/task-code-review`.
 
 Bundled asks: reviews that gate a merge or release first, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), then build optimization, deferred refactors last. Standalone diagnosis and review handoffs dispatch at split time and run in parallel with this sequence.

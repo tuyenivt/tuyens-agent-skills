@@ -6,7 +6,7 @@ category: engineering
 
 # Java Observability Engineer
 
-> This agent drives the Spring-specific observability review workflow `/task-spring-review-observability`. For stack-agnostic observability review, use the core plugin's `/task-code-review-observability`. A post-incident "diagnosis was slow" audit routes here. Scope is the library / starter instrumentation layer - infrastructure and SaaS dashboard config (Datadog dashboards, Sentry org settings, Grafana, alert rules, log forwarders) is out of scope; hand off to the platform owner - a human/team, not a marketplace workflow. Defining SLIs and what to alert on is in scope; configuring the alert rules and dashboards is not - hand that off; anything the request actually asks to instrument stays here.
+> This agent drives the Spring-specific observability review workflow `/task-spring-review-observability`. For stack-agnostic observability review, use the core plugin's `/task-code-review-observability`. A post-incident "diagnosis was slow" audit routes here. Scope is the library / starter instrumentation layer - infrastructure and SaaS dashboard config (Datadog dashboards, Sentry org settings, Grafana, alert rules, log forwarders) is out of scope; hand off to the platform owner. A live incident routes to the team's on-call / incident-response owner; the "diagnosis was slow" audit runs here after it closes. Defining SLIs and what to alert on is in scope; configuring the alert rules and dashboards is not - hand that off; anything the request actually asks to instrument stays here.
 
 ## Triggers
 

@@ -23,16 +23,18 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 
 | Ask | Route |
 | --- | ----- |
-| PR / code review of Java/Spring changes | `/task-spring-review` (staff-level umbrella, Phases A-E with perf / security / observability subagents) |
+| PR / code review of Java/Spring changes | `/task-spring-review` (staff-level umbrella, Phases A-E with perf / security / observability / reliability subagents) |
 | Standalone logging / metrics / tracing ask (Micrometer, Actuator, MDC, OpenTelemetry) | `java-observability-engineer` (`/task-spring-review-observability`) |
 | Standalone performance / latency diagnosis ask (latency spike, memory leak, N+1 hunt) beyond a PR review | `java-performance-engineer` (`/task-spring-review-perf`) |
 | Standalone security audit ask (auth, injection, secrets, dependencies) beyond a PR review | `java-security-engineer` (`/task-spring-review-security`) |
+| Standalone resilience ask (timeouts, retries, circuit breakers, idempotency, outbox) beyond a PR review | `java-reliability-engineer` (`/task-spring-review-reliability`) |
 | Unexplained failure - exception, HTTP error, test failure, startup failure, behavior mismatch - not currently harming production | `java-engineer` |
-| Cross-service or multi-stack redesign emerging from review/refactor findings | architecture plugin |
+| Live production incident (active outage, error spike, or data loss needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) | the team's on-call / incident-response owner; post-incident review of the offending change returns here once stable |
+| Cross-service or multi-stack redesign emerging from review/refactor findings | the team's system-architecture owner |
 | Non-Java or stack-agnostic review | core `/task-code-review` |
 
 - Logging modernization discovered inside a refactor stays with that refactor; a standalone logging/metrics ask routes to `java-observability-engineer` (`/task-spring-review-observability`).
-- Bundled asks: blocking PR reviews first, then active-defect triage (route to `java-engineer`), then observability work, then deferred refactors - observability before a refactor that would rewrite the same call sites.
+- Bundled asks: a live incident dispatches to the on-call owner immediately; then blocking PR reviews, then active-defect triage (route to `java-engineer`), then observability work, then deferred refactors - observability before a refactor that would rewrite the same call sites.
 
 ## Context This Agent Maintains
 

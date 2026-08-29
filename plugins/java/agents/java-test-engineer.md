@@ -34,7 +34,8 @@ category: quality
 
 | Ask | Route |
 | --- | ----- |
-| A specific failing or flaky test with an unexplained error (intermittent assertion, Testcontainers startup failure) | Diagnosing the specific failure is debugging, not test-strategy work; structural suite problems (slow suite, overbroad `@SpringBootTest`, missing `@Transactional`) stay here via `/task-spring-test` |
+| A specific failing or flaky test with an unexplained error (intermittent assertion, Testcontainers startup failure) | `java-engineer` - diagnosing the specific failure is debugging, not test-strategy work; structural suite problems (slow suite, overbroad `@SpringBootTest`, missing `@Transactional`) stay here via `/task-spring-test` |
+| Load / capacity / soak test planning (target RPS, stress scenarios, what to measure under load) | `java-performance-engineer` (`/task-spring-review-perf`) - its deep review produces the capacity and load-test plan; functional test strategy stays here |
 
 ## Key Skills
 
