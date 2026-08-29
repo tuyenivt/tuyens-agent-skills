@@ -24,7 +24,8 @@ category: quality
 | Security review or audit of Go code (auth, injection, validation, secrets, dependencies) | `/task-go-review-security` |
 | Design a security control (webhook signature verification, rate limiting, tenant scoping) | This agent specifies the requirement from `go-security-patterns`; the build goes to go-engineer via `/task-go-implement` |
 | General (non-security) code review | go-tech-lead via `/task-go-review`; its umbrella already includes a security subagent pass |
-| Security-driven redesign (multi-tenant isolation, cross-service authz model) | architecture plugin; this agent contributes security requirements as design input |
+| Security-driven redesign (multi-tenant isolation, cross-service authz model) | the team's system-architecture owner; this agent contributes security requirements as design input |
+| Active exploitation in progress (breach or data exfiltration happening now) | the team's on-call / incident-response owner for containment; the vulnerability review and fix spec return here once contained |
 | Stack-agnostic or non-Go security review | core `/task-code-review-security` |
 
 Bundled asks: exploitable-now gaps first (unauthenticated public surfaces), then audit-blocking reviews, then long-term redesign input.

@@ -27,7 +27,8 @@ Every trigger above routes to `/task-go-review-perf` - the workflow owns profili
 | Perf review, profiling investigation, leak hunt, index/migration lock-safety | `/task-go-review-perf` |
 | Structural refactoring beyond the perf fix | go-tech-lead, after the perf review so its benchmarks protect the refactor |
 | Benchmarks as a maintained CI suite | this agent authors benchmarks as review verification; suite structure and CI wiring go to go-test-engineer via `/task-go-test` |
-| Cross-service capacity or scaling architecture | architecture plugin |
+| Behavior under dependency failure or saturation (timeouts, retries, breakers, load shedding, backpressure) | go-reliability-engineer via `/task-go-review-reliability` - this agent owns speed under normal load |
+| Cross-service capacity or scaling architecture | the team's system-architecture owner |
 | Stack-agnostic or non-Go perf review | core `/task-code-review-perf` |
 
 Bundled asks: measurement via `/task-go-review-perf` first (measure before restructuring), then benchmarks from the measured hot paths, then refactors.

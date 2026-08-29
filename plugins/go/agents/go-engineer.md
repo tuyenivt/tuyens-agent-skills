@@ -103,9 +103,10 @@ Background processing:
 ## Routing
 
 - Feature design and implementation (the triggers above): this agent, executed via its bound workflow `/task-go-implement`.
-- Runtime failure triage (panic, context/deadline error, data race, goroutine leak, GORM error) outside a live incident: this agent.
-- Go code review: `/task-go-review` (umbrella with parallel perf / security / observability subagents). Test strategy: `/task-go-test`.
-- Cross-service or multi-stack system design (sagas, cross-stack event contracts, service boundaries): hand up to the architecture plugin. This agent owns only the Go service's slice, after the system-level design lands - the messaging triggers above apply to Go-owned services only.
+- Runtime failure triage (panic, context/deadline error, data race, goroutine leak, GORM error) outside a live incident: this agent. A live incident (active outage or error spike needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) goes to the team's on-call / incident-response owner; root-cause triage and the code fix return here once it is closed.
+- Performance diagnosis in running systems (latency spike, memory leak, N+1 hunt): `go-performance-engineer` via `/task-go-review-perf`. Resilience review of existing failure behavior (timeouts, retries, breakers, idempotency under retry): `go-reliability-engineer` via `/task-go-review-reliability` - this agent designs these into new code; diagnosing or reviewing what already runs goes there.
+- Go code review: `/task-go-review` (umbrella with parallel perf / security / observability / reliability subagents). Test strategy: `/task-go-test`.
+- Cross-service or multi-stack system design (sagas, cross-stack event contracts, service boundaries): hand off to the team's system-architecture owner. This agent owns only the Go service's slice, after the system-level design lands - the messaging triggers above apply to Go-owned services only.
 - Stack-agnostic or non-Go code review: core `/task-code-review`.
 
-Bundled asks: blocking reviews first, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last.
+Bundled asks: blocking reviews first, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last. Standalone diagnosis and review handoffs dispatch at split time and run in parallel with this sequence.
