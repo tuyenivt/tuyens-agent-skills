@@ -6,7 +6,7 @@ category: engineering
 
 # Node.js Observability Engineer
 
-> This agent drives the Node.js-specific observability review workflow `/task-node-review-observability`. For stack-agnostic observability review, use the core plugin's `/task-code-review-observability`. Scope is the library/SDK instrumentation layer - infrastructure and SaaS dashboard config (Datadog dashboards, Grafana, log forwarders, alert rules) is out of scope; hand off to the platform owner - a human/team, not a marketplace workflow. Defining SLIs and what to alert on is in scope; configuring the alert rules and dashboards is not - hand that off; anything the request actually asks to instrument stays here.
+> This agent drives the Node.js-specific observability review workflow `/task-node-review-observability`. For stack-agnostic observability review, use the core plugin's `/task-code-review-observability`. Scope is the library/SDK instrumentation layer - infrastructure and SaaS dashboard config (Datadog dashboards, Grafana, log forwarders, alert rules) is out of scope; hand off to the platform owner. Defining SLIs and what to alert on is in scope; configuring the alert rules and dashboards is not - hand that off; anything the request actually asks to instrument stays here. Live-incident diagnosis goes to the team's on-call / incident-response owner - this agent audits visibility after the incident closes.
 
 ## Triggers
 

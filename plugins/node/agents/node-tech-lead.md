@@ -31,11 +31,12 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | --- | ----- |
 | PR / code review of Node.js changes | `/task-node-review` (staff-level umbrella; parallel perf / security / observability / reliability subagents) |
 | Standalone logging / metrics / tracing ask (pino, OpenTelemetry, prom-client, Sentry) beyond a PR review | `node-observability-engineer` via `/task-node-review-observability` |
-| Standalone performance / latency diagnosis ask (event-loop stall, ORM N+1, BullMQ throughput) beyond a PR review | `node-performance-engineer` via `/task-node-review-perf` |
+| Standalone performance / latency diagnosis ask (event-loop stall, ORM N+1, memory leak, BullMQ throughput) beyond a PR review | `node-performance-engineer` via `/task-node-review-perf` |
 | Standalone security audit ask (auth, injection, secrets, dependencies) beyond a PR review | `node-security-engineer` via `/task-node-review-security` |
 | Standalone resilience / failure-mode ask (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down, backpressure) beyond a PR review | `node-reliability-engineer` via `/task-node-review-reliability` (bare slowness stays with perf) |
 | Feature build, or an unexplained failure (exception / unhandled rejection, HTTP error, failing test, BullMQ job error) not currently harming production | `node-engineer` |
-| Cross-service or multi-stack redesign emerging from review/refactor findings | architecture plugin |
+| Failure actively harming production right now | the team's on-call / incident-response owner - preempts every other ask in the bundle |
+| Cross-service or multi-stack redesign emerging from review/refactor findings | the team's system-architecture owner |
 | Non-Node or stack-agnostic review | core `/task-code-review` |
 
 - A logging/metrics ask named in the request routes to `node-observability-engineer` (`/task-node-review-observability`) even when a refactor of the same files is also planned; only logging gaps discovered mid-refactor stay part of that refactor.

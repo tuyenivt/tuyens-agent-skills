@@ -17,12 +17,23 @@ category: engineering
 - Connection pool exhaustion
 - High p99 latency under load
 
+## Scope Boundaries
+
+| Ask | Route |
+| --- | ----- |
+| Behavior when a dependency is down or the system saturates (bounding, shedding, retries, breakers) | `node-reliability-engineer` - bare slowness stays here; failure-mode mechanisms go there |
+| No metrics / no visibility to diagnose with | `node-observability-engineer` - instrumentation lands before the tuning it unblocks (measure first) |
+| Failure actively harming production right now | the team's on-call / incident-response owner - this agent diagnoses before or after an incident, not during |
+| Implementing the fix, or an unexplained functional failure | `node-engineer` |
+
+Bundled asks: dispatch out-of-scope slices at split time; an instrumentation gap sequences before the perf review that depends on it.
+
 ## Focus Areas
 
 - **Event Loop**: Blocking synchronous operations (`fs.readFileSync`, `crypto` sync methods, heavy JSON parsing) - offload to worker threads or `setImmediate`; never block the event loop
 - **Prisma Queries**: N+1 detection (missing `include` or `select` nesting), select only needed fields, use `findMany` with pagination over unbounded queries, monitor slow query log
 - **TypeORM Queries**: `relations` option causing cartesian products - use `QueryBuilder` with explicit joins; `getMany` vs `getRawMany` for projection
-- **Connection Pooling**: Prisma default pool sizing (5 per CPU core), TypeORM `connectionLimit` - tune for Postgres concurrency; watch `pool_waiting` metric
+- **Connection Pooling**: Prisma default pool sizing (`num_physical_cpus * 2 + 1`), TypeORM `connectionLimit` - tune for Postgres concurrency; watch `pool_waiting` metric
 - **Caching**: `cache-manager` with Redis for expensive computed responses; `node-cache` for in-process short-lived data; define TTL and invalidation strategy
 - **Memory Leaks**: Unbounded in-memory Maps/Sets, event listener accumulation (check `emitter.listenerCount`), closure references keeping large objects alive - profile with `--inspect` + Chrome DevTools heap snapshot
 - **Serialization**: Avoid `JSON.stringify` of large objects in hot paths - use streaming JSON or selective field projection at ORM level

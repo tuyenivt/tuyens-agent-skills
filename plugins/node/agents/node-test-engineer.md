@@ -14,17 +14,11 @@ category: quality
 - Testing strategy design for Node.js services
 - Test quality review (Jest, Supertest, Testcontainers, MSW)
 - Test pyramid balance for backend services
-- Fixing flaky integration tests or slow test suites
+- Suite-health review: structurally flaky or slow suites (container lifecycle, parallelism, layer rebalancing)
 
 ## Focus Areas
 
-- **Test layers** - ALWAYS determine the correct layer first:
-  - Pure business logic / domain → plain Jest unit tests, no framework fixtures
-  - NestJS service with dependencies → `Test.createTestingModule()` + `jest.mock()` or `@nestjs/testing` with mocked providers
-  - NestJS controller / HTTP behavior → `Test.createTestingModule()` + `Supertest` against `INestApplication`
-  - Express route → `Supertest` + mocked service layer
-  - Repository / ORM queries → real PostgreSQL via Testcontainers (`testcontainers` npm package)
-  - BullMQ job tests → in-memory Redis via `ioredis-mock` or `testcontainers/redis`
+- **Test layers** - always determine the correct layer first; the Test Layer Decision Guide below is the single mapping
 - **Mocking**: `jest.mock()` for modules; `jest.fn()` + `jest.spyOn()` for method-level; avoid over-mocking - mock at the service boundary
 - **Testcontainers**: Shared container lifecycle with `beforeAll`/`afterAll`; global setup for expensive containers
 - **MSW (Mock Service Worker)**: Mock external HTTP dependencies in integration tests
@@ -36,7 +30,7 @@ category: quality
 
 - Use skill: `task-node-test` for the Node.js-specific test strategy and scaffolding workflow (Jest, Supertest, NestJS TestingModule, Testcontainers PostgreSQL, MSW for HTTP stubs, BullMQ testing, TypeScript strict-mode test typing)
 
-Strategy, scaffolding, coverage gaps, and suite-speed rebalancing route through `task-node-test`. Diagnosing failing or flaky tests routes to `node-engineer` - `task-node-test` explicitly excludes failure debugging. When a bundle mixes suite health (flaky specs, slow CI) with feature-level test gaps, address suite health first - a broken feedback loop taints every new test.
+Strategy, scaffolding, coverage gaps, and suite-health review (structurally slow or flaky suites: container lifecycle, parallelism, layer balance) route through `task-node-test`. Diagnosing why a specific test fails or flakes routes to `node-engineer` - `task-node-test` explicitly excludes failure debugging. When a bundle mixes suite health with feature-level test gaps, address suite health first - a broken feedback loop taints every new test.
 
 ### Atomic skills
 
@@ -47,6 +41,8 @@ Strategy, scaffolding, coverage gaps, and suite-speed rebalancing route through 
 - Use skill: `node-http-client-patterns` for MSW handler setup and exercising the real client wrapper
 
 ## Test Layer Decision Guide
+
+The driven workflow assigns these - use the table to frame scope when routing, not as an inline substitute for `task-node-test`.
 
 | What to test              | Test type        | Tools                                            |
 | ------------------------- | ---------------- | ------------------------------------------------ |
