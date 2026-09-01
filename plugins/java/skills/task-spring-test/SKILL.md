@@ -11,7 +11,7 @@ user-invocable: true
 
 # Spring Boot Test
 
-Spring-aware test strategy and scaffolding. Stack-specific delegate of `task-code-test` for Java / Spring Boot 3.5+.
+Spring-aware test strategy and scaffolding for Java / Spring Boot 3.5+.
 
 ## When to Use
 
@@ -30,7 +30,7 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect`. Accept pre-confirmed stack. If not Spring Boot, stop and direct the user to `/task-code-test`.
+Use skill: `stack-detect`. Accept pre-confirmed stack. If not Spring Boot, stop and name the detected stack so the user can invoke that stack's test workflow.
 
 ### Step 3 - Read Code Under Test and Existing Tests
 

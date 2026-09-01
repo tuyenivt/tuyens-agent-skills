@@ -13,7 +13,7 @@ user-invocable: true
 
 # Python Test
 
-Stack-specific delegate of `task-code-test` for Python. Preserves the parent contract (output shape, prioritization). Canonical wiring (pytest fixtures, `httpx.ASGITransport`, DRF `APIClient`, factory_boy, Testcontainers, `respx`, Celery test modes) lives in `python-testing-patterns` - this workflow composes, does not restate.
+Risk-prioritized test strategy and scaffolding for Python. Canonical wiring (pytest fixtures, `httpx.ASGITransport`, DRF `APIClient`, factory_boy, Testcontainers, `respx`, Celery test modes) lives in `python-testing-patterns` - this workflow composes, does not restate.
 
 ## When to Use
 
@@ -28,7 +28,7 @@ Stack-specific delegate of `task-code-test` for Python. Preserves the parent con
 
 ### Step 1 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect` to confirm Python. If invoked from `task-code-test`, accept the parent's stack. If not Python, stop and direct to `/task-code-test`.
+Use skill: `stack-detect` to confirm Python. Accept pre-confirmed stack. If not Python, stop and name the detected stack so the user can invoke that stack's test workflow.
 
 Detect: FastAPI (`fastapi` import + `main.py`) vs Django (`manage.py` + `settings.py`). Record `Framework: FastAPI | Django | mixed` for output - downstream steps branch on this.
 

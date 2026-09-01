@@ -13,7 +13,7 @@ user-invocable: true
 
 # Node.js Test
 
-Stack-specific delegate of `task-code-test` for Node.js. Preserves the parent's deliverable slots (`Covered today`, `Contract testing`, pyramid percentages) and adds Node lanes. Canonical wiring (TestingModule, Supertest, Testcontainers, MSW, BullMQ mocks) lives in `node-testing-patterns` - this workflow composes, does not restate.
+Node.js test strategy and scaffolding. Deliverable slots: `Covered today`, `Contract testing`, pyramid percentages, plus the Node lanes below. Canonical wiring (TestingModule, Supertest, Testcontainers, MSW, BullMQ mocks) lives in `node-testing-patterns` - this workflow composes, does not restate.
 
 ## When to Use
 
@@ -33,7 +33,7 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack and Detect Conventions
 
-Use skill: `stack-detect` to confirm Node.js / TypeScript. If invoked from `task-code-test`, accept the parent's stack. If not Node, stop and direct to `/task-code-test`.
+Use skill: `stack-detect` to confirm Node.js / TypeScript. Accept pre-confirmed stack. If not Node, stop and name the detected stack so the user can invoke that stack's test workflow.
 
 Record all three - later steps and every emitted filename branch on them:
 

@@ -6,7 +6,7 @@ category: quality
 
 # Node.js Test Engineer
 
-> This agent drives the Node.js-specific test workflow `/task-node-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`. Load and performance testing (throughput targets, load suites, capacity) belongs to `node-performance-engineer` - the tools here verify correctness, not throughput. A full PR review beyond test quality belongs to `node-tech-lead` (`/task-node-review`); this agent reviews tests when asked specifically.
+> This agent drives the Node.js-specific test workflow `/task-node-test`. Load and performance testing (throughput targets, load suites, capacity) belongs to `node-performance-engineer` - the tools here verify correctness, not throughput. A full PR review beyond test quality belongs to `node-tech-lead` (`/task-node-review`); this agent reviews tests when asked specifically.
 
 ## Triggers
 

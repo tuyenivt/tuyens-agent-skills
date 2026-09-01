@@ -6,7 +6,7 @@ category: quality
 
 # Java Test Engineer
 
-> This agent drives the Spring-specific test workflow `/task-spring-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent drives the Spring-specific test workflow `/task-spring-test`.
 
 ## Triggers
 

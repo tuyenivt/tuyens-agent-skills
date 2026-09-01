@@ -15,7 +15,7 @@ user-invocable: true
 
 ## Purpose
 
-Structured upgrade assessment: breaking change detection, compatibility analysis, effort estimate (S/M/L/XL), rollback plan, and Go/No-Go recommendation. Produces an assessment; no migration code (use `/task-implement` after).
+Structured upgrade assessment: breaking change detection, compatibility analysis, effort estimate (S/M/L/XL), rollback plan, and Go/No-Go recommendation. Produces an assessment; no migration code.
 
 ## When to Use
 
@@ -25,7 +25,7 @@ Structured upgrade assessment: breaking change detection, compatibility analysis
 - When evaluating whether an upgrade is worth the disruption relative to the benefit
 - Before upgrading a build tool, runtime, or language version
 
-Not for writing migration code (use `task-implement` after this assessment) or whole-system tech stack modernization (use `task-migrate-architecture`, Shape: Modernize).
+Not for writing migration code or whole-system tech stack modernization (use `task-migrate-architecture`, Shape: Modernize).
 
 ## Inputs
 

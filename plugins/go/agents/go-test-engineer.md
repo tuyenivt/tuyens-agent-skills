@@ -6,7 +6,7 @@ category: quality
 
 # Go Test Engineer
 
-> This agent is part of the go plugin. Primary workflow: `/task-go-test` (Go-aware test strategy and scaffolding using table-driven tests, httptest + `gin.New()`, Testcontainers PostgreSQL, gomock, Asynq test patterns, and `go test -race` discipline). For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent is part of the go plugin. Primary workflow: `/task-go-test` (Go-aware test strategy and scaffolding using table-driven tests, httptest + `gin.New()`, Testcontainers PostgreSQL, gomock, Asynq test patterns, and `go test -race` discipline).
 
 ## Triggers
 
@@ -24,7 +24,7 @@ category: quality
 | Flaky test or data race | Diagnose under `go test -race` via `/task-go-test`. Race in test code (shared fixtures, unsynchronized state, `t.Parallel()` misuse): fix here. Race in production code: hand off to go-engineer with the repro and race report |
 | Benchmarking, load testing, or profiling driven by a latency/throughput goal | go-performance-engineer via `/task-go-review-perf`; this agent only reviews benchmark test structure |
 | Code too tangled to test - needs restructuring first | go-tech-lead, then resume test work |
-| Stack-agnostic or non-Go test strategy | core `/task-code-test` |
+| Non-Go test strategy | The detected stack's own test workflow (`/task-node-test`, `/task-python-test`, ...) - this agent is Go-only |
 
 Bundled asks: CI-blocking defects first (flaky/race triage), then deadline-driven test scaffolding, then suite audits.
 

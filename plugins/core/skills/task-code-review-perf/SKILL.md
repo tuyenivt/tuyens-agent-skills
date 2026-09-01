@@ -65,7 +65,7 @@ Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `
 
 **Memory and I/O (all scopes).** Streaming for large payloads, timeouts and circuit breakers on external calls, reused HTTP clients.
 
-**Frontend (frontend / fullstack).** Unnecessary re-renders / change-detection cycles, heavy computation in render path, virtualization for long lists (>100), client-side caching, image optimization, lazy loading, route-level code splitting. Use skill: `frontend-performance`.
+**Frontend (frontend / fullstack).** Unnecessary re-renders / change-detection cycles and heavy computation in the render path; virtualization for long lists (>100); route-level code splitting and lazy loading of below-the-fold or modal-only components; images without dimensions, modern format, or lazy loading; render-blocking third-party scripts (analytics, chat, tag managers - routinely heavier than first-party code); client-side caching of repeated fetches. State impact against Core Web Vitals (LCP <= 2.5s, INP <= 200ms, CLS <= 0.1) where the diff supports it, and note in the Fix when a dedicated frontend pass is warranted. React / Next.js dispatches at Step 3 to `task-react-review-perf`, which owns the deep frontend lens.
 
 **Observability cross-check (backend / fullstack).** RED metrics on critical paths, correlation IDs propagated, latency histograms. Use skill: `ops-observability`. Runs in subagent mode too - the parent dedups overlaps with `+obs`.
 

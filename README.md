@@ -89,11 +89,9 @@ Quick routing guide across all plugins. Find your intent and pick the right skil
 ```
 I want to...
   review code (PR / AI-gen)               -> /task-code-review
-  implement a feature                     -> /task-implement (dispatches to stack-specific)
   break a design into tasks / review one  -> /task-breakdown-design [architecture]
   design/review system, API, diagrams     -> /task-design-architecture [architecture]
   get an epic approved (2-page brief)     -> /task-design-brief [architecture]
-  write tests                             -> /task-code-test
   create a PR description                 -> /task-pr-create
   hand off an on-call shift               -> /task-oncall-start [architecture]
   onboard to a codebase                   -> /task-onboard
@@ -169,7 +167,7 @@ React / Next.js (plugin: react)
 
 **Common decision points:**
 
-- "Universal entry points vs stack-specific" - most `task-code-*` skills (`review`, `review-perf`, `review-security`, `review-observability`, `review-reliability`, `test`) are **thin routers**: they auto-detect your stack and dispatch to `/task-<stack>-<verb>`. Use the universal entry point if unsure; for installed language plugins, calling the stack-specific skill directly skips the routing layer. `/task-onboard` is a **composing workflow**: it remains a direct entry point and weaves a stack-specific atomic into a single output. `/task-implement` is a router (delegates to `/task-<stack>-implement`).
+- "Universal entry points vs stack-specific" - the `task-code-review*` skills (`review`, `review-perf`, `review-security`, `review-observability`, `review-reliability`) are **thin routers**: they auto-detect your stack and dispatch to `/task-<stack>-<verb>`. Use the universal entry point if unsure; for installed language plugins, calling the stack-specific skill directly skips the routing layer. `/task-onboard` is a **composing workflow**: it remains a direct entry point and weaves a stack-specific atomic into a single output. Feature implementation and test strategy have no universal entry point - invoke the stack workflow directly (`/task-<stack>-implement`, `/task-<stack>-test`).
 - "Review code" vs "Review a design" - `/task-code-review` (and stack-specific reviews) target source code and PRs, and also handle pre-merge risk analysis of a change. Architecture workflows (`/task-design-architecture`, `/task-design-brief`, `/task-migrate-architecture`, `/task-dependency-upgrade`, `/task-breakdown-design`) each double as a review workflow for the corresponding artifact - paste an existing artifact instead of authoring requirements.
 - "Full design" vs "Design brief" - `/task-design-architecture` produces the twelve-section record for an architecture board, compliance file, or cross-team contract. `/task-design-brief` runs the same analysis and emits a two-page, diagram-first document calibrated to the reviewer who has to approve it - change inventory, risk in user-visible terms, back-out, and the decisions being asked for. They are alternatives chosen by who consumes the artifact, not sequential steps; either feeds `/task-breakdown-design`.
 - "Design-to-tasks breakdown" vs "Architecture" - `/task-breakdown-design` turns an approved design into a phased, dependency-ordered task graph with effort sizing (or, in review mode, critiques a breakdown someone else authored). Architecture produces the design proposal itself (boundaries, failure modes). Run architecture first, then break the resulting design into tasks.

@@ -57,6 +57,12 @@ Atomic skills provide focused, reusable React patterns. These are hidden from th
 | `react-server-testing`     | Database-backed integration tests, per-test isolation, Server Action and Route Handler tests, async Server Component testing boundary |
 | `react-selfhost-operations` | Self-hosted Next.js: standalone output, CI builds, build-time vs runtime env, ISR cache locality, CDN cookie bypass, image optimizer CPU cost |
 | `react-onboard-map`        | Build framework (Next App/Pages, Vite), routing, state management, data fetching, styling, component library, ORM and deployment target - injected into `task-onboard` |
+| `frontend-state-management` | Framework-neutral state placement: local vs global, lifting, derived state, normalization - paired with `react-state-patterns`, which wins on conflict |
+| `frontend-api-integration` | Framework-neutral data fetching: loading/error states, caching, optimistic updates, pagination, request dedup - paired with `react-data-fetching` |
+| `frontend-testing-patterns` | Framework-neutral frontend testing: component, integration, e2e (Playwright/Cypress), MSW mocking, snapshot discipline - paired with `react-testing-patterns` |
+| `frontend-form-handling`   | Form patterns: validation, error display, multi-step forms, dirty tracking, submission handling |
+| `frontend-accessibility`   | WCAG 2.1 AA: semantic HTML, ARIA, keyboard navigation, focus management, color contrast, screen reader testing |
+| `frontend-performance`     | Core Web Vitals, bundle splitting and third-party script weight, lazy loading, image and font optimization, render performance |
 
 ## Agents
 
@@ -98,4 +104,3 @@ The following workflows are provided by `core` (install separately):
 - `/task-code-review-security` - Security review
 - `/task-code-review-perf` - Performance review
 - `/task-code-review-reliability` - Reliability review
-- `/task-code-test` - Test strategy

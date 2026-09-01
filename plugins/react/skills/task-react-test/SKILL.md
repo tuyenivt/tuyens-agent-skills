@@ -11,7 +11,7 @@ user-invocable: true
 
 # React Test
 
-Stack-specific delegate of `task-code-test` for React / Next.js. Preserves the core workflow's output contract.
+Test strategy and scaffolding for React / Next.js.
 
 ## When to Use
 
@@ -30,7 +30,7 @@ Use skill: `behavioral-principles`. These rules govern every step that follows.
 
 ### Step 2 - Confirm stack
 
-Use skill: `stack-detect`. If invoked as a delegate of `task-code-test` (parent already detected React), accept the pre-confirmed stack. If stack is not React, stop and tell the user to invoke `/task-code-test`.
+Use skill: `stack-detect`. Accept a pre-confirmed stack. If stack is not React, stop and name the detected stack so the user can invoke that stack's test workflow.
 
 Record `Framework` (Next.js App Router / Pages Router / Vite + React Router), `Runner` (Vitest / Jest), `React: <version>` for the output. Greenfield (no runner installed): record the Step 3 default suffixed `(greenfield default)`.
 

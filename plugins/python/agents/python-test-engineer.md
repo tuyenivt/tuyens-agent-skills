@@ -6,7 +6,7 @@ category: quality
 
 # Python Test Engineer
 
-> This agent drives the Python-specific test workflow `/task-python-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`.
+> This agent drives the Python-specific test workflow `/task-python-test`.
 
 ## Triggers
 

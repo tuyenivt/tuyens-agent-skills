@@ -61,7 +61,6 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 
 | Skill                            | Description                                                                                                                                                                                                                                                                                                                                                         |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task-implement`                 | Universal feature implementation entry point. Detects stack and delegates to the appropriate `task-{stack}-new` workflow.                                                                                                                                                                                                                                           |
 | `task-onboard`                   | **Composing workflow.** Codebase onboarding - composes a stack-specific `*-onboard-map` atomic for bootstrap commands, key files, conventions, and risk hotspots (Gradle/composer/cargo, Spring vs Rails layout, etc.). Falls back to universal map for unknown stacks. Supports `Focus: first-pr / architect-survey / full`.                                       |
 | `task-pr-create`                 | Generate a production-ready PR description from git diff - title, summary, risk, test plan, linked tickets/ADRs.                                                                                                                                                                                                                                                    |
 | `task-code-review`               | **Router.** Detects stack and dispatches to `task-{stack}-review`, forwarding scope (`+perf`/`+sec`/`+obs`/`+rel`/`full`) and depth flags. For unknown stacks, runs a minimal Phases-A-E generic review.                                                                                                                                                     |
@@ -69,7 +68,6 @@ Workflow skills (`task-*`) orchestrate multiple atomic skills into task-oriented
 | `task-code-review-security`      | **Router.** Detects stack and dispatches to `task-{stack}-review-security`. For unknown stacks, runs a minimal OWASP Top 10 review.                                                                                                                                                                                                                                 |
 | `task-code-review-observability` | **Router.** Detects stack and dispatches to `task-{stack}-review-observability`. For unknown stacks, runs a minimal generic review (logging / metrics / tracing / SLO).                                                                                                                                                                                             |
 | `task-code-review-reliability`   | **Router.** Detects stack and dispatches to `task-{stack}-review-reliability`. For unknown stacks, runs a minimal generic review (timeouts / retries / breakers / idempotency / degradation / saturation).                                                                                                                                                          |
-| `task-code-test`                 | **Router.** Detects stack and dispatches to `task-{stack}-test`. For unknown stacks, runs a minimal generic test-pyramid + prioritization protocol.                                                                                                                                                                                                                 |
 
 ## Atomic Skills
 
@@ -136,17 +134,6 @@ Atomic skills provide focused, reusable patterns. Hidden from the slash menu (`u
 | `review-prior-findings-reconcile` | Round 2+ of any `task-*-review*` workflow: classify each prior finding as Addressed / Still open / Obsolete / Needs re-check by checking whether the cited smell persists in the new diff. Binary contract; no causation linking. |
 | `review-report-writer`       | Writes the completed review with YAML checkpoint frontmatter (head_sha, base_sha, round) so the next round is recognized as a re-review and can reconcile prior findings. Called as the final step of all `task-*-review*` workflows.                 |
 
-### Frontend
-
-| Skill                       | Description                                                                                                                                                      |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `frontend-state-management` | State management patterns: local vs global, when to lift state, derived state, state normalization. Adapts to detected stack (Redux, Pinia, NgRx, Zustand, etc.) |
-| `frontend-testing-patterns` | Frontend testing: component testing, integration testing, e2e with Playwright/Cypress, mocking APIs (MSW), snapshot discipline. Adapts to detected stack         |
-| `frontend-accessibility`    | WCAG 2.1 AA compliance: semantic HTML, ARIA, keyboard navigation, focus management, color contrast, screen reader testing                                        |
-| `frontend-api-integration`  | Data fetching patterns: loading/error states, caching, optimistic updates, pagination. Adapts to detected stack (TanStack Query, SWR, Apollo, etc.)              |
-| `frontend-performance`      | Core Web Vitals, bundle splitting, lazy loading, image optimization, render performance, memoization discipline                                                  |
-| `frontend-form-handling`    | Form patterns: validation, error display, multi-step forms, dirty tracking, submission handling. Adapts to detected stack                                        |
-
 ## Skill Dependency Index
 
 Quick reference showing which atomic skills each workflow invokes. Use this to understand scope before customizing or extending a workflow.
@@ -155,15 +142,13 @@ Quick reference showing which atomic skills each workflow invokes. Use this to u
 
 | Workflow                         | Atomic Skills Used                                                                                                                                                                                                                                                                         |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `task-implement`                 | `stack-detect` _(then delegates to stack-specific workflow)_                                                                                                                                                                                                                               |
 | `task-onboard`                   | `stack-detect` + `*-onboard-map` (per stack), `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `ops-observability`, `dependency-impact-analysis`                                                                                                                  |
 | `task-pr-create`                 | `stack-detect`, `review-pr-risk`                                                                                                                                                                                                                                                           |
 | `task-code-review`               | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `review-change-intent`, `review-pr-risk`, `review-blast-radius`, `architecture-guardrail`, `complexity-review`, `backend-coding-standards`, `backend-api-guidelines`, `architecture-concurrency`, `ops-observability`, `ops-resiliency`, `ops-backward-compatibility`, `review-report-writer`)_ |
-| `task-code-review-perf`          | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `backend-db-indexing`, `ops-observability`, `architecture-concurrency`, `frontend-performance`, `review-report-writer`)_                                                                                                                                    |
+| `task-code-review-perf`          | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `backend-db-indexing`, `ops-observability`, `architecture-concurrency`, `review-report-writer`)_                                                                                                                                    |
 | `task-code-review-security`      | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `review-report-writer`)_                                                                                                                                                                                    |
 | `task-code-review-observability` | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `ops-observability`, `review-report-writer`)_                                                                                                                                                               |
 | `task-code-review-reliability`   | `stack-detect` _(dispatches; generic fallback uses `review-precondition-check`, `ops-resiliency`, `backend-idempotency`, `failure-propagation-analysis`, `review-report-writer`)_                                                                            |
-| `task-code-test`                 | `stack-detect` _(dispatches; minimal generic test-pyramid fallback)_                                                                                                                                                                                                                        |
 
 ### Atomic → Used By
 
@@ -216,13 +201,6 @@ Scope options - asks interactively if not specified:
 5. Note in the report when the prior SHA is unreachable (force-push) or the base branch advanced. Reconciliation still runs against whatever the prior report recorded.
 
 No flags needed - same invocation works for every round. Reports without frontmatter (predating this behavior) are treated as round-1.
-
-**Test strategy:**
-
-```
-/task-code-test
-[paste code or file path]
-```
 
 **Performance review:**
 

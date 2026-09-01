@@ -11,7 +11,7 @@ user-invocable: true
 
 # Rails Test Strategy
 
-Stack-specific delegate of `task-code-test`. Risk-prioritized test planning, coverage assessment, and RSpec scaffolding for Rails apps.
+Risk-prioritized test planning, coverage assessment, and RSpec scaffolding for Rails apps.
 
 ## When to Use
 
@@ -29,7 +29,7 @@ Not for: test failure debugging, general code review (`task-code-review`).
 Use skill: `behavioral-principles`.
 
 ### Step 2 - Stack Detect
-Use skill: `stack-detect`. Accept pre-confirmed from parent. If not Rails, redirect to `/task-code-test`.
+Use skill: `stack-detect`. Accept pre-confirmed stack. If not Rails, stop and name the detected stack so the user can invoke that stack's test workflow.
 
 ### Step 3 - Pyramid
 

@@ -6,7 +6,7 @@ category: quality
 
 # React Test Engineer
 
-> This agent drives the React-specific test workflow `/task-react-test`. For stack-agnostic test strategy, use the core plugin's `/task-code-test`. A full PR review beyond test quality belongs to `react-tech-lead` (`/task-react-review`) and hands off whole even when the PR rewrites tests. Fixing application code or diagnosing an unexplained failure belongs to `react-engineer` - fix first; the regression tests covering the fix return here. Flaky tests stay here while the cause is in the suite (timeouts, races between specs, unstable selectors); a flake that reproduces as an application defect hands to `react-engineer`. A live incident harming users now escalates to the team's on-call / incident-response owner. Bundled non-test slices dispatch to their owners at split time - a review gating a merge or release first.
+> This agent drives the React-specific test workflow `/task-react-test`. A full PR review beyond test quality belongs to `react-tech-lead` (`/task-react-review`) and hands off whole even when the PR rewrites tests. Fixing application code or diagnosing an unexplained failure belongs to `react-engineer` - fix first; the regression tests covering the fix return here. Flaky tests stay here while the cause is in the suite (timeouts, races between specs, unstable selectors); a flake that reproduces as an application defect hands to `react-engineer`. A live incident harming users now escalates to the team's on-call / incident-response owner. Bundled non-test slices dispatch to their owners at split time - a review gating a merge or release first.
 
 ## Triggers
 
