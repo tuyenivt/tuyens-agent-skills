@@ -93,7 +93,7 @@ I want to...
   design/review system, API, diagrams     -> /task-design-architecture [architecture]
   get an epic approved (2-page brief)     -> /task-design-brief [architecture]
   create a PR description                 -> /task-pr-create
-  hand off an on-call shift               -> /task-oncall-start [architecture]
+  triage an alert / on-call ticket        -> /task-oncall-triage [architecture]
   onboard to a codebase                   -> /task-onboard
   plan a migration (decompose / consolidate /
     modernize / schema change)             -> /task-migrate-architecture [architecture]
@@ -180,7 +180,7 @@ React / Next.js (plugin: react)
 | Plugin                               | Focus                                                                                                                                                                               |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [core](plugins/core)                 | Stack-agnostic workflows, governance, ops, and review patterns                                                                                                                     |
-| [architecture](plugins/architecture) | Stack-agnostic architecture, re-architecture, delivery, and incident response: unified system design (boundaries + API contracts + C4 diagrams), reviewer-calibrated design briefs for epic approval, monolith decomposition, service consolidation, legacy modernization, DB migration, dependency upgrade, design-to-tasks breakdown (HLD/LLD -> task graph), task-breakdown review, and the live incident lifecycle (shift start, triage, root cause). Every authoring workflow doubles as a review workflow. |
+| [architecture](plugins/architecture) | Stack-agnostic architecture, re-architecture, delivery, and incident response: unified system design (boundaries + API contracts + C4 diagrams), reviewer-calibrated design briefs for epic approval, monolith decomposition, service consolidation, legacy modernization, DB migration, dependency upgrade, design-to-tasks breakdown (HLD/LLD -> task graph), task-breakdown review, and the live incident lifecycle (alert triage, root cause). Every authoring workflow doubles as a review workflow. |
 | [java](plugins/java)                 | Java 21+ / Spring Boot 3.5+                                                                                                                                                         |
 | [python](plugins/python)             | Python 3.11+, FastAPI (primary), Django (secondary)                                                                                                                                 |
 | [ruby](plugins/ruby)                 | Ruby on Rails 7.2+                                                                                                                                                                  |

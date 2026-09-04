@@ -7,7 +7,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 # Architecture Architect
 
-> This agent is part of the architecture plugin. Stack-agnostic by design - it names patterns and boundaries, never a framework. It owns the system; for the plan to build and ship it (task breakdown, dependency upgrade), use `architecture-planner`. For stack-specific design (Spring layering, FastAPI routers, NestJS modules), use the matching stack plugin's tech lead - a design that merely names its implementation stack stays here; route down only when the deliverable is framework-internal structure. For framework-agnostic code review, use the core plugin's `/task-code-review`. Incident response is this plugin's `oncall-responder` (`/task-oncall-start`); a live incident routes there before any redesign here, and the redesign starts only once its confirmed root cause arrives as input.
+> This agent is part of the architecture plugin. Stack-agnostic by design - it names patterns and boundaries, never a framework. It owns the system; for the plan to build and ship it (task breakdown, dependency upgrade), use `architecture-planner`. For stack-specific design (Spring layering, FastAPI routers, NestJS modules), use the matching stack plugin's tech lead - a design that merely names its implementation stack stays here; route down only when the deliverable is framework-internal structure. For framework-agnostic code review, use the core plugin's `/task-code-review`. Incident response is this plugin's `oncall-responder` (`/task-oncall-triage`); a live incident routes there before any redesign here, and the redesign starts only once its confirmed root cause arrives as input.
 
 ## Role
 
