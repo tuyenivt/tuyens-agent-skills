@@ -24,11 +24,11 @@ Staff-level architecture design or review prioritizing boundaries, failure conta
 - Architecture proposal for cross-team changes
 - Reviewing an existing design proposal or comparing competing proposals
 
-Not this workflow when the artifact's only consumer is an approver who will not read a 12-section proposal - `task-design-brief` runs the same analysis and emits a two-page reviewer-facing document instead. Run this one when a named consumer needs the full record: an architecture board, a compliance file, or a cross-team contract outliving the change. Invoked directly with an approver-only consumer, say so and run `task-design-brief` instead.
+Not this workflow when the artifact's only consumer is an approver who will not read a 12-section proposal - `task-design-brief` runs the same analysis and emits a two-page reviewer-facing document instead. Run this one when a named consumer needs the full record: an architecture board, a compliance file, or a cross-team contract outliving the change. Invoked directly with an approver-only consumer, say so and run `task-design-brief` instead. The routing is keyed on depth: a `quick` direction check produces three sections and a summary, not a 12-section proposal, and stays here whoever reads it.
 
 ## Mode Detection
 
-If the user's input makes mode obvious (e.g., "here's a design doc, review it" or "design a payment service"), proceed. A pasted authored artifact (design doc, proposal, spec) with no authoring request is Review Mode even without a verb; the user's own rough sketch or idea inside the request is input to New Design, not an artifact to review. Otherwise ask: **new design** (full proposal) or **review existing** (evaluate proposal). Default: New Design.
+If the user's input makes mode obvious (e.g., "here's a design doc, review it" or "design a payment service"), proceed. A pasted authored design artifact (design doc, proposal, design spec) with no authoring request is Review Mode even without a verb; a requirements document, PRD, or the user's own rough sketch inside the request is input to New Design, not an artifact to review. Otherwise ask: **new design** (full proposal) or **review existing** (evaluate proposal). Default: New Design.
 
 ### New Design Mode
 
@@ -38,15 +38,15 @@ Run the Design Model sections the chosen depth produces (all 12 at `standard`).
 
 For 2+ proposals on the same problem, compare first, then apply Review Mode to the winner.
 
-**Comparing proposals.** Score every proposal on the six criteria from `architecture-review-lens` Section 6 (Boundary clarity, Failure containment, Consistency model, Operability, Reversibility, Cost and complexity) at **Strong / Adequate / Weak / Not addressed / N/A**, each with a one-clause evidence citation; longer reasoning goes in a per-proposal profile naming its strongest and weakest criterion plus any assumption conflicting with the problem's constraints. Apply the same criteria to all - missing information scores Not addressed, and the omission itself is the citation. Score stated mechanisms and their direct implications; a performance promise without a mechanism is an assertion. More than three candidates: pre-screen to exactly three against the binding constraints, recording each elimination in one line. When a binding NFR (e.g., a latency target) is captured by none of the six criteria, add one problem-specific criterion row named for it, applied to all proposals.
+**Comparing proposals.** Score every proposal on the six criteria from `architecture-review-lens` Section 6 (Boundary clarity, Failure containment, Consistency model, Operability, Reversibility, Cost and complexity) at **Strong / Adequate / Weak / Not addressed / N/A**, each with a one-clause evidence citation; longer reasoning goes in a per-proposal profile as labelled lines - Strongest, Weakest, Constraint conflicts (assumptions conflicting with the problem's constraints). Apply the same criteria to all - missing information scores Not addressed, and the omission itself is the citation. Score stated mechanisms and their direct implications; a performance promise without a mechanism is an assertion. More than three candidates: pre-screen to exactly three against the binding constraints, recording each elimination in one line. When a binding NFR or constraint (a latency target, a delivery deadline, an invariant that must hold) is captured by none of the six criteria, add one problem-specific criterion row named for it, applied to all proposals. Rejected proposals receive scores and citations only - no severities.
 
 State the shared problem and its binding constraints (NFRs, team capacity, volume, timeline) before the matrix, and flag scope mismatch (proposals solving different problems) separately from coverage gap (a proposal omitting criteria) - on mismatch, compare against the full underlying problem. Complementary proposals each solving a real problem resolve to which to fund first - ordered by the same decisive criteria - and the funded proposal is the named winner; the follow-up is recorded in the recommendation with a trigger condition and horizon.
 
-Close with a named winner - a tie is not a valid output. The recommendation names the decisive criteria (those the stated constraints make non-negotiable), the key trade-off accepted, any gaps the winner must close before adoption, and anything worth carrying over from rejected proposals. When the artifact contains an explicit author recommendation (e.g., an ADR author's pick), explicitly agree with or overturn it with reasoning - a proposal advocating itself is not a recommendation, and with no external recommendation the agree/overturn line is omitted. Do not recommend a hybrid when one proposal is clearly stronger, and do not mistake more detail or better polish for more substance.
+Close with a named winner - a tie is not a valid output. The recommendation names the decisive criteria (those the stated constraints make non-negotiable), the key trade-off accepted, any gaps the winner must close before adoption, and anything worth carrying over from rejected proposals. When the supplied material contains an explicit recommendation from someone other than a proposal's own author (an ADR author's pick among options, a cover note's preference), explicitly agree with or overturn it with reasoning - a proposal advocating itself is not a recommendation, and with no external recommendation the agree/overturn line is omitted. Do not recommend a hybrid when one proposal is clearly stronger, and do not mistake more detail or better polish for more substance.
 
-The comparison emits as a `## Comparison` section between the lens's Intake and Completeness Audit, in order: problem and binding constraints; eliminations (one line each; omitted when no pre-screen ran); criteria matrix; proposal profiles; recommendation - the funding order and follow-up for complementary proposals live in the recommendation. The lens then runs on the winner only; its criteria-scoring step carries the matrix's scores forward, including any added problem-specific criterion, re-scoring a criterion only where lens findings change it - the step is neither skipped nor re-derived from scratch.
+The comparison emits as a `## Comparison` section between the lens's Intake and Completeness Audit, in order: problem and binding constraints; eliminations (one line each; omitted when no pre-screen ran); criteria matrix; proposal profiles; recommendation as labelled lines - Winner, Decisive criteria, Trade-off accepted, Gaps to close (F-numbers), Carried over, External recommendation (agree | overturn - reason; omitted when none), Follow-up (complementary proposals only: funding order, trigger, horizon). The lens then runs on the winner only (rejected proposals' scores are final); its criteria-scoring step carries the matrix's scores forward, including any added problem-specific criterion, re-scoring a criterion only where lens findings change it - the step is neither skipped nor re-derived from scratch.
 
-Constraints and facts stated in the request are citable evidence (cite: request). When no quantitative target exists for a decisive criterion, derive a working target from the stated symptoms, mark it assumed, and carry it into the winner's gaps-to-close. Because a comparison gates selection rather than deployment, a required factor absent because the winning proposal is pre-design keeps its lens severity but is recorded once, in gaps-to-close, which the verdict's required-changes list mirrors; the expected verdict for a pre-design winner is Approve with changes, and Needs rework is reserved for defects in what the proposal states or absences that would change the selection. Comparison content is not F-numbered - a defect that matters for the winner's review is numbered once, in the owning lens step, and the Comparison references it.
+Constraints and facts stated in the request are citable evidence (cite: request); a conflict between the winner and the request is a Per-Factor finding citing the request, not an Internal Consistency finding. When no quantitative target exists for a decisive criterion, derive a working target from the stated symptoms, mark it assumed, and carry it into the winner's gaps-to-close. Because a comparison gates selection rather than deployment, a required factor absent - Missing, not Under-specified - because the winning proposal is pre-design (a direction argued before a full design, so sections it never set out to cover are absent) keeps its lens severity but is recorded once, in gaps-to-close, which the verdict's required-changes list mirrors; the expected verdict for a pre-design winner is Approve with changes, and Needs rework is reserved for defects in what the proposal states or absences that would change the selection. Comparison content is not F-numbered - a defect that matters for the winner's review is numbered once, in the owning lens step, and the Comparison references it (forward references to lens steps that follow are expected).
 
 For a single proposal:
 
@@ -72,10 +72,11 @@ Supply this design-specific factor list to the completeness audit. Required fact
 
 *Required only when the design exposes an API surface or delivers events/webhooks to external consumers.
 
-The factor list mirrors Design Model Sections 1-12 (Security and auth spans Sections 2, 3, and 11): for per-factor depth, compose that section's atomic skills to evaluate the quality of what the author wrote; a factor with no dedicated atomic (Security and auth) is evaluated directly against its "What Present Looks Like" column. Treat performance, deployment, trade-offs, API contracts, and diagrams as first-class review targets - when Present or Under-specified, evaluate their substance; when Missing, the completeness finding carries them. Depth levels apply to New Design only; reviews always run the full lens, using the lens's own skip rule for steps that do not fit.
+The factor list mirrors Design Model Sections 1-12 (Security and auth spans Sections 2, 3, and 11): for per-factor depth, compose that section's atomic skills to evaluate the quality of what the author wrote; a factor with no dedicated atomic (Security and auth) is evaluated directly against its "What Present Looks Like" column. Treat performance, deployment, trade-offs, API contracts, and diagrams as first-class review targets - when Present or Under-specified, evaluate their substance; when Missing, the completeness finding carries them. Depth levels apply to New Design only; reviews always run the full lens, using the lens's own skip rule for steps that do not fit. N/A with a one-line reason satisfies a Required factor for the verdict gate. Diagrams are N/A under Section 12's skip conditions and API contracts when the asterisk condition fails; every other absent factor is Missing.
 
-Output header: `# Architecture Review` and use the output structure defined in `architecture-review-lens` (tables for audits, lists for findings; report depth as "full"). Skip the New Design output template. In this mode the Review Self-Check below replaces the authoring Self-Check (self-checks are applied internally, never emitted in the deliverable):
+Output header: `# Architecture Review` and use the output structure defined in `architecture-review-lens` (tables for audits, lists for findings; report depth as "full") - the Completeness Audit table carries Factor, Required, Status (Present / Under-specified / Missing / N/A), and a Finding cell: the F-number the row raises or forward-references, the N/A reason, or `-`. Skip the New Design output template. In this mode the Review Self-Check below replaces the authoring Self-Check (self-checks are applied internally, never emitted in the deliverable):
 
+- [ ] behavioral-principles loaded first, stack-detect second
 - [ ] All factors audited with Required marking applied; verdict driven by highest severity
 - [ ] Specific quality findings recorded once in the correct lens step and numbered
 - [ ] Every finding cites a doc section; non-Approve verdict lists required changes
@@ -94,9 +95,9 @@ Output header: `# Architecture Review` and use the output structure defined in `
 | Reference doc          | No       | Company template or approved prior design; path or pasted content |
 | Depth                  | No       | `quick`, `standard` (default), or `deep` - see Depth Levels below |
 
-Handle partial inputs gracefully. When input is missing, state assumptions explicitly and flag what additional context would strengthen the design.
+Handle partial inputs gracefully. When input is missing, state assumptions under Section 1 Assumptions and list what additional context would strengthen the design under Section 1 Open Questions, together with the confirmation questions `nfr-specification` raises for assumed targets.
 
-**Audience and house format (New Design Mode only).** When a reviewer profile is supplied, load `Use skill: design-audience-calibration`; when a reference doc is supplied or the project's instruction file carries a `## Design Docs` section, load `Use skill: design-reference-pattern`. In Review Mode load neither - the review's reader is the artifact's author, and approver-fit review belongs to `task-design-brief`. Neither changes this workflow's analysis or its 12-section content contract: calibration governs prose, glossing, and what moves to an appendix, and the house pattern governs headings, order, and metadata slots, with every section mapped to a house heading or appended under its own name - the one sanctioned exception to the behavioral directive's structure rule. Required content is never dropped to fit a template: when the calibration budget conflicts with the 12-section contract, the contract wins - load-bearing tables and decisions stay in the body, elaboration moves to the appendix, and the C4 Container outranks the diagram budget, with further diagrams relocating to the appendix rather than dropping.
+**Audience and house format (New Design Mode only).** When a reviewer profile is supplied, load `Use skill: design-audience-calibration`; when a reference doc is supplied or the project's instruction file carries a `## Design Docs` section, load `Use skill: design-reference-pattern`. In Review Mode load neither - the review's reader is the artifact's author, and approver-fit review belongs to `task-design-brief`. Neither changes this workflow's analysis or its 12-section content contract: calibration governs prose, glossing, and what moves to an appendix, and the house pattern governs headings (the H1 becomes the house title slot), order, and metadata slots, with every section mapped to a house heading or appended under its own name, unnumbered - the one sanctioned exception to the behavioral directive's structure rule. Required content is never dropped to fit a template: when the calibration budget conflicts with the 12-section contract, the contract wins - load-bearing tables and decisions stay in the body, elaboration moves to the appendix, and the C4 Container outranks the diagram budget, with further diagrams relocating to the appendix rather than dropping. When either is loaded the deliverable carries an appendix - the house Appendix section when one exists, else `## Appendix` as the final section - and the `Written for` / `Format` line in the Output template; unknown metadata slot values read `TBD`. Depth selects sections; calibration and the house pattern never add one back - a `quick` output carries no diagram, whatever the diagram budget or a house section's diagram-first convention. The required-content list handed to the house pattern is one item per template section (the Staff-Level Summary included), subsection, or field block the depth produces; calibration decides body versus appendix first, then the house pattern places the body content.
 
 ## Depth Levels
 
@@ -108,7 +109,7 @@ Handle partial inputs gracefully. When input is missing, state assumptions expli
 
 Default: `standard`. Use `quick` for "rough architecture" or "is this direction sensible"; use `deep` for cross-team changes, capacity-sensitive systems, or post-incident redesigns. Deep adds the Capacity Model, Failure Simulation, and Evolution Notes sections in the Output template plus extra diagrams beyond C4 Container.
 
-The Staff-Level Summary ships at every depth. At `quick`, produce template Sections 1, 2, and 9 (top 1-2 decisions only) plus the Staff-Level Summary, keeping template numbering; omit the rest silently and waive their Self-Check items. For "is this direction sensible?" inputs, place a one-line verdict immediately below the H1: **Direction: {Sensible | Sensible with changes | Reconsider}** - {reason}. The Self-Check is applied internally, never emitted in the deliverable.
+The Staff-Level Summary ships at every depth. At `quick`, produce template Sections 1, 2, and 9 (top 1-2 decisions only) plus the Staff-Level Summary, keeping template numbering (house headings replace it when a house pattern is loaded); Section 1 elicits only the NFRs those decisions depend on and lists the rest under Open Questions; omit the other sections silently and waive their Self-Check items. For "is this direction sensible?" inputs, place a one-line verdict immediately below the H1, above any house metadata table: **Direction: {Sensible | Sensible with changes | Reconsider}** - {reason}. The Self-Check is applied internally, never emitted in the deliverable.
 
 ## Rules
 
@@ -117,7 +118,7 @@ The Staff-Level Summary ships at every depth. At `quick`, produce template Secti
 - Every significant decision states at least one trade-off and one rejected alternative with reason
 - No implementation code; describe components, responsibilities, and interactions
 - Make conflicting constraints explicit; propose resolution options
-- Omit empty sections and subsection tables silently - except Sections 11 and 12, which require an explicit skip one-liner at the depths where they run; output is strategic, concise, high-signal
+- Omit empty sections, subsection tables, and unfilled house headings silently - except Sections 11 and 12, which require an explicit skip one-liner at the depths where they run; output is strategic, concise, high-signal
 
 ## Design Model
 
@@ -132,13 +133,13 @@ Capture:
 - **Constraints** -- technical debt, legacy systems, team capacity, timeline, budget
 - **Assumptions** -- what is assumed true but not yet validated
 
-Use skill: `nfr-specification` to elicit and structure non-functional requirements into measurable SLOs and constraints. The NFR output feeds into Section 6 (Observability) as alert baselines and Section 7 (Performance) as capacity targets.
+Use skill: `nfr-specification` to elicit and structure non-functional requirements into measurable SLOs and constraints - its tables fill the Non-Functional Requirements table (one row per metric), its Conflicts (with resolution options) go under Constraints, its Gaps under Open Questions. The NFR output feeds into Section 6 (Observability) as alert baselines and Section 7 (Performance) as capacity targets.
 
 ### 2. System Context and Boundary Definition
 
 Use skill: `system-boundary-design` for formal boundary modeling.
-Use skill: `architecture-guardrail` for boundary rules.
-Use skill: `review-blast-radius` for failure propagation scope.
+Use skill: `architecture-guardrail` for boundary rules - recorded in Section 10's Architecture Constraints; at `quick`, in the Must Not Cross cell.
+Use skill: `review-blast-radius` to size a Shared cell in Boundary Contracts - its overall `Blast Radius:` value only, the radius if the isolation guarantee fails.
 
 For each boundary state: what crosses (data, commands, events), what must NOT cross (domain internals), failure isolation guarantee.
 
@@ -154,13 +155,13 @@ For each component, state: what it owns (data, state), what it depends on, prima
 ### 4. Data and Consistency Model
 
 Use skill: `architecture-data-consistency` for consistency strategy selection.
-Use skill: `backend-db-indexing` for data access patterns and index strategy.
+Use skill: `backend-db-indexing` for data access patterns and index strategy - recorded in Data Flow as the lookups each path relies on, not DDL.
 
 For each data boundary: consistency guarantee, partial-failure behavior, recovery mechanism. Name the distributed consistency strategy when applicable (outbox, saga, compensating transactions). The consistency-boundaries table in the Output template is the contract.
 
 ### 5. Failure Mode and Risk Analysis
 
-Use skill: `ops-failure-classification` for failure type categorization.
+Use skill: `ops-failure-classification` as the failure-type vocabulary for the Scenario column; its Evidence line does not apply before implementation.
 Use skill: `failure-propagation-analysis` for cascading paths.
 Use skill: `review-blast-radius` for impact scope per scenario.
 Use skill: `ops-resiliency` for mitigation patterns.
@@ -172,13 +173,13 @@ For each high-risk scenario: failure mode, blast radius (Narrow / Moderate / Wid
 
 Use skill: `ops-observability` for logging, metrics, and tracing patterns.
 
-Produce: RED metrics per component boundary, trace span coverage across service boundaries, liveness/readiness checks, alert conditions with severity, and at least one SLO candidate tied to user-facing quality. SLO baselines come from Section 1 NFRs.
+Produce: RED metrics per component boundary, trace span coverage across service boundaries, liveness/readiness checks, alert conditions with severity, and at least one SLO candidate tied to user-facing quality in the SLO Candidate block. SLO baselines come from Section 1 NFRs.
 
 ### 7. Performance and Capacity Considerations
 
 Use skill: `architecture-capacity` for throughput estimation and bottleneck identification.
 Use skill: `backend-caching` for cache-based load reduction.
-Use skill: `backend-db-indexing` for query performance.
+Use skill: `backend-db-indexing` for query performance - feeds Bottleneck Prediction.
 
 The bottleneck (component saturating first) and the scaling model are non-optional. At `standard`, coarse numbers suffice: stated or derived RPS (steady and peak) and the binding bottleneck with its approximate saturation point; the per-component capacity model is deep-only. Name cost drivers when scaling has material cost implications.
 
@@ -193,12 +194,12 @@ The rollback trigger (specific condition, not "if something goes wrong") and the
 
 Use skill: `tradeoff-analysis` for structured decision documentation.
 
-For each significant decision: chosen option, alternatives, reasons, what is sacrificed, reversibility, risk-of-being-wrong. Flag High-reversibility-cost decisions (messaging broker, consistency model, primary storage, async vs sync) under a **Significant Decisions** subsection - a bullet list referencing the decision tables, not duplicates of them - and require an ADR before implementation.
+For each significant decision: chosen option, alternatives, reasons, what is sacrificed, reversibility, risk-of-being-wrong, and an observable review trigger. Flag High-reversibility-cost decisions (messaging broker, consistency model, primary storage, async vs sync) under a **Significant Decisions** subsection - a bullet list referencing the decision tables, not duplicates of them - and require an ADR before implementation.
 
 ### 10. Guardrails and Review Guidance
 
 Use skill: `architecture-guardrail` for boundary enforcement rules.
-Use skill: `ops-engineering-governance` for evolving existing guardrails.
+Use skill: `ops-engineering-governance` for evolving existing guardrails - enforcement tiers, and its category prefix (`[strengthen]`, `[automate]`, `[broaden]`, `[retire]`) on the Constraint cell when a guardrail already exists; its Guardrails That Held section is incident-only and does not apply to a design.
 
 Each constraint must be concrete and detectable: rule, what violation looks like, consequence - at least one guardrail per module (per Module Boundaries row). "Follow clean architecture" is not a guardrail; "no module under `domain/` may import from `infrastructure/`" is. Include AI-codegen constraints when patterns must be enforced on generated code.
 
@@ -209,7 +210,7 @@ Run at `standard` and `deep` for any design exposing APIs to external clients, s
 Use skill: `backend-api-guidelines` for HTTP semantics, naming, pagination, RFC 9457 errors, idempotency, multi-tenancy patterns.
 Use skill: `ops-backward-compatibility` for versioning and breaking-change classification.
 
-The output template (Section 11 in Output) lists the per-endpoint fields the design must produce: endpoint table (method, path, auth, request, response, status), idempotency table for state-sensitive endpoints, multi-tenancy pattern, RFC 9457 error examples, and a backward-compatibility table when modifying existing APIs. Treat these as first-class - reviewers must be able to evaluate auth, idempotency, multi-tenancy, and pagination from the proposal alone. Section 11's idempotency table is authoritative for the HTTP endpoints this design exposes - Communication Model rows for those endpoints write "see Section 11" in the Idempotent cell; every other row (events, queues, outbound HTTP calls to external systems) states Yes/No with its mechanism in Notes. Inbound third-party webhooks fit the endpoint table with auth = signature verification (e.g., Stripe-Signature). Outbound events and webhooks delivered to external consumers are contracts too: the Outbound Events / Webhooks table documents payload schema version, receiver-side auth (e.g., HMAC signature header), ordering, and retry/redelivery semantics. Section 8's Backward Compatibility field summarizes deploy-level compatibility; API-change detail lives in Section 11's table.
+The output template (Section 11 in Output) lists the per-endpoint fields the design must produce: endpoint table (method, path, auth, request, response, status), idempotency table for state-sensitive endpoints, multi-tenancy pattern, RFC 9457 error examples, and a backward-compatibility table when modifying existing APIs. Treat these as first-class - reviewers must be able to evaluate auth, idempotency, multi-tenancy, and pagination from the proposal alone. Section 11's idempotency table is authoritative for the HTTP endpoints this design exposes - the Communication Model row for their caller (one row per caller-callee pair, not per endpoint) writes "see Section 11" in the Idempotent cell; every other row (events, queues, outbound HTTP calls to external systems) states Yes/No with its mechanism in Notes. Inbound third-party webhooks fit the endpoint table with auth = signature verification (e.g., Stripe-Signature). Outbound events and webhooks delivered to external consumers are contracts too: the Outbound Events / Webhooks table documents payload schema version, receiver-side auth (e.g., HMAC signature header), ordering, and retry/redelivery semantics. Section 8's Backward Compatibility field summarizes deploy-level compatibility; API-change detail lives in Section 11's table.
 
 ### 12. Diagrams
 
@@ -230,8 +231,10 @@ Use Mermaid's standard syntax: `C4Container` for C4, `sequenceDiagram` with `aut
 
 ## Output
 
-```markdown
+````markdown
 # Architecture Design Proposal
+
+Written for: {reader} (Architecture {High | Low}, {source}; Domain {High | Low}, {source}). Format: {house reference | built-in} _(only when a reviewer profile or reference doc is supplied; below the Direction line, above any house metadata table)_
 
 ## 1. Problem Framing
 
@@ -241,9 +244,17 @@ Functional Scope:
 
 Non-Functional Requirements:
 
+| Category | Target | Measurement | Notes |
+| -------- | ------ | ----------- | ----- |
+| Performance / Availability / Scalability / Security / Operability / Data | Measurable threshold | How it is measured | (assumed: basis) when defaulted |
+
 Constraints:
 
+- Conflict: {tension} - options: {a} / {b}
+
 Assumptions:
+
+Open Questions:
 
 ## 2. System Context and Boundaries
 
@@ -263,7 +274,7 @@ Downstream Consumers:
 
 | Boundary | Crosses     | Must Not Cross          | Failure Propagation |
 | -------- | ----------- | ----------------------- | ------------------- |
-| A -> B   | Data/events | Internal implementation | Isolated / Shared   |
+| A -> B   | Data/events | Internal implementation | Isolated / Shared: Narrow/Moderate/Wide/Critical |
 
 ## 3. Architecture Overview
 
@@ -282,9 +293,9 @@ Downstream Consumers:
 
 ### Caching Strategy
 
-| Cache Target | TTL      | Invalidation  | Staleness Tolerance |
-| ------------ | -------- | ------------- | ------------------- |
-| What         | How long | How refreshed | Acceptable lag      |
+| Cache Target | TTL      | Invalidation  | Staleness Tolerance | Stampede Risk                |
+| ------------ | -------- | ------------- | ------------------- | ---------------------------- |
+| What         | How long | How refreshed | Acceptable lag      | Low/Medium/High - mitigation |
 
 ### Security Model
 
@@ -310,7 +321,7 @@ Rate limiting and abuse controls:
 
 ### Schema Evolution
 
-[Strategy for backward-compatible schema changes]
+[Strategy for backward-compatible schema changes; an expand-contract sequence as a Phase / Change / Verify-before-next table]
 
 ## 5. Failure and Risk Analysis
 
@@ -336,9 +347,9 @@ Rate limiting and abuse controls:
 
 ### Metrics
 
-| Metric       | Component | Type | Alert Threshold |
-| ------------ | --------- | ---- | --------------- |
-| request_rate | Name      | RED  | Condition       |
+| Metric       | Component | Type                                  | Alert Threshold |
+| ------------ | --------- | ------------------------------------- | --------------- |
+| request_rate | Name      | RED / Business / Saturation / Absence | Condition       |
 
 ### Tracing
 
@@ -349,6 +360,16 @@ Rate limiting and abuse controls:
 | Check | Type     | Dependency | Failure Action |
 | ----- | -------- | ---------- | -------------- |
 | Name  | Liveness | What       | What happens   |
+
+### SLO Candidate
+
+SLI:
+
+SLO:
+
+Error budget:
+
+Burn-rate alert:
 
 ## 7. Performance and Capacity
 
@@ -387,6 +408,11 @@ Feature Flags:
 | Trade-off     | What is sacrificed         |
 | Reversibility | Easy / Moderate / Hard     |
 | Risk          | What could make this wrong |
+| Review Trigger | Observable condition that says revisit |
+
+### Significant Decisions
+
+- {Decision name} - High reversibility cost; ADR required before implementation
 
 ## 10. Guardrails and Review Guidance
 
@@ -513,13 +539,14 @@ Walk through the failure end-to-end:
 - **If traffic doubles**: {What saturates first, what to scale, what must be redesigned}
 - **If {key dependency} is removed**: {What breaks, what the fallback is}
 - **If team size changes significantly**: {What becomes hard to maintain, what should be simplified}
-```
+````
 
 ## Self-Check
 
+- [ ] behavioral-principles loaded first, stack-detect second
 - [ ] Every module boundary states responsibility, data ownership, and isolation guarantee
 - [ ] Every component lists primary failure mode
-- [ ] Every significant decision has a rejected alternative with reason; trade-offs include negatives
+- [ ] Every significant decision has a rejected alternative with reason; trade-offs include negatives; each carries a review trigger
 - [ ] Consistency model stated per data boundary, with partial-failure behavior
 - [ ] Highest-blast-radius scenario has a mitigation; retry amplification and backpressure assessed
 - [ ] Rollback strategy and rollback trigger present; observability plan names an SLO candidate

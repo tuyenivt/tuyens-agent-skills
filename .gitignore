@@ -1,3 +1,6 @@
 ### Claude ###
 CLAUDE.local.md
 settings.local.json
+
+eval-workspace/
+tmp/

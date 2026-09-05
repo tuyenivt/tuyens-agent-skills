@@ -37,7 +37,7 @@ Depth (`standard` (default) | `deep`) and scope (`Core` | `+Perf` | `+Sec` | `+O
 
 Defaults to current branch vs base; fails fast on trunk. Use `pr-<N>` for a local fetched ref. The workflow never modifies the working tree.
 
-Pass `--req <path>` to name a requirement source (ticket export, PRD, spec) for Step 3.7; without it, Step 3.7 uses whatever requirement is already in context.
+Pass `--req <path>` to name a requirement source (ticket export, PRD, spec) for Step 3.7; without it, `review-change-intent`'s own source ladder decides what counts as a source - the workflow adds nothing.
 
 ## Workflow
 
@@ -52,6 +52,8 @@ Use skill: `stack-detect`. Accept pre-detected from parent. If not Rails, redire
 ### Step 3 - Resolve the Diff
 
 Use skill: `review-precondition-check`. Surface fail-fast messages verbatim and stop. The handle may include a `prior_checkpoint` block (a prior `review-<branch>.md` exists). Decision logic is Step 3.5; for now, just hold onto it.
+
+From the handle, fix `branch` = the head short name (the handle's `current_branch` when `head_ref` is `HEAD`). It names the review target everywhere below: the no-op message, the writer's `branch` field, and the report filename. `head_ref` itself passes through unchanged.
 
 On approval, read **once** (skip when a parent passed pre-read artifacts):
 
@@ -92,7 +94,7 @@ No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, 
 
 | Condition                                                              | Decision                                                                                                                            |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `prior_checkpoint.head_sha == current_head_sha`, and the invocation adds no scope or depth beyond the prior checkpoint | **No-op.** Print `No new commits on <head_ref_short> since prior review at <sha_short>. Prior report unchanged.` (where `<head_ref_short>` is the short name of `head_ref` - the review target, not the user's current branch - and `<sha_short>` is the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
+| `prior_checkpoint.head_sha == current_head_sha`, and the invocation adds no scope or depth beyond the prior checkpoint | **No-op.** Print `No new commits on <branch> since prior review at <sha_short>. Prior report unchanged.` (`<sha_short>` = the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
 | `prior_checkpoint.head_sha == current_head_sha`, but the invocation expands scope or depth beyond it | `round = prior.round + 1`. Note in Summary: `Same head as round <prior.round>; re-review for expanded <scope\|depth>.` |
 | `git merge-base --is-ancestor <prior_head_sha> <current_head_sha>` fails (prior SHA unreachable) | `round = prior.round + 1`. Note in Summary: `Prior checkpoint unreachable - history rewritten.`      |
 | `prior_checkpoint.base_sha != current_base_sha`                        | `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round>.`       |
@@ -107,25 +109,34 @@ If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `
 
 The reconciliation table (when emitted) only covers findings whose scope was active in the prior round.
 
-**Scope precedence on round 2+:** user flag > firing signals. Signals are scored on the full range every round, so a scope that escalated in round 1 escalates again on its own - nothing is inherited from the prior checkpoint. When the resolved scope still falls below the checkpoint's (round 1 was user-flagged), note in Summary: `Scope narrowed vs round <prior.round>: <list> - re-run with <flags> to re-cover.`
+**Scope on round 2+** resolves exactly as on round 1 (Step 4): the union of user flags and signals firing on the full range, with `core-only` suppressing the signals. Nothing is inherited from the checkpoint - a scope that escalated in round 1 escalates again on its own. When the resolved scope still falls below the checkpoint's (round 1 was user-flagged), note in Summary: `Scope narrowed vs round <prior.round>: <list> - re-run with <flags> to re-cover.`
 
 ### Step 3.7 - Change Intent
 
 Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req <path>` file when passed, and `prior_checkpoint.report_path` when round > 1.
 
-Its `## Change Brief` block goes into the report verbatim, its `Requirement Source` and `Requirement Fit` lines into Summary, and its findings join the assembled set verified in Step 9.4. With no requirement source the Brief still renders, and the traceability block and its two Summary lines are omitted. Runs before the Step 4 risk snapshot - acceptance criteria decide what counts as a defect downstream - and the low-risk short-circuit never skips it.
+Its `## Change Brief` block goes into the report verbatim, its `Requirement Source` and `Requirement Fit` lines into Summary, and its `### Requirement Findings` items join the assembled set in Step 9.3 - that section and the `### No Requirement Findings` marker are consumed, never rendered. With no requirement source the Brief still renders, and the traceability block and its two Summary lines are omitted. Runs before the Step 4 risk snapshot - acceptance criteria decide what counts as a defect downstream - and the low-risk short-circuit never skips it.
 
 ### Step 4 - Risk Snapshot
 
-Use skills: `review-pr-risk`, `review-blast-radius`. State **Risk Level** and **Blast Radius** before line-level findings.
+Use skills: `review-pr-risk`, `review-blast-radius`. State **Risk Level** and **Blast Radius** before line-level findings. Only those two lines reach the report; the atomics' full blocks (`Signals:`, `Action:`, dimension lines, `Mitigation:`) inform the review and are not emitted.
 
-**Resolve scope now** (round 1): union of user flags and signals firing on the Step 3 diff; `core-only` suppresses signal escalation. Record firing signals in Summary. (Round 2+ precedence: Step 3.5c.)
+**Resolve scope now:** union of user flags and signals firing on the Step 3 diff; `core-only` suppresses signal escalation. The Summary `Scope:` line carries the resolved value plus one annotation:
 
-**Low-risk short-circuit:** Risk: Low + Blast Radius: Narrow + change does not touch auth, middleware, API contracts, shared concerns, `app/services/`, or `lib/` -> skip Steps 6-8, produce Step 5 only (with its atomic skills); Step 9 still follows its own scope rules, and Steps 9.4 (and 9.5 on round 2+) still run; Step 10 still writes the report (Summary + the Step 3.7 outputs (Change Brief, traceability, requirement findings) + Step 5 findings + Next Steps). Note `Low-risk short-circuit: Steps 6-8 skipped` in Summary. When `core-only` suppressed a firing escalation signal, record the suppressed signal in Summary and emit a `[Delegate]` Next Step naming the matching `/task-rails-review-*` command; a Step 5 carve-out finding on the same defect keeps its own `[Implement]` entry - the lens sweep and the point fix are separate steps, never merged.
+| Observed                              | Annotation                                         |
+| ------------------------------------- | -------------------------------------------------- |
+| No user flag, signals fired           | `auto-escalated from Core; signals: <list>`        |
+| User flag, further categories fired   | `user-flagged; signals also firing: <list>`        |
+| `core-only`, signals fired            | `core-only; suppressed signals: <list>`            |
+| Otherwise                             | none                                               |
+
+Every suppressed signal also emits a `[Delegate]` Next Step naming the matching `/task-rails-review-*` command, whether or not the short-circuit below fires. A Step 5 carve-out finding on the same defect keeps its own `[Implement]` entry - the lens sweep and the point fix are separate steps, never merged.
+
+**Low-risk short-circuit:** Risk: Low + Blast Radius: Narrow + change does not touch auth, middleware, API contracts, shared concerns, `app/services/`, or `lib/` -> skip Steps 6-8. Step 5 runs with its atomic skills; Step 9 follows its own scope rules; Steps 9.3-9.4 (and 9.5 on round 2+) and Step 10 run as usual. Note `Low-risk short-circuit: Steps 6-8 skipped` in Summary.
 
 ### Step 5 - Rails Correctness
 
-Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (strong params, authz, IDOR, mass assignment, AR-in-API leakage, endpoint idempotency keys) belong to `task-rails-review-security`. When +Sec IS in scope, core stays silent on them - the subagent owns them and Step 10 dedups. When +Sec is not in scope, raise the most severe as a `[Recommend]` and note "verify via `/task-rails-review-security`". Job idempotency guards, retries, and timeouts follow the same pattern with +Rel: the reliability subagent owns them when +Rel is in scope; otherwise raise the most severe as a `[Recommend]` + "verify via `/task-rails-review-reliability`". Dual-natured findings (a TOCTOU balance check is both a race and an authz-adjacent hole) are filed by core for the correctness dimension; the merge unifies.
+Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (strong params, authz, IDOR, mass assignment, AR-in-API leakage, endpoint idempotency keys) belong to `task-rails-review-security`. When +Sec IS in scope, core stays silent on them - the subagent owns them and Step 9.3 dedups. When +Sec is not in scope, raise only the most severe as a `[Recommend]` ending "verify via `/task-rails-review-security`" - the rest are not written; the lens owns them. Job idempotency guards, retries, and timeouts follow the same pattern with +Rel: the reliability subagent owns them when +Rel is in scope; otherwise raise only the most severe as a `[Recommend]` + "verify via `/task-rails-review-reliability`". Dual-natured findings (a TOCTOU balance check is both a race and an authz-adjacent hole) are filed by core for the correctness dimension; the merge unifies.
 
 Atomic skills (consult when PR touches the area):
 
@@ -166,7 +177,7 @@ Checks:
 - [ ] Breaking change (removed/renamed/retyped attribute, tightened validation, newly required param, changed status or error shape) carries a version bump or expand-contract plan; "no external callers" backed by a search; when consumption is unknown, treat a `/v1/`-versioned or spec-published surface as externally consumed
 - [ ] Responses rendered through serializers, never a raw AR model; errors follow RFC 9457; collections paginated
 - [ ] rswag / `openapi.yaml` matches the code - changed endpoints, schemas, status codes, and error shapes present and accurate
-- [ ] Each finding names who breaks and how (for a leaked AR model: what it exposes and who couples to it). Severity maps to labels: High -> `[Must]` = unversioned breaking change to an externally consumed contract, or a raw AR model rendered on an externally consumed / versioned surface - a contract-shape finding this gate files itself (the Step 10 merge dedups with +Sec, per the dual-natured rule); Medium -> `[Recommend]` = internal breaking change with no coordinated-deploy note, inconsistent status/error envelope, unpaginated unbounded collection, rswag / `openapi.yaml` out of sync with the code; Low = naming drift with no consumer impact - below the reporting bar, write nothing. A raw AR model on an internal-only surface follows the Step 5 security carve-out instead ([Recommend] + verify note when +Sec is absent; core silent when +Sec runs); one finding per `file:line` either way
+- [ ] Each finding names who breaks and how (for a leaked AR model: what it exposes and who couples to it). Severity maps to labels: High -> `[Must]` = unversioned breaking change to an externally consumed contract, or a raw AR model rendered on an externally consumed or versioned surface - a contract-shape finding this gate files itself (the Step 9.3 merge dedups with +Sec, per the dual-natured rule); Medium -> `[Recommend]` = internal breaking change with no coordinated-deploy note, inconsistent status/error envelope, unpaginated unbounded collection, rswag / `openapi.yaml` out of sync with the code; Low = naming drift with no consumer impact - below the reporting bar, write nothing. A raw AR model on an internal-only, unversioned surface follows the Step 5 security carve-out instead ([Recommend] + verify note when +Sec is absent; core silent when +Sec runs); one finding per `file:line` either way
 
 ### Step 6 - Architecture
 
@@ -192,7 +203,7 @@ For multi-service PRs, also use skill: `ops-backward-compatibility` for API cont
 
 - [ ] **Naming**: classes are nouns; services describe an action (`FulfillOrder`); scopes are queries (`active`, `completed_after`)
 - [ ] **Magic numbers/strings** extracted to constants or `Rails.application.config.x.*`
-- [ ] **Credentials/URLs**: `Rails.application.credentials` or env config, never inline
+- [ ] **Credentials/URLs**: `Rails.application.credentials` or env config, never inline - filed here even when +Sec runs; Step 9.3 dedups
 - [ ] **Method length**: > 15 lines reviewed; > 30 flagged unless `.call` orchestrating clearly named steps
 - [ ] **Duplicated query logic**: same `.where(...).order(...)` in 3+ places extracted to a scope or query object
 - [ ] **Logging hygiene**: correct levels; structured fields when `lograge`/`semantic_logger` is configured (depth owned by observability subagent)
@@ -220,11 +231,20 @@ Skip if `core-only`. For each selected scope, spawn one independent subagent in 
 
 Scopes added by *firing signals* and by *user flag* alike review the full range; Step 3.5c records the expansion for the reconciliation table.
 
+### Step 9.3 - Assemble the Finding Set
+
+Runs once Step 9 has returned (with no lens in scope, on core's findings alone). Verify, reconcile, and the report all read this set, so build it in order:
+
+1. **Project each lens's findings onto this report's shape.** Match tiers on the severity word, not the heading string - perf, observability, and reliability head tiers `High` / `Medium` / `Low` (`Impact` or `Severity`), security `Critical` / `High` / `Medium` / `Low`. Label per the lens's own rule: Critical / High -> `[Must]`, Medium / Low -> `[Recommend]`; reliability's explicit `Label:` field wins where present. Re-file each as `### [Label] file:line` with `Issue` / `Impact` / `Fix` (plus `System Risk` on a `[Must]`). Nothing downstream reads lens headings - `review-prior-findings-reconcile` sees only `## High-Impact Findings`.
+2. **Merge.** Core (Steps 5-8), Step 3.7, and lens findings that make the same claim about the same defect collapse to one entry: strongest label wins (`Must` > `Recommend`), one `file:line`, and when two or more sources raised it, `raised by: <sources>` appended to the Issue line using the tokens `core`, `+Perf`, `+Sec`, `+Obs`, `+Rel` (Step 3.7 findings count as `core`). Distinct claims at one `file:line` stay separate entries - never re-anchor one to a neighbouring line to make room. When sources disagree on a fact (one lens calls a timeout infinite, another says 60 s), pick neither: Step 9.4's evidence settles it.
+3. **Non-finding lens sections.** A lens `## Recommendations` block is not findings: items about boundaries, coupling, or dependencies go to `## Architecture Notes`, the rest to `## Maintainability Notes`. Any other section a lens returns (reliability's `Failure-Mode and Blast-Radius Map`, observability's SLI/SLO definitions at `deep`) is preserved verbatim as its own section after Next Steps.
+4. **Next Steps.** Merge lens Next Steps into one list, keeping `[Implement]` / `[Delegate]` tags and a delegate's `[scope: ...]` token; Step 10 orders it.
+
 ### Step 9.4 - Verify Findings (second pass)
 
-Use skill: `review-finding-verify` with the assembled findings (including any merged back from subagents), the diff already read, and `base_ref` / `head_ref`.
+Use skill: `review-finding-verify` with the Step 9.3 set, the diff already read, and `base_ref` / `head_ref`. One row per assembled entry - a merged entry is one row, so the tally counts each defect once, not once per source that raised it.
 
-Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally line into Summary's `Findings verified:` slot verbatim, parenthetical included; the tally counts each distinct defect once, not once per scope that raised it.
+Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally line into Summary's `Findings verified:` slot verbatim, parenthetical and unverified suffix included.
 
 ### Step 9.5 - Reconcile Prior Findings (round 2+ only)
 
@@ -237,20 +257,17 @@ Skip on round 1. Otherwise use skill: `review-prior-findings-reconcile` with:
 
 The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
 
-Fold any `Still open` rows into `## Next Steps` as `(open since round <prior.round>)`-suffixed entries, ordered by severity alongside this round's new findings (ties at the same label: carryover first). Do not emit a standalone "Carry-Over Open Items" section. A prior finding rediscovered by this round's full-range analysis renders once in High-Impact Findings, once as a `Still open` reconciliation row, and once in Next Steps with the suffix - never twice in the findings list.
+Fold any `Still open` rows into `## Next Steps` as `(open since round <prior.round>)`-suffixed entries, ordered by label alongside this round's new findings (ties at the same label: carryover first). Do not emit a standalone "Carry-Over Open Items" section. A `Still open` row this round re-derived renders once in High-Impact Findings at this round's label, once as the reconciliation row (prior label verbatim), and once in Next Steps with the suffix at this round's label - never twice in the findings list. A `Still open` row not re-derived appears in the reconciliation table and Next Steps only, at its prior label.
 
-### Step 10 - Synthesize and Report
+### Step 10 - Report
 
-Merge subagent findings:
-- Deduplicate cross-cutting findings; one entry citing all scopes that raised it (`raised by: <scopes>` appended to the Issue line)
-- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend`
-- Preserve `file:line` citations; order by intent, not scope
-- Merge Next Steps into one prioritized list; preserve `[Implement]`/`[Delegate]` tags
-- Preserve deep-only sections returned by subagents (e.g., reliability's `Failure-Mode and Blast-Radius Map`) as their own section after Next Steps - they are not findings; the merge must not drop them
+**Assessment** follows the open-label set: `Request Changes` when any `[Must]` is open - this round's published findings and round 2+ `Still open` reconciliation rows count alike; `Discuss` when no `[Must]` is open but a `[Recommend]` rests on an assumption only the author can settle; `Approve` otherwise - `[Recommend]`s alone do not block.
+
+Order findings and Next Steps by label (`[Must]` first), not by scope; carryovers per Step 9.5.
 
 Use skill: `review-report-writer` with `report_type: review` and these checkpoint fields:
 
-- `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
+- `branch` (Step 3), `base_ref` and `head_ref` (as the handle emitted them), `base_sha = current_base_sha`, `head_sha = current_head_sha`
 - `mode: full` (the writer's only accepted value), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
 - `scope` (resolved in Step 4; frontmatter uses the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full`), `depth` (resolved/auto-promoted), `stack = ruby-rails`
 
@@ -258,12 +275,7 @@ Print confirmation line.
 
 ## Feedback Labels
 
-| Label        | Meaning                                                                  |
-| ------------ | ------------------------------------------------------------------------ |
-| [Must]       | Do not merge until this is fixed.                                        |
-| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
-
-No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]` or `[Recommend]`, don't write it down.
+Every finding carries exactly one label: `[Must]` (do not merge until this is fixed) or `[Recommend]` (fix, or push back with reasoning - cannot be silently acked). No other label is written; what earns neither is not written down.
 
 ## Output Format
 
@@ -272,18 +284,17 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Summary
 
-**Assessment:** Approve | Request Changes | Discuss
-_(Request Changes = any open [Must] - this round's findings and round 2+ `Still open` reconciliation rows count alike; Discuss = no open [Must] but an unresolved assumption in a [Recommend] gates the verdict; Approve = neither - [Recommend]s alone don't block.)_
+**Assessment:** Approve | Request Changes | Discuss - <open [Must] count; on Discuss, the assumption to settle>
 - **Risk Level:** Low | Medium | High | Critical
 - **Blast Radius:** Narrow | Moderate | Wide | Critical
 - **Stack Detected:** Ruby <version> / Rails <version>
-- **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(append `auto-escalated from Core; signals: <list>` or `user-flagged; signals also firing: <list>` as applicable)_
+- **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(plus the Step 4 annotation when one applies)_
 - **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` if applicable)_
 - **Round:** <N>                                _(include from round 2 onward)_
 - **Findings verified:** <the tally line from `review-finding-verify`, carried verbatim>
 - **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Step 3.7 resolved no source)_
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
-- **Notes:** <every note line mandated by Steps 3.5/3.5c/4/9 - narrowing, expansion, suppressed signals, short-circuit, incomplete scopes; omit the line when none>
+- **Notes:** <every note line mandated by Steps 3.5/3.5c/4/9 - narrowing, expansion, short-circuit, incomplete or inline scopes; omit the line when none>
 
 ## Change Brief
 
@@ -312,7 +323,7 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 ## High-Impact Findings
 
 ### [Must] file:line
-- Issue: [Rails idiom named: callback abuse, fat controller, mid-transaction HTTP, gap-lock range scan, etc.]
+- Issue: [Rails idiom named: callback abuse, fat controller, mid-transaction HTTP, gap-lock range scan, etc.] raised by: <sources, only when two or more>
 - Impact: [user-visible or operational consequence]
 - System Risk: [why this is system-level, not just a local bug]
 - Fix: [concrete Rails change with code]
@@ -323,39 +334,41 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 - Fix:
 
 ## Architecture Notes
-- Boundary impact / Coupling change / Drift detected
+- Boundary impact / Coupling change / Drift detected / lens recommendations on boundaries, coupling, dependencies
 
 ## Maintainability Notes
-- Over-engineering detected / Simplification opportunities
+- Over-engineering detected / Simplification opportunities / other lens recommendations
 
 ## Key Takeaways
 - 2-4 bullets on systemic impact
 
 ## Next Steps
 
-On round 2+, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings (ties at the same label: carryover first). Prioritized; each `[Implement]` or `[Delegate]`; order Must > Recommend.
-
 1. **[Implement]** [Must] file:line - one-line action
 2. **[Implement]** [Recommend] OldFile.rb:88 - N+1 in listAll (open since round 1)
-3. **[Delegate]** [Recommend] [scope] - one-line action
+3. **[Delegate]** [Recommend] [+Sec] - run `/task-rails-review-security` (suppressed signal: <signal>)
+4. **[Delegate]** [Recommend] [scope: platform] - one-line action carried from a lens
+
+## <Lens section title> _(each non-finding section a lens returned, verbatim - Step 9.3)_
 ```
 
 _Omit empty sections. Omit Next Steps entirely if no actionable findings._
 
 ## Self-Check
 
-- [ ] Steps 1-3: behavioral rules, stack, diff resolved (or accepted from parent); diff/log read once; `review-precondition-check` ran (or handle received); current_head_sha and current_base_sha captured
+- [ ] Steps 1-3: behavioral rules, stack, diff resolved (or accepted from parent); diff/log read once; `review-precondition-check` ran (or handle received); `branch`, current_head_sha, and current_base_sha fixed
 - [ ] Step 3.5 - round decided (1 / prior + 1 / no-op); auto-fetch attempted only when prior checkpoint exists; the full `<base_ref>...<head_ref>` range analyzed regardless of round; no-op path exits without writing the report
-- [ ] Step 3.7 - `review-change-intent` ran on the cumulative diff; Change Brief carried into the report; requirement lines in Summary, or all three requirement outputs omitted when no source resolved; its findings verified with the rest
-- [ ] Step 4: Risk and Blast Radius stated before findings; depth auto-promoted on Wide/Critical
-- [ ] Step 5: Rails correctness only - security idioms deferred to the security subagent or flagged for it; API contract checks ran when a route, serializer, permitted param, or rswag/openapi spec changed
+- [ ] Step 3.7 - `review-change-intent` ran on the cumulative diff; Change Brief carried into the report; requirement lines in Summary, or all three requirement outputs omitted when no source resolved; its findings consumed into the set, section header not rendered
+- [ ] Step 4: Risk and Blast Radius stated before findings, atomic blocks not emitted; depth auto-promoted on Wide/Critical; scope resolved with its Summary annotation; a `[Delegate]` Next Step per suppressed signal
+- [ ] Step 5: Rails correctness only - security idioms deferred to the security subagent or the single most severe flagged for it; API contract checks ran when the diff carried a contract-change signal
 - [ ] Step 6: architecture / layering / Zeitwerk / multi-tenant / multi-DB applied via `architecture-guardrail` (or skipped via low-risk short-circuit)
 - [ ] Step 7: complexity + overengineering reviews run; test verbosity checked (or skipped via low-risk short-circuit)
 - [ ] Step 8: maintainability checks applied (or skipped via low-risk short-circuit)
 - [ ] Step 9: non-Core subagents ran in parallel with pre-resolved artifacts; failed scopes noted
-- [ ] Step 9.4 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels applied; tally in Summary
-- [ ] Step 9.5 - on round 2+, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
-- [ ] Step 10: findings merged with dedup + strongest-intent-wins; report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack)
+- [ ] Step 9.3 - lens findings projected to `### [Label] file:line`; same-claim findings merged with strongest label and `raised by:`; distinct claims kept apart; lens Recommendations routed to Notes; other lens sections preserved
+- [ ] Step 9.4 - review-finding-verify ran on the assembled set; Dropped rows excluded; verdict labels applied; tally in Summary verbatim
+- [ ] Step 9.5 - on round 2+, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix at the right label
+- [ ] Step 10: Assessment derived from the open-label set; findings and Next Steps ordered by label; report written via `review-report-writer` with full checkpoint fields (branch, mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack)
 - [ ] Every Must cites system risk; every finding has label + `file:line` + actionable Rails fix
 
 ## Avoid
@@ -365,10 +378,8 @@ _Omit empty sections. Omit Next Steps entirely if no actionable findings._
 - Scoping round 2+ analysis to `<prior_head_sha>...<head_sha>` - risk, scope, depth, and requirement fit score the full `<base_ref>...<head_ref>` range on every round.
 - Writing the report on no-op exit - the file must stay byte-identical. (Same head SHA with expanded scope/depth is not a no-op - Step 3.5b.)
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
-- Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
 - Duplicating perf / security / observability / reliability depth here - dedicated subagents own it
 - Reviewing without reading the full diff and log first
 - Applying generic backend conventions where a Rails idiom exists
 - Nitpicking style
-- Appending raw subagent reports instead of merging into one intent-ordered list
 - Running extra-scope subagents sequentially or when `core-only` was passed
