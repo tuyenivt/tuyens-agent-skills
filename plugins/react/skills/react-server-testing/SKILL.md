@@ -34,7 +34,7 @@ user-invocable: false
 | Mechanism             | Speed  | Catches                             | Cost                                                    |
 | --------------------- | ------ | ------------------------------------- | --------------------------------------------------------- |
 | Transaction rollback  | Fast   | Most logic bugs                     | Cannot test code that commits its own transaction       |
-| Truncate between tests | Medium | Everything, including commits       | Requires ordered truncation or deferred constraints     |
+| Truncate between tests | Medium | Everything, including commits       | One `TRUNCATE ... CASCADE` covers FK order; names need quoting |
 | Fresh container per file | Slow | Everything, including migrations    | Only worth it for the migration suite                   |
 
 Default to truncation. Transaction rollback is faster but silently cannot test the transaction boundary itself, which is exactly where the expensive bugs live.
@@ -59,8 +59,11 @@ export default async function () {
 ```ts
 // test/setup.ts - per test file
 beforeEach(async () => {
-  const tables = await publicTableNames();    // introspect information_schema, excluding _prisma_migrations; a hand-maintained list rots silently
-  await db.$executeRawUnsafe(`TRUNCATE ${tables.join(", ")} RESTART IDENTITY CASCADE`);
+  // Introspect information_schema for BASE TABLEs only (views cannot be truncated),
+  // excluding _prisma_migrations; a hand-maintained list rots silently.
+  const tables = await publicTableNames();
+  const quoted = tables.map((t) => `"${t}"`).join(", ");   // Prisma's PascalCase names need quoting; `user` is reserved
+  await db.$executeRawUnsafe(`TRUNCATE ${quoted} RESTART IDENTITY CASCADE`);
 });
 ```
 
@@ -68,7 +71,7 @@ The container starts in `globalSetup` because that runs in the main process befo
 
 Running the real migrations rather than a schema sync means the test suite also verifies that the migrations produce the schema the code expects, which is otherwise only discovered in production.
 
-One shared database plus parallel workers race on truncation: set `fileParallelism: false`, or give each worker its own schema (derive it from `VITEST_POOL_ID`) when suite time matters.
+One shared database plus parallel workers race on truncation: set `fileParallelism: false`. Per-worker schemas are the faster alternative but need more than a name: `globalSetup` migrates the default schema only, so each worker must create its own schema and run the migrations against it, then rewrite `DATABASE_URL` before the client module is imported.
 
 ### Testing a Service Function
 
@@ -90,6 +93,11 @@ it("publishes only reviewed questions", async () => {
 A Server Action is an async function, so it is called directly. What it needs is a request context, which is supplied by stubbing the session boundary rather than the database.
 
 ```ts
+import { requireAdmin } from "@/server/identity/session";
+import { publish } from "@/app/actions/publish";
+import { ForbiddenError } from "@/server/identity/errors";
+import { countPublished } from "test/helpers";
+
 vi.mock("@/server/identity/session", () => ({
   requireAdmin: vi.fn(),
   requireUser: vi.fn(),
@@ -129,21 +137,21 @@ Splitting the page's data function out of the component, as `react-server-data-l
 
 ## Output Format
 
-When standing up testing (authoring), emit the isolation choice with its table-derived justification, the setup files, then the first tests as a `Tests to Write` list (test name plus the assertion that matters) - and close with this assessment block covering what remains, its headers naming the authored setup. When assessing, headers describe the layer as found: a split suite lists each observed value (`mocked (unit) / real (containerized, integration)`); with no server tests, Isolation is `none` and Database is `none - no server tests exist`. Open the block with `Scope: <files assessed>` directly under the heading and, when the caller asked a direct question (a yes/no or either/or ask), one `Verdict:` line answering it. Order gaps by severity, blast radius breaking ties (payment and webhook surfaces first), one gap per surface (function or route). Absent or defective infrastructure is one gap of its own listing each defect; per-surface gaps assume it lands.
+When standing up testing (authoring), emit in this order: the chosen isolation mechanism with the one-line reason the Isolation table gives for it; each setup file in full under a `### <file path>` heading; a `### Tests to Write` list naming, for every surface in scope, the test and the assertion that matters (the authorization case first wherever one applies); then this assessment block covering what the authored setup does not yet cover, its headers describing that setup. Where a required case cannot pass against the code as written - an authorization test on a function with no authorization - list the test in `Tests to Write` marked `(fails until <the change it forces>)` and raise the underlying defect as a Gap. When assessing, headers describe the layer as found: a split suite lists each observed value (`mocked (unit) / real (containerized, integration)`); with no server tests, Isolation is `none` and Database is `none - no server tests exist`. Open the block with `Scope: <files assessed>` directly under the heading and, when the caller asked a direct question (a yes/no or either/or ask), one `Verdict:` line answering it. Order gaps by severity, blast radius breaking ties (payment and webhook surfaces first), one gap per exported function or route - two functions in one file are two gaps, and merge only when a single test would close both. Absent or defective infrastructure is one gap of its own listing each defect; per-surface gaps assume it lands.
 
 ```
 ## Server Test Assessment
 
 **Isolation:** {transaction rollback | truncate | fresh container | none}
 
-**Database:** {real (containerized) | real (shared test DB) | mocked}
+**Database:** {real (containerized) | real (shared test DB) | mocked | none - no server tests exist; name each when the suite is split, e.g. `mocked (unit) / real (containerized, integration)`}
 
-**Client-side coverage:** {present (not assessed - react-testing-patterns scope) | none present}
+**Client-side coverage:** {present (not assessed - client testing is a separate concern) | none present | n/a (authoring server tests)}
 
 ### Gaps
 
 - [Severity: High | Medium | Low] {function or route} - {gap description}
-  - Missing: {one or more of: authorization case | database-backed test | isolation | migration coverage | error path | ownership/IDOR case | harness (container lifecycle, env race, stale table list)}
+  - Missing: {one or more of: authorization case | database-backed test | isolation | migration coverage | error path | ownership/IDOR case | sanctioned-mock breach (a verifier, ORM, or own module mocked where the real thing must run) | harness (container lifecycle, env race, stale table list)}
   - Risk: {what ships broken}
   - Recommendation: {concrete test to add}
 
@@ -158,7 +166,7 @@ Severity:
 - **Medium**: happy path only; migrations not exercised; ownership and IDOR paths untested.
 - **Low**: missing edge cases on an otherwise covered function.
 
-Omit "No Gaps Found" when gaps were listed. If the project has no server surface, emit `No server test findings (no server surface).` and stop.
+Omit "No Gaps Found" when gaps were listed. A clean run still emits `Scope:`, the `Verdict:` line when one was asked for, all three header fields, and `No Gaps Found`; only the gap entries are omitted. If the project has no server surface, emit `Scope:`, the `Verdict:` line when one was asked for, and `No server test findings (no server surface).` - the three header fields and the gap list are omitted; a `Verdict:` answers the server-test question only, naming any part of the caller's ask that falls outside this skill.
 
 ## Avoid
 

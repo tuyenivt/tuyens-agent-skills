@@ -1,6 +1,6 @@
 ---
 name: frontend-accessibility
-description: Audit and build UI for WCAG 2.1 AA - semantic HTML, ARIA, keyboard nav, focus management, color contrast, screen reader testing.
+description: Audit and build UI for WCAG 2.1 AA - semantic HTML, ARIA, keyboard nav, focus management, color contrast, live regions.
 metadata:
   category: frontend
   tags: [frontend, accessibility, a11y, wcag, aria, keyboard, screen-reader, multi-stack]
@@ -14,12 +14,13 @@ user-invocable: false
 ## When to Use
 
 - Building or reviewing UI components for WCAG 2.1 AA compliance
+- Specifying the accessible behaviour of a component before it is built
 - Adding keyboard navigation or focus management to interactive elements
 - Auditing pages before release
 
 ## Rules
 
-Cite the WCAG criterion in parentheses when reporting a violation.
+Cite the WCAG criterion for every violation: in the `WCAG Criterion` column when emitting the audit block, in parentheses when mentioning one in prose.
 
 - Use native HTML semantics first (`button`, `a`, `nav`, `dialog`); ARIA only when no native element fits (4.1.2)
 - Every interactive element must be keyboard-operable (2.1.1) and have a visible focus indicator (2.4.7)
@@ -67,7 +68,8 @@ Key rules:
 
 | Component        | Expected Keys                                                |
 | ---------------- | ------------------------------------------------------------ |
-| Button/Checkbox  | Enter/Space to activate or toggle                            |
+| Button           | Enter or Space to activate                                   |
+| Checkbox         | Space to toggle; Enter submits the form, it does not toggle  |
 | Link             | Enter to follow                                              |
 | Menu/Combobox    | Arrows to navigate, Enter to select, Escape to close         |
 | Dialog           | Escape to close, Tab trapped within                          |
@@ -77,11 +79,13 @@ Key rules:
 
 ### Focus Management
 
-Modals/dialogs (2.4.3; trap must be escapable per 2.1.2):
+Modals/dialogs (2.4.3; trap must be escapable per 2.1.2). A native `<dialog>` opened with
+`showModal()` already saves the previous focus, inerts the rest of the page and restores focus on
+close, so only step 2 is yours. Hand-rolled dialogs owe all four:
 1. Save previously focused element
-2. Move focus to first focusable in dialog
-3. Trap Tab/Shift+Tab within dialog
-4. On close, restore focus to saved element
+2. Move focus to the first focusable in the dialog
+3. Trap Tab/Shift+Tab within the dialog
+4. On close, restore focus to the saved element
 
 After dynamic changes: move focus to next item (deletion), main heading (SPA route change), or trigger (toast dismissed).
 
@@ -91,16 +95,21 @@ Provide a "Skip to main content" link as the first focusable element.
 
 - Text contrast: 4.5:1 normal, 3:1 large - large means 18pt/24px+, or 14pt/18.66px+ bold (1.4.3)
 - UI component contrast: 3:1 against adjacent colors (1.4.11)
-- Over an image, gradient, or translucent overlay there is no single background color: measure the worst pixel behind the text box - the lightest for dark text, the darkest for light text - after compositing the overlay. Passing against the overlay's nominal color while failing over the photo behind it is the usual way a hero section ships broken; a solid scrim or a text-shaped backdrop fixes it.
+- Over an image, gradient, or translucent overlay there is no single background color: measure the worst pixel behind the text box - the darkest for dark text, the lightest for light text, since that is where the ratio collapses - after compositing the overlay. Passing against the overlay's nominal color while failing over the photo behind it is the usual way a hero section ships broken; a solid scrim or a text-shaped backdrop fixes it.
 - Never use color alone for state - pair with text/icon (1.4.1)
 
 ```jsx
 {/* Bad: color-only success */}
 <button style={{color: success ? "green" : "red"}}>Add to Cart</button>
 
-{/* Good: status announced */}
+{/* Good: the state is carried by text and an icon, not colour alone (1.4.1),
+    and the change is announced (4.1.3). role="status" already implies aria-live="polite". */}
 <button onClick={addToCart}>Add to Cart</button>
-<span role="status" aria-live="polite">{statusMessage}</span>
+<p className={inCart ? "text-green-700" : "text-red-700"}>
+  {inCart ? <CheckIcon aria-hidden="true" /> : <AlertIcon aria-hidden="true" />}
+  {inCart ? "In your cart" : "Could not add"}
+</p>
+<span role="status">{statusMessage}</span>
 ```
 
 ### Forms
@@ -122,7 +131,7 @@ Provide a "Skip to main content" link as the first focusable element.
 After `stack-detect`, apply patterns using ecosystem idioms. Common bindings:
 
 - **React**: `jsx-a11y` ESLint plugin, `useId()` for label pairing, Radix or Headless UI for accessible primitives
-- **Vue**: `vue-a11y` ESLint plugin, Radix Vue or Headless UI Vue, `<Teleport>` for modals
+- **Vue**: `eslint-plugin-vuejs-accessibility`, Reka UI (formerly Radix Vue) or Headless UI Vue, `<Teleport>` for modals
 - **Angular**: Angular CDK `a11y` module (`FocusTrap`, `LiveAnnouncer`, `cdkTrapFocus`), Angular Material
 
 For unknown stacks, apply the universal patterns and point the user to the framework's a11y docs.
@@ -135,10 +144,12 @@ When building, apply Rules and Patterns as constraints and emit the code alone -
 
 Severity: Critical = blocks task completion for keyboard or assistive-technology users; Major = significant barrier with a workaround; Minor = friction or best-practice deviation.
 
+One row per criterion per element: a dialog missing both its role and its focus trap is two rows, because each cites a different criterion and takes its own fix. Repeat that criterion across several elements and it becomes one row listing them.
+
 ```
 ## Accessibility Assessment
 
-**Stack:** {detected language / framework, or "unknown - universal patterns applied"}
+**Stack:** {the detected Framework, plus Language when it disambiguates; for a monorepo name the stack owning the reviewed UI; "unknown - universal patterns applied" when detection was inconclusive}
 
 **Standard:** WCAG 2.1 AA
 
@@ -146,18 +157,24 @@ Severity: Critical = blocks task completion for keyboard or assistive-technology
 
 | Issue         | WCAG Criterion | Severity                   | Element/Component       |
 | ------------- | -------------- | -------------------------- | ----------------------- |
-| {description} | {e.g., 1.1.1}  | {Critical | Major | Minor} | {component or selector} |
+| {description} | {e.g., 1.1.1}  | {Critical \| Major \| Minor} | {component or selector} |
 
 ### Recommendations
 
 - {recommendation with rationale and code example}
 
+### Not assessed
+
+- {anything the input never showed or that could not be verified from it - a contrast ratio needing the rendered pixels, a component whose markup is produced by an external call, a file named in scope but not provided. A statement of missing input, never a guessed issue. Omit this section when nothing applies}
+
 ### No Issues Found
 
-{If no issues: state explicitly that accessibility is adequate. If issues found: "See Audit Results." Never omit this section silently}
+{Emit this section only when Audit Results is empty, and state explicitly that accessibility is adequate. When issues were found, omit it entirely}
 ```
 
-Design-phase requests (no code yet): keep the same structure; Audit Results rows list required behaviors for the planned component, with Element/Component naming the planned element. Severity then rates the impact of shipping without that behavior, which makes most rows Critical or Major - order the rows by severity and put the ones a framework primitive gives you for free last, so the column still separates what needs design attention from what comes with the library.
+A clean run emits **Stack**, **Standard**, an empty Audit Results table, `Recommendations` when any apply, `Not assessed` when anything went unverified, and `No Issues Found`; only the issue rows are omitted. `Not assessed` is independent of whether any issue was found.
+
+Design-phase requests (no code yet): keep the same structure, but read the `Issue` column as the required behaviour for the planned component, with Element/Component naming the planned element. Severity rates the impact of shipping without that behaviour, which makes most rows Critical or Major. Order by severity as always; within a band, put the behaviours a framework primitive supplies for free last, so the ordering still separates what needs design attention from what comes with the library. `No Issues Found` never applies in this mode - there is no code to call adequate - so omit it.
 
 ---
 

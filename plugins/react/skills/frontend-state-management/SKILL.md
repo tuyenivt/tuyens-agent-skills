@@ -37,15 +37,15 @@ Classify each piece of state before choosing a tool:
 
 | Category     | Scope                       | Examples                          | Lives In                          |
 | ------------ | --------------------------- | --------------------------------- | --------------------------------- |
-| Local UI     | Single component            | Open/closed, hover, input value   | Component state (useState, ref)   |
+| Local UI     | Single component            | Open/closed, hover, input value   | Component state (useState/`ref` in Vue) |
 | Shared UI    | Siblings/cousins            | Active tab, selected item, filter | Nearest common ancestor           |
 | Global UI    | App-wide                    | Theme, locale, sidebar collapsed  | Global store or context           |
 | Server       | Cached backend data         | User profile, product list        | Data-fetching library cache       |
 | URL          | Synced to URL               | Page, query, sort                 | Router / URL search params        |
 | Form         | Inputs, validation, dirty   | Field values, errors, touched     | Form library or local state       |
-| Transient    | Ephemeral, never persisted  | Animation progress, scroll pos    | Refs or local variables           |
+| Transient    | Ephemeral, never persisted  | Animation progress, scroll pos    | A non-reactive holder (React `useRef`, a plain variable) |
 
-Persistence (reload survival) and cross-browser-tab sync are layers on an existing owner, not new owners: keep the state in its category's home and attach a persist plugin / storage adapter, with BroadcastChannel or storage events for cross-tab sync.
+State owned outside the app - a global a legacy script writes, a host page's variable - takes the category its *use* fits with Owner naming the external writer; the finding is the missing single owner, not the category. Persistence (reload survival) and cross-browser-tab sync are layers on an existing owner, not new owners: keep the state in its category's home and attach a persist plugin / storage adapter, with BroadcastChannel or storage events for cross-tab sync.
 
 URL is the one owner the user can write directly - back button, pasted link, bookmark. Treat navigation as an inbound mutation: read from the URL on every render rather than seeding a copy on mount, or a bookmark opens the app with the wrong state and the back button silently desyncs.
 
@@ -61,15 +61,19 @@ Lift only when:
 globalStore.setModalOpen(true)
 globalStore.setTooltipVisible(false)
 
-// Good: local where possible, lifted only where coordination is needed
-const [isOpen, setIsOpen] = useState(false)
-<ProductPage>
-  <Filters value={filters} onChange={setFilters} />
-  <ProductList filters={filters} />
-</ProductPage>
+// Good: lifted only because two children read the same value
+function ProductPage() {
+  const [filters, setFilters] = useState({ category: "all" })
+  return (
+    <>
+      <Filters value={filters} onChange={setFilters} />
+      <ProductList filters={filters} />
+    </>
+  )
+}
 ```
 
-Lifting can create prop drilling. Passing through 2-3 layers is fine; deeper, escalate in order: component composition (children/slots) > context or provide/inject for low-frequency values > store. Drilling depth alone never justifies a global store - the lift conditions above do.
+Lifting can create prop drilling. Passing through 2-3 layers is fine; deeper, escalate in order: component composition (children/slots), then context or provide/inject for low-frequency values. Drilling depth alone never reaches a store - a store needs the lift conditions above plus a genuinely app-wide reader.
 
 ### Derived State
 
@@ -79,9 +83,10 @@ store.items = [...]
 store.itemCount = store.items.length
 store.totalPrice = store.items.reduce((s, i) => s + i.price, 0)
 
-// Good: single source of truth; derived values always fresh
-const itemCount = computed(() => store.items.length)
-const totalPrice = computed(() => store.items.reduce((s, i) => s + i.price, 0))
+// Good: single source of truth; derived values always fresh.
+// React: compute in render, or a store selector. Vue: computed(). Angular: a computed signal.
+const itemCount = useStore((s) => s.items.length)
+const totalPrice = useStore((s) => s.items.reduce((n, i) => n + i.price, 0))
 ```
 
 Memoize expensive derivations (large filter/sort/group) with selectors (`useMemo`, Vue `computed`, Angular `computed` signal, `createSelector`). Trivial derivations (`.length`, booleans) need no memoization.
@@ -100,7 +105,7 @@ const theme = useStore(s => s.theme)
 return <div>Theme: {theme}</div>
 ```
 
-Same idea across libraries: Redux `useSelector`, Zustand selectors, Pinia `storeToRefs`.
+Same idea in Redux (`useSelector`) and Zustand (selector argument). Vue and Angular need no equivalent: Pinia tracks per property and signals are per-signal, so each re-renders only for what it reads. `storeToRefs` keeps reactivity when destructuring rather than narrowing a subscription; NgRx narrows with `store.select`/`selectSignal`.
 
 **React Context note:** Context re-renders all consumers when the value object changes. Split into focused contexts (Theme, Auth, Layout) or use a state library with selectors for high-frequency updates.
 
@@ -114,9 +119,11 @@ For entity collections, normalize to prevent nested duplicates and update anomal
 
 // Good: entities by ID, relationships by reference
 {
-  users:  { 10: { id: 10, name: "Alice" } },
-  orders: { 1: { id: 1, userId: 10 }, 2: { id: 2, userId: 10 } },
+  users:  { byId: { 10: { id: 10, name: "Alice" } }, ids: [10] },
+  orders: { byId: { 1: { id: 1, userId: 10 }, 2: { id: 2, userId: 10 } }, ids: [1, 2] },
 }
+// Keep the `ids` array: object keys that look like integers enumerate in numeric order,
+// so a keys-only shape silently loses the collection's order.
 ```
 
 Normalize large or mutable collections. Small read-only nested data is fine as-is.
@@ -128,12 +135,12 @@ Server state (API data) belongs in a data-fetching library (TanStack Query, SWR,
 ```
 // Bad: API data and UI state mixed
 store.theme = "dark"
-store.users = await fetch("/api/users")
+store.users = await fetchUsers()
 store.usersLoading = false
 
 // Good: UI store for client state; query library for server state
-store.theme = "dark"
-const { data: users, isLoading } = useQuery({ queryKey: ["users"], queryFn: fetchUsers })
+setTheme("dark")                       // through the store's own setter, never direct assignment
+const { data: users, isPending } = useQuery({ queryKey: ["users"], queryFn: fetchUsers })
 ```
 
 **Optimistic updates** look like an exception to one-owner - a client prediction of server state - but they are not: the owner stays the query cache, and the prediction is written *into* it, then rolled back or reconciled on the response. Use the data layer's own mechanism (TanStack Query `onMutate` with a snapshot for rollback, SWR `optimisticData`, Apollo `optimisticResponse`). A parallel `optimisticItems` array in a UI store creates the second owner the rule forbids, and every rendering component then has to merge two sources in the right order.
@@ -150,7 +157,7 @@ After `stack-detect`, apply patterns using ecosystem idioms:
 
 - **React**: `useState`/`useReducer` local; Zustand or Redux Toolkit global; TanStack Query for server; Context for low-frequency global (theme, auth)
 - **Vue**: `ref`/`reactive` local; Pinia global; composable stores; Nuxt `useAsyncData` or TanStack Query Vue for server
-- **Angular**: Signals local/shared; NgRx or ComponentStore for complex global; RxJS `BehaviorSubject` for service state; `toSignal` to bridge observables
+- **Angular**: Signals local/shared; NgRx for app-wide state, `@ngrx/signals` SignalStore or `@ngrx/component-store` for feature state; RxJS `BehaviorSubject` for service state; `toSignal` to bridge observables
 
 For unknown stacks, apply universal patterns and point the user to the framework's state docs.
 
@@ -165,7 +172,7 @@ Consuming workflow skills depend on this structure.
 
 **Stack:** {detected language / framework}
 
-**State library:** {detected or recommended library}
+**State library:** {detected or recommended library; list each when more than one is in use and mark any that is installed but unread `(unused)`; write `{current} -> {target}` in migration mode}
 
 ### State Map
 
@@ -180,15 +187,16 @@ Consuming workflow skills depend on this structure.
 ### Issues Found
 
 - [Severity: High | Medium | Low] {description}
+  - Location: {file}:{line}
   - Problem: {what is wrong}
-  - Fix: {concrete correction for the detected stack}
+  - Fix: {concrete correction for the detected stack, or the universal pattern when the stack is unknown}
 
 ### No Issues Found
 
-{State explicitly if state management is adequate - do not omit this section silently}
+{Emit only when Issues Found is empty: in review mode state that the state management is adequate; in design mode state that the proposed placement carries no residual risk}
 ```
 
-Include exactly one of `Issues Found` / `No Issues Found`. The State Map covers the state in scope - the change's touched state when reviewing, the feature's state when designing or migrating - never a whole-app inventory. In review mode, `Owner` is the current owner; the recommended owner goes in the issue's Fix. In migration mode, write `Owner` as `{current} -> {target}` so the table is the migration map. In design mode (new feature, no code yet), `Owner` is the planned owner and Issues Found carries only residual risks knowingly accepted. Severity calibration: High = correctness or staleness bugs (duplicated server state, stored derived values, multiple owners); Medium = performance or maintainability (form drafts in global store, whole-store subscriptions, missing memoization of expensive derivations); Low = style and minor structure.
+Include exactly one of `Issues Found` / `No Issues Found`. A clean run emits every header field, the in-scope table, `Recommendations` when any apply, and `No Issues Found`; only the `Issues Found` blocks are omitted. Order Issues Found by severity, highest first; within a band, file order. The State Map covers the state in scope - the change's touched state when reviewing, the feature's state when designing or migrating - never a whole-app inventory. In review mode, `Owner` is the current owner; the recommended owner goes in the issue's Fix. In migration mode, write `Owner` as `{current} -> {target}` so the table is the migration map. In design mode (new feature, no code yet), `Owner` is the planned owner and Issues Found carries only residual risks knowingly accepted. Severity calibration: High = correctness or staleness bugs (duplicated server state, stored derived values, multiple owners); Medium = performance or maintainability (form drafts in global store, whole-store subscriptions, missing memoization of expensive derivations); Low = style and minor structure.
 
 ---
 

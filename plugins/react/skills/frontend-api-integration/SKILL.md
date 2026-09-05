@@ -49,10 +49,12 @@ useEffect(() => { fetch("/api/users").then(r => r.json()).then(setUsers) }, [])
 return users.map(u => <UserCard key={u.id} user={u} />)
 
 // Good: all states handled
-const { data, isLoading, error, refetch } = useQuery({ queryKey: ["users"], queryFn: fetchUsers })
-if (isLoading) return <Skeleton />
+const { data, isPending, isFetching, error, refetch } = useQuery({ queryKey: ["users"], queryFn: fetchUsers })
+// v5: isPending means "no data yet" and stays true for a query that never runs
+// (enabled: false, offline), so pair it with isFetching before showing a skeleton.
+if (isPending && isFetching) return <Skeleton />
 if (error) return <ErrorState onRetry={refetch} />
-if (data.length === 0) return <EmptyState />
+if (!data?.length) return <EmptyState />
 return data.map(u => <UserCard key={u.id} user={u} />)
 ```
 
@@ -63,16 +65,22 @@ Prefer skeletons over spinners for content; spinners for button/submit actions. 
 Update UI before server confirms, snapshot for rollback, refetch on settle:
 
 ```
-mutate({
+// onMutate is a useMutation option only. onSuccess/onError/onSettled can also be passed
+// per call as mutate(vars, { ... }), but those are dropped if the component unmounts.
+const addTodo = useMutation({
+  mutationFn: createTodo,
   onMutate: async (next) => {
     await queryClient.cancelQueries({ queryKey: ["todos"] })
-    const previous = queryClient.getQueryData(["todos"])
-    queryClient.setQueryData(["todos"], old => [...old, next])
+    const previous = queryClient.getQueryData<Todo[]>(["todos"]) ?? []
+    queryClient.setQueryData<Todo[]>(["todos"], (old = []) => [...old, next])
     return { previous }
   },
-  onError: (_e, _v, ctx) => queryClient.setQueryData(["todos"], ctx.previous),
+  // Default the snapshot: setQueryData ignores an undefined value, so a rollback
+  // from an empty cache would silently leave the optimistic row in place.
+  onError: (_e, _v, ctx) => queryClient.setQueryData(["todos"], ctx?.previous ?? []),
   onSettled: () => queryClient.invalidateQueries({ queryKey: ["todos"] }),
 })
+addTodo.mutate(newTodo)
 ```
 
 Use for low-latency, high-success actions (favorite, comment). Avoid for payments, multi-step validation, or where rollback would confuse.
@@ -109,7 +117,7 @@ const results = useQueries({ queries: [
 const { data: user } = useQuery({ queryKey: ["user", id], queryFn: () => fetchUser(id) })
 const { data: orders } = useQuery({
   queryKey: ["orders", user?.id],
-  queryFn: () => fetchOrders(user.id),
+  queryFn: () => fetchOrders(user!.id),   // `enabled` does not narrow the closure under strict TS
   enabled: !!user,
 })
 ```
@@ -150,7 +158,7 @@ Centralize in an HTTP interceptor or wrapper; allow component-level overrides.
 
 ### Request Cancellation
 
-Cancel in-flight requests on unmount, on new search input (debounce + cancel previous), or on route change. Data-fetching libraries handle this when query keys change; for manual `fetch`, always pass an `AbortSignal`.
+Cancel in-flight requests on unmount, on new search input (debounce + cancel previous), or on route change. A query library only cancels what its fetcher cooperates with: TanStack Query hands the `queryFn` an `AbortSignal` that is aborted on key change or unmount, but nothing is cancelled unless the fetcher forwards that signal to `fetch`/axios. SWR does not abort at all. For manual `fetch`, always pass your own `AbortSignal`.
 
 ## Stack-Specific Guidance
 
@@ -173,13 +181,13 @@ Consuming workflow skills depend on this structure.
 
 **Stack:** {detected language / framework}
 
-**Data-fetching library:** {detected or recommended library}
+**Data-fetching library:** {what the code uses today - a library name, `Mixed - <libs>`, `<lib> plus raw fetch/axios`, or `none - raw fetch/axios`. In implement or design mode, where nothing exists yet, name the library being prescribed}
 
 ### Endpoints
 
 | Endpoint | Method | Component(s)      | Caching        | States Handled          |
 | -------- | ------ | ----------------- | -------------- | ----------------------- |
-| {path}   | {verb} | {component names} | {strategy/TTL} | {loading, error, empty} |
+| {path}   | {verb} | {component names} | {strategy/TTL} | {loading, success, empty, error - list those handled} |
 
 ### Recommendations
 
@@ -188,6 +196,7 @@ Consuming workflow skills depend on this structure.
 ### Issues Found
 
 - [Severity: High | Medium | Low] {description}
+  - Location: {file}:{line}
   - Problem: {what is wrong}
   - Fix: {concrete correction for the detected stack}
 
@@ -196,7 +205,9 @@ Consuming workflow skills depend on this structure.
 {State explicitly if API integration is adequate - do not omit this section silently}
 ```
 
-Include either `Issues Found` or `No Issues Found`, never both. Severity anchor: High = correctness or data integrity (silent failures, stale data after writes, races); Medium = degraded UX or performance (waterfalls, missing empty state); Low = polish.
+Include either `Issues Found` or `No Issues Found`, never both. A clean run emits every header field, the in-scope table, `Recommendations` when any apply, and `No Issues Found`; only the `Issues Found` blocks are omitted. Order Issues Found by severity, highest first; within a band, file order. `Recommendations` carries proactive improvements only; a defect and its fix belong in `Issues Found` and appear in one place, never both.
+
+Severity anchor: High = correctness, data integrity, information leak, or a feature unusable for some users (silent failures, stale data after writes, races, a raw server error reaching the user, offset pagination on a live list, infinite scroll with no keyboard-reachable alternative); Medium = degraded UX, client performance, or load the backend absorbs (waterfalls, missing empty state, uncapped retries); Low = polish. A defect not named here takes the band whose description fits; when two fit, the higher wins.
 
 The Endpoints table covers the integrations in scope - the change's touched endpoints when reviewing, the feature's endpoints when implementing - never a whole-app inventory. In implement or design mode (writing new integration, not reviewing), the table documents what was built or planned, and Issues Found carries only residual risks knowingly accepted.
 

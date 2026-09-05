@@ -20,7 +20,7 @@ user-invocable: false
 
 ## Rules
 
-- Hooks run only at the top level of a component or another hook -- never inside conditions, loops, nested functions, or after early returns.
+- Hooks run only at the top level of a component or another hook -- never inside conditions, loops, nested functions, or after early returns. `use` is the sole exception and may be called in any of those positions.
 - Custom hooks start with `use` and own exactly one concern.
 - `useEffect` synchronizes with external systems. It is not for data fetching, derived state, or event-driven state transitions.
 - Every subscription, listener, timer, or connection started in an effect returns a cleanup. Every in-flight fetch is cancellable (`AbortController`).
@@ -93,12 +93,13 @@ const onMessageRef = useRef(onMessage);
 useEffect(() => { onMessageRef.current = onMessage; });
 useEffect(() => {
   const conn = createWebSocket(roomId);
+  conn.connect();
   conn.on("message", (m) => onMessageRef.current(m));
-  return () => conn.close();
+  return () => conn.disconnect();
 }, [roomId]);
 ```
 
-State keyed to an identity (a room's messages) does not reset itself when the key changes; remount the component with `key={roomId}` or reset via a render-time previous-key comparison - never by clearing it inside the effect.
+State keyed to an identity (a room's messages) does not reset itself when the key changes; remount the component with `key={roomId}` or reset via a render-time previous-key comparison - never by clearing it inside the effect. Inside a custom hook only the render-time comparison is available, since the hook cannot set its caller's `key`.
 
 ### Custom hook = one concern, clear return shape
 
@@ -114,12 +115,16 @@ function useUserPosts(id: string) { return useQuery({ queryKey: ["user", id, "po
 ### Cleanup is mandatory for any external acquisition
 
 ```tsx
+const onCloseRef = useRef(onClose);
+useEffect(() => { onCloseRef.current = onClose; });
 useEffect(() => {
-  const handler = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+  const handler = (e: KeyboardEvent) => e.key === "Escape" && onCloseRef.current();
   document.addEventListener("keydown", handler);
   return () => document.removeEventListener("keydown", handler);
-}, [onClose]);
+}, []);
 ```
+
+The ref mirror keeps the callback prop out of the dep array; listing `onClose` there re-binds the listener every render, which is the `CallbackIdentityChurn` finding below. On React 19.2+ `useEffectEvent` replaces the mirror: declare the handler with it and call it from the effect, with no dep entry either way.
 
 Same shape for `setInterval`/`setTimeout`, subscriptions, observers, `AbortController`.
 
@@ -131,6 +136,7 @@ Same shape for `setInterval`/`setTimeout`, subscriptions, observers, `AbortContr
 | `useOptimistic` | Show a mutation result immediately; reconcile when the server confirms. Call its updater inside the submitting action/transition. |
 | `useActionState` | Form action with pending + returned state (replaces `useFormState`). |
 | `useFormStatus` | Read parent `<form>` pending state from a descendant - no prop drilling. |
+| `useEffectEvent` | React 19.2+. Wrap the non-reactive part of an effect (a callback prop, a latest-value read) so it never enters the dep array. Replaces the hand-rolled ref mirror; call it only from inside an effect. |
 
 ```tsx
 function UserProfile({ userPromise }: { userPromise: Promise<User> }) {
@@ -152,13 +158,15 @@ Form schemas, validation, and submission flow are owned by `frontend-form-handli
 
 ### Refs and Context (boundary)
 
-`useRef` keeps a mutable value that must not trigger re-render; `useState` triggers re-render. One hook-level trap: when an effect must run once a DOM node mounts (observe it, measure it), store the node via a ref **callback** (`const [node, setNode] = useState<T|null>(null); <div ref={setNode}/>`) and list it as a dep - a `useRef` object mutation does not re-run the effect, so the observer never attaches. Deeper ref ergonomics (`forwardRef`, ref-prop conventions) and `"use client"` placement belong to `react-component-patterns`. Context value memoization, split-by-update-frequency, and "state lib vs context" choices belong to `react-state-patterns`. This skill flags only: hook called conditionally inside a custom hook, ref used where state is needed (or vice versa), context provider value rebuilt every render.
+`useRef` keeps a mutable value that must not trigger re-render; `useState` triggers re-render. One hook-level trap: when an effect must re-run because the observed DOM node was replaced (a conditionally rendered subtree, a remounted row), store the node in state via a ref **callback** (`const [node, setNode] = useState<HTMLElement | null>(null)`, then `<div ref={setNode} />`) and list `node` as a dep. A `useRef` object mutation triggers no re-render, so an effect depending on `ref.current` never re-runs and the observer stays attached to the old node. Deeper ref ergonomics (`forwardRef`, ref-prop conventions) and `"use client"` placement belong to `react-component-patterns`. Context value memoization, split-by-update-frequency, and "state lib vs context" choices belong to `react-state-patterns`. This skill flags only: hook called conditionally inside a custom hook, ref used where state is needed (or vice versa), context provider value rebuilt every render.
 
 ## Output Format
 
-When reviewing, open with one line `Scope: <files or components reviewed>`, then emit one block per finding. When designing or authoring a hook, emit the hook code, design notes mapping each decision to a Rule or Pattern by name, then a self-review of the new code in this same envelope (or the closing no-issues line).
+When reviewing, open with one line `Scope: <files or components reviewed>`, then emit one block per finding. When designing or authoring a hook, emit the hook code, design notes mapping each decision to a Rule or Pattern by name, then a self-review of the new code in this same envelope (or the closing no-issues line); for code not yet written to a file, `Location:` names the hook and the line within the block you just emitted (`useAutosaveDraft:12`).
 
 ```
+Scope: <files or components reviewed>
+
 - Location: <file>:<line> (<hook or component>)
   Issue: {RulesOfHooks | StaleClosure | MissingDeps | MissingCleanup | EffectForFetch | EffectForDerivedState | InfiniteLoop | ConflictingWriters | CallbackIdentityChurn | UnstableDepIdentity | UnnecessaryMemo | RefVsStateMisuse | KitchenSinkHook | ContextOverbroad | UncancelledRequest | LegacyHookUsage | StaleStateAcrossKeyChange}
   Severity: {Critical | High | Medium | Low}
@@ -169,11 +177,15 @@ When reviewing, open with one line `Scope: <files or components reviewed>`, then
 `ConflictingWriters`: same state mutated by two *independent* sources (e.g., incremented in a handler and overwritten by a derivation effect) - several writes within one effect's lifecycle are one source. Usually means the state is derivable and should be computed in render. `LegacyHookUsage`: pre-React-19 wiring a React 19 hook replaces (`useFormState`, manual pending flag, hand-rolled optimistic copy). `StaleStateAcrossKeyChange`: state keyed to an identity survives the identity switch (old room's messages after `roomId` changes); fix by `key` remount or render-time previous-key reset. `CallbackIdentityChurn`: a callback prop in a dep array tears down/re-subscribes the effect every render; use a ref. `UnstableDepIdentity`: a non-primitive dep (object/array literal, inline-built `config`/`options`) recreated every render re-fires the effect every render - hoist to a module constant, wrap in `useMemo`, or depend on its primitive fields. Use this for plain data; use `CallbackIdentityChurn` for functions.
 
 Severity guide:
-- **Critical**: hook called conditionally; memory leak from missing cleanup on long-lived component; race condition setting state after unmount.
+- **Critical**: a hook other than `use` called conditionally; memory leak from missing cleanup on a long-lived component; an out-of-order response overwriting newer state because the request was never cancelled.
 - **High**: stale closure producing wrong values; uncancelled fetch on unmount; effect-driven infinite loop; unstable dep identity causing a refetch/re-subscribe loop; a callback prop in deps re-subscribing a long-lived connection (socket, observer); previous key's data shown after an identity switch; legacy form wiring that is behaviorally broken (action state never bound).
 - **Medium**: derived state in effect; useEffect for fetching when a query library is available (the merged finding is High when the fetch is also uncancelled); suppressed exhaustive-deps; unstable dep identity causing redundant (non-looping) effect runs; `CallbackIdentityChurn` re-adding a cheap listener; working `LegacyHookUsage`.
 - **Low**: unnecessary useMemo/useCallback; overbroad context; ref/state misuse without observable consequence.
 
-Emit one finding per distinct root cause, ordered by severity; Location may span a range (`file:8-14`). Symptoms sharing one root cause merge into a single finding at the highest applicable severity: an uncancelled fetch merges into `EffectForFetch` when a query library is available, a lint suppression merges into the closure finding on its dep array, manual pending + unbound action state merge into one `LegacyHookUsage`. Split only when the fixes are independent. Non-finding observations (a call confirmed legal, an out-of-scope compile error) go in a single trailing `Notes:` line.
+Every Issue value sits in exactly one severity band above; a value named in no band is Medium. `MissingDeps`, `ConflictingWriters` and `KitchenSinkHook` are Medium unless the closure they create produces a wrong value, which raises them to High.
+
+Emit one finding per distinct root cause, ordered by severity; Location may span a range (`file:8-14`). Symptoms sharing one root cause merge into a single finding at the highest applicable severity: an uncancelled fetch merges into `EffectForFetch` when a query library is available, a lint suppression merges into the closure finding on its dep array, manual pending + unbound action state merge into one `LegacyHookUsage`. Split only when the fixes are independent. When two Issue values describe one defect, the one whose Fix you are prescribing wins: a dep the effect should simply list is `MissingDeps`, a dep that cannot be listed without breaking the effect is `StaleClosure`, and a value that should not be in an effect at all is `EffectForDerivedState`. `EffectForFetch` applies whether or not a query library is present; with none available the fix is the AbortController pattern and the severity is High when the request is also uncancelled.
+
+Non-finding observations (a call confirmed legal, an out-of-scope compile error) go in a single trailing `Notes:` line.
 
 If no issues, emit a single line: `No hook issues found in <scope>.` The trailing `Notes:` line may follow it.

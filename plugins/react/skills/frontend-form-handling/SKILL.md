@@ -24,8 +24,8 @@ user-invocable: false
 - Validate on blur per field, on submit for the whole form; re-validate on change once a field shows an error
 - Error messages are specific ("Password must be at least 8 characters"), never "Invalid input"
 - Server validation errors map back to the originating field inline
-- Prevent double submission (disable submit button + show loading state)
-- Warn before navigation when the form is dirty
+- Prevent double submission: disable the submit button and show a loading state once hydrated, and enforce it server-side (idempotency key or one-time token) for any form that must work before hydration
+- Warn before navigation when the form is dirty and client JS is running; a form that must submit pre-hydration has no such warning and that is not a defect
 - Multi-step forms preserve state across steps; backward nav never destroys data
 - Never persist sensitive fields (card data, CVV, SSN) to local/session storage
 
@@ -92,7 +92,7 @@ Form-level (server errors):
 ### Submission Flow
 
 1. Disable submit button, show loading state
-2. Run client validation; on failure, show errors and focus the first errored field
+2. Run client validation; on failure, re-enable the button, show errors and focus the first errored field
 3. Send request
 4. Success: feedback, redirect or reset
 5. Server error: map field errors back to inputs, show summary, re-enable button
@@ -108,7 +108,7 @@ Form-level (server errors):
 
 Repeating groups (line items, contacts) use the library's array primitive - RHF `useFieldArray`, VeeValidate `FieldArray`, Angular `FormArray` - so each row keeps a stable key. Never index rows by array position for React keys: removing row 1 re-indexes everything below and the wrong inputs keep the wrong errors.
 
-A rule spanning fields (totals against a cap, end date after start date, "at least one contact") has no single owning input, so it needs a home that is neither the field slot nor the server-error summary: render it at the boundary it constrains - under the array for a total, under the pair for a date range - with `role="alert"`, and validate it at the schema level (Zod `.refine`/`.superRefine`) so client and server agree.
+A rule spanning fields (totals against a cap, end date after start date, "at least one contact") has no single owning input, so it needs a home that is neither the field slot nor the server-error summary: render it at the boundary it constrains - under the array for a total, under the pair for a date range - with `role="alert"`, and validate it at the schema level (Zod `.refine`, or `.check()` for multi-issue cases - `.superRefine()` is deprecated in Zod 4) so client and server agree.
 
 Server errors on array paths (`items[3].amount`) map back by index to that row's input; when the index no longer exists because the user removed the row, the error goes to the summary.
 
@@ -124,9 +124,9 @@ Server errors on array paths (`items[3].amount`) map back by index to that row's
 
 Payment, identity, PCI data require extra care:
 
-- **Tokenize**: use provider widgets (Stripe Elements, Braintree Drop-in) so raw card data stays in their iframe, never in your form state or server
+- **Tokenize**: use provider widgets (Stripe Elements, Braintree Drop-in) so raw card data stays in their iframe, never in your form state or server. This is the default; the `autocomplete` guidance below applies only when you own the inputs
 - **Never persist**: exclude sensitive fields from any draft persistence; clear them from form state on navigation
-- **Use proper `autocomplete`**: `cc-number`, `cc-exp`, `cc-csc` so browsers autofill securely; never prefill from your own storage
+- **Use proper `autocomplete`**: on the rare form that does own its card fields, set `cc-number` and `cc-exp` so browsers autofill them; assume `cc-csc` will be typed, since browsers do not store it from a normal card save. With provider widgets these attributes live inside the provider's iframe and are not yours to set
 
 ### File Uploads
 
@@ -150,15 +150,18 @@ Review such a form against the baseline first: it should submit, validate, and r
 ### Dirty Tracking
 
 ```
-// Browser nav (close tab, back/forward)
+// Document unload only (tab close, reload, external link). Not SPA back/forward - that is popstate.
 useEffect(() => {
   if (!isDirty) return
-  const handler = e => e.preventDefault()
+  const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = true }
   window.addEventListener("beforeunload", handler)
   return () => window.removeEventListener("beforeunload", handler)
 }, [isDirty])
+// beforeunload needs sticky activation and never fires when the OS kills a backgrounded tab;
+// pair it with pagehide/visibilitychange if a draft must survive that.
 
-// SPA route changes: use the router's guard (React Router blocker, Vue Router beforeRouteLeave, Angular CanDeactivate)
+// SPA route changes: use the router's guard (React Router blocker, Vue Router beforeRouteLeave,
+// Angular CanDeactivateFn - the class-based CanDeactivate is deprecated)
 ```
 
 ### Schema-Based Validation
@@ -166,7 +169,7 @@ useEffect(() => {
 ```
 // Shared schema - used both client and server
 const userSchema = z.object({
-  email: z.string().email("Please enter a valid email"),
+  email: z.email("Please enter a valid email"),   // Zod 4 top-level format; z.string().email() is deprecated
   password: z.string().min(8, "Password must be at least 8 characters"),
 })
 
@@ -183,7 +186,7 @@ After `stack-detect`, apply patterns using ecosystem idioms:
 
 - **React**: React Hook Form + Zod resolver; `useActionState` for Server Action forms (React 19+/Next.js)
 - **Vue**: VeeValidate + Zod, or FormKit for opinionated accessible forms
-- **Angular**: Typed Reactive Forms, custom validators, `CanDeactivate` for dirty tracking
+- **Angular**: Typed Reactive Forms, custom validators, `CanDeactivateFn` for dirty tracking
 
 For unknown stacks, apply universal patterns and point the user to the framework's form docs.
 
@@ -206,7 +209,7 @@ Consuming workflow skills depend on this structure.
 
 | Form        | Fields  | Validation        | Multi-step | Dirty Tracking |
 | ----------- | ------- | ----------------- | ---------- | -------------- |
-| {form name} | {count} | {client + server | client only | server only | none} | {Yes | No} | {Yes | No} |
+| {form name} | {count, as `<fixed>` or `<fixed> + N x <per-row>` for a repeating group} | {client + server \| client only \| server only \| none; append `(broken)` when the wiring exists but does not work} | {Yes \| No} | {Yes \| No} |
 
 ### Recommendations
 
@@ -215,6 +218,7 @@ Consuming workflow skills depend on this structure.
 ### Issues Found
 
 - [Severity: High | Medium | Low] {description}
+  - Location: {file}:{line}
   - Problem: {what is wrong}
   - Fix: {concrete correction for the detected stack}
 
@@ -223,9 +227,9 @@ Consuming workflow skills depend on this structure.
 {State explicitly if form handling is adequate - do not omit this section silently}
 ```
 
-Severity: High = data loss, security exposure, or blocked/duplicate submission; Medium = broken validation timing or error-display UX (including per-keystroke validation); Low = polish (debounce values, focus order, copy).
+Severity: High = data loss, security exposure, or blocked/duplicate submission (a stuck submit button and a hand-rolled flag that contradicts the framework's pending state both land here); Medium = broken validation timing, error-display UX (including per-keystroke validation), a missing or placeholder-only label, or field-array rows keyed by index so errors follow the wrong row; Low = polish (debounce values, focus order, copy). A defect not named here takes the band whose description fits; when two fit, the higher wins.
 
-Include either `Issues Found` or `No Issues Found`, never both. In implement or design mode (building a form, not reviewing), the Form Design table documents what was built or planned, and Issues Found carries only residual risks knowingly accepted.
+Include either `Issues Found` or `No Issues Found`, never both. A clean run emits every header field, the in-scope table, `Recommendations` when any apply, and `No Issues Found`; only the `Issues Found` blocks are omitted. Order Issues Found by severity, highest first; within a band, file order. In implement or design mode (building a form, not reviewing), the Form Design table documents what was built or planned, and Issues Found carries only residual risks knowingly accepted.
 
 ---
 
@@ -234,8 +238,8 @@ Include either `Issues Found` or `No Issues Found`, never both. In implement or 
 - Placeholder as the only label
 - Validating on every keystroke
 - Generic errors like "Invalid input" or "Error"
-- Allowing double submission (no disable during submit)
-- Losing form data on navigation without warning
+- Allowing double submission with no guard at all - a form that must work pre-hydration needs the server-side one, a hydrated form needs the disabled button
+- Losing form data on navigation without warning, wherever client JS is running to give one
 - Client-only validation without server enforcement
 - Resetting the entire form on a single field's server error
 - Multi-step forms that drop data on "Back"

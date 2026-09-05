@@ -71,21 +71,24 @@ type CartStore = {
   items: CartItem[];
   add: (i: CartItem) => void;
   remove: (id: string) => void;
-  total: () => number;
 };
 
 export const useCart = create<CartStore>((set, get) => ({
   items: [],
   add: (i) => set((s) => ({ items: [...s.items, i] })),
   remove: (id) => set((s) => ({ items: s.items.filter((x) => x.id !== id) })),
-  total: () => get().items.reduce((n, i) => n + i.price * i.quantity, 0),
 }));
 
+// Derived values are selectors at the call site, never fields on the store.
 // Subscribe to the slice you read, not the whole store.
-const count = useCart((s) => s.items.length);
+function CartBadge() {
+  const count = useCart((s) => s.items.length);
+  const total = useCart((s) => s.items.reduce((n, i) => n + i.price * i.quantity, 0));
+  return <span>{count} items - {total}</span>;
+}
 ```
 
-Add `persist` only when reload must preserve state; add `devtools` in development. Stores stay flat per domain - do not nest `cart`, `auth`, `ui` inside one store. With SSR (Next.js), a `persist` store hydrates from storage after first paint, so reading it during render risks a hydration mismatch - gate on a mounted flag (or `persist`'s `skipHydration` + manual `rehydrate()`) before rendering persisted values.
+Add `persist` only when reload must preserve state; add `devtools` in development. Stores stay flat per domain - do not nest `cart`, `auth`, `ui` inside one store. With SSR (Next.js), a `persist` store backed by `localStorage` rehydrates while the module evaluates - before the first client render - so the client's first paint disagrees with the server HTML that was rendered without it. Gate on a mounted flag (or `persist`'s `skipHydration` + a manual `rehydrate()`) before rendering persisted values. Separately, a module-scope store is one instance per server process and is shared across concurrent requests: create it per request behind a provider, or keep it in `"use client"` modules only.
 
 ### Jotai for independent atoms
 
@@ -103,7 +106,7 @@ function Cell({ id }: { id: string }) {
 }
 ```
 
-Reach for Jotai over Zustand when consumers read disjoint slices that would otherwise force a shared store to re-render broadly (large grids, per-row selection, many independent toggles). `atomFamily` scales to thousands of keyed atoms.
+Reach for Jotai over Zustand when consumers read disjoint slices that would otherwise force a shared store to re-render broadly (large grids, per-row selection, many independent toggles). `atomFamily` caches one atom per key and never evicts on its own, so a family keyed by churning ids grows without bound - call `remove(key)` when a row unmounts, or set an eviction policy with `setShouldRemove`.
 
 ### Context re-render pitfall
 
@@ -130,13 +133,15 @@ function useFilters() {
   return (key: string, value: string) => {
     const next = new URLSearchParams(params);
     next.set(key, value);
-    next.set("page", "1"); // filter change resets page
+    if (key !== "page") next.set("page", "1"); // a filter change resets paging; a page change does not
     router.push(`${path}?${next}`);
   };
 }
 ```
 
-Read filters directly from `searchParams` per render - that *is* the source of truth. Vite / React Router: same rule via `react-router-dom`'s `useSearchParams` - read `params` per render, write with `setParams`.
+The component calling this must sit under a `<Suspense>` boundary: `useSearchParams` opts its route out of static rendering and fails the build on a prerendered page without one.
+
+Read filters directly from `searchParams` per render - that *is* the source of truth. Vite / React Router: same rule via `useSearchParams` from `react-router` (v7 consolidated the package; `react-router-dom` is a deprecated re-export) - read `params` per render, write with `setParams`.
 
 ### Redux Toolkit (when justified)
 
@@ -151,18 +156,18 @@ const cart = createSlice({
 });
 ```
 
-Use only when the project already needs middleware (sagas, RTK Query already in tree, undo/redo, cross-cutting logging). For a greenfield slice, Zustand is shorter and cheaper.
+Use only when the project already needs middleware (sagas, undo/redo, cross-cutting logging). RTK Query already in the tree is not a reason on its own: it holds server data in the store, which the server-state rule forbids - migrating that data to a query library is the fix, not an argument for keeping Redux. For a greenfield slice, Zustand is shorter and cheaper.
 
 ## Output Format
 
-When designing, the State Map and Stores describe the proposed architecture and Findings flag risks in it. When auditing, the consuming workflow owns the finding envelope; invoked standalone, emit the State Map and Stores as the target state, order Findings by severity, one finding per root cause (Location may name several files). `Primary library` is the recommendation, not the incumbent.
+When migrating, write `Primary library` as `{incumbent} -> {target}`, `Owner` as `{current} -> {target}` per slice, and order Findings as the migration sequence - server state out first, then one slice at a time; a slice nobody reads from the old store is done. When designing, the State Map and Stores describe the proposed architecture and Findings flag risks in it, using the same Issue values to name the mistake the design would otherwise make; state that has no owner yet takes the proposed name. When auditing, the consuming workflow owns the finding envelope; invoked standalone, emit the State Map and Stores as the target state, order Findings by severity, one finding per root cause (Location may name several files). `Primary library` is the recommendation, not the incumbent.
 
 ```
 ## React State Architecture
 
 Stack: {framework}
 
-Primary library: {Zustand | Redux Toolkit | Jotai | Context-only}
+Primary library: {Zustand | Redux Toolkit | Jotai | Context-only | none - useState/useReducer plus a server-cache library}
 
 Secondary (scoped): {client-state library - the one domain it serves | none}
 
@@ -170,13 +175,13 @@ Secondary (scoped): {client-state library - the one domain it serves | none}
 
 | Slice           | Category   | Owner            | Mechanism        | Rationale            |
 | --------------- | ---------- | ---------------- | ---------------- | -------------------- |
-| {slice name}    | {Local UI | Shared UI | Server | URL | Identity} | {component/store} | {mechanism}    | {1-line why}         |
+| {slice name}    | {Local UI \| Shared UI \| Server \| URL \| Identity} | {component/store} | {mechanism}    | {1-line why}         |
 
 ### Stores
 
 | Store        | Domain    | Persisted | Middleware           |
 | ------------ | --------- | --------- | -------------------- |
-| {name}       | {domain}  | {Yes|No}  | {devtools, persist}  |
+| {name}       | {domain}  | {Yes \| No \| partial (<fields>)}  | {devtools, persist}  |
 
 ### Findings
 
@@ -188,7 +193,7 @@ Secondary (scoped): {client-state library - the one domain it serves | none}
 
 Derived values are not slices - they never get a State Map row; a stored one is a `Stored-Derived` finding. Jotai atom families take a Stores row with Middleware `-`; Context providers do not get Stores rows. Category `Identity` covers auth/theme/locale; feature-scoped shared values (grid atoms) are `Shared UI`. `Duplicate-Source`: the same state has two owners (URL copied into `useState`, one slice duplicated across stores); the Fix names the surviving owner. Server data mirrored into a store stays `Server-State-In-Store`.
 
-Severity: **Critical** = wrong data shown or updates lost (store mutation without a new reference, two sources of truth disagreeing); **High** = broad re-render or staleness (server data mirrored into a store, context re-rendering per keystroke, SSR hydration mismatch); **Medium** = structure debt (mega-store, stored derived, URL candidate, over-subscription); **Low** = convention drift. A defect matching a named example takes that row's severity; the general clauses cover unnamed cases.
+Severity: **Critical** = wrong data shown or updates lost (store mutation without a new reference, two sources of truth disagreeing); **High** = broad re-render or staleness (server data mirrored into a store, context re-rendering per keystroke, SSR hydration mismatch); **Medium** = structure debt (mega-store, stored derived, URL candidate, over-subscription); **Low** = convention drift. Every Issue value sits in exactly one row; `Wrong-Mechanism` is Medium, rising to High when the wrong mechanism is already producing staleness or a broad re-render. A defect matching a named example takes that row's severity; where a named example and a general clause both fit, the named example wins. The general clauses cover unnamed cases.
 
 If the project has no React sources, emit `Findings: none (no React detected)` and stop.
 

@@ -23,7 +23,7 @@ Out of scope: Pages Router maintenance, generic React state, framework-neutral S
 
 - Server Components are the default. Add `"use client"` only for hooks, event handlers, or browser APIs - and push the boundary as far down the tree as possible.
 - Server-only modules (DB clients, secrets, server SDKs) import `import "server-only"`. Never import them transitively into a client component.
-- **Next.js 15+: `params` and `searchParams` are `Promise`s.** Type as `params: Promise<{ slug: string }>` and `await` before use. Reading synchronously is a silent-breaking change from 14.
+- **Next.js 15+: `params` and `searchParams` are `Promise`s.** Type as `params: Promise<{ slug: string }>` and `await` before use. On 15 synchronous access still works but logs a deprecation warning (codemod: `next-async-request-api`); it became a hard error in 16, so treat it as a break in waiting, not a warning to leave.
 - Server Actions are public HTTP endpoints: validate every input with a schema, authorize the caller, then revalidate. Choose Server Action for first-party form/mutation flows; choose Route Handler only when you need a stable URL, non-form clients, webhooks, or non-JSON responses.
 - Cache by intent: static by default, `revalidate: N` for periodic refresh, tags + `revalidateTag` for event-driven invalidation, `cache: "no-store"` or `dynamic = "force-dynamic"` only when per-request data is required.
 - Metadata via the Metadata API (`metadata` export or `generateMetadata`). No manual `<head>` writes.
@@ -108,7 +108,9 @@ const CreatePost = z.object({
   content: z.string().min(1),
 });
 
-export async function createPost(_prev: State, formData: FormData) {
+type State = { error?: Record<string, string[]>; ok?: boolean };
+
+export async function createPost(_prev: State | null, formData: FormData): Promise<State> {
   const user = await requireUser();                    // authorize
   const parsed = CreatePost.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
@@ -126,7 +128,7 @@ import { useActionState } from "react";
 import { createPost } from "./actions";
 
 export function CreatePostForm() {
-  const [state, action, pending] = useActionState(createPost, null);
+  const [state, action, pending] = useActionState<State | null, FormData>(createPost, null);
   return (
     <form action={action}>
       <input name="title" required />
@@ -166,7 +168,7 @@ export async function POST(req: Request) {
 | Streaming  | `Suspense` around async children                          | Slow data alongside fast shell           |
 | PPR        | `experimental_ppr = true` + `Suspense` over dynamic holes | One mostly-static page with a per-user widget; avoids `force-dynamic` |
 
-Static and ISR routes with dynamic segments enumerate their paths via `generateStaticParams()`.
+`generateStaticParams()` prerenders a dynamic segment's known paths at build time. It is not required for ISR: with `dynamicParams` at its default, an unlisted path renders on demand and is cached from then on.
 
 ```tsx
 // Stream slow widgets without blocking the shell.
@@ -188,12 +190,13 @@ export default function Dashboard() {
 // Static
 export const metadata: Metadata = { title: "My App", description: "..." };
 
-// Dynamic: runs on the server, deduped with the page's own fetch by request memoization.
+// Dynamic: runs on the server. Wrap the shared loader in React `cache()` to dedupe it within the render,
+// or in `unstable_cache` to share it across requests - `fetch` alone memoizes, an ORM call does not.
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> },
 ): Promise<Metadata> {
   const { slug } = await params;
-  const product = await getProduct(slug); // same call as the page; React cache dedupes
+  const product = await getProduct(slug); // same call as the page; the shared cache serves both
   return {
     title: product.name,
     description: product.summary,
@@ -223,10 +226,10 @@ export const db = new PrismaClient();
 
 ### Partial Prerendering (PPR)
 
-Next.js 15 ships PPR: a static shell renders instantly; dynamic holes stream at request time. The route is static *and* dynamic in one response - no `force-dynamic` for one personalized widget.
+PPR renders a static shell instantly and streams dynamic holes at request time, so a route is static *and* dynamic in one response - no `force-dynamic` for one personalized widget. On the 15 line `experimental.ppr` is **canary-only**: a stable 15.x build throws `CanaryOnlyError`, so treat PPR as a design target and reach for streaming Suspense on a stable release.
 
 ```ts
-// next.config.ts
+// next.config.ts - requires next@canary on the 15 line
 import type { NextConfig } from "next";
 const config: NextConfig = { experimental: { ppr: "incremental" } };
 export default config;
@@ -276,7 +279,7 @@ Routes coexist: `pages/` and `app/` ship in the same build, so migrate route-by-
 
 Migration order: shared shell (`_app` -> root layout, `_document` -> `<html>`/`<body>`) first, then leaf routes one at a time, then `pages/api/*` to Route Handlers or Server Actions. Don't mix `getServerSideProps` with App Router patterns inside the same route - the App Router version owns the path once it exists.
 
-Gotcha: `next/router` route events (`routeChangeStart`/`routeChangeComplete`) have no `next/navigation` equivalent - replace with `usePathname`/`useSearchParams` effects or `next/navigation`'s navigation hooks.
+Gotcha: `next/router` route events (`routeChangeStart`/`routeChangeComplete`) have no direct `next/navigation` equivalent - replace with `usePathname`/`useSearchParams` effects, or on 15.3+ with `<Link onNavigate>` and `useLinkStatus` for per-link start/pending signals.
 
 ## Output Format
 
@@ -290,15 +293,17 @@ When designing, emit one block per surface - {Surface | Strategy (Rendering Stra
   Fix: <one-line action; reference a Pattern by name>
 ```
 
-`CachingMisuse` is a wrong caching choice (`force-dynamic` for periodic data, `no-store` on cacheable data, missing TTL). `MissingRevalidation` is a write (Server Action / Route Handler) that mutates data without a following `revalidatePath`/`revalidateTag`, so cached views stay stale. `ServerOnlyExport` is a `"use server"` file exporting a non-action (every export becomes network-callable). Migration codes: `RouteConflict` = same path in `pages/` and `app/` (build fails); `LegacyRouterInApp` = `next/router` or its route events inside `app/` (crashes at mount, listeners never fire); `LegacyI18nConfig` = config-based i18n serving App Router routes; `MigrationOrder` = shell migrated out of order (`_app`/`_document` still authoritative - fonts or `<html>` diverging from `app/layout.tsx` - while `app/` routes ship). `ServerActionAuth`/`ServerActionValidation` cover Route Handlers too; Location may list two files when the defect spans them.
+`CachingMisuse` is a wrong caching choice (`force-dynamic` for periodic data, `no-store` on cacheable data, missing TTL). `MissingRevalidation` is a write (Server Action / Route Handler) that mutates data without a following `revalidatePath`/`revalidateTag`, so cached views stay stale. `ServerOnlyExport` is a `"use server"` file exporting an async function that is not meant to be an endpoint - every exported async function becomes network-callable. A non-async export fails the build rather than shipping, so it is a compile error, not this finding. Migration codes: `RouteConflict` = same path in `pages/` and `app/` (build fails); `LegacyRouterInApp` = `next/router` or its route events inside `app/` (crashes at mount, listeners never fire); `LegacyI18nConfig` = config-based i18n serving App Router routes; `MigrationOrder` = shell migrated out of order (`_app`/`_document` still authoritative - fonts or `<html>` diverging from `app/layout.tsx` - while `app/` routes ship). `ServerActionAuth`/`ServerActionValidation` cover Route Handlers too; Location may list two files when the defect spans them.
 
 Severity guide:
-- **Blocker**: server-only import or ORM/secret leak into a client bundle; missing auth on a mutating Server Action; `params`/`searchParams` used without `await` (silent-breaks on Next 15); `"use server"` file exporting a non-action; per-user data wrapped in `unstable_cache` or a tagged cache (cross-user leak); `RouteConflict`; `LegacyRouterInApp`.
+- **Blocker**: server-only import or ORM/secret leak into a client bundle (`ServerOnlyImport` for the import, `ClientLeak` for the value that reaches the client; a missing `import "server-only"` guard is `ServerOnlyImport` even with no proven leak); missing auth on a mutating Server Action; `params`/`searchParams` used without `await`; `"use server"` file exporting a non-action endpoint (`ServerOnlyExport`); per-user data wrapped in `unstable_cache` or a tagged cache (`CachingMisuse`, which this row raises from its Medium default); `RouteConflict`; `LegacyRouterInApp`.
 - **High**: `"use client"` at a page/layout root that needs no interactivity (an extractable leaf listener does not count as needing it); missing input validation on an action; `MissingRevalidation` after a write; dynamic subtree not wrapped in `<Suspense>` under PPR; `LegacyI18nConfig`.
 - **Medium**: wrong caching choice (`CachingMisuse`); `MigrationOrder`; manual `<head>` instead of Metadata API; raw `<img>` instead of `next/image`.
 - **Low**: `router.push` where `<Link>` fits; minor convention drift.
 
-If the project is not Next.js App Router, emit `No Next.js findings (not App Router).` and apply only framework-neutral rules (server/client boundary, input validation, cache-by-intent). A hybrid `pages/` + `app/` tree is in scope - audit both sides against the migration table.
+No Issue value is left unscored. Where a value appears in more than one band, the band naming your defect's condition wins; where two fit equally, take the higher. `RscBoundary` (a client component fetching what a parent Server Component could pass down) is Medium; `PprConflict` (`force-dynamic` on a route that also opts into PPR) is Medium. Per-user data reaching a cross-request cache is `CachingMisuse` at Blocker, which overrides that value's Medium default; the Blocker anchor names the case, the enum value carries it.
+
+If the project is not Next.js App Router, apply only the framework-neutral rules - server/client boundary, input validation on anything network-reachable, cache-by-intent - opening with `Scope: framework-neutral review (not App Router - Next-specific rules skipped)`. The block shape, severity bands and `Notes:` line apply unchanged; use the Issue value whose defect matches regardless of its Next-flavoured name (`ServerActionValidation` for any unvalidated mutation entry point, `CachingMisuse` for any wrong caching choice). Emit `No Next.js findings (not App Router).` only when those rules are clean. A hybrid `pages/` + `app/` tree is in scope - audit both sides against the migration table.
 
 ## Avoid
 

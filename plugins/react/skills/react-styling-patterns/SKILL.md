@@ -78,7 +78,7 @@ export function Button({ variant, size, className, ...props }: ButtonProps) {
 
 ```tsx
 // Bad - desktop styles as base, mobile overrides
-<div className="flex-row gap-6 max-md:flex-col max-md:gap-4" />
+<div className="flex flex-row gap-6 max-md:flex-col max-md:gap-4" />
 
 // Good - mobile base, breakpoints add larger-screen rules
 <div className="flex flex-col gap-4 md:flex-row md:gap-6 lg:gap-8" />
@@ -100,7 +100,7 @@ function Card({ children }: { children: React.ReactNode }) {
 }
 ```
 
-Toggle by setting `class="dark"` on `<html>` once (e.g., `next-themes`). Avoid `useState`-driven theme branches per component. With hybrid tokens, the `.dark` variable swap flips colors; `dark:` utilities are for one-off exceptions.
+Toggle by setting `class="dark"` on `<html>` once - with `next-themes` that means `attribute="class"`, since it defaults to `data-theme` and the `dark:` variant would never fire. Avoid `useState`-driven theme branches per component. With hybrid tokens, the `.dark` variable swap flips colors; `dark:` utilities are for one-off exceptions.
 
 ### Design Tokens
 
@@ -127,13 +127,18 @@ Tailwind v4 is CSS-first: `@theme { --color-brand-500: #2563eb; }` in the entry 
 ### CSS Modules
 
 ```tsx
-// Button.module.css
+/* Button.module.css - one class per variant the props type allows */
 .button { border-radius: var(--radius-md); padding: 0.5rem 1rem; }
-.primary { background: var(--color-brand); color: #fff; }
+.primary { background: var(--color-brand); color: var(--color-on-brand); }
+.secondary { background: var(--color-surface-muted); color: var(--color-text); }
+.destructive { background: var(--color-danger); color: var(--color-on-brand); }
 
 // Button.tsx
 import styles from "./Button.module.css";
 import { cn } from "@/lib/cn";
+
+type Variant = "primary" | "secondary" | "destructive";
+type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant };
 
 export function Button({ variant = "primary", className, ...props }: ButtonProps) {
   return <button className={cn(styles.button, styles[variant], className)} {...props} />;
@@ -143,7 +148,8 @@ export function Button({ variant = "primary", className, ...props }: ButtonProps
 ### styled-components in Next.js App Router
 
 ```tsx
-// Bad - styled-components in an RSC; ships runtime to clients silently or FOUC.
+// Bad - styled-components in an RSC. v6 ships "use client", so this throws a
+// client-reference error at build/render rather than degrading quietly.
 // app/page.tsx (no "use client")
 const Box = styled.div`color: red;`;
 
@@ -151,25 +157,27 @@ const Box = styled.div`color: red;`;
 "use client";
 import styled from "styled-components";
 const Box = styled.div`color: red;`;
-// Plus: app/registry.tsx implementing useServerInsertedHTML + ServerStyleSheet.
+// Plus: app/registry.tsx implementing useServerInsertedHTML + ServerStyleSheet,
+// and compiler: { styledComponents: true } in next.config - without it server and
+// client class names diverge and you get the FOUC this setup exists to prevent.
 ```
 
 For new App Router code, prefer Tailwind or CSS Modules over CSS-in-JS.
 
 ## Output Format
 
-When designing, emit this block plus the artifacts it prescribes (token file, config, component code) after it, each under a `### <file path>` heading; Component Variants rows show the prescribed mechanism; write `Findings: none (greenfield)` when there is nothing to review. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, order Findings by severity, one finding per root cause (an RSC-incompatible import is one finding even when it also mixes approaches), and Component Variants shows the observed mechanism with the target in the Fix. Header fields record the observed state (targets go in Recommendations). The `Notes:` line sits after the last finding; adjacent non-styling defects (raw `<img>`, routing) belong to their owning skills - mention them in `Notes:` only.
+When designing, emit this block plus the artifacts it prescribes (token file, config, component code) after it, each under a `### <file path>` heading; Component Variants rows show the prescribed mechanism; write `Findings: none (greenfield)` when there is nothing to review. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, order Findings by severity, one finding per root cause (an RSC-incompatible import is one finding even when it also mixes approaches), and Component Variants shows the observed mechanism with the target in the Fix. When reviewing, header fields record the observed state and targets go in Recommendations; when designing, they record the prescribed architecture, since there is no observed state to report. A finding whose one root cause spans several lines lists them in `Location` separated by commas. The `Notes:` line sits after the last finding; adjacent non-styling defects (raw `<img>`, routing) belong to their owning skills - mention them in `Notes:` only.
 
 ```
 ## Styling Architecture
 
 Stack: {detected framework}
 
-Primary approach: {Tailwind | CSS Modules | Vanilla Extract | styled-components}
+Primary approach: {Tailwind | CSS Modules | Vanilla Extract | styled-components | emotion | none - global CSS and inline styles}
 
-Component library: {shadcn/ui | Radix | Headless UI | None} (append "(installed, unused)" when present but unused)
+Component library: {shadcn/ui | Radix | Headless UI | a component kit such as MUI or Chakra | None} (append "(installed, unused)" when present but unused)
 
-Token source: {Tailwind config | CSS variables | hybrid | none}
+Token source: {Tailwind config | Tailwind v4 `@theme` in CSS | CSS variables | hybrid | none}
 
 Dark mode: {class strategy | media query | none}
 
@@ -189,9 +197,11 @@ Dark mode: {class strategy | media query | none}
 ## Recommendations
 
 - <change with rationale>
+
+Notes: <non-finding observations and adjacent non-styling defects, each naming the concern that owns it; omit when none>
 ```
 
-`A11y` covers focus indicators (`outline-none` without a `focus-visible` replacement), missing/empty `alt` on images, and insufficient contrast. `Primitive-Reimpl` is a hand-rolled Dialog/Menu/Tooltip beside an installed headless library - the dropped a11y surface (focus trap, Escape, `aria-modal`) is the defect. When no token source exists at all, emit one `Token-Literal` (Medium) finding for the missing source, not one per literal. Non-finding observations (broken utility combos, dead CSS) go in one trailing `Notes:` line.
+`A11y` covers any accessibility defect the styling layer creates or hides - focus indicators (`outline-none` without a `focus-visible` replacement), missing `alt`, insufficient contrast, and a styled non-semantic element standing in for an interactive one. The examples are illustrative, not the whole category. `Primitive-Reimpl` is a hand-rolled Dialog/Menu/Tooltip beside an installed headless library - the dropped a11y surface (focus trap, Escape, `aria-modal`) is the defect. When no token source exists at all, emit one `Token-Literal` (Medium) finding for the missing source, not one per literal. Non-finding observations (broken utility combos, dead CSS) go in one trailing `Notes:` line.
 
 Severity guide:
 - **High**: runtime CSS-in-JS in an RSC without `"use client"` + registry (`RSC-Incompat`, ships runtime/FOUC); any `A11y` defect (stripped focus indicator, missing `alt`, insufficient contrast); `Primitive-Reimpl`.

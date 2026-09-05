@@ -38,7 +38,7 @@ user-invocable: false
 
 TanStack Query is the default client choice: dependent queries, infinite queries, optimistic updates, and richer cache APIs. SWR is fine where the team has chosen it.
 
-Cache sizing: `staleTime` = how long serving stale data is acceptable (0 only when per-interaction freshness matters; minutes for reference data); `gcTime` > `staleTime`. The client-setup example's 60s/5min are starting defaults, not law. Polling: `refetchInterval` (TanStack) / `refreshInterval` (SWR). SWR vocabulary: `dedupingInterval` ~ staleTime (SWR has no `gcTime` counterpart - omit that slot), `revalidateOnFocus` ~ refetchOnWindowFocus; conditional fetch = null key (`useSWR(id ? key : null)`); cursor pagination = `useSWRInfinite`.
+Cache sizing: `staleTime` = how long serving stale data is acceptable (0 only when per-interaction freshness matters; minutes for reference data); `gcTime` > `staleTime`. The client-setup example's 60s/5min are starting defaults, not law. Polling: `refetchInterval` (TanStack) / `refreshInterval` (SWR). SWR vocabulary: `dedupingInterval` ~ staleTime (SWR has no `gcTime` counterpart - say so in the Cache config cell rather than inventing one), `revalidateOnFocus` ~ refetchOnWindowFocus; conditional fetch = null key (`useSWR(id ? key : null)`); cursor pagination = `useSWRInfinite`.
 
 ## Patterns
 
@@ -65,10 +65,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
 
 ```tsx
 "use client";
-const [queryClient] = useState(() => new QueryClient({
-  defaultOptions: { queries: { staleTime: 60_000, gcTime: 5 * 60_000, retry: 1, refetchOnWindowFocus: false } },
-}));
-return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+export function Providers({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: { queries: { staleTime: 60_000, gcTime: 5 * 60_000, retry: 1, refetchOnWindowFocus: false } },
+  }));
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+}
 ```
 
 `useState` (not module scope) so each request on the server gets its own client.
@@ -76,13 +78,16 @@ return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider
 ### Query with all three states
 
 ```tsx
-const { data, isPending, error } = useQuery({
+const { data, isLoading, error } = useQuery({
   queryKey: ["user", userId],
   queryFn: () => fetchUser(userId),
 });
-if (isPending) return <ProfileSkeleton />;
+// v5 isLoading is isPending && isFetching - a first load actually in flight.
+// Plain isPending stays true forever for a query that never runs (enabled: false, offline).
+if (isLoading) return <ProfileSkeleton />;
 if (error) return <ErrorState message="Failed to load profile" />;
-if (!data) return <EmptyState />;
+if (!data) return null;                            // gated query: render the prerequisite's state
+if (data.items.length === 0) return <EmptyState />;   // empty = data arrived and holds nothing
 return <ProfileCard user={data} />;
 ```
 
@@ -95,6 +100,8 @@ const posts = useQuery({
   queryFn: () => fetchUserPosts(userId),
   enabled: !!user,                       // gate on prerequisite
 });
+// A gated query is pending, not loading: render the prerequisite's own state until `user` arrives,
+// or `posts.isPending` shows a spinner that never clears.
 ```
 
 ### Infinite (cursor) pagination
@@ -143,13 +150,15 @@ const toggleFavorite = useMutation({
 
 ```tsx
 // app/dashboard/page.tsx (Server Component)
-const qc = new QueryClient();
-await qc.prefetchQuery({ queryKey: ["dashboard-stats"], queryFn: fetchDashboardStats });
-return (
-  <HydrationBoundary state={dehydrate(qc)}>
-    <DashboardClient />                  {/* uses the same queryKey -> instant data */}
-  </HydrationBoundary>
-);
+export default async function DashboardPage() {
+  const qc = new QueryClient();          // per request, inside the component - never module scope
+  await qc.prefetchQuery({ queryKey: ["dashboard-stats"], queryFn: fetchDashboardStats });
+  return (
+    <HydrationBoundary state={dehydrate(qc)}>
+      <DashboardClient />                {/* uses the same queryKey -> instant data */}
+    </HydrationBoundary>
+  );
+}
 ```
 
 ### Query-key factory
@@ -172,8 +181,10 @@ const { trigger, isMutating } = useSWRMutation("/api/posts", postFetcher);
 // Cache key is the URL string. The read key and the mutation key usually differ,
 // so SWR will NOT auto-revalidate the read; refresh it explicitly:
 const { mutate } = useSWRConfig();
-await trigger(changes);
-mutate(`/api/users/${id}`);              // revalidate the affected read key
+async function save(changes: Partial<User>) {
+  await trigger(changes);
+  mutate(`/api/users/${id}`);            // revalidate the affected read key
+}
 // Optimistic equivalent: mutate(key, optimisticData, { revalidate: false }) then mutate(key) on settle.
 ```
 
@@ -195,17 +206,21 @@ Conclude with:
 ```
 Summary: <N> findings (<C> Critical, <H> High, <M> Medium, <L> Low)
 Client Library: {TanStack Query | SWR | Mixed | None}
-RSC Usage: {Server-First | Client-First | Mixed | N/A (SPA)}
-Invalidation Coverage: <mutations with invalidation> / <total mutations>
+RSC Usage: {Server-First | Client-First | Mixed | None in scope | N/A (SPA)}
+Invalidation Coverage: <mutations with invalidation> / <total mutations>  (write `0 / 0` when no mutation is in scope)
+Not assessed: <input never shown or unverifiable from it - a parent Server Component outside the file set, a module whose behaviour decides a severity; omit when none>
+Notes: <off-enum observations; omit when none>
 ```
 
 `Client-Setup`: QueryClient construction or provider defects (module-scope client on a server runtime, missing provider). A prefetch/client key mismatch is `Hydration`, not `Query-Key`. `Mixed` Client Library = two libraries, or a library plus raw effect-fetches. A mutation counts as covered only when it invalidates or sets the affected queries on settlement; an `onMutate` optimistic write alone does not count. Non-finding observations (out-of-enum defects, confirmed-fine calls) go in a single trailing `Notes:` line.
 
 Severity guide:
 - **Critical**: data loss, wrong-user data, unbounded refetch loops; module-scope `QueryClient` on a server runtime (cross-request leakage).
-- **High**: stale data after writes (missing `invalidateQueries`); a `queryFn`-read variable absent from the `queryKey` (cache collision, wrong data shown; Low when the value is a build-time constant); a prefetch/client key mismatch defeating hydration; race conditions from manual effects.
+- **High**: stale data after writes (missing `invalidateQueries`); an effect-fetch that races, refetches unboundedly, or leaks on unmount (a correctly guarded one is still `Effect-Fetch`, at Medium, since the Rule is absolute); a `queryFn`-read variable absent from the `queryKey` (cache collision, wrong data shown; Low when the value is a build-time constant); a prefetch/client key mismatch defeating hydration; race conditions from manual effects.
 - **Medium**: missing empty/error UI (High when a failed load leaves the UI stuck, e.g. a spinner that never clears); missing optimistic rollback; client-fetching public data a Server Component should own (`RSC-Boundary`); truly cosmetic key instability (string-vs-array of same data).
-- **Low**: inline `queryFn` closures; default `staleTime: 0` where freshness isn't required.
+- **Low**: fetch logic written inline in the options object (`Inline-Fn`; the thin `queryFn: () => fetchUser(id)` wrapper is idiomatic and never a finding); default `staleTime: 0` where freshness isn't required.
+
+No Category value is left unscored. Where a value appears in more than one band, the band naming your defect's condition wins; where two fit equally, take the higher. `staleTime: 0` together with `refetchOnWindowFocus: true` on stable data is `Stale-Time` at Medium - bounded, but a refetch on every tab focus.
 
 ## Avoid
 

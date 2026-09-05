@@ -71,6 +71,7 @@ export const handlers = [
 ];
 
 // vitest.setup.ts
+import "@testing-library/jest-dom/vitest";   // without this every toBeInTheDocument() throws
 import { setupServer } from "msw/node";
 import { handlers } from "./test/mocks/handlers";
 export const server = setupServer(...handlers);
@@ -81,9 +82,9 @@ afterAll(() => server.close());
 
 Override per test with `server.use(...)`; never edit the global handler array.
 
-### Three-State Data Component
+### Four-State Data Component
 
-Required for every component that fetches:
+Loading, success, empty and error - required for every component that fetches:
 
 ```tsx
 it("renders users", async () => {
@@ -129,8 +130,8 @@ it("fetches user via query", async () => {
 ### Accessibility
 
 ```tsx
-import { axe, toHaveNoViolations } from "jest-axe";
-expect.extend(toHaveNoViolations);
+// vitest.setup.ts: import "vitest-axe/extend-expect";
+import { axe } from "vitest-axe";
 
 it("has no a11y violations", async () => {
   const { container } = render(<LoginForm />);
@@ -169,11 +170,12 @@ it("debounces search", async () => {
   render(<Search />);
   await user.type(screen.getByRole("searchbox"), "ab");
   await vi.advanceTimersByTimeAsync(300);          // flush the debounce
+  vi.useRealTimers();                              // restore before any findBy*
   expect(await screen.findByText("results")).toBeInTheDocument();
 });
 ```
 
-The `advanceTimers` option is mandatory under fake timers - without it `userEvent` waits on a clock that never moves. Fake timers also freeze `waitFor` polling and TanStack Query retries - scope them to the single test that needs the clock and advance explicitly before async assertions.
+The `advanceTimers` option is mandatory under fake timers - without it `userEvent` waits on a clock that never moves. Under Vitest, `waitFor` does not detect fake timers (its auto-advance path checks for Jest), so its poll interval and timeout run on the frozen clock and a `findBy*` hangs to the suite timeout instead of failing. Advance the clock to flush the timer, restore real timers, then make the async assertion. TanStack Query retries freeze the same way - scope fake timers to the single test that needs the clock.
 
 ### Playwright E2E
 
@@ -194,31 +196,37 @@ test("user signs in", async ({ page }) => {
 When reviewing a test suite, open with one line `Scope: <files reviewed>`, then emit one finding per issue, ordered by severity:
 
 ```
+Scope: <files reviewed>
+
 Finding: <one-line summary>
-Category: {Queries | Mocking | Coverage | Hooks | Isolation | Accessibility | E2E | Environment}
+Category: {Queries | Assertions | Mocking | Coverage | Hooks | Isolation | Accessibility | E2E | Environment}
 Severity: {Critical | Major | Minor}
-Location: <path>:<line or range>
+Location: <path>:<line or range>, <path>:<line> for every site of a merged finding
 Evidence: <code excerpt>
-Fix: <pattern name from this skill, or the governing Rule when no Pattern covers it> - <one-line correction>
+Fix: <Pattern name, Rule, or Avoid bullet that governs; name the correction directly when none does> - <one-line correction>
+
+Tally: <N> findings (<C> Critical, <M> Major, <m> Minor)
 ```
 
-`Environment` covers render-environment and harness defects: an async RSC rendered in jsdom, a missing provider wrapper, fake timers without `advanceTimers` wiring. `Queries` also covers interaction-API drift (`fireEvent` where `user-event` belongs); snapshots fall under `Coverage`.
+`Environment` covers render-environment and harness defects: an async RSC rendered in jsdom, a missing provider wrapper, fake timers without `advanceTimers` wiring, a setup file missing an import the suite depends on, and a devDependency the recommended matcher or query needs but the manifest lacks. `Assertions` covers wrong-axis assertions - a CSS class, style value, or internal field standing in for observable behaviour. `Queries` also covers interaction-API drift (`fireEvent` where `user-event` belongs); snapshots fall under `Coverage`.
 
-Merge identical occurrences of one defect into one finding listing every location. Emit a finding even when another fix would subsume it, naming the subsuming change in Fix; when both a Pattern and a Rule cover it, cite the Pattern. Close with `Tally: <N> findings (<C> Critical, <M> Major, <m> Minor)`; a clean review emits `Scope:` plus `No issues found.`
+Merge occurrences of one defect into one finding listing every location - identical means the same defect with the same fix, so three `getByTestId` calls merge while a test-id query and a CSS-selector query stay separate. Emit a finding even when another fix would subsume it, naming the subsuming change in Fix; when both a Pattern and a Rule cover it, cite the Pattern. Close with `Tally: <N> findings (<C> Critical, <M> Major, <m> Minor)`; a clean review emits `Scope:` plus `No issues found.`
 
 Severity rubric:
-- **Critical**: test does not exercise the intended behavior, or cannot pass/fail as written (e.g., `vi.mock` declared inside the test body after import; renders a Server Component in jsdom; missing provider wrapper; unhandled request under `onUnhandledRequest: "error"`).
+- **Critical**: test does not exercise the intended behavior, or cannot pass/fail as written (e.g., a `vi.mock` factory closing over a top-level binding without `vi.hoisted`, or a per-test mock that needs `vi.doMock`; renders an async Server Component in jsdom; missing provider wrapper; a missing setup import that disables the matchers the test relies on; unhandled request under `onUnhandledRequest: "error"`).
 - **Major**: false confidence risk - wrong-axis assertion (CSS class for behavior), `vi.mock` for HTTP modules instead of MSW, hook tested indirectly through a host, missing boundary coverage on a data path, order-coupled tests sharing mutable state.
 - **Minor**: readability / idiom drift - `getByTestId` over `getByRole`, `fireEvent` over `user-event`, `waitFor` wrapping a query that should be `findBy*`, large churn-prone snapshots.
 
-When designing a plan, emit:
+No Category value is left unscored. Where a value appears in more than one band, the band naming your defect's condition wins; where two fit equally, take the higher. `Accessibility` is Major when a form or dialog carries no axe test, Minor when an axe test exists but role queries are missing. `E2E` is Major when a journey asserts on a timer or a CSS selector rather than a user-visible outcome, Minor otherwise. `Fix:` cites a Pattern, a Rule, or an `Avoid` bullet - whichever governs; when none does, name the correction directly.
+
+When writing tests rather than reviewing them, emit the tests themselves, then this same review envelope over what you wrote (or `Scope:` plus `No issues found.`). When designing a plan, emit:
 
 ```
 ## React Testing Plan
 
 **Stack:** {detected framework}
 
-**Tooling:** Vitest + RTL + MSW (+ Playwright for critical paths)
+**Tooling:** {the detected runner, component library and network-mocking layer; recommend Vitest + RTL + MSW (+ Playwright for critical paths) only where nothing is in place}
 
 ### Tests to Write
 - {component|hook|flow}: {state(s) covered} - {level: component | hook | E2E}
