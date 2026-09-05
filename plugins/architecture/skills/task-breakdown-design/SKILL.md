@@ -1,6 +1,6 @@
 ---
 name: task-breakdown-design
-description: Break a system design (HLD/LLD) into an implementable task graph - phases, dependency order, critical path, sizing, scope flags - or review a breakdown someone else authored.
+description: Break a system design (HLD/LLD) into an implementable task graph: phases, dependency order, critical path, sizing - or review one already written.
 agent: architecture-planner
 metadata:
   category: planning
@@ -38,12 +38,11 @@ When input is a thin sketch rather than a real design, say so, list the design s
 | Source design | No | The HLD/LLD the plan implements. When present, coverage is checked against it; when absent, coverage is judged against the plan's own stated scope, and the missing design is noted in Review Context |
 | Constraints | No | Capacity, deadlines, team boundaries that bound feasibility |
 
-Review the plan as written, not the plan you would have authored. Facts you know that the plan omits (a hidden consumer, a compliance deadline) enter as reviewer assumptions in Review Context and may ground findings - cite them as "reviewer context". When neither a design nor a stated scope is present, say so and review only internal soundness (dependencies, sizing, structure).
+Review the plan as written, not the plan you would have authored. Facts you know that the plan omits (a hidden consumer, a compliance deadline) enter as reviewer assumptions in Review Context and may ground findings - cite them as "reviewer context". Where the plan's own preamble describes the design instead of a separate design being supplied, that preamble is the stated scope: judge coverage against it and record in Review Context that the design itself was unavailable. When neither a design nor a stated scope is present, say so and review only internal soundness (dependencies, sizing, structure).
 
 ## Setup (both modes)
 
-Use skill: `behavioral-principles`.
-Use skill: `stack-detect`. Stack output picks which deep-dive atomics fire and names stack-specific tooling (test frameworks, migration tools); in Review Mode it also grounds sizing sanity and the stack-specific tasks a complete plan should contain. If unknown, proceed stack-agnostic; when the prompt names a stack and detect returns `unknown`, trust the prompt and record the assumption.
+Use skill: `behavioral-principles`. Use skill: `stack-detect`. Stack output picks which deep-dive atomics fire and names stack-specific tooling (test frameworks, migration tools); in Review Mode it also grounds sizing sanity and the stack-specific tasks a complete plan should contain. If unknown, proceed stack-agnostic; when the prompt names a stack and detect returns `unknown`, trust the prompt and record the assumption.
 
 ---
 
@@ -63,6 +62,7 @@ Read the design and extract the work it implies. Match the design's content to t
 | **Observability Plan** (S6) | Ops-Readiness tasks - metrics, traces, alerts, SLO wiring |
 | **Performance and Capacity** (S7) | Validation tasks - load/burst tests against stated targets; infrastructure tasks for the stated scaling model |
 | **Deployment Strategy** (S8) | Ops-Readiness tasks - rollout mechanism, migration order, rollback drill, flag config |
+| **Security Model / Authorization** (S3, S11) | Foundation + Ops-Readiness tasks - authz enforcement on each sensitive surface, audit logging, retention, key rotation |
 | **Guardrails** (S10) | Validation tasks - lint/arch-test rules that enforce each guardrail |
 | **Trade-Off / Significant Decisions** (S9) | Spikes where a decision is deferred; an `analysis` task per decision made but with its ADR still unwritten |
 
@@ -79,7 +79,7 @@ The design names components; this scan names the risks inside building them. Wal
 | Database changes | New table/column/index; zero-downtime required; backfill (S4) |
 | Data store migration | Moving data between stores (Memcached->Redis, Postgres->DynamoDB) |
 | API or protocol contract change | New/changed endpoints, field changes, auth-token format (S11) |
-| Auth / permissions | New roles, scopes, token formats, key rotation - or a sensitive surface (money, bulk PII, admin action) with authz conspicuously *unstated* (S2, S11) |
+| Auth / permissions | New roles, scopes, token formats, key rotation - or a sensitive surface (money, bulk PII, admin action) with authz conspicuously *unstated* (S3, S11) |
 | PII / compliance | Bulk export or new exposure of personal data, audit-logging, data-subject-access, retention (a data-export or reporting design implies this even when it never says so) |
 | Async / events | New queues, topics, consumers; idempotency requirements (S3) |
 | State machine | Lifecycle states + transition rules |
@@ -92,17 +92,17 @@ The design names components; this scan names the risks inside building them. Wal
 | Deploy coordination | Cross-service or cross-team ordering; consumer SDK distribution (S8) |
 | Third-party integration | External APIs, webhooks, SDKs |
 
-A signal is **material** (load the deep-dive) when it will produce at least one L+ task or a Scope and Risk Flags entry. Otherwise note it and move on. Summarize non-applicable signals in one line ("Checked, not applicable: ...").
+A signal is **material** (load the deep-dive) when the design's own text shows it touching production data, an externally consumed contract, or the rollout mechanism. Judge that from the source, not from tasks you have not written yet. Otherwise note it and move on. Summarize non-applicable signals in one line ("Checked, not applicable: ...").
 
 Deep-dive mapping (load only when material):
 
 - DB schema or data changes -> `Use skill: backend-db-migration` (data-store moves without relational schema work do not route here)
-- Schema, API, or protocol contract *change* -> `Use skill: ops-backward-compatibility`. A *net-new* published contract (a new event, endpoint, or export) has no old behavior to stay compatible with; its risk is provider-first ordering (the consumer must be ready before the producer emits) -> route it to `dependency-impact-analysis` instead
+- Schema, API, or protocol contract *change* -> `Use skill: ops-backward-compatibility`. A *net-new* published contract (a new event, endpoint, or export) has no old behavior to stay compatible with; its risk is deployment ordering - provider-first for an additive contract, with consumers adopting at their own pace -> route it to `dependency-impact-analysis` instead
 - Cross-service / cross-team dependencies -> `Use skill: dependency-impact-analysis`
 - Flag-gated rollout -> `Use skill: ops-feature-flags`
-- Any L/XL task touching shared state, auth, money, or cross-service contracts -> run `Use skill: review-blast-radius` and `Use skill: review-change-risk` on the single riskiest such task
+- Work the design implies will touch shared state, auth, money, or cross-service contracts -> run `Use skill: review-blast-radius` and `Use skill: review-change-risk` on the single riskiest one. Where several qualify, take the most sensitive surface: money and data integrity first, then shared state, then cross-service contracts
 
-Deep-dives inform task descriptions, sizes, and flag rationales - cite verdicts inline in the relevant flag (e.g. "blast radius Critical, Wide with flag"); do not paste their output blocks into the artifact.
+A material signal with no route above is handled inline: name it under Complexity signals and let it shape the task's size and description - the absence of a route is not permission to skip it. Deep-dives inform task descriptions, sizes, and flag rationales - cite their findings inline in the relevant flag; do not paste their output blocks into the artifact. A `review-blast-radius` citation carries the mitigation tag with the level, because the tag decides which value binds: on `in-place:` cite the mitigated level, on `required:` cite the unmitigated one (e.g. "blast radius Critical unmitigated, Wide with the flag off - Mitigation: required:").
 
 ### STEP 3 - Generate Tasks
 
@@ -121,11 +121,12 @@ Each task:
 - **Description** - one or two sentences; what to build, not how
 - **Traces to** - the design section, heading, or component this task implements (e.g., "S3 NotificationRouter", or a free-form heading like "Approach: WebSocket gateway"). An ops-readiness task may trace to an implied need the design carries rather than states (e.g., observability or rollback for a flagged rollout) - that is not scope creep. A task tracing to nothing in the design is scope creep - move it to Scope and Risk Flags.
 - **Depends on** - task name(s), external (<team/system>), or none
-- **Size** - S (<1d) / M (1-2d) / L (3-5d focused engineering days) / XL (>5d - keep in the backlog with a `split` note naming the cohorts/waves it breaks into). Size measures engineering effort; fixed elapsed time (soak windows, parallel runs) goes in the description, not the size.
-- **Complexity signals** - required for L or XL; cite which Step 2 signals justify the size
+- **Size** - S (under 1 day) / M (1-2 days) / L (over 2 and up to 5 days) / XL (over 5 days - listed under Backlog with a Split note naming the cohorts or waves it breaks into). Size measures engineering effort; fixed elapsed time (soak windows, parallel runs) goes in the description, not the size.
+- **Complexity signals** - required for L or XL; cite which Step 2 signals justify the size. The signals check the effort estimate rather than replace it: a task carrying two or more, or any single signal touching production data or an externally consumed contract, rarely lands below L, and one that also spans cohorts, waves, or another team's schedule is XL
+- **Split** - XL only: the cohorts or waves it breaks into. An XL task is listed under Backlog rather than in a phase
 - **Tag** - optional, only `nice-to-have` or `risk-reduction`
 
-When a size hinges on a design decision the doc left open (sync vs. async), state the assumption in the description and the alternative under Open Questions, raise a spike, or both when the decision is load-bearing - break down the assumed path so the plan is usable, and spike the decision so it is not mistaken for settled. Do not pick for the architect.
+When a size hinges on a design decision the doc left open (sync vs. async), state the assumption in the description and the alternative under Open Questions, raise a spike, or both when the decision is load-bearing - break down the assumed path so the plan is usable, and spike the decision so it is not mistaken for settled. Do not pick for the architect. When one open decision governs most of the plan, still break down the assumed path and mark every dependent task with the assumption - a plan the architect can correct beats a spike alone. Shrink to the spike plus decision-independent prep only when the alternatives produce disjoint task sets.
 
 ### STEP 4 - Dependency Order and Critical Path
 
@@ -134,13 +135,13 @@ Number tasks with blocking relationships:
 ```
 1. Define JWT spec (no deps)
 2. JWKS endpoint infra (requires: 1)
-3. Dual-mode /auth/validate (requires: 1)
-4. Consumer SDK rollout - 30 services (requires: 2, 3)
+3. Dual-mode /auth/validate (requires: 2)
+4. Publish consumer SDK and migration guide (requires: 3; adoption by 30 services is external (Platform))
 ```
 
-**Critical path** = longest chain by hop count of dependent tasks (do not sum sizes; external dependencies are not hops). If chains tie on hops, pick the one carrying more external coordination or larger sizes. Name the chain in arrow form and add one sentence on *why* it pins delivery (size, externality, cross-team sequencing).
+**Critical path** = longest chain by hop count of dependent tasks (do not sum sizes; external dependencies are not hops). Hops rather than summed effort, because chain length is what adding people cannot compress. If chains tie on hops, pick the one carrying more external coordination or larger sizes. Name the chain in arrow form and add one sentence on *why* it pins delivery (size, externality, cross-team sequencing). Where a shorter chain carries materially more risk, name it under Scope and Risk Flags: the critical path answers duration, not danger.
 
-When tasks depend on other teams or external systems, name the owning team in `Depends on` so the critical path surfaces team-coordination risk. Another team's deliverable is an `external (<team>)` dependency, not a task - create tasks only for work your team executes. Spikes are numbered in the Dependency Order when other tasks depend on their outcome, but stay in the Spikes section and do not count toward the task count.
+When tasks depend on other teams or external systems, name the owning team in `Depends on` so the critical path surfaces team-coordination risk. Another team's deliverable is an `external (<team>)` dependency, not a task - create tasks only for work your team executes. The work your team does to obtain it - raising the request, supplying the schema, verifying the grant - is your task; the deliverable itself stays the external dependency. Where one mechanism your team builds ships to many teams, that is a single task carrying those teams as its Split waves, plus an external dependency for each team whose adoption gates a later task - not one task per team. Spikes carry an `SP<n>` ID - not `S<n>`, which this skill already uses for design sections - and are cited by it in the Dependency Order when other tasks depend on their outcome, but stay in the Spikes section and do not count toward the task count.
 
 ### STEP 5 - Scope and Risk Flags
 
@@ -149,7 +150,7 @@ Surface plan-level flags, each with a verdict: `proceed`, `de-scope`, `add spike
 - **Design gaps:** load-bearing decisions the design left open; required sections absent for the blast radius (e.g., no rollback plan for a Wide change)
 - **Scope creep:** work the plan needs that the design did not call for; tasks with no design trace
 - **Hidden risks:** L/XL tasks on the critical path; data tasks with rollback complexity; integration blocked on external teams; tasks with unclear complexity (needs a spike); domain-calculation tasks (billing, tax, shipping)
-- **XL tasks** stay in the backlog with `split` notes; promote to `split epic` only when the XL spans cohorts/waves that warrant their own planning
+- **XL tasks** stay in the backlog with their Split note; promote to `split epic` only when the cohorts that note names each need their own dependency order and delivery timeline, not merely their own ticket
 
 When the verdict is `add spike`, define:
 - **Question:** specific unknown
@@ -172,6 +173,7 @@ When the verdict is `add spike`, define:
 
 - **<signal>:** <one-line evidence citing the design>
 - **Checked, not applicable:** <non-material signals in one line>
+- **Deep-dives loaded:** <atomics that fired, or "none material"; name any that were unavailable>
 
 ## Tasks
 
@@ -184,9 +186,14 @@ When the verdict is `add spike`, define:
 - **Depends on:** task(s), external (<team/system>), or none
 - **Size:** S / M / L / XL
 - **Complexity signals:** <Step-2 signals; required for L/XL>
+- **Split:** <cohorts or waves> (XL only)
 - **Tag:** nice-to-have | risk-reduction (omit otherwise)
 
 [repeat per task; omit phases with no tasks]
+
+## Backlog
+
+- **<XL task name>** - every field from the task template above, plus **Split:** <cohorts or waves it breaks into>
 
 ## Dependency Order
 
@@ -200,9 +207,10 @@ When the verdict is `add spike`, define:
 
 ## Spikes
 
-- **Question:** <unknown>
-  **Done:** <output>
-  **Time-box:** <duration>
+- **SP1 - <short name>**
+  - **Question:** <specific unknown>
+  - **Done condition:** <what the spike must produce>
+  - **Time-box:** <maximum duration before it concludes with a finding>
 
 ## Assumptions and Open Questions
 
@@ -217,8 +225,8 @@ Omit empty sections (Spikes, Scope and Risk Flags, Assumptions).
 - [ ] **Setup:** behavioral-principles + stack-detect loaded; prompt-stated stack honored when detect is unknown
 - [ ] **Map:** design sections drawn-from and absent listed; every task traces to a design section/component; no architecture invented
 - [ ] **Scan:** every applicable signal listed with design-citing evidence; material deep-dive atomics loaded
-- [ ] **Tasks:** each has Name, Type (from enum), Description, Traces-to, Depends-on, Size; L/XL cite complexity signals; XL has a `split` note; team/system named when external
-- [ ] **Dependencies:** critical path named by hop count with a "why" sentence; Ops Readiness includes observability/rollback when the design implies them
+- [ ] **Tasks:** each has Name, Type (from enum), Description, Traces-to, Depends-on, Size; L/XL cite complexity signals; XL carries Split and sits under Backlog; team/system named when external; Ops Readiness includes observability/rollback when the design implies them
+- [ ] **Dependencies:** critical path named by hop count with a "why" sentence; spikes cited by `SP<n>` where tasks depend on them
 - [ ] **Flags:** each flag carries a verdict; design gaps surfaced; spikes have Question + Done + Time-box
 - [ ] **Assumptions and Open Questions** populated when the design left decisions open
 
@@ -234,7 +242,7 @@ State in one sentence each: what the plan builds, its stated scope/exclusions, t
 
 ### STEP 2 - Coverage Audit
 
-Does the plan cover the work the design (or stated scope) implies? For each area, mark **Covered** (a task implements it), **Under-specified** (named but no real task), or **Missing** (no task). When a source design is supplied, walk it against the areas below - by section when it is a `task-design-architecture` proposal, by change-inventory row when it is a `task-design-brief` (a plan that builds on an impact the brief marks `assumed` as if verified is Under-specified, Major minimum), by heading or topic when it is a free-form HLD/LLD or a prose excerpt. When no design is supplied, replace the rows with each in-scope item the stated scope names plus the ops areas it implies (an export needs failure/retry + alerting; a write path needs rollback), and mark `n/a` any area the scope does not reach - `n/a` is not Missing.
+Does the plan cover the work the design (or stated scope) implies? For each area, mark **Covered** (a task implements it), **Under-specified** (named but no real task), or **Missing** (no task). When a source design is supplied, walk it against the areas below - by section when it is a `task-design-architecture` proposal, by change-inventory row when it is a `task-design-brief` (a plan that builds on an impact the brief marks `assumed` as if verified is Under-specified, Major minimum), by heading or topic when it is a free-form HLD/LLD or a prose excerpt. When no design is supplied, keep the area rows and judge them against the stated scope plus the ops areas it implies (an export needs failure/retry + alerting; a write path needs rollback), marking `n/a` any area the scope does not reach - `n/a` is not Missing. Add a row only for an in-scope item no area covers.
 
 | Area | A complete plan has |
 | --- | --- |
@@ -248,6 +256,7 @@ Does the plan cover the work the design (or stated scope) implies? For each area
 | Performance / capacity | Load-test tasks against stated targets; scaling-config tasks when the design states a scaling model |
 | Deployment and rollback | Rollout, migration-order, rollback-drill, flag-config tasks |
 | Guardrails | Validation tasks that enforce each guardrail |
+| Trade-offs and decisions | An `analysis` task per decision whose ADR is unwritten; a spike per decision the design left open |
 
 The most common defect is a plan that tasks out the happy-path build and omits migration, backward-compat, rollback, and observability the design calls for. Severity of a Missing item:
 
@@ -263,12 +272,12 @@ Treat a change as Wide/Critical - and its Missing rollback/migration/idempotency
 Check the plan's internal mechanics. Record each as a finding with severity.
 
 - **Dependency graph:** every task states dependencies; no cycles; no task depends on work sequenced after it; another team's deliverable is `external`, not a task the plan owns
-- **Critical path:** correctly identified (longest chain by hop count, not summed sizes; externals are not hops); the named chain matches the dependency graph
+- **Critical path:** correctly identified (longest chain by hop count, not summed sizes; externals are not hops); the named chain matches the dependency graph. A dependency cycle makes the critical path uncomputable rather than wrong: raise the cycle, and report the path as unassessable until it is broken instead of scoring it as a separate finding
 - **Sizing:** L/XL tasks justify their size; XL tasks carry a `split` note and are not silently dropped; sizes are engineering effort, not calendar time. When the coverage gaps invalidate the author's own task-count or timeline claim, fold that into the driving coverage findings - do not raise it as a separate scored finding.
 - **Scope creep:** tasks with no design trace and not in stated scope; must-have framing on work that was never agreed
 - **Phasing:** foundation work precedes the build that needs it; ops-readiness is not deferred past the risky launch
 
-When a contract/migration/flag gap drives a finding, cite the relevant atomic's verdict inline (`ops-backward-compatibility`, `backend-db-migration`, `ops-feature-flags`) rather than pasting its block; load it only when the finding's severity depends on it.
+When a contract/migration/flag gap drives a finding, cite inline the field that atomic actually emits - `ops-backward-compatibility`'s `Compatible` value for the change, `backend-db-migration`'s lock risk and strategy, `ops-feature-flags`'s finding severity - rather than pasting its block; load it only when the finding's severity depends on it.
 
 ### STEP 4 - Findings and Verdict
 
@@ -283,9 +292,9 @@ Number findings (F1, F2, ...). Each cites a specific task, phase, or omission, c
 
 | Verdict | Criteria |
 | --- | --- |
-| **Approve** | No Blockers, no Majors; all design areas Covered |
+| **Approve** | No Blockers and no Majors |
 | **Approve with changes** | No Blockers; Majors bounded and specifically addressable |
-| **Needs rework** | One or more Blockers, or gaps spanning multiple areas |
+| **Needs rework** | One or more Blockers, or Majors the author cannot bound into specific pre-commitment changes |
 
 Any non-Approve verdict lists its required changes as a checkbox list (for Needs rework, the items driving the Blockers).
 
@@ -337,7 +346,7 @@ Required changes (omit if Approve):
 - [ ] **Setup:** behavioral-principles + stack-detect loaded
 - [ ] **Intake:** plan, stated scope, and source-design status stated
 - [ ] **Coverage:** each area marked Covered/Under-specified/Missing/n/a; no-design reviews key rows to stated scope + implied ops areas; Missing on a Wide/money/data-integrity/PII area is a Blocker; scope-silent areas marked `n/a`, not Missing
-- [ ] **Structure:** dependency graph, critical path, sizing, scope creep, and phasing each assessed
+- [ ] **Structure:** dependency graph, critical path, sizing, scope creep, and phasing each assessed; a cycle reported as making the critical path unassessable rather than scored separately
 - [ ] **Findings:** each numbered, cites a specific task/omission, carries a severity, recommends the smallest change; each root cause once
 - [ ] **Verdict:** driven by highest severity; non-Approve lists required changes as a checklist
 

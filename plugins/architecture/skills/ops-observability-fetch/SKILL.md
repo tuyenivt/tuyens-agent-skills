@@ -1,6 +1,6 @@
 ---
 name: ops-observability-fetch
-description: Fetch oncall evidence (issues, metrics, logs, traces, deploys, monitors) via observability MCPs - Sentry/Datadog/Honeycomb/Grafana/etc. Normalizes output; falls back to paste-mode.
+description: Fetch oncall evidence - issues, metrics, logs, traces, deploys, monitors - via observability MCPs. Normalizes into blocks; falls back to paste-mode.
 metadata:
   category: ops
   tags: [oncall, observability, evidence, mcp, sentry, datadog]
@@ -15,36 +15,47 @@ Transport-agnostic evidence gathering for oncall workflows. Detects available MC
 
 | Capability      | Emits block     | Inputs                              | URL pattern (auto-fetch trigger)                                                          |
 | --------------- | --------------- | ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `fetch_issue`   | `error_event`   | issue ID or URL                     | `*.sentry.io/.../issues/{id}` (numeric or short-ID - the URL host carries the org); a bare short-ID like `PROJ-123` with no URL needs org+project slugs - emit the block unavailable and ask for the slugs in the trailing notes; fetch once answered |
-| `fetch_monitor` | `monitor_state` | monitor ID or URL                   | `app.datadoghq.*/monitors/{id}`                                                           |
-| `fetch_trace`   | `trace`         | trace ID or URL                     | `app.datadoghq.*/apm/trace/{id}` (or vendor equivalent)                                   |
-| `query_logs`    | `log_window`    | service, window, filters / corr. ID | `app.datadoghq.*/logs?query=...&from_ts=...&to_ts=...` (extract query + window)           |
-| `query_metrics` | `metric_series` | metric name(s), window, filters     | none (metrics require a named metric)                                                     |
-| `list_deploys`  | `deploy_event`  | service(s), window                  | none                                                                                      |
+| `fetch_issue`   | `error_event`   | issue ID or URL                     | a Sentry issue path `/issues/{numeric id}`, on `{org}.sentry.io`, on a regional host (`us.sentry.io`, `de.sentry.io`), or on `sentry.io/organizations/{org}/...` where the org sits in the path |
+| `fetch_monitor` | `monitor_state` | monitor ID or URL                   | a Datadog `/monitors/{id}` path on any site host                                          |
+| `fetch_trace`   | `trace`         | trace ID or URL                     | a Datadog `/apm/trace/{id}` path, or the vendor equivalent                                 |
+| `query_logs`    | `log_window`    | service, window, filters / corr. ID | a Datadog `/logs?query=...&from_ts=...&to_ts=...` path (extract query + window)            |
+| `query_metrics` | `metric_series` | metric name(s), window, filters     | none - metrics require a named metric                                                      |
+| `list_deploys`  | `deploy_event`  | service(s), window                  | none                                                                                       |
 
-**Dashboard URLs** (`*/dashboard/*`) are never auto-fetched - they aggregate many tiles. Ask which metric/panel (as a trailing note, see Rules).
+**Host forms.** Datadog sites vary by region and several carry no `app.` label - `app.datadoghq.com`, `app.datadoghq.eu`, `us3`, `us5`, `ap1`, `ap2` under `.datadoghq.com`, and `app.ddog-gov.com`. Sentry's browser-facing issue URLs are `{org}.sentry.io/...` or `sentry.io/organizations/{org}/...`; its regional `us.` and `de.` hosts are API domains, so treat them as valid but expect the org from the path.
 
-**Self-hosted variants** (`sentry.{company}.com`, `datadog.{company}.internal`) match on path, not host.
+Match on host and path together: path alone would claim `/issues/{id}` URLs belonging to GitLab, Jira and every internal tracker. For self-hosted Sentry, which can live on any hostname, take the whole Sentry path shape (`/organizations/{org}/issues/{id}`) as the signal and confirm the vendor with the user when the host gives no clue. Datadog is SaaS-only and has no self-hosted form.
+
+**Sentry short IDs** (`PROJ-123`) already encode the project, so only the org slug is missing. With no URL to carry it, emit the block unavailable, ask for the org slug in the trailing notes, and fetch once answered.
+
+**Dashboard URLs** (`*/dashboard/*`) are never auto-fetched - they aggregate many tiles. A dashboard URL anchors nothing on its own, so it produces no block: ask which metric or panel in the trailing notes and emit the resulting `metric_series` once answered. Where the consumer separately asked for `metric_series`, that request still gets its block, unavailable with `Needs: metric name`.
 
 ## Rules
 
 - **Detect transport once per invocation, per vendor; do not narrate the probe.** Partial availability is normal: fetch via available transports, paste-prompt the rest.
 - **URL recognition runs before asking for paste.** If input contains a recognized URL, auto-fetch. Parse IDs and windows out of URLs even when the transport is unavailable - they belong in the unavailable block.
-- **Never invent values.** Unknown fields stay `unknown`; missing transport produces an unavailable block with a paste prompt.
-- **Source tag uses roles, not vendor names:** `mcp` (any MCP transport), `user-paste`, `unavailable`. Name the vendor in the block's `Tool:` line when relevant. When the user later pastes the requested data, re-emit the block normalized with `Source: user-paste`.
+- **Never invent values.** Unknown fields stay `unknown`; a capability that cannot be fetched produces an unavailable block with a paste prompt.
+- **Source tag uses roles, not vendor names:** `mcp` (any MCP transport), `user-paste`, `unavailable`. `unavailable` covers every reason the data did not arrive - no transport, a missing required parameter, or a call that errored or timed out - and the block says which in one clause. A call that succeeded and returned nothing is `mcp` with an empty result, not `unavailable`: an empty log window or deploy list is evidence of absence and must not be re-requested from the user. Name the vendor in the block's `Tool:` line, omitting the line when the vendor is unknown. When the user later pastes the requested data, re-emit the block normalized with `Source: user-paste`.
 - **Emit every block the consumer asked for** - as unavailable when it cannot be fetched, even when the input gives no anchor for it - **plus blocks the input directly anchors** - one block per capability/target, deduplicated across the two sets. Anchors: a recognized URL, or an explicit ID, metric name, or service+window in the request text. Nothing else - no speculative padding.
 - **Block order:** consumer-requested blocks first in requested order, then input-anchored extras in input order.
-- **Output starts with the first block.** No preamble, no transport narration. Notes and questions (dashboard panel question, skipped/unrecognized URLs) go after the last block, one line each.
-- **Window required** for `query_metrics`, `query_logs`, `list_deploys`. Resolve relative windows ("last 48h") against the current time, convert epoch-ms URL parameters, and display ISO timestamps. Other capabilities carry their own context.
-- **`list_deploys` emits one `deploy_event` block per deploy** (newest first, cap 5, note the total when capped). Unavailable mode emits one `deploy_event` block per requested service, its paste prompt requesting that service's list.
+- **Output starts with the first block.** No preamble, no transport narration. After the last block come the notes, one line each: `Question:` for a parameter still needed (dashboard panel, org slug, metric name, window), `Note:` for a recognized URL that produced no block for any other reason. One line per URL, not two - a dashboard URL is a `Question:`, since asking which panel is what unblocks it.
+- **Window required** for `query_metrics`, `query_logs`, `list_deploys`. Resolve relative windows ("last 48h") against the current time, convert epoch-ms URL parameters, and display ISO timestamps. A missing window is a missing parameter: ask for it in the notes. Other capabilities carry their own context.
+- **`list_deploys` emits one `deploy_event` block per deploy**, newest first, capped at 5 per requested service, with the total noted when the cap bites. Unavailable mode emits one block per requested service carrying the service and whatever window is known, its paste prompt requesting that service's list. The same cap and note apply when that list is pasted. Where the consumer named no service, or no window can be resolved from the request, that missing parameter takes precedence and the block asks for it.
 
 ## Transport Detection
 
-Probe MCP tool namespaces by prefix and verb (`mcp__sentry__*`, `mcp__datadog__*`, `mcp__honeycomb__*`, etc.). Match capabilities to verbs (`get_issue`, `query_metrics`, `search_logs`, `get_monitor`, `get_trace`, `list_deployments`). If two transports expose the same capability, prefer the one named in the project's `CLAUDE.md` under `## Observability`; otherwise ask once.
+Read the available MCP tool names and match them to capabilities by what they do, not by a fixed name. The namespace segment is the user's own server key in their MCP config (`sentry-remote`, `dd`, `obs`), so a prefix like `mcp__sentry__*` is a hint, never a test - a correctly installed server under another key must still be found. Tool names differ by vendor: Sentry exposes issue lookups such as `find_issues` and `get_issue_details`; Honeycomb exposes `run_query` and `list_datasets`; Grafana exposes `query_prometheus` and `query_loki_logs`. Map whatever exists onto the six capabilities.
+
+Deploy data hides under release and event names rather than a "deploys" tool: Sentry exposes release lookups, Datadog exposes software-delivery and event search. Look for those before concluding `list_deploys` has no transport. Where none exists, it resolves to an unavailable `deploy_event` block plus a paste prompt, since a CI or release API is the other place deploy data lives.
+
+If two transports expose the same capability, prefer the one named in the project's `CLAUDE.md` under `## Observability`; otherwise ask once.
 
 ## Unavailable Blocks and Paste Prompts
 
-When a capability cannot be fetched - no transport, or a required parameter is missing (metric name, dashboard panel, org/project slugs) - emit the block with `Source: unavailable`, any fields parseable from the input - URL or request text (ID, window, service, filters) - and a one-line `Paste prompt:` naming the tool when known and the block's minimum fields from this table - nothing more. Missing-parameter blocks put the parameter question in the trailing notes and are fetched once answered:
+When a capability cannot be fetched, emit the block with `Source: unavailable`, any fields parseable from the input (ID, window, service, filters), and one closing line. Which closing line depends on why:
+
+- **A required parameter is missing** (metric name, dashboard panel, org slug, window) - a `Needs:` line naming the parameter, and the matching question in the trailing notes. Ask for the parameter even when no transport is connected: it is the cheaper answer, it may resolve the block outright, and it is what the caller must supply either way. Do not also ask for a paste.
+- **Everything needed is present but the fetch cannot happen** - no transport, or the call failed - a `Paste prompt:` naming the tool when known and the block's minimum fields from the table below. The user supplies the data.
 
 | Block           | Minimum paste fields                                                              |
 | --------------- | --------------------------------------------------------------------------------- |
@@ -55,9 +66,9 @@ When a capability cannot be fetched - no transport, or a required parameter is m
 | `monitor_state` | name, status, threshold, current value, last triggered                            |
 | `trace`         | trace ID, services traversed, error span count, slowest span                      |
 
-Derived fields (`Baseline delta`, `Anomaly`) are computed, never requested from the user: when a transport is available, fetch the prior-baseline series to compute them; otherwise write `no baseline`.
+Derived fields (`Baseline delta`, `Anomaly`) are computed, never requested from the user: when a transport is available, fetch the prior-baseline series to compute them; with no baseline to compare against, write `Baseline delta: no baseline` and `Anomaly: unknown - no baseline`. Unavailable blocks carry neither field, since nothing was fetched to derive them from.
 
-Example:
+A block can carry a parsed value and still need another: the `metric_series` below has a window resolved from the consumer's stated relative range and asks only for the metric name. Examples - a no-transport block and a missing-parameter block:
 
 ```
 ### error_event
@@ -65,11 +76,19 @@ Source: unavailable
 Tool: sentry
 ID: 6630114
 Paste prompt: From Sentry issue 6630114, paste: message, top stack frame, first seen / last seen, event count, release.
+
+### metric_series
+Source: unavailable
+Tool: datadog
+Window: 2026-09-03T13:31:00Z to 2026-09-03T14:31:00Z
+Needs: metric name
+
+Question: which metric should I pull for orders-api error rate? The dashboard URL aggregates many tiles, so I cannot pick one from it.
 ```
 
 ## Output
 
-Each block carries `Source:`, `Tool:` (omit when the vendor is unknown), and only the fields the capability returned or the paste requires. Consumers parse by block type.
+Each block carries `Source:`, `Tool:` (omit when the vendor is unknown), and only the fields the capability returned or the paste requires. Consumers parse by block type. Where an invocation produces no block at all - the input anchored nothing and the consumer requested nothing - emit the notes alone, so the caller still sees what was asked.
 
 ```
 ### error_event
@@ -86,36 +105,37 @@ Affected users: {N}
 Tags: {key=value, ...}
 
 ### metric_series
-Source: ...
+Source: {mcp | user-paste | unavailable}
 Tool: {datadog | grafana | newrelic | ...}
 Metric: {name}
 Window: {start} to {end}
 Filters: {scope}
 Points: {ts=value, ...} OR {p50=.., p99=.., max=..}
 Baseline delta: {+N% vs prior 7d | no baseline}
-Anomaly: {yes/no}
+Anomaly: {yes | no | unknown - no baseline}
 
 ### log_window
-Source: ...
+Source: {mcp | user-paste | unavailable}
 Tool: {datadog | cloudwatch | loki | splunk | ...}
 Service: {name}
 Window: {start} to {end}
-Filters: {query string}
+Filters: {query string, percent-decoded}
 Correlation IDs present: {yes | no | partial (present on some lines/components, absent on others)}
 Lines: {count returned} of {total matched}{; "truncated at tool cap" when a cap was hit}
 Sample: {10-30 representative lines: timestamp level message}
 
 ### deploy_event
-Source: ...
-Tool: {datadog | sentry-releases | gh-releases | ...}
-Timestamp: {ISO}
+Source: {mcp | user-paste | unavailable}
+Tool: {datadog | sentry | gh-releases | ci | ...}
 Service: {name}
+Window: {start} to {end}
+Timestamp: {ISO}
 Commit: {sha}
 Author: {name}
 Environment: {prod/staging/...}
 
 ### monitor_state
-Source: ...
+Source: {mcp | user-paste | unavailable}
 Tool: {datadog | pagerduty | ...}
 ID: {monitor id}
 Name: {monitor name}
@@ -125,7 +145,7 @@ Current value: {value}
 Last triggered: {ISO}
 
 ### trace
-Source: ...
+Source: {mcp | user-paste | unavailable}
 Tool: {datadog-apm | honeycomb | jaeger | ...}
 Trace ID: {id}
 Duration: {ms}
@@ -134,7 +154,7 @@ Error spans: {N, with service:operation list}
 Slowest span: {service:operation, {ms}}
 ```
 
-Omit fields the capability did not return. Unavailable blocks keep only `Source`, `Tool`, input-parsed fields, and the `Paste prompt:` line.
+Omit fields the capability did not return. Unavailable blocks keep only `Source`, `Tool`, input-parsed fields, and their closing `Paste prompt:` or `Needs:` line.
 
 ## Avoid
 

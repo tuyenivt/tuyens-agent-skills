@@ -9,7 +9,7 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows. Then load `Use skill: stack-detect` unless Shape = Schema (which is engine-driven, not stack-driven) - the stack grounds merge feasibility, target-stack evaluation, and interoperability. If a delegated skill is unavailable (standalone use), apply the section's inline instructions on judgment and say so in the output. When no codebase is accessible, repo-analysis delegations (stack-detect, architecture-guardrail) run on the facts stated in the request or plan under review (recorded on the output's Assumptions line), and claims needing code verification become discovery tasks under Knowledge gaps. Delegated skills supply analysis method, not structure: this skill's Output template is the only output contract - absorb their findings into its fields and never emit their own Output blocks.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows. Then load `Use skill: stack-detect` - it grounds merge feasibility, target-stack evaluation, and interoperability, and for Shape = Schema it identifies the database and ORM that the Section 3d atomics declare as their input. Engine version and migration tool are not in its contract - take them from Section 1's current-state capture. If a delegated skill is unavailable (standalone use), apply the section's inline instructions on judgment and say so in the output. When no codebase is accessible, repo-analysis delegations (stack-detect, architecture-guardrail) run on the facts stated in the request or plan under review (recorded on the output's Assumptions line), and claims needing code verification become discovery tasks under Knowledge gaps. Delegated skills supply analysis method, not structure: this skill's Output template is the only output contract - absorb their findings into its fields and never emit their own Output blocks.
 
 # Architecture Migration -- Staff Edition
 
@@ -54,7 +54,7 @@ Shape = Schema runs Sections 1, 3d, 5, 6, 7 only; Sections 2 and 4 do not apply 
 | Reference doc        | No       | Company template or an approved prior plan; path or pasted content                |
 | Depth                | No       | `quick`, `standard` (default), or `deep`                                          |
 
-When a reference doc is supplied, or the project's instruction file carries a `## Design Docs` section, load `Use skill: design-reference-pattern` (authoring only - in Review Mode do not load it; the review follows the lens's structure, and the house template is not review evidence). It governs headings, order, and metadata slots only - the one sanctioned exception to the behavioral directive's structure rule; every section this workflow requires maps to a house heading or is appended under its own name, the Shape, Scope, and Assumptions header lines ride with the metadata slots, and nothing is dropped to fit the template.
+When a reference doc is supplied, or the project's instruction file carries a `## Design Docs` section, load `Use skill: design-reference-pattern` (authoring only - in Review Mode do not load it; the review follows the lens's structure, and the house template is not review evidence). Supply it with this workflow's required-content list - one item per Output template section - and state that the deliverable carries an appendix. It governs headings, order, and metadata slots only - the one sanctioned exception to the behavioral directive's structure rule; every section this workflow requires maps to a house heading or is appended under its own name, unnumbered, after the house Appendix and in the Output template's order, the Shape, Scope, and Assumptions header lines ride with the metadata slots, and nothing is dropped to fit the template.
 
 Handle partial inputs gracefully. State assumptions explicitly when input is missing. For inputs naming only 1-3 specific services, skip the full landscape and scope the assessment to those and their immediate dependencies.
 
@@ -66,7 +66,7 @@ Handle partial inputs gracefully. State assumptions explicitly when input is mis
 | `standard` | Default - plan for engineering leadership sign-off   | All applicable sections                                                           |
 | `deep`     | Large system, multi-team, multi-quarter migration    | All applicable sections + dependency deep-dive + failure simulation               |
 
-At `quick`, keep template numbering, omit unproduced sections silently, waive their Self-Check items, and lead with the Staff-Level Summary feasibility verdict.
+At `quick`, keep template numbering, omit unproduced sections silently, waive their Self-Check items, and move the Staff-Level Summary from its usual last position to the top, so the feasibility verdict leads.
 
 **Deep adds:** per-unit transitive dependency enumeration (code, data, config) classified severable or requires-migration; and a failure simulation walking the highest-risk phase end to end - cause -> propagation -> user-visible impact -> mitigation that activates -> recovery - closing with Blast radius {Narrow | Moderate | Wide | Critical}, MTTR estimate, and the gap the plan must close.
 
@@ -92,15 +92,16 @@ Use skill: `architecture-guardrail` to assess current boundary quality.
 
 Capture: deploy frequency, duration, and rollback frequency (this gates the cadence check in 3a); specific pain points with evidence, since vague drivers produce vague plans; integration points; and knowledge concentration (bus factor). Apply the driver validation gate here.
 
-**Landscape predicate.** Build a landscape before the shape section when the current state has more than one independently deployed application whose code or config this migration changes. Backing infrastructure (DB, cache, broker, search) and SaaS integrations this migration leaves unchanged are inventory or integration rows, not systems; a reader whose queries or connector config must change counts as a system wherever it is hosted. A monolith with external dependencies needs no landscape; a schema change with several direct-reader services does. The landscape covers inventory, integrations, and cross-system risks. Enrich any user-supplied inventory rather than restating it.
+**Landscape predicate.** Build a landscape before the shape section when the current state has more than one independently deployed application whose code or config this migration changes. Backing infrastructure (DB, cache, broker, search) and SaaS integrations this migration leaves unchanged are inventory or integration rows, not systems; a reader whose queries or connector config must change counts as a system wherever it is hosted, and whether or not it is an application - an ETL job, a BI workspace or a saved-query console qualifies. A monolith with external dependencies needs no landscape; a schema change with several direct-reader services does. The landscape covers inventory, integrations, and cross-system risks. Enrich any user-supplied inventory rather than restating it.
 
-- Mark every row **Confirmed** (authored documentation, code-verified, or stated in the request) or **Inferred** (derived from config, naming, or convention - a compose file or IaC alone is Inferred). A row's confidence is that of its least-confirmed cell. Never invent values: unknown Owner/Stack cells say Unknown, and undocumented systems still get rows - they are usually where the risk lives
+- Mark every row of the Landscape's integration table **Confirmed** (authored documentation, code-verified, or stated in the request) or **Inferred** (derived from config, naming, or convention - a compose file or IaC alone is Inferred) in its Confidence cell; a Cross-System Risk row carries the same judgement in its Evidence cell, which has no Confidence column; an Inventory row carries the same judgement in Notes where it is not obvious. A row's confidence is that of its least-confirmed cell. Never invent values: an unknown cell reads Unknown, and undocumented systems still get rows - they are usually where the risk lives
 - State protocol and coupling separately: protocol is how the call travels (sync REST/gRPC, async event, batch, direct DB); coupling is how failure propagates - **Tight** = caller blocks and target failure propagates, **Loose** = caller continues on target failure. A sync call is loose with a fallback; an async event is tight when the consumer cannot progress without it. When failure behavior is undeterminable, mark Tight and Inferred
 - One row per direct edge, From = initiator; describe multi-hop chains in notes, never as one aggregate row. Broker-mediated flows get one row per producer-consumer pair with the topic named; the broker is inventoried as infrastructure. Direct cross-service DB or cache access is an integration row with To = the data's owning system. External SaaS is an integration row marked external
 - Cross-system risks fall into single points of failure (shared DB, auth, or broker with no fallback), shared data (more than one writer - name the authoritative writer or record "writer unknown"), and missing capability (implied by the landscape but unowned). Severity rates consequence, not confidence: High = failure halts multiple systems, risks data loss, or breaches a compliance obligation; Medium = degrades function or has a workaround; Low = friction only. Risks cite landscape evidence, not generic concern
 - Separate a **Risk** (a finding about the system's design) from a **Gap** (a finding about your knowledge of it - undocumented system, unverifiable integration, unknown owner). Inventory without a risk section is an input, not an output
+- An entity the extraction deliberately leaves behind - a single-writer resource such as a gapless sequence, or a shared kernel several units read - is recorded as an explicit carve-out on its Inventory row with the reason, not as a boundary decision. Name which system keeps it and how the other reaches it until decommission
 
-For Shape = Schema, this section is the current DDL, row counts, engine and version, and the deployment model (single service, multi-service, rolling, blue-green) - the cadence and bus-factor items do not apply.
+For Shape = Schema, this section is the current DDL, row counts, engine and version, and the deployment model (single service, multi-service, rolling, blue-green) - the cadence and bus-factor items do not apply, and `architecture-guardrail` is not loaded, since a schema change moves no service boundary for it to assess.
 
 ### 2. Boundary Analysis [not Schema]
 
@@ -112,15 +113,13 @@ Per boundary: owned entities, inbound/outbound dependencies, data access pattern
 
 ### 3a. Decomposition [Shape = Decompose]
 
-Use skill: `architecture-data-consistency` for inter-service consistency strategy.
-Use skill: `ops-resiliency` for fault tolerance between services.
-Use skill: `tradeoff-analysis` for communication model and integration pattern decisions.
+Use skill: `architecture-data-consistency` for inter-service consistency strategy. Use skill: `ops-resiliency` for fault tolerance between services. Use skill: `tradeoff-analysis` for communication model and integration pattern decisions.
 
 **Target shape.** When no target state is supplied, evaluate 2-3 candidate end states (modular monolith, modular core plus selective extraction, full decomposition) against the driver, the cadence-gate result, and team count via `tradeoff-analysis`; name the choice and why the others lose.
 
 Map each target service to an owning team; when ownership is unstated, propose the team whose current module work is closest and mark it Proposed. Flag services no team plausibly owns - team-autonomy drivers fail without Conway alignment. Name the communication model (sync vs async) and consistency requirement (strong vs eventual) per interaction. If the target stack differs from the source, add interoperability: serialization contracts, client-library strategy, contract testing across the language boundary.
 
-**Deploy cadence prerequisite.** Independently deployable services require frequent deployment. The test is literal: deploy frequency below weekly (every-two-weeks fails) makes CI/CD a prerequisite, not a nice-to-have. Recommend establishing continuous deployment first, or a modular monolith as the intermediate step. When only the cadence gate fails and the driver is valid, proceed and make Phase 0 the gate's remedy.
+**Deploy cadence prerequisite.** Independently deployable services require frequent deployment. The test is literal: deploy frequency below weekly (every-two-weeks fails) makes CI/CD a prerequisite, not a nice-to-have. Recommend establishing continuous deployment first, or a modular monolith as the intermediate step. When only the cadence gate fails and the driver is valid, proceed and make Phase 0 the gate's remedy. A cadence that cannot be measured from the available evidence is unknown, not failed: say so, treat it as failed for planning, and make confirming it the first Phase 0 task.
 
 **Lowest-risk-first candidates.** Analytics/reporting (read-only, isolated), notifications (tolerates eventual consistency), and search (read model over events) are safe first extractions in nearly any system. Recommend one as Phase 1 unless unusually coupled here.
 
@@ -135,8 +134,7 @@ Extraction order criteria:
 
 ### 3b. Consolidation [Shape = Consolidate]
 
-Use skill: `system-boundary-design` for boundary redesign.
-Use skill: `tradeoff-analysis` for merge vs keep-separate on borderline candidates.
+Use skill: `system-boundary-design` for boundary redesign. Use skill: `tradeoff-analysis` for merge vs keep-separate on borderline candidates.
 
 Justify every merge by a concrete smell:
 
@@ -169,11 +167,7 @@ Migration order heuristics: non-critical well-understood capabilities first (bui
 
 ### 3d. Schema Change [Shape = Schema]
 
-Use skill: `review-change-risk` to identify risk domains.
-Use skill: `backend-db-migration` for lock risk, expand-contract sequencing, and backfill safety.
-Use skill: `backend-db-indexing` for index creation lock behavior.
-Use skill: `ops-backward-compatibility` for application-level compatibility during transition.
-Use skill: `backend-idempotency` to keep the backfill safe to re-run.
+Use skill: `review-change-risk` to identify risk domains. Use skill: `backend-db-migration` for lock risk, expand-contract sequencing, and backfill safety. Use skill: `backend-db-indexing` for index creation lock behavior. Use skill: `ops-backward-compatibility` for application-level compatibility during transition. Backfill re-runnability is settled here, not delegated: batch by key range and make each batch a no-op on rows already correct, so a resumed run repeats no work; checkpointing is required at the duration threshold below. Load `Use skill: backend-idempotency` only where the migration also changes a write endpoint or consumer; its findings land in the Section 3 step table's Validation column, not as their own section.
 
 **Classification.** State type and risk before planning steps.
 
@@ -192,36 +186,35 @@ Use skill: `backend-idempotency` to keep the backfill safe to re-run.
 | Backfill existing rows  | Variable   | Medium-High - batch sizing critical          |
 | Split or merge tables   | Very High  | Very high - requires dual-write phase        |
 
-"Variable" resolves by scale: Medium below 1M rows, High at or above. Compound migrations classify each sub-change separately, state dependency order, and take the highest sub-change risk as the overall level.
+"Variable" resolves by scale: Medium below 1M rows, High at or above. Compound migrations classify each sub-change separately, state dependency order, and take the highest sub-change risk as the overall level - or the level the Type table assigns the change as a whole, whichever is higher. Decomposing a table split into steps does not make it less than a table split.
 
 **Lock risk.** Per operation state the lock type in the engine's vocabulary (PostgreSQL: ACCESS SHARE through ACCESS EXCLUSIVE; MySQL: metadata lock + InnoDB row locks - an MDL request queues behind long-running queries and blocks everything behind it), estimated duration relative to table size, and whether a concurrent/online alternative exists.
 
-| Operation                         | PostgreSQL                                      | MySQL/MariaDB                                               |
+| Operation                         | PostgreSQL                                      | MySQL 8.0 (MariaDB boundaries differ)                       |
 | --------------------------------- | ----------------------------------------------- | ----------------------------------------------------------- |
 | ADD COLUMN (nullable, no default) | Brief lock - safe                               | Brief (InnoDB)                                              |
-| ADD COLUMN with DEFAULT (PG11+)   | Metadata only - safe                            | INSTANT on 8.0.12+ (any position 8.0.29+); table copy older |
+| ADD COLUMN with DEFAULT (PG11+)   | Metadata only for a non-volatile default; a volatile one still rewrites under ACCESS EXCLUSIVE | INSTANT on 8.0.12+ (any position 8.0.29+); INPLACE rebuild with concurrent DML on 5.6-8.0.11 |
 | ADD COLUMN with DEFAULT (< PG11)  | Full table rewrite - dangerous                  | -                                                           |
 | CREATE INDEX                      | Full scan; use CONCURRENTLY (cannot run in txn) | Online DDL in InnoDB                                        |
-| ADD CONSTRAINT NOT NULL / FK      | Full table scan to validate; NOT VALID defers it | Full table copy                                             |
+| ADD CONSTRAINT NOT NULL / FK      | FK: full scan to validate, `NOT VALID` defers it. NOT NULL: `SET NOT NULL` scans; pre-18 defer it via the CHECK proxy below, PG18+ accepts NOT NULL `NOT VALID` directly | NOT NULL is INPLACE (rebuild, concurrent DML). FK is INPLACE under `foreign_key_checks=0`, which validates nothing - reconcile existing rows in a separate checked pass - and COPY otherwise |
 | DROP COLUMN                       | Brief lock - safe                               | Online DDL                                                  |
 
-Flag any step whose exclusive lock duration scales with table size above 1M rows as high risk. Brief metadata-only exclusive locks pass, but set a `lock_timeout` with retry so they cannot queue behind long transactions. This table shows each operation's naive form; the sequences below avoid the worst cases.
+Flag any step whose exclusive lock duration scales with table size at or above 1M rows as high risk. Brief metadata-only exclusive locks pass, but set a lock timeout with retry so they cannot queue behind long transactions - `lock_timeout` on PostgreSQL, `lock_wait_timeout` for metadata locks and `innodb_lock_wait_timeout` for row locks on MySQL. This table shows each operation's naive form; the sequences below avoid the worst cases.
 
 **Expand-contract** applies to any non-additive change. Expand: add new column/table, keep old, dual-write both, read old. Migrate: new populated and validated, reads flip after verification. Contract: drop old in a separate deploy once no readers or writers reference it.
 
-- *PostgreSQL NOT NULL on large tables:* validating with a full scan takes ACCESS EXCLUSIVE. Above 1M rows use `NOT VALID` + `VALIDATE CONSTRAINT` (ShareUpdateExclusiveLock, non-blocking). Sequence: nullable column -> dual-write -> batched backfill -> `ADD CONSTRAINT ... NOT VALID` -> background `VALIDATE CONSTRAINT` -> `SET NOT NULL` (metadata-only on PG12+ once a validated CHECK exists) -> drop the redundant CHECK. On a rename, relax the old column's NOT NULL before stopping dual-write.
+- *PostgreSQL NOT NULL on large tables:* validating with a full scan takes ACCESS EXCLUSIVE. At or above 1M rows use `NOT VALID` + `VALIDATE CONSTRAINT` (ShareUpdateExclusiveLock, non-blocking). Sequence: nullable column -> dual-write -> batched backfill -> `ADD CONSTRAINT ... NOT VALID` -> background `VALIDATE CONSTRAINT` -> `SET NOT NULL` (metadata-only on PG12+ once a validated CHECK exists) -> drop the redundant CHECK. On PG18+ the CHECK proxy is unnecessary: NOT NULL is a catalogued constraint that can be added `NOT VALID` and validated directly. On a rename, relax the old column's NOT NULL before stopping dual-write.
 - *MySQL/InnoDB:* prefer `ALGORITHM=INPLACE` or `INSTANT`, verifying support per operation and server version; use pt-osc/gh-ost where a table rebuild is forced. Multi-table `RENAME TABLE` is atomic - use it for cutovers. Unique-index builds fail on duplicate data - dedupe first. For table splits, bake new constraints into the new table's DDL and keep the old table write-complete until cutover so a reverse RENAME is lossless.
 
-Name the dual-write mechanism and its failure modes: trigger-based survives mixed app versions during rolling deploys; application-level is simpler to remove. Bidirectional trigger sync must suppress its own echo (guard with `pg_trigger_depth()` or a session flag) or the two triggers recurse. Renames and swaps carry dependent objects - inventory indexes, FKs, views, triggers, RLS policies, grants, and replication publications as pre-conditions. Build secondary indexes after bulk backfill unless reads need them during dual-write. Skip expand-contract only when the change is purely additive, or downtime is explicitly authorized and scheduled.
+Name the dual-write mechanism and its failure modes: trigger-based survives mixed app versions during rolling deploys; application-level is simpler to remove. Bidirectional trigger sync must suppress its own echo (guard with `pg_trigger_depth()` or a session flag) or the two triggers recurse. A **swap** (build a new table, rename it into place) carries dependent objects: inventory indexes, FKs, views, triggers, RLS policies, grants and replication publications as pre-conditions, because the replacement is a different object and inherits none of them. A plain **rename** needs no such inventory - dependents follow the object. Build secondary indexes after bulk backfill unless reads need them during dual-write. Skip expand-contract only when the change is purely additive, or downtime is explicitly authorized and scheduled.
 
-**Backfill.** Never run an unbounded UPDATE on a production table - batch by ID range or cursor, 100-1000 rows per batch, looping until zero rows change. Estimate rows, batch size, rows/sec (1000-5000 for simple updates, less for joins), total duration (flag above 1 hour - risk of failure mid-run), lock held per batch, and retry safety. Any job over ~1 hour needs checkpointed resume; bulk copies via batched `INSERT...SELECT` size by measured rows/sec on a staging slice. Backfills preparing a constraint include data repair: define the survivor policy for duplicates (keep newest, merge, quarantine) and dedupe as a batched idempotent job before adding the constraint. Rows repair cannot resolve get an explicit disposition before the constraint lands - sentinel value, exclusion (archive or delete), or narrowed constraint scope; rows left NULL block NOT NULL. A backfill that approximates semantics (proxy timestamps, derived values) documents the approximation and gets data-owner sign-off before reads flip. Throttle on replica lag (pause above 10s, resume below 5s); the same throttle protects logical-replication/CDC consumers - backfill floods their slots, so watch slot lag, WAL retention, and how schema changes appear in decoded events; a table split also adds the new table to the publication/connector and plans its initial snapshot before cutover. Prefer a background job over an in-migration script for large tables; use application-layer dual-write with lazy migration when the backfill cannot finish before deploy.
+**Backfill.** Never run an unbounded UPDATE on a production table - batch by ID range or cursor, 100-1000 rows per batch, looping until zero rows change. Estimate rows, batch size, rows/sec (1000-5000 for simple updates, less for joins), total duration (flag above 1 hour - risk of failure mid-run), lock held per batch, and retry safety. Any job over ~1 hour needs checkpointed resume; bulk copies via batched `INSERT...SELECT` size by measured rows/sec on a staging slice. Backfills preparing a constraint include data repair: define the survivor policy for duplicates (keep newest, merge, quarantine) and dedupe as a batched idempotent job before adding the constraint. Rows repair cannot resolve get an explicit disposition before the constraint lands - sentinel value, exclusion (archive or delete), or narrowed constraint scope; rows left NULL block NOT NULL. A backfill that approximates semantics (proxy timestamps, derived values) documents the approximation and gets data-owner sign-off before reads flip. Throttle on replica lag, pausing above the staleness the read path already tolerates and resuming at half of it - a second or two where reads are replica-routed, higher only where nothing reads the replica; the same throttle protects logical-replication/CDC consumers - backfill floods their slots, so watch slot lag, WAL retention, and how schema changes appear in decoded events; a table split also adds the new table to the publication/connector and plans its initial snapshot before cutover. Prefer a background job over an in-migration script for large tables; use application-layer dual-write with lazy migration when the backfill cannot finish before deploy.
 
 ### 4. Data Ownership Transfer [not Schema]
 
 The hardest part of any boundary migration. Plan explicitly per unit.
 
-Use skill: `architecture-data-consistency` for consistency during migration.
-Use skill: `ops-backward-compatibility` for schema change safety.
+Use skill: `architecture-data-consistency` for consistency during migration. Use skill: `ops-backward-compatibility` for schema change safety.
 
 Per unit: current layout, target layout, migration strategy, consistency guarantee during transition, and reconciliation. Shared-database separation work (schema separation, write-path inventory) starts first even when the owning services move later.
 
@@ -233,7 +226,7 @@ Per unit: current layout, target layout, migration strategy, consistency guarant
 - *Event-sourced:* merge event stores, or project to a unified store.
 - *Splitting out* (Decompose): shared DB -> schema separation -> separate DB, with CDC or dual-write for sync and a reconciliation job to detect drift.
 
-When data physically relocates, phase it: dual-read -> migrate/transform -> dual-write -> cutover -> cleanup. Per entity in a decomposition: new service read path (from CDC) -> new service write authority -> remove source reads -> remove source writes -> remove sync infrastructure. State the consistency guarantee at each step.
+When data physically relocates, phase it: create the target -> dual-write -> backfill and verify -> read from the target -> stop writing the source -> cleanup. Reads never move before the target is both written and backfilled. Per entity in a decomposition: new service read path (from CDC) -> new service write authority -> remove source reads -> remove source writes -> remove sync infrastructure. State the consistency guarantee at each step.
 
 **Calendar-critical systems.** For mandatory processing windows (payroll, month-end close, regulatory deadlines), identify blackout periods explicitly and schedule risky phases between them with at least a 3-business-day pre-blackout freeze.
 
@@ -243,11 +236,7 @@ When data physically relocates, phase it: dual-read -> migrate/transform -> dual
 
 The core of the plan.
 
-Use skill: `strangler-fig-pattern` for incremental migration and coexistence [not Schema].
-Use skill: `review-blast-radius` to assess per-phase risk.
-Use skill: `dependency-impact-analysis` for ordering across components and services.
-Use skill: `ops-release-safety` for rollout and deploy ordering.
-Use skill: `ops-feature-flags` for traffic routing and consumer cutover.
+Use skill: `strangler-fig-pattern` for incremental migration and coexistence [not Schema]. Use skill: `review-blast-radius` to assess per-phase risk. Use skill: `dependency-impact-analysis` for ordering across components and services. Use skill: `ops-release-safety` for rollout and deploy ordering. Use skill: `ops-feature-flags` for traffic routing and consumer cutover.
 
 Prerequisite work (CI/CD, routing layer, event infrastructure, test harness, verification tooling) is **Phase 0**, carried in the summary table with the unit named Foundation and inapplicable fields marked N/A.
 
@@ -255,15 +244,13 @@ Per phase, the Output template fixes the fields. Every phase needs a rollback pa
 
 When summed phase durations exceed a stated horizon, say so and re-scope: cut scope or parallelize independent phases - never compress verification or bake time. Concurrent phases keep their numbers and name each other in the Phase Summary's Key Dependency column ("parallel with Phase N").
 
-**Consumer migration [not Schema].** Per affected consumer: strategy, deprecation timeline, coordination. Facade (old APIs preserved, routed internally - lowest disruption), versioned (new API alongside old with a deprecation window), or direct (consumers update - only safe with few consumers and coordinated deploys). For Schema, the equivalent is multi-service deploy ordering: non-app consumers (ETL jobs, BI dashboards, replication slots) need rows too - their "deploy" is a query or config update.
+**Consumer migration.** Per affected consumer: strategy, deprecation timeline, coordination. Facade (old APIs preserved, routed internally - lowest disruption), versioned (new API alongside old with a deprecation window), or direct (consumers update - only safe with few consumers and coordinated deploys). For Schema, the equivalent is multi-service deploy ordering: non-app consumers (ETL jobs, BI dashboards, replication slots) need rows too - their "deploy" is a query or config update.
 
 **Rollback.** Designed before the migration runs, per phase: what rollback requires (schema/data/code), data safety (rows that cannot be un-written without loss), time estimate, and trigger condition. Flag any phase whose rollback needs a backup restore - that is a go/no-go decision point. Undoing a merge or a completed backfill is materially harder than undoing a split or an additive change; say so where it applies.
 
 ### 6. Risk Analysis
 
-Use skill: `ops-failure-classification` for failure categorization.
-Use skill: `failure-propagation-analysis` for cascading failure assessment.
-Use skill: `ops-resiliency` for mitigation patterns.
+Use skill: `failure-propagation-analysis` for cascading failure assessment - what a phase failure reaches; it admits hypothetical use. `ops-failure-classification` is not loaded here: it is incident-only and requires observed evidence a forward-looking plan does not have. Use skill: `ops-resiliency` for mitigation patterns.
 
 Per high-risk scenario: blast radius (Narrow / Moderate / Wide / Critical), mitigation, rollback. Cover the risks your shape actually carries:
 
@@ -274,8 +261,7 @@ Per high-risk scenario: blast radius (Narrow / Moderate / Wide / Critical), miti
 
 ### 7. Verification and Governance
 
-Use skill: `ops-observability` for monitoring patterns.
-Use skill: `ops-engineering-governance` for process guardrails [not Schema].
+Use skill: `ops-observability` for monitoring patterns. Governance is settled here, not delegated [not Schema]: name the review gate each phase must clear, who signs it off, and the artifact that records it. `ops-engineering-governance` is not loaded - like `ops-failure-classification` it is postmortem-scoped and requires an incident to report against.
 
 A migration dashboard tracks per phase: comparison metrics between old and new paths (latency, error rate, data divergence), traces spanning both, automated reconciliation for data drift, and measurable per-phase success criteria.
 
@@ -287,11 +273,11 @@ Governance: decision gates with an approver by role (EM, Staff, platform lead - 
 
 When reviewing a migration plan authored by someone else:
 
-Use skill: `architecture-review-lens` for severity taxonomy, completeness audit, internal-consistency check, assumptions audit, criteria scoring, questions for the author, and verdict.
+Use skill: `architecture-review-lens` for severity taxonomy, intake, completeness audit, internal-consistency check, assumptions audit, per-factor findings, criteria scoring, questions for the author, and verdict.
 
-Depth levels apply to authoring only; reviews run the full lens (standalone formatting defaults; the lens's skip rule covers steps that do not fit). This skill's planning content - the smell table, cadence gate, extraction-order criteria, classification and lock tables, backfill discipline - is valid review evidence; cite it as the bar the plan must meet. Mark structurally inapplicable factors N/A with one line; N/A is not Missing.
+Depth levels apply to authoring only; reviews run the full lens (standalone formatting defaults; the lens's skip rule covers steps that do not fit). The Section 3a-7 `Use skill:` lines are authoring delegations and do not run in Review Mode - their tables and criteria are the bar the plan is measured against. Load one only where a finding's severity turns on it. This skill's planning content - the smell table, cadence gate, extraction-order criteria, classification and lock tables, backfill discipline - is valid review evidence; cite it as the bar the plan must meet. Mark structurally inapplicable factors N/A with one line; N/A is not Missing.
 
-Supply the factor list for the plan's shape to the completeness audit. Required = Blocker-eligible when Missing; advisory (No) factors cap at Major. State the plan's shape on the review's context line and report depth as "full". The driver validation gate applies in review: a driver that fails it makes the Migration driver factor Present-but-wrong at Blocker, and the verdict names the cheaper remedy; a genuine driver stated without cheaper-remedy validation is under-specified at Major. A DB-engine change embedded in a Modernize plan is audited under the Modernize data-migration factor, with the Schema quality checks applied to its cutover steps.
+Supply the factor list for the plan's shape to the completeness audit. The `Required` column gates the Approve verdict; it does not bound severity. The lens's own floors apply to every factor, Required or not - a Missing factor is Blocker when the decision cannot be made without it. State the plan's shape on the review's context line and report depth as "full". Bound the finding set: one finding per root cause. Supporting documents and code ground findings about what the plan states - including a claim they contradict, which is the sharpest kind - but do not open new subject areas the plan is silent on. A defect they reveal outside the migration's scope is named in one closing line, not scored. Where a Blocker already forces rework, record Minors and Nits as a single closing line rather than numbering each. `stack-detect` still runs in Review Mode: it grounds merge feasibility and target-stack claims the plan asserts, and for Schema the engine and version its lock analysis depends on. It lands on the same context line, never as its own block. The driver validation gate applies in review: a driver that fails it makes the Migration driver factor Present-but-wrong at Blocker, and the verdict names the cheaper remedy; a genuine driver stated without cheaper-remedy validation is under-specified at Major. A DB-engine change embedded in a Modernize plan is audited under the Modernize data-migration factor, with the Schema quality checks applied to its cutover steps.
 
 **All shapes:**
 
@@ -304,17 +290,17 @@ Supply the factor list for the plan's shape to the completeness audit. Required 
 | Per-phase verification   | Yes      | Concrete, checkable criterion gating promotion to the next phase             |
 | Risks and mitigations    | No       | Shape-appropriate risks with mitigations, not generic caution                |
 
-**Decompose adds:** domain decomposition with per-service data ownership (Yes); target services named with responsibility and failure mode (Yes); strangler-fig coexistence and traffic routing (Yes); data ownership transfer per service (Yes); cross-cutting concerns - auth, observability, pipeline (No); governance (No).
+**Decompose adds:** domain decomposition with per-service data ownership (Yes); target services named with responsibility and failure mode (Yes); strangler-fig coexistence and traffic routing (Yes); data ownership transfer per service (Yes); cross-cutting concerns - auth, observability, pipeline - as Section 7 observability and the Phase 0 prerequisites (No); governance (No).
 
 **Consolidate adds:** over-split detection with specific signals (Yes); merge candidates with bounded-context rationale (Yes); post-merge boundaries and data ownership (Yes); data reunification including FK reintroduction and backfill (Yes); consumer migration or compatibility window per consumer (Yes); backward compatibility during transition (No).
 
-**Modernize adds:** target stack named with rationale (Yes); behavioral inventory and how it is captured (Yes); behavioral verification - shadow, replay, diff (Yes); data migration with schema mapping and dual-run consistency (Yes); phased cutover with rollback gates, not a one-shot swap (Yes); team transition (No); scope discipline - explicit non-goals (No).
+**Modernize adds:** target stack named with rationale (Yes); behavioral inventory and how it is captured (Yes); behavioral verification - shadow, replay, diff (Yes); data migration with schema mapping and dual-run consistency (Yes); phased cutover with rollback gates, not a one-shot swap (Yes); team transition (No); scope discipline - explicit non-goals, carried on the output's `Scope:` line (No).
 
 **Schema adds:** change classification per sub-change (Yes); lock risk per operation with duration and alternative (Yes); expand-contract for non-additive changes or explicit justification for skipping (Yes); application backward compatibility with old and new shape (Yes); batched idempotent backfill when rows need updating (Yes*); backup-restore dependency flagged as go/no-go (No); multi-service and non-app-consumer coordination (No).
 
 *Required only when existing rows need updating.
 
-Quality checks beyond the standard lens - a check's preset severity overrides the advisory cap:
+Quality checks beyond the standard lens - a check's preset severity is a floor, not a ceiling:
 
 - **Big-bang cutover** (code and data in one deploy, or a one-shot swap): Blocker for any system serving real users
 - **Shared database across services in steady state** (Decompose): Blocker unless an explicit transitional phase
@@ -332,7 +318,7 @@ Quality checks beyond the standard lens - a check's preset severity overrides th
 - **No cleanup plan for dead source code post-migration**: Major; tech debt is the predictable outcome. Retiring the whole system passes only when the plan names the decommission step and its trigger; a standby window of any length is not a decommission step
 - **Vague verification ("confirm it worked")**: Minor; promote to Major on a Blocker-risk phase
 
-A check fires when its substance is met even if wording differs - a big-bang code merge with a deferred data merge still fires the big-bang check, and a compound schema change that is non-additive in aggregate is not "single phase additive" because each sub-change looks additive alone. Concretely stated but wrong content promotes severity; vagueness does not excuse it. A plan that concretely commits to the opposite of a factor's bar is Present-but-wrong, not Missing - Missing means the plan is silent on it. Record each hit once, in the lens step that owns it (Missing factor -> Completeness; internal contradiction -> Internal Consistency; Present-but-wrong or under-specified -> Per-Factor Findings), numbered with the lens's F-numbers.
+A check fires when its substance is met even if wording differs - a big-bang code merge with a deferred data merge still fires the big-bang check, and a compound schema change that is non-additive in aggregate is not "single phase additive" because each sub-change looks additive alone. Concretely stated but wrong content promotes severity; vagueness does not excuse it. A plan that concretely commits to the opposite of a factor's bar is Present-but-wrong, not Missing - Missing means the plan is silent on it. Record each hit once, in the lens step that owns it (Missing or under-specified factor -> Completeness; internal contradiction -> Internal Consistency; Present-but-wrong content -> Per-Factor Findings), numbered with the lens's F-numbers.
 
 Output header: `# Migration Plan Review` and use the output structure defined in `architecture-review-lens`. Skip the plan Output template below. In this mode the Review Self-Check replaces the authoring Self-Check (self-checks are applied internally, never emitted in the deliverable):
 
@@ -366,6 +352,10 @@ Pain Points:
 | Unit | Responsibility | Data Owned | Depends On | Notes |
 | ---- | -------------- | ---------- | ---------- | ----- |
 
+Transitive dependencies (deep only): {one line per unit - its code, data and config dependencies, each classified severable or requires-migration}
+
+Knowledge gaps: {unknown or unverifiable facts: what each blocks + discovery task (method, owner); "none" when the codebase was readable and nothing is outstanding}
+
 ### Landscape  <!-- multi-system migrations only; omit otherwise -->
 
 | From (initiator) | To | Protocol | Coupling | Confidence | Notes |
@@ -375,8 +365,6 @@ Pain Points:
 | Cross-System Risk | Category | Affected Systems | Severity | Evidence |
 | ----------------- | -------- | ---------------- | -------- | -------- |
 |  | SPOF / Shared data / Missing capability | | High/Med/Low | |
-
-Knowledge gaps: {unknown or unverifiable facts: what each blocks + discovery task (method, owner) - omit if none}
 
 ## 2. Boundary Analysis  <!-- omit for Schema -->
 
@@ -394,9 +382,10 @@ Cross-boundary events:
      Consolidate: smells detected (smell, services, evidence, recommendation) + merge map
      (group, services merging, resulting service, justification) + services staying separate.
      Modernize: target stack decision (chosen, alternatives, reason, trade-off, risk) +
-     behavioral inventory + team transition.
+     behavioral inventory + team transition + migration order.
      Schema: classification (type, risk, strategy, backfill required, multi-service) +
-     lock risk per operation (step, operation, lock type, duration, alternative). -->
+     lock risk per operation (step, operation, lock type, duration, alternative) +
+     dependency order across sub-changes + the highest sub-change level as the overall. -->
 
 ## 4. Data Ownership Transfer  <!-- omit for Schema -->
 
@@ -452,10 +441,12 @@ Duration:
 | Phase | Unit | Risk Level | Duration | Key Dependency |
 | ----- | ---- | ---------- | -------- | -------------- |
 
+`Risk Level` is Low / Medium / High / Critical on every shape - not the Schema classification's five-point scale and not the blast-radius scale. Where a source used another, convert into it and say so; on Schema, `review-change-risk` (Section 3d) supplies it directly, and on the other shapes it is the phase's own worst-case impact against that scale.
+
 ### Consumer Migration  <!-- Schema: multi-service + non-app consumer ordering -->
 
-| Consumer | Current | Target | Strategy | Timeline |
-| -------- | ------- | ------ | -------- | -------- |
+| Consumer | Current | Target | Strategy | Timeline | Coordination |
+| -------- | ------- | ------ | -------- | -------- | ------------ |
 
 ### Rollback Summary
 

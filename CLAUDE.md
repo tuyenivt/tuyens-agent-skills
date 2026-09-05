@@ -47,7 +47,7 @@ user-invocable: true # false = atomic skill, hidden from slash menu
 
 **Stack adaptation.** `stack-detect` reads the consuming project's `CLAUDE.md` for a `## Tech Stack` section (key-value pairs like `Language:`, `Framework:`, `Database:`). This is how skills adapt output to different ecosystems.
 
-**House-format adaptation.** `design-reference-pattern` reads the same file for a `## Design Docs` section (`Template:`, `Reference:`, `Approver:`) pointing at a company design template or an approved prior design. Same key-value shape as `## Tech Stack` and the same narrow-read rule. It governs a document's headings, order, and metadata slots - never the content a workflow requires, which maps into a house section or is appended, and is never dropped.
+**House-format adaptation.** `design-reference-pattern` reads the same file for a `## Design Docs` section (`Template:`, `Reference:`, `Approver:`, `Tool:`) pointing at a company design template or an approved prior design. Same key-value shape as `## Tech Stack` and the same narrow-read rule. It governs a document's headings, order, and metadata slots - never the content a workflow requires, which maps into a house section or is appended, and is never dropped.
 
 ## Skill Placement
 
@@ -68,6 +68,7 @@ Workflow skills stay in their domain plugin. Skills are resolved by name, not pa
 ## Writing Conventions
 
 - Use `-` (hyphen-minus). Never `—` or `–` (em/en dash) in any Markdown file.
+- **Enum pipes inside a Markdown table cell are escaped.** A template row like `| {Critical | Major | Minor} |` splits into more cells than the header has, so the emitted table renders misaligned and the enum truncates to its first value. Write `\|` inside table cells; leave bare `|` in fenced blocks and prose, where it is not a delimiter. This is the same authoring-invisible class as the field-block rule below - the template looks right inside its display fence and only breaks once emitted.
 - **Field blocks in output templates never stack bare lines.** Consecutive `Label: value` lines with no blank line and no bullet marker are one paragraph in Markdown - VS Code and GitHub join them into a single line. The templates render fine inside their display fence and collapse only in the emitted document, so the defect is invisible at authoring time. Separate the fields with blank lines; use `- ` bullets instead for a report or design-doc header block (`## Summary`, `## <Stack> <Lens> Review Summary`). Blank lines change no line text, so they are safe in blocks a caller parses by line prefix; bullets are not - confine them to blocks nothing parses.
 
 ## Behavioral Principles

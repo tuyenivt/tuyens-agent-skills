@@ -1,6 +1,6 @@
 ---
 name: backend-caching
-description: Caching patterns, response optimization, and serialization efficiency. Auto-detects project stack and adapts guidance to the detected ecosystem.
+description: Caching strategy, invalidation, stampede protection, key design, TTL sizing, and response payload shaping. Adapts to the detected project stack.
 metadata:
   category: ops
   tags: [caching, performance, redis, payload, serialization, multi-stack]
@@ -9,7 +9,7 @@ user-invocable: false
 
 # Caching
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first to determine the project stack. Everything it supplies is named in the Stack-Specific Adapter, which decides the cache abstraction, the distributed engine, and the stampede primitive; those choices then fill the `Stack:` line, each Opportunity's stampede mitigation, and each gap's `Fix`. Where the project's `## Tech Stack` names a cache engine, use it rather than picking one. The strategies, TTL bands and key rules are stack-agnostic.
 
 ## When to Use
 
@@ -20,12 +20,12 @@ user-invocable: false
 
 ## Rules
 
-- Cache reads only; the cache must reflect the source of truth, never override it
+- The cache serves reads and never becomes the source of truth; a write-through strategy still writes through to the store in the same operation
 - Every cache entry has a TTL and a defined invalidation strategy. Indefinite TTL is legitimate only for static-until-changed data with event-based invalidation plus a memory bound; otherwise missing TTL is a gap
 - Cache DTOs or response objects, never ORM entities or other mutable references
 - Invalidate after the DB commit, never before - an eviction before commit can be refilled with stale data by a concurrent read
-- Never bare-delete a hot key; overwrite with the recomputed value or bump a version segment, or the delete itself triggers a stampede
-- Measure hit rate in production; target >80% for read caches - persistently below ~50% means the cache is misapplied
+- Delete on write. On a hot key, pair the delete with singleflight repopulation or bump a version segment, so the miss storm the delete creates is absorbed. Overwriting with the recomputed value avoids that storm but reopens a write-write race - two writers can land out of order and pin stale data for a full TTL - so use it only where writes to the key are serialized
+- Measure hit rate in production. Above ~80% the cache is doing its job; 50-80% is worth tuning (key cardinality, TTL, what is cached); persistently below ~50% means the cache is misapplied and should be removed or redesigned
 
 ## Strategies
 
@@ -40,8 +40,9 @@ When a popular key expires, many concurrent requests miss together and stampede 
 
 **Risk rubric:** High = expensive recompute (>100ms) AND hot enough for concurrent misses (multiple requests expected within one recompute duration when the key expires); Medium = one of the two; Low = neither.
 
-- **Lock-based (singleflight)** - one fetcher; others wait and reuse. Use the ecosystem primitive: Go `golang.org/x/sync/singleflight`, Java `ConcurrentHashMap.computeIfAbsent`, Rails `race_condition_ttl`, Redis `SET NX` for distributed coordination. Choose for correctness-critical data.
-- **Probabilistic early expiry (XFetch)** - randomly refresh before expiry with probability rising as TTL approaches zero (`random() < fetch_cost / remaining_ttl`). No locking. Choose for read-heavy, staleness-tolerant data.
+- **Lock-based (singleflight)** - one fetcher recomputes; the others wait and reuse its result. Per-process: Go `golang.org/x/sync/singleflight`, Java a Caffeine or Guava `LoadingCache`, which admits one in-flight load per key and blocks concurrent callers on it. Across processes: a Redis lock taken with `SET key val NX PX <ttl>` - the expiry is required, or a crashed holder blocks the key forever. Choose for correctness-critical data.
+- **Serve-stale-while-recomputing** - the first caller past expiry recomputes while every other caller is served the previous value. Rails `Rails.cache.fetch(key, expires_in: ..., race_condition_ttl: ...)` implements exactly this; it is not a lock and callers do get stale data. Choose when a few seconds of staleness beats a stampede.
+- **Probabilistic early expiry (XFetch)** - each read may refresh early, with probability rising as expiry nears: recompute when `now - delta * beta * ln(rand()) >= expiry`, where `delta` is the measured recompute duration, `rand()` is uniform on (0,1], and `beta` defaults to 1 - above 1 refreshes earlier, below 1 later. No locking, no stale reads. Choose for read-heavy, staleness-tolerant data.
 
 ### Cache Key Design
 
@@ -49,29 +50,40 @@ When a popular key expires, many concurrent requests miss together and stampede 
 // {service}:{entity}:{id}:{version}
 "order-service:order:12345:v2"
 
-// {service}:{query}:{hash-of-sorted-params}
-"product-service:search:sha256(category=electronics&sort=price)"
+// {service}:{query}:{hash of the sorted params, never the params themselves}
+"product-service:search:9f2b41c8e0a7..."
 ```
 
 - **Namespace by service** to prevent collisions in a shared cache cluster
 - **Version segment** bumped when cached structure changes - avoids post-deploy deserialization errors
-- **Deterministic hashing** for query keys - sort params before hashing so `?a=1&b=2` and `?b=2&a=1` collide
-- **Cap key length** under 250 bytes - many backends truncate or reject longer keys
+- **Deterministic hashing** for query keys - sort params before hashing so `?a=1&b=2` and `?b=2&a=1` map to one key
+- **Bound key length** - Memcached rejects keys over 250 bytes outright; Redis allows far longer but every byte is stored per entry, so hash anything unbounded
 - **Never embed user input directly** - sanitize or hash to prevent key injection
 
-**Bad** - non-deterministic or opaque:
+**Bad** - collides or varies for equal inputs:
 
-```
-product.toString()    // "Product@3f2a1b" - changes between instances
-JSON.stringify(query) // property order is not guaranteed
+```js
+`catalog:product:${product}`  // "[object Object]" - every product shares one key
+JSON.stringify(query)         // key order follows insertion, so equal queries differ
 ```
 
-**Good** - structured, deterministic:
+**Good** - structured, deterministic at every depth:
 
-```
+```js
+import { createHash } from "node:crypto";
+
+const stable = (v) =>
+  v && typeof v === "object" && !Array.isArray(v)
+    ? Object.keys(v).sort().map((k) => [k, stable(v[k])])
+    : v;
+
+const hash = (o) => createHash("sha256").update(JSON.stringify(stable(o))).digest("hex");
+
 `catalog:product:${productId}:v1`
-`catalog:search:${sha256(sortedParams)}`
+`catalog:search:${hash(queryParams)}`
 ```
+
+Sorting only the top level leaves a nested filter object serializing in insertion order, which is the same defect as the Bad line.
 
 ### TTL Sizing
 
@@ -82,24 +94,28 @@ JSON.stringify(query) // property order is not guaranteed
 | Rare                         | 1-24 hours                            | Reference data, feature flags  |
 | Static until explicit change | Indefinite (event-based invalidation + memory bound) | Config, CMS content            |
 
-When a staleness budget is stated, TTL = budget minus a safety margin (e.g., 4s for a 5s budget); otherwise pick within the band by change frequency. Stagger TTLs with jitter (+/- 10%) to avoid synchronized expiration storms. For predictable spikes (flash sales, launches), pre-warm hot keys with a background job before opening traffic. Bound distributed-cache memory explicitly (e.g., Redis `maxmemory` + `allkeys-lru`) - TTL alone does not bound key cardinality for query caches.
+When a staleness budget is stated, TTL = budget minus a safety margin (e.g., 4s for a 5s budget); otherwise pick within the band by change frequency. Stagger TTLs with jitter (+/- 10%) to avoid synchronized expiration storms. For predictable spikes (flash sales, launches), pre-warm hot keys with a background job before opening traffic. Bound distributed-cache memory explicitly - in Redis, set `maxmemory` and a `maxmemory-policy` such as `allkeys-lru` - because TTL alone does not bound key cardinality for query caches. On a shared cluster running `noeviction`, an unbounded key space evicts nothing and fails writes for every service on it, so the bound is a correctness concern, not housekeeping.
 
 ### Cache Levels
 
 - **In-process** - fastest, per-instance only. With multiple replicas, use only for data that tolerates per-node staleness or that you invalidate via broadcast (pub/sub); otherwise use the distributed tier
 - **Distributed** (Redis, Memcached) - shared, slightly higher latency
-- **CDN / edge** - static assets and public API responses
+- **CDN** - static assets and public API responses, cached at the edge
 
 ### Stack-Specific Adapter
 
-Use the framework's cache abstraction (Spring Cache annotations, Rails.cache, Django cache framework, Laravel Cache facade, Elixir Cachex/ETS, etc.) for cache-aside. For distributed caching, use Redis or Memcached via the ecosystem's standard client. Apply stampede protection via the ecosystem's singleflight or distributed-lock primitive. If the stack is unfamiliar, apply the universal principles above and name the closest primitives you can verify; flag unverified suggestions.
+Use the framework's cache abstraction for cache-aside: Spring Cache annotations, `Rails.cache`, Django's cache framework, Laravel's Cache facade, Elixir Cachex (raw ETS has no TTL or eviction policy, so it does not satisfy the TTL rule on its own). For distributed caching, use Redis or Memcached via the ecosystem's standard client. Apply stampede protection via the ecosystem's singleflight or distributed-lock primitive. If the stack is unfamiliar, apply the universal principles above and name the closest primitives you can verify; flag unverified suggestions.
 
 ## Output Format
+
+`Opportunities` covers caches to add, `Gaps` covers caches that already exist. Safeguards for a proposed cache belong inside its Opportunity entry, never in Gaps. `Missing` takes one value, so a component with several distinct gaps gets one entry per gap, listed together under that component and ordered by severity: High = active correctness or outage risk, Medium = degradation or cost, Low = hygiene. A gap that has already caused an incident is High.
+
+Emit `Assessment` always, and every section that has content. Omit a section only when it would be empty, and write the one-line closing statement that names what was empty.
 
 ```
 ## Caching Assessment
 
-**Stack:** {detected language / framework, or "unknown - universal guidance" when detection is inconclusive}
+**Stack:** {detected language / framework; "unknown - universal guidance" when stack-detect reports Language and Framework as unknown}
 
 ### Opportunities
 
@@ -109,28 +125,25 @@ Use the framework's cache abstraction (Spring Cache annotations, Rails.cache, Dj
   - Key: {key pattern, with version segment}
   - TTL: {duration and rationale; jitter/pre-warm if spike-prone}
   - Invalidation: {primary: TTL-based | Event-based | Version-based} {+ backstop if layered} - {trigger condition}
-  - Stampede risk: {Low | Medium | High per rubric} - {mitigation if Medium/High}
+  - Memory bound: {eviction policy and cap for a distributed tier | "n/a - in-process, bounded by entry count" | "n/a - CDN, bounded by the provider"; where the policy is owned by another team and cannot be changed, bound the key space instead - cap cardinality and TTL - and name the owner the footprint must be agreed with}
+  - Stampede risk: {Low | Medium | High per rubric} - {mitigation, or "none needed" when Low}
 
 ### Excluded from Caching
 
-- {component} - {reason: write-heavy, correctness-critical, low reuse}
+- {component} - {write-heavy | correctness-critical | low reuse | other (name it)}
 
 ### Gaps
 
-Gaps cover existing caches only; safeguards for proposed caches belong inside their Opportunity entry. One row per missing element; group rows by component, order components by their highest severity.
-Severity: High = active correctness or outage risk; Medium = degradation or cost; Low = hygiene. A realized incident makes the gap High.
-
 - [Severity: High | Medium | Low] {cache name or component} - {description}
   - Missing: {TTL | invalidation strategy | invalidation ordering | stampede protection | safe key design | safe value type | memory bound | hit-rate observability | other (name it)}
-  - Risk: {unbounded growth | stale data | thundering herd | key collision/injection | stale shared state | other (name it)}
-  - Fix: {concrete correction for the detected stack}
+  - Measured: {hit rate and what it implies per the Rules band, or "not measured"}
+  - Risk: {unbounded growth | stale data | thundering herd | key collision/injection | stale shared state | wasted capacity | other (name it)}
+  - Fix: {concrete correction, named in the detected stack's own primitives; when the stack is unknown, give the universal correction and mark it "(primitive unverified)"}
 
-### No Issues Found
+### Assessment
 
-{State explicitly if existing caching is adequate. If no caching exists yet, write "No existing caches - see Opportunities" instead}
+{One line, always present, naming all three counts so an omitted section is still accounted for: "{N existing caches | No existing caches}; {N gaps found | no gaps}; {N opportunities proposed | no additions recommended}{; nothing excluded | ; {N} excluded}". Where no caches exist and none are recommended, add why caching does not fit this workload.}
 ```
-
-Omit Opportunities if no additions are recommended. Omit Excluded from Caching if nothing was assessed and rejected. Omit Gaps when no caching exists yet. Omit "No Issues Found" if gaps were listed.
 
 ## Response Payload
 
@@ -140,8 +153,7 @@ Cache DTOs (records/dataclasses/structs), never ORM entities. Project at the que
 
 - Caching mutable objects or ORM entities (stale shared state)
 - Cache without TTL or event-based invalidation (unbounded memory and staleness)
-- Cache without invalidation strategy (indefinite staleness)
 - Caching write-heavy data (low hit rate, high invalidation churn)
 - Ignoring stampede on popular keys
-- Evicting before the DB commit, or bare-deleting hot keys
+- Evicting before the DB commit
 - Exposing ORM entities in API responses
