@@ -25,6 +25,7 @@ Scoped to **Faraday 2+ / Retriable**. For `httpx` / `http.rb` / raw `Net::HTTP`,
 - Retry idempotent verbs (`GET HEAD PUT DELETE`) by default; retry `POST` only when `Idempotency-Key` is present.
 - Bounded in-process retry: <=3 attempts, exponential backoff with jitter. Long waits live in Sidekiq.
 - Every external call goes through a client class - never `Faraday.get` from services or controllers.
+- No outbound call inside an open `ActiveRecord::Base.transaction`. It pins a DB connection for the round trip (a slow upstream then exhausts the pool, not just the thread pool), and it inverts failure: the remote side has already acted when the local rollback undoes the row that recorded it. Call before the transaction, or after commit.
 - Translate transport / HTTP errors into a domain taxonomy at the client boundary. Callers rescue domain errors only.
 - No live HTTP in CI - stub at the boundary (WebMock or VCR), not both per spec.
 
@@ -38,10 +39,18 @@ class ShipperClient
   Error           = Class.new(StandardError)
   TransientError  = Class.new(Error)        # safe to retry
   PermanentError  = Class.new(Error)        # do not retry
-  RateLimitError  = Class.new(TransientError)
   AuthError       = Class.new(PermanentError)
   NotFoundError   = Class.new(PermanentError)
   ValidationError = Class.new(PermanentError)
+
+  # Carries the header as data, not prose - sidekiq_retry_in reads exception.retry_after
+  class RateLimitError < TransientError
+    attr_reader :retry_after
+    def initialize(message = nil, retry_after: nil)
+      super(message)
+      @retry_after = retry_after
+    end
+  end
 
   def initialize(token: ENV.fetch("SHIPPER_TOKEN"), connection: nil)
     @connection = connection || build_connection(token)
@@ -53,12 +62,16 @@ class ShipperClient
       req.body = { order_id: order_id }
     end
     response.body
-  rescue Faraday::ConnectionFailed, Faraday::TimeoutError => e
+  rescue Faraday::ConnectionFailed, Faraday::TimeoutError, Faraday::SSLError => e
     raise TransientError, e.message
   rescue Faraday::ClientError => e
     raise translate(e)
   rescue Faraday::ServerError => e
     raise TransientError, e.message
+  rescue Faraday::ParsingError => e
+    raise PermanentError, e.message          # malformed body - retrying won't fix it
+  rescue Faraday::Error => e
+    raise PermanentError, e.message          # catch-all: nothing leaves untranslated
   end
 
   private
@@ -80,7 +93,11 @@ class ShipperClient
     case error.response_status
     when 401, 403 then AuthError.new("auth failed")
     when 404      then NotFoundError.new("not found")
-    when 408, 429 then RateLimitError.new("retry-after=#{error.response_headers&.dig('retry-after')}")
+    # `[]` not `dig`: Faraday::Utils::Headers gets case-insensitivity from an overridden
+    # #[], and Hash#dig is C-level so it bypasses that - nil on any adapter that
+    # preserves the header's original casing.
+    when 408, 429 then RateLimitError.new("rate limited",
+                                          retry_after: error.response_headers&.[]("retry-after")&.to_f)
     when 422      then ValidationError.new(error.response_body.to_s)
     else               PermanentError.new("rejected: #{error.response_status}")
     end
@@ -114,40 +131,47 @@ Rescuing `Faraday::Error` in a service couples business logic to the transport. 
 
 | Timeout        | Default  | Recommended | Notes                                              |
 | -------------- | -------- | ----------- | -------------------------------------------------- |
-| `open_timeout` | infinite | 1-2s        | TCP connect + TLS - slow connect signals dead host |
-| `timeout`      | infinite | 3-10s       | Total request after connect                        |
+| `open_timeout` | 60s (net_http) | 1-2s  | TCP connect + TLS - slow connect signals dead host |
+| `timeout`      | 60s (net_http) | 3-10s | Faraday resolves it as `read_timeout \|\| timeout`, so it bounds each socket read, **not** the whole call |
 
-Web request path: external timeout < remaining request budget; stay under 5s and push longer work to Sidekiq. Sidekiq path: 10-30s is fine.
+Faraday sets no timeout of its own; the adapter's default applies, and `net_http` (the default adapter) uses 60s for open, read and write. So "no timeout configured" means 60s per operation, not infinite - and because `timeout` is per-read, a response that drips bytes can outlive it many times over. A true wall-clock cap needs `rack-timeout` on the web path or an explicit deadline around the call.
+
+Web request path: external timeout < remaining request budget; stay under 5s and push longer work to Sidekiq. Sidekiq path: 10-30s is fine *when nothing downstream is waiting* - but a client called from a bounded worker pool during a multi-minute brownout should keep the web-path tightness, because per-thread stall time is what exhausts the pool. Size it against the pool, then let the circuit breaker carry the rest.
 
 ### Middleware Order
 
 Request middleware runs top-down, response bottom-up (last-registered response middleware runs first). Common breakages:
 
 - Registering `:json` (response) before `:raise_error` -> `raise_error` runs first and the raised error carries an unparsed body. Register `:raise_error` above `:json`, as in the client above.
-- `:json` (request) skips `String` bodies - pass hashes; a pre-serialized string silently bypasses encoding and content-type.
+- Registering `:retry` *above* `:raise_error` -> `raise_error` converts the 5xx before `:retry` can see it, so every `retry_statuses` entry is dead. `:retry` must sit closer to the adapter than `:raise_error`. This is the ordering footgun that silently disables the retry config below.
+- `:json` (request) skips `JSON.generate` for a `String` body but still sets `Content-Type: application/json` - so a pre-serialized string is sent as-is, and a non-JSON string is silently mislabelled. Pass hashes.
 - `:logger` with `bodies: true` in production -> leaks tokens / PII.
 
 ### Retry Strategy
 
-Faraday's built-in `:retry` is idempotency-aware:
+Retry lives in the separate `faraday-retry` gem since Faraday 2.0 (`gem "faraday-retry"` + `require "faraday/retry"`); without it `f.request :retry` raises `:retry is not registered`. Register it *below* `:raise_error` in the connection block so it sees raw statuses:
 
 ```ruby
+f.response :raise_error
 f.request :retry,
   max: 2, interval: 0.5, interval_randomness: 0.5, backoff_factor: 2,
+  max_interval:   2,
   methods:        %i[get head put delete],
   retry_statuses: [408, 429, 500, 502, 503, 504],
-  exceptions:     [Faraday::ConnectionFailed, Faraday::TimeoutError],
+  exceptions:     [Faraday::ConnectionFailed, Faraday::TimeoutError, Faraday::RetriableResponse],
   retry_if:       ->(env, _) { env.request_headers["Idempotency-Key"].present? }
 ```
 
+`exceptions:` **replaces** the gem's default list rather than adding to it, and `Faraday::RetriableResponse` must stay in it: that is the class faraday-retry raises internally to signal a `retry_statuses` hit, and it converts it back to a response only in its own rescue. Omit it and a 429 or 503 escapes the middleware as an unrescued `RetriableResponse`, which the client's `ClientError`/`ServerError` rescues do not catch.
+
 `retry_if` opts `POST` back in only when `Idempotency-Key` is present - required for Stripe-style APIs.
 
-`Retry-After` on 429: faraday-retry honors the header when the wait fits the in-process budget; longer waits re-raise as `RateLimitError` and Sidekiq reschedules. Make the seconds machine-readable - `translate` parses the header into the error (`RateLimitError.new(retry_after: ...)`), and `sidekiq_retry_in` returns `exception.retry_after` plus jitter (`+ rand(10)`) so recovering jobs don't re-herd. Hard quotas (60/min per token) need proactive throttling - a token bucket or low-concurrency queue (see `rails-work-splitter-patterns`) - reactive 429 handling alone herds.
+`Retry-After` on 429: faraday-retry sleeps the header value in-process, capped by `max_interval` (default `Float::MAX` - set it, or a Puma thread sleeps for minutes). Past the cap it stops retrying and returns the 429, which `:raise_error` and `translate` then turn into `RateLimitError` for Sidekiq to reschedule. Make the seconds machine-readable - `translate` parses the header into the error (`RateLimitError.new(retry_after: ...)`), and `sidekiq_retry_in` returns `exception.retry_after` plus jitter (`+ rand(10)`) so recovering jobs don't re-herd. The header is often absent, so the reader falls back rather than trusting it: `exception.retry_after || 60 * (count + 1)`, as `rails-sidekiq-patterns` does. Hard quotas (60/min per token) need proactive throttling - a token bucket or low-concurrency queue (see `rails-work-splitter-patterns`) - reactive 429 handling alone herds.
 
 | Layer             | Count | Backoff       | When                                            |
 | ----------------- | ----- | ------------- | ----------------------------------------------- |
 | Faraday `:retry`  | 2-3   | <5s total     | Transient blips during one request              |
-| Retriable wrapper | 2-3   | <30s total    | Cross-call retry in a Sidekiq job; non-Faraday  |
+| Retriable wrapper | 2-3   | <30s total    | Non-Faraday clients / SDK calls on the web path: `Retriable.retriable(tries: 3, base_interval: 0.5, multiplier: 2, on: [ShipperClient::TransientError]) { sdk.call }` |
 | Sidekiq retry     | 5-25  | minutes-hours | Anything that needs to wait out an outage       |
 | Don't retry       | -     | -             | 4xx other than 408/429; POST without key        |
 
@@ -158,14 +182,18 @@ Stacking all three compounds wait time unpredictably. Inside a Sidekiq job, pref
 In-process retries during a sustained outage make the outage worse. Trip after N consecutive failures and short-circuit:
 
 ```ruby
-require "stoplight"
+require "stoplight"   # >= 4.0 for this keyword form; 3.x configures via .with_threshold/.with_cool_off_time
 
 def create_shipment(order_id:, idempotency_key:)
   Stoplight("shipper.create_shipment", threshold: 5, cool_off_time: 60).run do
     @connection.post("shipments") { |req| ... }.body
   end
+rescue Stoplight::Error::RedLight
+  raise TransientError, "shipper circuit open"   # keep an open circuit inside the taxonomy
 end
 ```
+
+Without that rescue (or a `.with_fallback`) an open circuit raises `Stoplight::Error::RedLight`, a class outside the taxonomy that callers rescuing `TransientError`/`PermanentError` will not catch.
 
 Use when synchronous on the request path (outages cascade into Puma worker exhaustion), volume >10 req/s sustained, or upstream has documented SLOs. Low-volume background work doesn't need one.
 
@@ -185,9 +213,12 @@ ActiveSupport::Notifications.subscribe("request.faraday") do |_, start, finish, 
                     duration_ms: ((finish - start) * 1000).round,
                     request_id: env.request_headers["X-Request-Id"])
 end
-# Wire on the connection:
-f.use :instrumentation
+# Wire on the connection - `f.use :instrumentation` raises; the middleware is
+# registered on Faraday::Request, not Faraday::Middleware:
+f.request :instrumentation
 ```
+
+`env.request_headers` holds the *outbound* headers, so `X-Request-Id` is nil unless the client sets it. Propagate it on the way out - `req.headers["X-Request-Id"] = Current.request_id` in the request block - or the field logs empty on every call.
 
 ### Webhooks (inbound)
 
@@ -220,13 +251,23 @@ In review mode, precede the block with numbered findings citing the violated rul
 
 ```
 Client: {ClassName}
+
 Base URL: {url}
-Auth: {Bearer | API key header | OAuth (refresh: cached TTL + once-on-401)}
-Timeouts: open={Ns}, total={Ns} (+ per-call overrides for job-path ops)
+
+Auth: {Bearer | API key header | OAuth (refresh: cached TTL + once-on-401) | none - GAP unless the endpoint is documented public}
+
+Timeouts: open={Ns}, read={Ns} (+ per-call overrides for job-path ops); wall-clock cap: {rack-timeout | explicit deadline | none - a slow-drip response is unbounded}
+
+Called inside a transaction: {No | Yes - BLOCKER, name the transaction}
+
 Retry: {faraday | retriable | none}, max={N}, backoff={strategy}
+
 Idempotency: {how POST/PATCH replay safety is achieved}
+
 Error taxonomy: {domain error classes}
+
 Circuit breaker: {none (justified) | Stoplight threshold/cool-off; open-circuit fallback per call site}
+
 Tests: {WebMock unit | VCR cassettes | both - file paths}
 ```
 

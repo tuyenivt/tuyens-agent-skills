@@ -35,13 +35,13 @@ Stack-specific delegate of `task-code-review-reliability`.
 | Depth      | When                                             | Steps Run                                 |
 | ---------- | ------------------------------------------------ | ----------------------------------------- |
 | `standard` | Default                                          | All except the Failure-Mode Map           |
-| `deep`     | Requested, or handed down by `task-rails-review` | All + `Failure-Mode and Blast-Radius Map` |
+| `deep`     | Requested by flag, or handed down by `task-rails-review` - the words "resilience-debt pass" in a request do not by themselves select it | All + `Failure-Mode and Blast-Radius Map` |
 
 At `deep`, use skill: `failure-propagation-analysis` to trace each new or changed dependency's failure path across shared resources (the AR connection pool, Redis, the Sidekiq queue) and name the loop-breaker that contains it (breaker, retry budget, dedicated queue, load shedding); fill the Failure-Mode and Blast-Radius Map.
 
 Invocation forms (`/task-rails-review-reliability [<branch>|pr-<N>] [standard|deep] [--base <branch>]`) follow `task-code-review-reliability` - current branch vs base; fails fast on trunk. When invoked as subagent, the parent passes the pre-confirmed stack, the precondition handle, and pre-read diff and commit log; Steps 2-3 consume those instead of re-running.
 
-**Whole-service sweep** (resilience-debt pass with no feature branch): when Step 3 fails fast on trunk AND the invocation asked for a sweep or named a path, do not stop - skip the diff gate and sweep. On a bare trunk invocation (no sweep intent stated, no path), surface the fail-fast and ask whether to sweep - a wrong-branch mistake should not trigger a whole-app pass. Scope = the named path(s) plus the clients, jobs, services, and config they touch; no path named = the whole `app/` + `config/` surface. Run Steps 4-10 against current code at `HEAD` (Step 4's categories read in full, not per changed file), then Step 11. Atomic-load gates and "diff"-worded rows read as "the in-scope code" (pool config in scope loads `rails-connection-pool-sizing`). Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and emit the report body as the response - no file is written.
+**Whole-service sweep** (resilience-debt pass with no feature branch): when Step 3 fails fast on trunk AND the invocation asked for a sweep or named a path, do not stop - skip the diff gate and sweep. On a bare trunk invocation (no sweep intent stated, no path), surface the fail-fast and ask whether to sweep - a wrong-branch mistake should not trigger a whole-app pass. Scope = the named path(s) plus the clients, jobs, services, and config they touch; no path named = the whole `app/` + `config/` surface. Run Steps 4-10 against current code at `HEAD` (Step 4's categories read in full, not per changed file), then Verify Findings in its sweep form, then Step 11. Atomic-load gates and "diff"-worded rows read as "the in-scope code" (pool config in scope loads `rails-connection-pool-sizing`). Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and emit the report body as the response - no file is written.
 
 ## Workflow
 
@@ -51,7 +51,7 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
 
-Accept a pre-confirmed stack from a parent (`task-rails-review`) and skip detection. Standalone: use skill: `stack-detect`; if not Rails, stop and route the user to `/task-code-review-reliability`. This workflow assumes Rails 7.2+ / Ruby 3.4+. Record the **database** (MySQL or Postgres) and the **background runtime** (Sidekiq direct / ActiveJob adapter).
+Accept a pre-confirmed stack from a parent (`task-rails-review`) and skip detection. Where the project's declared stack and its code disagree, record what the code does and note the divergence.  Standalone: use skill: `stack-detect`; if not Rails, stop and route the user to `/task-code-review-reliability`. This workflow's fixes target Rails 7.2+. A project below that is reviewed anyway - state the detected versions in the Summary and give the fix that its version supports; never stop on a version mismatch. Record the **database** (MySQL or Postgres) and the **background runtime** (Sidekiq direct / ActiveJob (<adapter>) / both / none detected - an app with an ActiveJob adapter configured *and* classes including `Sidekiq::Job` is `both` - presence in config and code decides it, not whether each is exercised, and Steps 6-7 check each runtime's own retry and idempotency surface).
 
 ### Step 3 - Resolve the Diff
 
@@ -77,7 +77,7 @@ Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhe
 
 Use skill: `rails-http-client-patterns`.
 
-- [ ] **Timeouts on every external call** - Faraday sets explicit `open_timeout` (1-2s) and `timeout` (3-10s web / 10-30s job). `Net::HTTP` sets **both** `open_timeout` and `read_timeout` - each defaults to 60s, far beyond any request budget; a hung upstream pins a Puma thread and its pooled connection for a minute per call.
+- [ ] **Timeouts on every external call** - Faraday sets explicit `open_timeout` (1-2s) and `timeout` (3-10s web / 10-30s job). `Net::HTTP` sets **both** `open_timeout` and `read_timeout` - each defaults to 60s, far beyond any request budget; `read_timeout` bounds each socket read, not the whole call, so an upstream that drips bytes holds the Puma thread and its pooled connection far past 60s - a real wall-clock cap needs `Rack::Timeout` or an explicit deadline around the call.
 - [ ] **Request deadline** - `Rack::Timeout` (`service_timeout`) bounds any request; without it a slow controller holds a worker indefinitely under the GVL.
 - [ ] **Timeout budget on chained calls** - a service fanning out to N clients caps total time; a slow first call leaves budget for the rest or fails fast. Web-path external timeout < remaining request budget; push longer work to Sidekiq. A chain already inside a job caps each call so the total stays under the job's runtime budget.
 
@@ -92,8 +92,8 @@ http.open_timeout = 2; http.read_timeout = 5
 Use skill: `rails-sidekiq-patterns` (`rails-http-client-patterns` already loaded in Step 5 - reuse it for the retry / breaker rules).
 
 - [ ] **Retries bounded, backoff + jitter** - Faraday `:retry` (`max: 2-3`, `backoff_factor: 2`, `interval_randomness`) or the `retriable` gem; in-process budget <5s web / <30s job. Sidekiq owns longer waits (`sidekiq_options retry: <N>`, `sidekiq_retry_in` with jitter). Do not stack Faraday + Retriable + Sidekiq - waits compound unpredictably.
-- [ ] **Retry only transient errors** (5xx, timeouts, connection); never 4xx; never `POST` / non-idempotent ops without an `Idempotency-Key`. ActiveJob equivalent: `retry_on TransientError, wait: :polynomially_longer, attempts: N`; `discard_on` permanent errors.
-- [ ] **Circuit breaker on high-volume synchronous request-path deps** - `Stoplight("dep").with_threshold(N).with_cool_off_time(S)`. In-process retries during a sustained outage cascade into Puma worker exhaustion. State is metered (visibility gap -> `task-rails-review-observability`). Low-volume background work needs none.
+- [ ] **Retry only transient errors** - 5xx, timeouts, connection errors, and the two retryable 4xx, `429 Too Many Requests` and `408 Request Timeout`; never other 4xx; never `POST` / non-idempotent ops without an `Idempotency-Key`. ActiveJob equivalent: `retry_on TransientError, wait: :polynomially_longer, attempts: N`; `discard_on` permanent errors.
+- [ ] **Circuit breaker on high-volume synchronous request-path deps** - `Stoplight("dep", threshold: N, cool_off_time: S).run { ... }` (the keyword form is >= 4.0; 3.x uses the `.with_threshold` / `.with_cool_off_time` chain). A configured light that never calls `.run` executes nothing - flag that shape too. In-process retries during a sustained outage cascade into Puma worker exhaustion. State is metered (visibility gap -> `task-rails-review-observability`). Low-volume background work needs none.
 - [ ] **Recovery-herd control** - when the breaker closes, queued Sidekiq retries and live traffic re-fire together and re-trip the partner. Jittered `sidekiq_retry_in`; keep the threshold low enough to re-open fast on partial recovery.
 - [ ] **Failure-domain isolation** - partition a flaky or slow dependency's jobs onto a dedicated low-concurrency Sidekiq queue / capsule so it cannot starve the shared pool (bulkhead). Hard provider quotas need proactive throttling (token bucket / low-concurrency queue), not reactive 429 alone.
 
@@ -104,7 +104,7 @@ Use skill: `backend-idempotency`, `rails-transaction-patterns` (`rails-sidekiq-p
 - [ ] **Every Sidekiq job idempotent** - Sidekiq delivers at least once, so `perform` re-fetches state and returns early when done (`return if order.fulfilled?`). At-least-once + non-idempotent = double charge on retry or on the graceful-shutdown re-push.
 - [ ] **Duplicate-enqueue guard** where the trigger can fire twice (webhook retries, `after_commit` bulk) - `sidekiq-unique-jobs` (`lock: :until_executed`) or a Redis `SET NX` fence, not a read-then-enqueue race.
 - [ ] **External side effects forward an idempotency key** (`Idempotency-Key` header, Stripe `idempotency_key`); dedup atomic via unique index + `insert_all` / `upsert` (`on_duplicate`), not read-then-write.
-- [ ] **No enqueue or external write inside `Model.transaction`** - `.perform_async` inside a transaction can run before commit and 404 on the not-yet-committed row; HTTP inside holds the row lock across the round-trip. Dispatch via `after_commit` (model) or `after_commit_everywhere` (nested service).
+- [ ] **No enqueue or external write inside `Model.transaction`** - `.perform_async` inside a transaction can run before commit and 404 on the not-yet-committed row; HTTP inside holds the row lock across the round-trip. Dispatch via `after_commit` (model) or, from inside a caller's transaction, Rails 7.2+'s `ActiveRecord.after_all_transactions_commit` / `Model.current_transaction.after_commit`; the `after_commit_everywhere` gem is the pre-7.2 equivalent and is fine where already in the Gemfile.
 - [ ] **Dead set as DLQ** - `sidekiq_options retry: <N>, dead: true` routes exhausted jobs to the dead set for inspection / replay. Rescue-and-`perform_in` resets the counter and retries forever (alerting depth -> observability).
 - [ ] **Out-of-order delivery** guarded by a monotonic field - return early when the payload's `updated_at` <= the stored value.
 
@@ -119,7 +119,7 @@ Use skill: `backend-idempotency`, `rails-transaction-patterns` (`rails-sidekiq-p
 
 Use skill: `rails-connection-pool-sizing` only on config-change PRs (pool / Puma / Sidekiq concurrency), `rails-batch-processing-patterns` only when the diff adds or changes batch / bulk iteration. Skip both when the surface is absent.
 
-- [ ] **AR pool bounded and correct** - per-process `pool >= in-process thread count`; deployment-wide sum (Puma `workers` x `threads` + Sidekiq `concurrency` + CLI / ops) under DB `max_connections` with 15-25% headroom; size for the rolling-deploy peak. `checkout_timeout` fails fast rather than blocking indefinitely under exhaustion (`ConnectionTimeoutError`). When a ceiling (`max_connections`, deployed concurrency) is not in the diff, read the repo config for it; still unknown → run the check anyway and state the assumption in the finding (`verify: max_connections unknown`) - never silently skip it.
+- [ ] **AR pool bounded and correct** - per-process `pool == in-process thread count` (+ documented executor / Cable extras); a pool above that is not a safety margin - it removes the cap; deployment-wide sum ((puma pods x `workers` x `threads`) + (sidekiq pods x processes x `concurrency`) + CLI / ops - the pod and process multipliers are what make it deployment-wide) under DB `max_connections` with 15-25% headroom; size for the rolling-deploy peak. `checkout_timeout` defaults to 5s, so exhaustion already raises `ConnectionTimeoutError` rather than blocking - the finding is a value raised well above that default, which queues requests behind an exhausted pool instead of shedding them. When a ceiling (`max_connections`, deployed concurrency) is not in the diff, read the repo config for it; still unknown → run the check anyway and state the assumption in the finding (`verify: max_connections unknown`) - never silently skip it.
 - [ ] **Puma bounds under the GVL** - worker / thread counts sized so CPU-bound work does not starve threads; `reaping_frequency` / `idle_timeout` reclaim dead / idle connections.
 - [ ] **No unbounded `.all.each`** - iterate with `find_each` / `in_batches`; `pluck(:id)` cursors when AR objects are not needed; `WorkerKiller` / jemalloc for memory-heavy Sidekiq queues.
 - [ ] **Pooled Redis** - non-Sidekiq Redis use goes through the `connection_pool` gem; a per-call `Redis.new` leaks connections under load.
@@ -129,7 +129,7 @@ Use skill: `rails-connection-pool-sizing` only on config-change PRs (pool / Puma
 
 Use skill: `rails-transaction-patterns`, `rails-db-locking-patterns`. Cross-aggregate consistency rule (inlined on purpose - do not re-delegate this to a separate consistency atomic; it overlaps the two atomics already loaded here, and its one distinct rule is captured below): writes that cannot share one DB transaction (a charge + a separate provisioning record, a local write + a remote call) need a compensating action or a reconciliation job on partial failure - never a best-effort inline rollback that can itself fail. Prefer one transaction; when impossible, make the second step idempotent and retriable so a re-run converges.
 
-- [ ] **Crash-safety** - a multi-step side effect interrupted mid-way (Sidekiq `SIGTERM` re-push, deploy) leaves recoverable state: checkpoint progress per chunk so the re-pushed job resumes; never swallow `Sidekiq::Shutdown` in a broad `rescue`.
+- [ ] **Crash-safety** - a multi-step side effect interrupted mid-way (Sidekiq `SIGTERM` re-push, deploy) leaves recoverable state: checkpoint progress per chunk so the re-pushed job resumes; never swallow `Sidekiq::Shutdown` - it descends from `Interrupt`, so a bare `rescue => e` never catches it and the shapes to flag are `rescue Exception` and an explicit `rescue Sidekiq::Shutdown` / `rescue Interrupt`.
 - [ ] **Compensating action on partial failure** - a charge that succeeds before a failing DB write enqueues a reconciliation / refund job, not an inline refund that compounds failure. Cross-aggregate writes that cannot be one transaction have a compensation.
 - [ ] **Race-prone updates safe under concurrency** - pessimistic `lock!` / `with_lock` / `lock("FOR UPDATE")` by primary key, or optimistic `lock_version` (rescue `StaleObjectError`); a read-modify-write on a hot counter is a lost-update bug without one.
 - [ ] **Post-commit dispatch** - jobs, email, cache invalidation fire from `after_commit`, so a rolled-back transaction never acts on state that did not persist.
@@ -137,11 +137,11 @@ Use skill: `rails-transaction-patterns`, `rails-db-locking-patterns`. Cross-aggr
 
 ### Verify Findings (before writing)
 
-Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary; dropped rows appear only in the tally, and reattributed rows publish at their corrected location with no marking beyond the tally. Subagent runs skip this - the parent verifies the merged set once. Whole-service sweeps also skip it (the skill requires a diff; there is none): instead re-read each cited `file:line` at `HEAD`, drop findings the code does not support, and report `Findings verified: inline (no diff)`.
+Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary; dropped rows appear only in the tally, and reattributed rows publish at their corrected location carrying the skill's inline provenance annotation (`_(pre-existing)_`, `_(pre-existing; newly reachable via ...)_`, `_(unverified: ...)_`), which `review-finding-verify` requires on every surviving non-`Confirmed` and every unverified finding. Subagent runs skip this - the parent verifies the merged set once. Whole-service sweeps also skip it (the skill requires a diff; there is none): instead re-read each cited `file:line` at `HEAD`, drop findings the code does not support, and report `Findings verified: inline (no diff)`.
 
 ### Step 11 - Write Report
 
-Standalone runs (resolved diff): use skill: `review-report-writer` with `report_type: review-reliability`. Assemble every checkpoint field the writer requires: `scope: +rel`, `depth` as invoked, `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-reliability-<branch>.md` already exists with valid frontmatter (filename per the writer's sanitization: `/` and characters outside `[A-Za-z0-9_-]` become `-`), then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Write the report file, then print confirmation. (Whole-service sweep skips the writer and emits the body as the response - see the sweep paragraph.)
+Standalone runs (resolved diff): use skill: `review-report-writer` with `report_type: review-reliability`. Assemble every checkpoint field the writer requires - `report_body` (the assembled body), `branch` (the head short name; it is also the report filename key), and `base_ref` / `head_ref` as the handle emitted them, plus: `scope: +rel`, `depth` as invoked, `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-reliability-<branch>.md` already exists with valid frontmatter (filename per the writer's sanitization: `/` and characters outside `[A-Za-z0-9_-]` become `-`), then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Write the report file, then print confirmation. (Whole-service sweep skips the writer and emits the body as the response - see the sweep paragraph.)
 
 Subagent runs (parent passed pre-read artifacts): skip the writer and return the full Output Format body minus the `Findings verified:` line - the parent consumes Findings and Next Steps, recomputes Summary lines in its merge, and owns the report (`review-report-writer` rejects subagent writes). At `deep`, include the Failure-Mode and Blast-Radius Map with the returned findings - the parent preserves it as its own section.
 
@@ -149,29 +149,34 @@ Subagent runs (parent passed pre-read artifacts): skip the writer and return the
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
-**Severity assignment:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (missing `Net::HTTP` timeout on a hot call, uncapped retry, non-idempotent Sidekiq job, `.perform_async` inside a transaction, unbounded `.all.each` on a hot path, enqueue-before-commit); Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, missing timeout / retry budget on a chained path, cron task with no overlap guard, missing `checkout_timeout`, unbounded iteration confined to a scheduled task); Low = hardening with no immediate failure path (no dedicated queue / bulkhead, fail-fast where stale data would serve). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the fix is a literal one-line config addition on a critical path (a timeout value, `retry:`/`dead:` option, `lock_timeout`); Low -> `[Recommend]`. An escalated finding keeps its severity tier - only its label changes. When the verify pass changed a finding's label, its verified `Label` wins over this mapping. No other label is written.
+**Severity assignment:** High = an unbounded failure path or data-loss / corruption risk under a plausible failure (missing `Net::HTTP` timeout on a hot call, uncapped retry, non-idempotent Sidekiq job, `.perform_async` inside a transaction, unbounded `.all.each` on a hot path, enqueue-before-commit); High also covers a pool sized *below* its process's thread count - threads queue on checkout under ordinary load, not only under failure. Medium = failure is bounded but recovery or containment is impaired (breaker absent where a timeout exists, no fallback for a critical dependency, missing timeout / retry budget on a chained path, cron task with no overlap guard, `checkout_timeout` raised far above its 5s default, unbounded iteration confined to a scheduled task); Low = hardening with no immediate failure path (no dedicated queue / bulkhead, fail-fast where stale data would serve). Labels: High -> `[Must]`; Medium -> `[Recommend]`, escalated to `[Must]` when the whole fix is a literal one-line config addition on a critical path (a timeout value, `retry:`/`dead:` option, `lock_timeout`) - a one-liner that also needs a gem the Gemfile lacks is not one; Low -> `[Recommend]`. An escalated finding keeps its severity tier - only its label changes. When the verify pass changed a finding's label, its verified `Label` wins over this mapping. No other label is written.
 
-Fill rules: `Findings verified:` carries the verify tally on standalone runs, the literal `inline (no diff)` on whole-service sweeps, and is omitted on subagent runs (the parent verifies). `Target:` appears only on sweeps (it replaces writer checkpointing); omit otherwise. `Resilience Gems:` lists every detected gem comma-separated, or `none detected`.
+Fill rules: `Findings verified:` carries the verify tally on standalone runs, the literal `inline (no diff)` on whole-service sweeps, and is omitted on subagent runs (the parent verifies). `Target:` appears only on sweeps (it replaces writer checkpointing); omit otherwise. **One defect, one finding.** Several checklist rows, or several call sites, that describe one underlying defect file once - at the site where the fix lands, with the other sites named in the Location line. Genuinely distinct defects at one site, with different fixes, stay separate. Anchor to the narrowest `file:line` the fix touches; a range only when the fix spans contiguous lines. There is no finding count to hit or stay under: file every defect that meets the severity bar and nothing that does not. Two findings are the same defect when one fix removes both; different fixes at one site, or one fix that only masks the second, are two. `Resilience Gems:` lists every detected gem comma-separated, or `none detected`.
 
 ```markdown
 ## Rails Reliability Review Summary
 
 - **Stack Detected:** Ruby <version> / Rails <version> / <database>
-- **Background Runtime:** Sidekiq | ActiveJob (<adapter>) | none detected
-- **Resilience Gems:** Stoplight | Retriable | faraday-retry | sidekiq-unique-jobs | none detected
+- **Background Runtime:** Sidekiq direct | ActiveJob (<adapter>) | both | none detected
+- **Resilience Gems:** every detected gem, comma-separated, from Stoplight, Retriable, faraday-retry, sidekiq-unique-jobs, rack-timeout; `none detected` when none
 - **Target:** <path(s)>
 - **Overall:** Resilient | Gaps Found - [<N> High / <N> Medium / <N> Low]
-- **Findings verified:** <per fill rules: the `review-finding-verify` tally line verbatim | inline (no diff) | omitted>
+- **Findings verified:** <per fill rules: `<N> confirmed, <M> reattributed, <K> dropped` from `review-finding-verify`, plus its false-positive/resolved split and unverified suffix when emitted | inline (no diff) | omitted>
 
 ## Findings
 
 ### High Impact
 
-1. **Location:** [file:line]
+1. **Location:** [file:line] [+ `_(pre-existing)_` / `_(pre-existing; newly reachable via ...)_` / `_(unverified: <reason>)_` when the verify pass returned one]
+
    **Label:** [Must] | [Recommend]
+
    **Issue:** [name the gap: untimed `Net::HTTP` call, uncapped Faraday retry, `.perform_async` inside `Model.transaction`, non-idempotent Sidekiq job, unbounded `.all.each`, etc.]
+
    **Failure Mode:** [what fails and how: "shipper API stall pins Puma threads and their pooled connections until the AR pool exhausts"]
+
    **Blast Radius:** [what else is affected: "every endpoint sharing the pool raises `ConnectionTimeoutError`"]
+
    **Fix:** [Faraday / `Net::HTTP` timeout, `Stoplight` breaker + fallback, `after_commit` dispatch, idempotency guard, `find_each`, etc.]
 
 ### Medium Impact
@@ -197,15 +202,18 @@ A table, one row per new / changed dependency; columns: **Failure behavior** (wh
 2. **[Delegate]** [Recommend] [scope: platform] - [action]
 3. **[Implement]** [Recommend] file:line - [action]
 
-_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra). Order Must > Recommend. Omit if none._
+_Tag `[Implement]` (localized) or `[Delegate]` (cross-cutting, platform, infra). `[Implement]` / `[Delegate]` and `[Must]` / `[Recommend]` are independent axes - a `[Delegate]` may carry `[Must]`. Order Must > Recommend. Omit if none._
 ```
+
+
+**A defect this lens does not own is reported, never dropped.** Another lens's category, a plain correctness bug, or something a gate excluded but the reading surfaced: one line under `## Recommendations` giving its location and the workflow that owns it - untiered, uncounted in `Overall`, absent from Next Steps. The exception is a defect that makes this lens's own findings unreachable or wrong (a query that always raises, a guard that never runs): that files here at its own severity, because it changes what the rest of the report means.
 
 ## Self-Check
 
 Mark a line N/A when the diff has no matching surface (e.g. no external clients, no scheduled jobs).
 
 - [ ] Step 1: behavioral principles loaded
-- [ ] Step 2: stack confirmed Rails 7.2+ / Ruby 3.4+ (or pre-confirmed stack accepted from parent); DB + background runtime recorded
+- [ ] Step 2: detected Rails / Ruby versions recorded in the Summary and fixes given for that version (or pre-confirmed stack accepted from parent); DB + background runtime recorded
 - [ ] Step 3: precondition check ran (or handle received; sweep: trunk fail-fast overridden per the sweep rule); diff + log read once (sweep: in-scope code read)
 - [ ] Step 4: external clients, composing services, jobs, cron tasks, side-effecting flows, pool / Sidekiq / timeout config read; full `Gemfile` read for the Resilience Gems field; `ops-resiliency` consulted when a synchronous-dependency surface is present (skipped on idempotency/transaction/locking-only diffs)
 - [ ] Step 5: Faraday + `Net::HTTP` timeouts, `Rack::Timeout` deadline, chained-call budget checked
@@ -214,6 +222,7 @@ Mark a line N/A when the diff has no matching surface (e.g. no external clients,
 - [ ] Step 8: fallback per critical dependency; fallbacks log; partial responses; load shedding verified
 - [ ] Step 9: AR pool + Puma bounded; no unbounded `.all.each`; pooled Redis; cron overlap guarded
 - [ ] Step 10: cross-aggregate compensation rule applied; crash-safety, compensation, locking, post-commit dispatch, migration rollout checked
+- [ ] Verify pass ran (inline on a whole-service sweep; skipped as subagent - the parent verifies); tally or omission per fill rules
 - [ ] Step 11: standalone: report written via `review-report-writer` with `report_type: review-reliability`, confirmation printed; subagent: findings returned to parent, no file written; sweep: body emitted as the response
 - [ ] Every finding names the failure mode and blast radius, never just the missing pattern
 - [ ] Depth honored: `standard` ran all; `deep` filled the Failure-Mode and Blast-Radius Map (via `failure-propagation-analysis`)

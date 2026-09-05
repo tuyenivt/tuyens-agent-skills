@@ -26,9 +26,9 @@ Not here: logic that belongs in a service (call it from the task); long-running 
 - `task: :environment` whenever touching Rails
 - Idempotent - re-runs after partial failure resume, never duplicate
 - Batch over large tables (`find_each` / `in_batches`); see `rails-batch-processing-patterns`
-- Every data-mutating task supports `DRY_RUN=1` - dry runs write *nothing* (audit rows included) and log would-be actions
+- Every state-mutating task supports `DRY_RUN=1` - dry runs write *nothing* (audit rows included) and log would-be actions. "State" includes the job queue: a task whose only effect is `perform_async` in a loop still enqueues real work, so it needs the flag and the gate as much as one that writes rows
 - Human-triggered production-mutating tasks require `CONFIRM=yes` when `Rails.env.production?`. Scheduled (cron) tasks omit the gate - baking `CONFIRM=yes` into a manifest is ceremony; their safety is the leader lock plus reviewed, dry-run-tested code
-- Tasks needing durable proof (compliance, GDPR) write an audit row in the same transaction as the mutation - logs are not evidence
+- Tasks needing durable proof write an audit row in the same transaction as the mutation - logs are not evidence. It needs one when the mutation is irreversible and someone may later have to prove what it touched: deletions and anonymisation of regulated data, money movement, permission changes. Reversible recomputes of derived values do not
 - Structured logs via `Rails.logger` (no PII in log fields); exit non-zero on failure (`raise` or `abort`, never `exit 0` after an error)
 - Pass IDs and primitives through `Rake::Task#invoke`, not AR objects
 - Namespace per domain, one `.rake` per top-level namespace, always include `desc`
@@ -67,12 +67,12 @@ end
 Prefer a state column when you can mark per-row; fall back to a cursor. For multi-day backfills with retry/observability, use a shards table - see `rails-work-splitter-patterns`.
 
 ```ruby
-# State-driven
+# State-driven. The mail is enqueued after commit, not inside the transaction: enqueued
+# inside, a rollback still leaves the job queued (and welcome_sent_at nil), so the re-run
+# mails twice - the exact duplication this pattern exists to prevent.
 User.where(welcome_sent_at: nil).find_each do |user|
-  User.transaction do
-    user.update!(welcome_sent_at: Time.current)
-    UserMailer.welcome(user).deliver_later
-  end
+  User.transaction { user.update!(welcome_sent_at: Time.current) }
+  UserMailer.welcome(user).deliver_later
 end
 
 # Cursor - durable column/table for anything long; Rails.cache can evict mid-run and lose progress
@@ -115,11 +115,14 @@ end
 Positional for required identifiers; ENV for optional flags. zsh treats `[]` as globs, so document `rake 'customers:recompute[123]'` quoting in `desc`.
 
 ```ruby
-task :recompute, [:customer_id] => :environment do |_, args|
-  if args[:customer_id]
-    RecomputeLtv.call(customer_id: Integer(args[:customer_id]))
-  else
-    Customer.find_each { |c| RecomputeLtv.call(customer_id: c.id) }
+namespace :customers do
+  desc "Recompute LTV for one customer, or all. Quote in zsh: rake 'customers:recompute[123]'"
+  task :recompute, [:customer_id] => :environment do |_, args|
+    if args[:customer_id]
+      RecomputeLtv.call(customer_id: Integer(args[:customer_id]))
+    else
+      Customer.find_each { |c| RecomputeLtv.call(customer_id: c.id) }
+    end
   end
 end
 ```
@@ -159,15 +162,20 @@ A rake task often fans out to Sidekiq for large backfills.
 Persist the cursor (durable checkpoint, per Idempotency) before checking the interrupt flag - on SIGTERM the next run resumes at the last completed batch.
 
 ```ruby
-task :rebuild => :environment do
-  interrupted = false
-  Signal.trap("INT")  { interrupted = true }
-  Signal.trap("TERM") { interrupted = true }
+namespace :reports do
+  desc "Rebuild report rows; resumable, SIGTERM-safe"
+  task rebuild: :environment do
+    interrupted = false
+    Signal.trap("INT")  { interrupted = true }
+    Signal.trap("TERM") { interrupted = true }
 
-  Order.in_batches(of: 1_000) do |batch|
-    RebuildReportRows.call(orders: batch)
-    Checkpoint.for("reports:rebuild").update!(last_id: batch.last.id)
-    break if interrupted
+    checkpoint = Checkpoint.for("reports:rebuild")
+    # Seed the scope FROM the checkpoint, or the next run redoes every completed batch.
+    Order.where("id > ?", checkpoint.last_id).in_batches(of: 1_000) do |batch|
+      RebuildReportRows.call(orders: batch)
+      checkpoint.update!(last_id: batch.last.id)
+      break if interrupted
+    end
   end
 end
 ```
@@ -188,7 +196,8 @@ namespace :backfill do
     end
     unless acquired
       Rails.logger.info(task: "backfill:recompute_totals", skipped: "another run active")
-      exit 0   # skip-if-held is expected, not a failure - nonzero would trip cron alerting
+      next   # leaves this task only. `exit 0` would end the whole process, so as a chained
+             # child it would silently skip every remaining step and report success to cron
     end
   end
 end
@@ -207,7 +216,7 @@ namespace :reports do
 end
 ```
 
-`invoke` chains fail fast - a raise in step 1 skips the rest, which is right when steps depend on each other. For independent steps, rescue per step, continue, and raise a summary at the end. The composite owns the cross-cutting pieces exactly once: one leader lock around the chain and one set of `Signal.trap`s (per-child traps overwrite each other in the same process; keep the interrupt flag in a shared home - a module attribute like `Maintenance.interrupted` - so children's batch loops can check it). Chain-only children don't lock; a child that also runs standalone (its own cron entry) keeps its own lock - advisory locks are session-reentrant, so the chained acquisition is a no-op. `Rake::Task["foo"].reenable` if a chained task needs to run twice in one process.
+`invoke` chains fail fast - a raise in step 1 skips the rest, which is right when steps depend on each other. For independent steps, rescue per step, continue, and raise a summary at the end. The composite owns the cross-cutting pieces exactly once: one leader lock around the chain and one set of `Signal.trap`s (per-child traps overwrite each other in the same process; keep the interrupt flag in a shared home - a module attribute like `Maintenance.interrupted` - so children's batch loops can check it). Chain-only children don't lock; a child that also runs standalone (its own cron entry) keeps its own lock. Re-entrancy is per lock *name*: only if the child requests the same name as the composite is the chained acquisition free. A differently-named child lock is a genuine second acquisition - harmless on PG and MySQL 5.7+, but not a no-op, so give it a distinct name deliberately rather than by accident. `Rake::Task["foo"].reenable` if a chained task needs to run twice in one process.
 
 ### Layout and Testing
 
@@ -221,19 +230,32 @@ Behavioral coverage lives on the service spec; the rake spec verifies wiring onl
 
 ## Output Format
 
-One block per task (a composite plus its children each get one). In review mode, precede the blocks with numbered findings citing the violated rule; blocks describe the corrected tasks.
+One block per task (a composite plus its children each get one). In review mode, precede the blocks with numbered findings citing the violated rule; blocks describe the corrected tasks, so target state lives there.
 
 ```
 Task: {namespace:name}
+
 Description: {desc string}
-Trigger: {manual | cron | deploy-hook | sidekiq-cron}
+
+Trigger: {manual | cron | deploy-hook | sidekiq-cron | not in evidence - no schedule file in scope, state where it would be declared}
+
 Arguments: {positional args and ENV with defaults}
-Idempotency: {state-column | checkpoint | natural}
+
+Idempotency: {state-column | checkpoint | natural (the operation is inherently repeatable - a recompute from source, an upsert on a unique key) | none - GAP}
+
+Leader lock: {advisory lock "<name>", timeout_seconds: 0 | none - single-trigger and non-mutating}
+
+Checkpoint / signal handling: {durable cursor + interrupt flag checked per batch | none - GAP for anything long-running}
+
 Dry-run: {DRY_RUN=1 supported | n/a (read-only)}
+
 Production gate: {CONFIRM=yes | none (scheduled) | n/a (read-only)}
+
 Audit trail: {row in mutation txn (compliance/GDPR) | logs only (no durable-proof need)}
+
 Service delegated to: {ServiceClassName | "trivial wiring only"}
-Exit behavior: {raises on failure | abort on precondition fail}
+
+Exit behavior: {raises on failure | abort on precondition fail | clean skip via `next` when the leader lock is held - list all that apply}
 ```
 
 ## Avoid

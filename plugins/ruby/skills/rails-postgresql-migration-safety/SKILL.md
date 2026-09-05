@@ -54,8 +54,16 @@ add_foreign_key :events, :accounts, validate: false               # 3. then vali
 
 ### Adding a NOT NULL column
 
+Since PG 11 a default supplied at `ADD COLUMN` is stored as metadata (`pg_attribute.attmissingval`) and every existing row reads it immediately - no rewrite, and nothing left to backfill. So the one-liner is the whole job:
+
 ```ruby
-add_column :orders, :status, :string, default: "pending"                                  # 1. nullable + default
+add_column :orders, :status, :string, default: "pending", null: false   # metadata-only
+```
+
+The add / backfill / enforce sequence is for a column added *without* a default, where existing rows really are NULL:
+
+```ruby
+add_column :orders, :status, :string                                                      # 1. nullable
 Order.in_batches(of: 10_000) { |b| b.where(status: nil).update_all(status: "pending") }   # 2. backfill (rake)
 change_column_null :orders, :status, false                                                # 3. enforce
 ```
@@ -108,7 +116,7 @@ Drops are final. Three phases.
 rg -n "legacy_field" app/ lib/ config/ spec/ db/ -g '*.{rb,erb,haml,slim,sql}' -g '!*.lock'
 ```
 
-Also check: BI dashboards, ETL pipelines, materialized views, PG functions, triggers, logical-replication subscribers, FDW foreign tables. External readers you can't migrate yourself (Looker, Metabase): hand the owning team a deadline and verify the cutover before Deploy B. Drop-or-recreate dependent FK / index / generated / CHECK / **views** in a *prior* migration (recreating a view without the column is one transaction - no read gap). `strong_migrations` catches FK/index but not view dependencies - find them with `pg_depend`:
+Also check: BI dashboards, ETL pipelines, materialized views, PG functions, triggers, logical-replication subscribers, FDW foreign tables. External readers you can't migrate yourself (Looker, Metabase): hand the owning team a deadline and verify the cutover before Deploy B. Drop-or-recreate dependent FK / index / generated / CHECK / **views** in a *prior* migration (recreating a view without the column is one transaction - no read gap). strong_migrations performs no dependency inspection at all here - its `remove_column` check is about `ignored_columns`. What actually protects you is PostgreSQL: `DROP COLUMN` silently auto-drops the table's *own* indexes and constraints, and errors without CASCADE on anything outside the table that depends on the column - inbound foreign-key references first, plus views, rules, column-list triggers (`UPDATE OF col`) and PG 15+ publication column lists, along with dependent generated columns ("cannot drop column ... because other objects depend on it"). That is precisely why the view case needs `pg_depend`: 
 
 ```sql
 SELECT dependent_view.relname
@@ -121,7 +129,7 @@ JOIN pg_attribute ON pg_attribute.attrelid = pg_depend.refobjid
 WHERE source_table.relname = 'orders' AND pg_attribute.attname = 'legacy_field';
 ```
 
-**Phase 2 - Prep (only if NOT NULL with no DB default AND app writes on every insert).** Once deploy A stops writing, next insert fails - so ship these *before* Deploy A (`from: nil` here means "no previous default"; any inert sentinel works). Both metadata-only on PG 11+:
+**Phase 2 - Prep (only if NOT NULL with no DB default AND app writes on every insert).** Once deploy A stops writing, next insert fails - so ship these *before* Deploy A (`from: nil` here means "no previous default"; any inert sentinel works). Both are catalog-only on every supported PostgreSQL (a brief `ACCESS EXCLUSIVE`, no scan, no rewrite - `SET DEFAULT` and `DROP NOT NULL` have never rewritten a table; PG 11 changed `ADD COLUMN ... DEFAULT`, not these):
 
 - `change_column_default :users, :legacy_field, from: nil, to: "guest"`
 - `change_column_null :users, :legacy_field, true`
@@ -142,7 +150,7 @@ safety_assured do
 end
 ```
 
-Restate type/null/default as they exist *at drop time* (post-Phase-2: nullable) so `db:rollback` recreates that state. `DROP COLUMN` is metadata-only in PG (no rewrite). Reclaim disk via autovacuum or `pg_repack` if needed promptly.
+Restate type/null/default as they exist *at drop time* (post-Phase-2: nullable) so `db:rollback` recreates that state. `DROP COLUMN` is metadata-only in PG (no rewrite) - which is also why it reclaims nothing: the values stay inside existing heap tuples and plain autovacuum never rewrites a live tuple. Space comes back only through a rewrite (`pg_repack`, `VACUUM FULL`, `CLUSTER`) or natural row churn.
 
 Edge cases requiring extra steps: dependent objects (FK / index / generated / CHECK / view via `pg_depend`), external systems (BI / ETL / logical replication / FDW), >100M-row tables where space reclamation is urgent (`pg_repack`).
 
@@ -161,8 +169,13 @@ add_index :orders, [:user_id, :status]
 
 ### Foreign keys without table lock
 
+These are two migrations, not one. `ADD CONSTRAINT ... NOT VALID` takes a `SHARE ROW EXCLUSIVE` lock on both tables; run it in the same DDL transaction as the validation and that lock is held for the whole scan - exactly what the split is meant to avoid.
+
 ```ruby
-add_foreign_key :orders, :users, validate: false  # fast
+# Migration 1
+add_foreign_key :orders, :users, validate: false  # fast, but locks both tables briefly
+
+# Migration 2 (separate file, separate deploy)
 validate_foreign_key :orders, :users              # no write lock; sequential scan
 ```
 
@@ -197,14 +210,18 @@ For long backfills, also bound each batch:
 
 ```ruby
 Order.in_batches(of: 10_000) do |batch|
-  ActiveRecord::Base.connection.execute("SET LOCAL statement_timeout = '30s'")
-  batch.update_all(processed: true)
+  ActiveRecord::Base.transaction do                              # SET LOCAL needs a transaction
+    ActiveRecord::Base.connection.execute("SET LOCAL statement_timeout = '30s'")
+    batch.update_all(processed: true)
+  end
 end
 ```
 
+Outside a transaction block each `execute` autocommits on its own, so PostgreSQL emits `WARNING: SET LOCAL can only be used in transaction blocks` and the following `update_all` runs with the session default - the bound silently never applies. Session-level `SET statement_timeout` once before the loop is the other valid shape.
+
 ### `change_column_default`
 
-PG 11+ stores defaults as metadata - fast, no rewrite. Avoid `change_column` (combines type+default+null and rewrites every row):
+`SET DEFAULT` is catalog-only on every supported version - a brief `ACCESS EXCLUSIVE`, no scan, no rewrite. (PG 11 changed `ADD COLUMN ... DEFAULT`, not this.) Avoid `change_column`, which combines type+default+null and rewrites every row:
 
 ```ruby
 change_column_default :orders, :status, from: nil, to: "pending"
@@ -216,9 +233,12 @@ Guard against double-runs (deploy retry, two engineers). Full leader-election pa
 
 ```ruby
 # In the backfill rake task (never db/migrate):
-ApplicationRecord.with_advisory_lock("backfill_order_amount", timeout_seconds: 0) do
+ApplicationRecord.with_advisory_lock!("backfill_order_amount", timeout_seconds: 0) do
   Order.in_batches(of: 10_000) { |b| b.where(amount: nil).update_all(amount: ...) }
-end || abort("another backfill_order_amount is running")
+end
+# The bang form raises WithAdvisoryLock::FailedToAcquireLock when someone else holds it.
+# `with_advisory_lock(...) { } || abort` is a trap: the block returns in_batches' nil on a
+# *successful* run, so the abort fires after the backfill completes.
 ```
 
 ### Rollback safety
@@ -244,15 +264,23 @@ Then `DROP INDEX CONCURRENTLY` and rerun.
 
 ## Output Format
 
-One block per operation, in execution order (multi-step plans emit a numbered sequence; rake backfills get blocks too, citing the rake file in `Migration:`). In review mode, precede the blocks with numbered findings, each citing the violated rule; `Reject - rewrite required` attaches to findings on the original, while blocks describe the corrected operations.
+One block per operation, in execution order - a migration file bundling two operations emits two blocks sharing one `Migration:` value, and a multi-step plan emits a numbered sequence. Rake backfills get blocks too, citing the rake file in `Migration:`. Non-DDL sequence steps the patterns require - a dependency audit, an `ignored_columns`-only deploy, an orphan cleanup before a VALIDATE - get a block with `Operation: Coordination` and `Algorithm: n/a`. In review mode, precede the blocks with numbered findings, each citing the violated rule; the blocks describe the corrected operations, so target state lives there. This applies to a post-incident review of an already-executed migration as much as to a pre-merge one; for a recovery, the first block is the step that returns the database to a known state.
 
 ```
-Migration: {file name}
-Operation: {Create Table | Add Column | Change Column | Add Index | Add FK | Validate Constraint | Backfill | Remove Column | Drop/Recreate View}
-Table: {name}
-Algorithm: {standard | CONCURRENTLY | NOT VALID + VALIDATE | batched rake}
+Migration: {file name | rake file path | proposed - not yet created}
+
+Operation: {Create Table | Add Column | Change Column | Add Index | Drop Index | Add FK | Add CHECK (NOT VALID) | Validate Constraint | Backfill | Remove Column | Drop/Recreate View | Coordination}
+
+Table: {name} ({row count, or "size unstated - assume large and justify"})
+
+Adapter: PostgreSQL {x.y from SELECT version() or the declared ## Tech Stack | unknown - assume pre-11 semantics}
+
+Algorithm: {standard | CONCURRENTLY | NOT VALID + VALIDATE | batched rake | n/a}
+
 Lock window: {none | brief lock | requires maintenance}
-Safety: {Zero-Downtime | Maintenance Window | Batched Backfill | Reject - rewrite required}
+
+Safety: {Zero-Downtime | Maintenance Window | Batched Backfill | Hardening advised - compliant but under-specified | Reject - rewrite required}
+
 Notes: {partial-index conditions, validate: false, etc.}
 ```
 

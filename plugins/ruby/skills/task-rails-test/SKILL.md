@@ -50,13 +50,13 @@ Use skill: `rails-testing-patterns` for recipes (FactoryBot traits, shoulda-matc
 - **Model**: real FactoryBot records, no AR mocking; behavior-focused names
 - **Service**: one example per Result outcome (success / validation failure / external failure); stub HTTP at the boundary, never AR
 - **Request**: one example per `(action, role, outcome)`; "rejects unpermitted attributes" for any `permit`; assert key fields + status + Content-Type, not full body. Signed webhooks: invalid/missing signature is the unauthorized example, malformed payload the validation-error one
-- **Policy**: one example per `(role, action, allow|deny)` - cover every action, no implicit allows
+- **Policy**: one example per distinct policy *outcome*, not per role - cover every action, no implicit allows; roles that resolve identically share one example or a shared example group (`rails-testing-patterns`)
 - **Job**: idempotency (call `perform` twice, side effect once); bounded retry per `sidekiq_options retry:`
 - **System**: one per critical journey; Cuprite over Selenium; query by role/label/text, not CSS
 
 ### Step 5 - Boundaries
 
-**Needs a test:** model validations/scopes/methods/callbacks; service Result branches; Pundit `(role x action)`; Sidekiq idempotency / arg shape / retry; every controller action (happy + unauthorized + validation-error); auth flows; API contract (shape, status, headers); critical journeys.
+**Needs a test:** model validations/scopes/methods/callbacks; service Result branches; Pundit: every action, one example per distinct outcome; Sidekiq idempotency / arg shape / retry; every controller action (happy + unauthorized + validation-error); auth flows; API contract (shape, status, headers); critical journeys.
 
 **Does NOT need a test:** Rails-provided behavior (default routing, `belongs_to` loading, default Devise endpoints - test you wired them up, not that they work); generated boilerplate; trivial delegation (`delegate :name, to: :user`).
 
@@ -64,7 +64,7 @@ Assert each behavior at the lowest layer that can catch it; upper layers verify 
 
 ### Step 6 - Prioritize by Risk (coverage < ~50% or unknown)
 
-Run **before scaffolding**. Coverage for this trigger: SimpleCov's line-coverage figure when configured; otherwise the per-layer ratio of specced to total files (models, actions, services, policies, jobs); when neither is computable from the evidence, state `basis: none available` and apply the risk order to the gaps that are in evidence. Always state which basis was used. Alphabetical is wrong when authorization holes go unspec'd while plumbing gets full coverage.
+Run **before scaffolding**. Coverage for this trigger: SimpleCov's line-coverage figure when configured; otherwise the per-layer ratio of specced to total units - files for models, services, policies and jobs, actions for controllers - summed into one figure across the layers, and scoped to the surface the request named (app-wide only when the request is app-wide); say which scope was used; when neither is computable from the evidence, state `basis: none available` and apply the risk order to the gaps that are in evidence. Always state which basis was used. Alphabetical is wrong when authorization holes go unspec'd while plumbing gets full coverage.
 
 1. **Authorization/authentication** - Pundit policy specs for every API-exposed model; request specs asserting 403/404 on every protected action; Devise/JWT flow specs; inbound webhook signature verification (invalid/missing signature -> 401)
 2. **Data integrity** - model validations + unique-constraint enforcement; write services (one happy + one failure); Sidekiq mutating jobs (idempotency + retry)
@@ -95,7 +95,7 @@ Judge evidence per item, not per file set: an item whose config is in evidence i
 - [ ] `example_status_persistence_file_path` for `--only-failures`
 - [ ] `--order random` - tests pass in any order
 - [ ] CI runs full suite; local default runs fast unit + request (use `slow:`/`system:` tags)
-- [ ] Parallelism: `parallel_tests` or RSpec built-in for suites > 5 minutes
+- [ ] Parallelism for suites > 5 minutes: `parallel_tests` or `turbo_tests` - rspec-core ships no parallel runner, and Rails' `parallelize` is Minitest-only
 
 ### Step 9 - Choose Output
 
@@ -106,25 +106,34 @@ Judge evidence per item, not per file set: an item whose config is in evidence i
 | "Test strategy" / "test plan" / coverage < 50%       | Strategy Doc (+ Assessment)  |
 | Reviewing existing specs                             | Review Checklist (below)     |
 
-When several rows match, emit the most comprehensive row's full output set: `Strategy Doc (+ Assessment)` means both blocks, carrying **one** prioritized gap list - it lives in the Strategy Doc's `Gaps to close`, and the Assessment's `Close first` block is omitted. A `coverage < 50%` row matches only on an established figure - `basis: none available` does not escalate the mode. Review mode emits checklist findings + Step 8 infra findings; add an Assessment block only when coverage gaps are visible in the evidence.
+When several rows match, emit the union of the matched rows' outputs - the requested deliverable is always among them, never replaced (a scaffold request at low coverage matches the Scaffolds row and the Strategy row, so it emits scaffolds, the Strategy Doc and the Assessment). Merging rule: `Strategy Doc (+ Assessment)` means both blocks, carrying **one** prioritized gap list - it lives in the Strategy Doc's `Gaps to close`, and the Assessment's `Close first` block is omitted. A `coverage < 50%` row matches only on an established figure - `basis: none available` does not escalate the mode. Review mode emits checklist findings + Step 8 infra findings; add an Assessment block only when the evidence shows coverage gaps beyond those already filed as findings (the same test as the Review paragraph below).
 
-**Any mode, unseen source:** when a policy or source file isn't shown, work from the roles and actions in evidence plus the conventional set (`guest`/`member`/`admin`), mark unknowns `# TODO: confirm role`, and label invented file or example names as placeholders.
+**Any mode, unseen source:** a file shown to be absent from a fully listed repo is evidence, not an unknown - treat it as verified-missing and file it. When a policy or source file simply isn't shown, work from the roles and actions in evidence plus the conventional set (`guest`/`member`/`admin`), mark unknowns `# TODO: confirm role`, and label invented file or example names as placeholders.
 
 **Review Checklist (existing specs):**
 
 - [ ] Spec types match (model -> model spec, controller -> request spec; no deprecated controller specs)
 - [ ] Every controller action: happy + unauthorized + validation-error
-- [ ] Every Pundit policy: every action x every role
+- [ ] Every Pundit policy: every action, and every role that produces a distinct outcome
 - [ ] Every mutating Sidekiq job: idempotency spec
 - [ ] FactoryBot uses traits (not duplicated factories); default builds a valid record with minimum attributes
-- [ ] `build_stubbed` for unit, `build` when associations matter without DB, `create` only when persistence required
+- [ ] `build_stubbed` for unit (fake id from 1001, `persisted?` true, and factory-declared associations resolved DB-free; it raises on the persistence methods - `save`, `update`, `reload`, `destroy`, `touch` - but a `has_many` load or a scope on a stubbed record still issues real SQL silently), `build` when the test needs a genuine unsaved record, `create` only when persistence is required
 - [ ] No `allow(SomeModel).to receive(:find)...` - mocking AR is a smell
 - [ ] No `it { should ... }` chains > 5 deep (split into describes)
 - [ ] System specs minimal; critical journeys only
 
 ## Output Format
 
-Every mode's deliverable ends with an `## Infra To Confirm` section holding the Step 8 items not in evidence plus any step skip rationale (e.g. Step 7's); omit the section when Step 8 verified everything. Assessment or Strategy rows with no matching surface fill as `N/A (<reason>)` - never dropped; a folded pyramid share renders as `0%`.
+Every mode's deliverable ends with these two sections, which the per-mode templates below do not repeat (Review mode carries its infra findings in its own numbered list instead, so only `## Infra To Confirm` follows it):
+
+`## Infra Findings` - Step 8 items that **are** in evidence and are broken (a global `Sidekiq::Testing.inline!`, WebMock absent from `rails_helper.rb`), one line each, `file:line` + what breaks. Omit when none. In Review mode these are the Step 8 findings already ordered first in the numbered list; do not repeat them here.
+
+`## Infra To Confirm` - Step 8 items **not** in evidence, plus any step skip rationale other than Step 7's. Omit when there are none.
+
+A code defect that is not a Step 8 item but blocks the specs being written - a scope referencing a column the schema lacks, a body read twice, an auth hole the coverage analysis walked into - is reported, never dropped and never silently designed around: one line under `## Blocking Defects`, giving `file:line`, what it breaks, and the workflow that owns the fix. Scaffold against the corrected behaviour and say so.
+
+The Step 7 API-contract decision - the tool chosen, or `skipped - <reason>` - is stated exactly once: in the Strategy Doc's `**API contract:**` slot when that block ships, otherwise as one line under `## Infra To Confirm`.
+Assessment or Strategy rows with no matching surface fill as `N/A (<reason>)` - never dropped; a folded pyramid share renders as `0%`.
 
 **Coverage Assessment:**
 
@@ -133,7 +142,7 @@ Every mode's deliverable ends with an `## Infra To Confirm` section holding the 
 
 **Stack:** Ruby <version> / Rails <version>
 
-**Framework:** RSpec <version>, FactoryBot, Shoulda-matchers
+**Framework:** <the test gems present in the `Gemfile`, with versions only where the Gemfile or lockfile states them; name any of RSpec / FactoryBot / shoulda-matchers that is absent>
 
 **Basis:** {SimpleCov line coverage <n>% | per-layer file ratio <n>/<n> | none available}
 
@@ -154,13 +163,13 @@ Every mode's deliverable ends with an `## Infra To Confirm` section holding the 
 
 **Review (existing specs):** numbered findings tagged `[Critical | High | Medium]`, each citing `file:line` (file alone when the line isn't in evidence). Assign by consequence: Critical = tests can pass while auth or data-integrity is broken (missing policy or unauthorized-example coverage, HTTP stubs not intercepting); High = green-but-broken risk outside auth (global `Sidekiq::Testing.inline!`, missing validation-error/edge examples, mocked AR); Medium = maintainability (duplicated factories, deep chains, wrong layer). A happy-path-only protected action files two findings: its missing-unauthorized facet at Critical, its missing-validation-error facet at High. Infra findings (Step 8) first, spec findings (checklist) after, severity-ordered within each group; when the user reported a symptom ("CI green, staging breaks"), open with one line tying the top findings to it. Append the Assessment block only when the evidence shows coverage gaps beyond those already filed as findings - a gap is stated once.
 
-**Test Scaffolds:** a `**Stack:** / **Basis:**` header line - here **Basis** names the evidence the scaffolds derive from (source files shown; inventions labeled placeholders per the unseen-source rule) - then ready-to-run RSpec files using project conventions. Each scaffold:
+**Test Scaffolds:** a `**Stack:** / **Basis:**` header line - here **Basis** names the evidence the scaffolds derive from - a different contract from the Assessment's coverage-figure `Basis`; when the union rule ships both blocks, each keeps its own `Basis` inside its own block and neither is hoisted (source files shown; inventions labeled placeholders per the unseen-source rule) - then ready-to-run RSpec files using project conventions. Each scaffold:
 
 - Correct spec type (`type: :model | :request | :policy | :job | :system`)
 - FactoryBot with traits (not `Model.new`); missing factories ship as files alongside the specs
 - Model: shoulda-matchers for validations and associations
 - Request: happy + unauthorized + validation-error
-- Policy: every `(role, action)` pair
+- Policy: every action, one example per distinct outcome
 - Job: idempotency + retry behavior
 - Inline comments only for non-obvious setup
 

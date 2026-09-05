@@ -25,7 +25,7 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Stack Detect
 
-Use skill: `stack-detect`. Identify Ruby/Rails version, DB (MySQL/PG), API-only vs server-rendered (presence of `views/` beyond mailers, `ActionController::Base` vs `API`), serializer library, view engine (ERB/HAML/Slim).
+Use skill: `stack-detect` for Ruby/Rails version and DB (MySQL/PG). API-only vs server-rendered (`views/` beyond mailers, `ActionController::Base` vs `API`), serializer library and view engine (ERB/HAML/Slim) are not stack-detect fields - read them here from the app itself. An app with both an API namespace and server-rendered views is both. Put the feature on the surface its consumer uses - a partner or SPA caller means the API namespace, an operator screen means the server-rendered controller, and both consumers mean both, with the mutation extracted to one service they share. Say which in the design.
 
 ### Step 3 - Gather Requirements
 
@@ -36,6 +36,8 @@ Resolve (ask, or infer per the threshold below):
 4. Background jobs needed?
 5. Authorization rules (admin / owner / public)
 6. Status transitions
+
+Anything the design assumes but the project does differently or lacks - a gem (Pundit, a serializer, advisory locks), a base class (`ApplicationMailer`), or a convention (this file's verb-named services against an app of noun-named ones) - is named at the design gate with the substitute you intend. Never silently skipped, never treated as blocking: the project's own conventions win over this workflow's defaults wherever the two differ, and a generated file's missing parent is generated with it.
 
 Ask-vs-infer threshold: when the domain has one defensible conventional shape, infer it and confirm at the design gate - the gate is the round trip. Ask first only when a missing decision changes the schema or endpoints *and* has no conventional default (who approves what, novel entities, custom business rules). Edge cases:
 - Referenced model doesn't exist - ask whether to generate or assume
@@ -52,6 +54,7 @@ Present:
 - Service methods, transaction boundaries, Sidekiq dispatch points
 - Endpoints (method, URI, status, request/response shapes)
 - Authorization rules per action
+- Attachments, if any: use skill `rails-active-storage-patterns` here so it shapes the migration (Step 5), the model declarations (Step 6) and the form (Step 11)
 - File tree (only files this feature touches)
 
 Example tree:
@@ -63,18 +66,19 @@ app/
   controllers/api/v1/orders_controller.rb   # API
   serializers/order_serializer.rb           # API
   views/orders/{index,show,_form}.html.<ext> # server-rendered
+  views/order_mailer/{confirmed}.html.<ext>  # if emails sent - API-only apps have these too
   components/order_card_component.rb        # server-rendered, reusable UI
   policies/order_policy.rb
   jobs/shipment_notification_job.rb         # if needed
   mailers/order_mailer.rb                   # if emails sent
   clients/shipment_api_client.rb            # if external API
 config/routes.rb                            # routes diff
-config/schedule.yml                         # if cron-scheduled (sidekiq-cron / whenever)
+config/schedule.yml                         # if cron-scheduled (sidekiq-cron; whenever uses schedule.rb)
 spec/{models,services,policies,requests,jobs,mailers,components}/...
 db/migrate/<ts>_create_orders.rb
 ```
 
-**Generate code only after user approves.**
+**Generate code only after user approves.** When the run cannot reach the user, present the design and stop there - state that the gate is unmet and what approval it needs. Never infer approval.
 
 ### Step 5 - Migrations
 
@@ -103,7 +107,7 @@ def call
 end
 ```
 
-When externals enter the flow, `rails-service-objects`' ordering arbitrates. Discriminator: abort-critical = the caller's success depends on the provider's answer right now (charging at checkout) - call *before* the transaction with an idempotency key; a call whose result the caller does not wait on (refund execution, notification, sync) is deferrable - post-commit Sidekiq job whose own service applies the same call-before-txn rule internally. A deferred-external job owns its terminal failure: `sidekiq_retries_exhausted` flips the domain status to its failure state and alerts - name that terminal state in the Step 4 transitions.
+When externals enter the flow, `rails-service-objects`' ordering arbitrates. Discriminator: abort-critical = the caller's success depends on the provider's answer right now (charging at checkout) - call *before* the transaction with an idempotency key; a call whose result the caller does not wait on (notification, ERP sync, search indexing, retryable carrier booking) is deferrable - post-commit Sidekiq job whose own service applies the same call-before-txn rule internally. Money movement gates either way: a charge **and a refund** both go before the transaction with an idempotency key - `rails-service-objects` lists refund among the calls whose failure makes the local write wrong. A deferred-external job owns its terminal failure: `sidekiq_retries_exhausted` flips the domain status to its failure state and alerts - name that terminal state in the Step 4 transitions.
 
 Cross-row invariants (per-user caps, quotas): enforce in the service under a row lock, with a DB backstop where declaratively expressible (constraint, unique/partial index - not triggers) - a model validation alone races.
 
@@ -117,7 +121,11 @@ Time-based behavior (expiry, eligibility windows, retention): owned here. If the
 
 Skip if no external APIs. Otherwise: use skill `rails-http-client-patterns`. Generate a dedicated `app/clients/<name>_client.rb` with explicit timeouts, JSON middleware + `:raise_error`, idempotency-aware retries (cap 2-3; Sidekiq handles longer waits), a domain error taxonomy translated from Faraday/HTTP errors. Provider ships an official Ruby SDK (`stripe`, `aws-sdk-*`): the client class wraps the SDK instead of Faraday - configure timeouts/retries through the SDK and translate its errors into the same domain taxonomy. Services rescue **domain** errors only; tests stub at the boundary (WebMock unit / VCR integration).
 
-If the feature fans out across two or more external services on the same request or job, use skill `rails-concurrency-patterns` to pick the primitive (`load_async`, `Concurrent::Promises`, `async` gem, or Sidekiq fan-out).
+If the feature fans out across two or more external services on the same request or job, use skill `rails-concurrency-patterns` to pick the primitive (`Concurrent::Promises`, the `async` gem, or Sidekiq fan-out - `load_async` is not one, it only runs ActiveRecord queries on the async executor and cannot dispatch HTTP).
+
+### Step 8.5 - Inbound Webhooks
+
+Skip if the feature receives no provider callback. Otherwise the endpoint verifies the signature through the provider SDK where one exists, verifies against `request.raw_post` (it caches and rewinds, so `params` still parses; `request.body` read without rewinding empties both), is idempotent on the provider's event id (unique index), responds before doing slow work (enqueue, don't process inline), and is excluded from the authenticated namespace with its own rationale. Use skill: `rails-security-patterns` for the verification rules.
 
 ### Step 9 - Controllers
 
@@ -128,7 +136,7 @@ Strong params; pagination on list endpoints (match the project's paginator; none
 | Validation failure (incl. quota/cap)  | 422  |
 | RecordNotFound                        | 404  |
 | Conflict (duplicate)                  | 409  |
-| Invalid state transition              | 409  |
+| Invalid state transition              | 422  |
 | Upstream dependency down / timed out  | 503  |
 | Unauthenticated                       | 401  |
 | Forbidden                             | 403  |
@@ -149,9 +157,9 @@ Skip for API-only. Use skill `rails-view-templates`. **Match the existing engine
 
 Use skill: `rails-security-patterns` (Pundit policies per resource, `verify_authorized` / `verify_policy_scoped`, strong params). Use skill: `rails-exception-handling` for the `ApplicationController#rescue_from` ladder and domain error taxonomy.
 
-Public/token endpoints (shared links): the token *is* the capability - generate with `has_secure_token` (unguessable), route by token outside the authenticated resource namespace, serve through a read-only serializer, and skip Pundit with an explicit `skip_after_action :verify_authorized` + stated rationale.
+Public/token endpoints (shared links): the token *is* the capability - use Rails signed ids, `record.signed_id(expires_in:, purpose:)` and `Model.find_signed!(token, purpose:)`, so the token expires and is scoped to one use (a `has_secure_token` column does neither); route by token outside the authenticated resource namespace, serve through a read-only serializer, and skip Pundit with an explicit `skip_after_action :verify_authorized` + stated rationale.
 
-- File uploads: `rails-active-storage-patterns` was loaded at Step 6; apply its serving/security rules here
+- File uploads: `rails-active-storage-patterns` was loaded at the Step 4 design; apply its serving/security rules here
 - Custom ActionCable channels / connection auth: `rails-actioncable-patterns` covers them here (its Step 11 load covered Turbo broadcast scoping)
 
 ### Step 13 - Tests
@@ -163,7 +171,7 @@ Use skill: `rails-testing-patterns`. Minimum coverage - add rows the feature's b
 - Request: happy + unauthorized + validation-error per action
 - Job: idempotency + bounded retry (if applicable)
 - Client: boundary-stubbed (WebMock) per outcome, incl. timeout/error -> domain-error translation (if external APIs)
-- Mailer: per email action; enqueued via `deliver_later` (if emails sent)
+- Mailer: per email action; enqueued via `deliver_later` (if emails sent). `rails-testing-patterns`' `Test Type` enum carries no Mailer or Component value - emit these two in its per-file block shape with the type named plainly
 - ViewComponent (server-rendered): `render_inline` per state
 - Turbo Stream / broadcast (server-rendered live updates): response format + `have_broadcasted_to`
 - System (server-rendered): critical user flows only, per `rails-testing-patterns`' speed ladder - not per CRUD action
@@ -175,9 +183,11 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presentin
 
 ## Output Format
 
+When the Step 4 gate is unmet, the deliverable is the design itself - the `Present:` list, filled - under `## Proposed Design`, followed by `## Blocked At` naming the gate and the approval it needs. The blocks below describe what was built and are omitted entirely; do not restate the design in them.
+
 ```markdown
 ## Files Generated
-[grouped by layer: migrations, models, services, controllers, serializers/views, policies, jobs, clients, tests]
+[grouped by layer: migrations, models, services, controllers, serializers/views, policies, jobs, mailers, clients, view components, routes, scheduler config, tests]
 
 ## Endpoints
 | Method | Path                       | Request      | Response                   | Status |
@@ -210,6 +220,7 @@ Run `bundle exec rspec` and `bundle exec rubocop`. Fix failures before presentin
 - [ ] Step 6: `rails-activerecord-patterns` applied to models
 - [ ] Step 7: services return `Result`; transactions and post-commit dispatch via `rails-transaction-patterns`
 - [ ] Step 8: external APIs go through a dedicated client with timeouts and domain taxonomy
+- [ ] Step 8.5: inbound webhooks verify the signature, read the body once via `raw_post`, dedup on the provider event id, and enqueue rather than process inline (or no callback in this feature)
 - [ ] Step 9: strong params, pagination, domain-to-HTTP mapping, idempotency keys on writes
 - [ ] Step 10: serializer per resource (or skipped for server-rendered)
 - [ ] Step 11: views in existing engine via `rails-view-templates` (or skipped for API)

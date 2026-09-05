@@ -33,11 +33,15 @@ user-invocable: false
 
 | Engine | Escaped | Unescaped (audit every hit) |
 | ------ | ------- | --------------------------- |
-| ERB    | `<%= %>` | `<%== %>`, `raw`, `html_safe` |
+| ERB    | `<%= %>` | `<%== %>` |
 | HAML   | `= expr` | `!= expr` |
-| Slim   | `= expr` | `== expr` |
+| Slim   | `= expr` | `== expr`, and `attr==value` in an attribute |
 
-Slim review grep: `\s== ` and `^\s*[a-z]+ ==`. Every match must come from a trusted source (i18n, `link_to`, `form_with`) - flag any user-data path. Two adjacent escapes: user data interpolated into a `script` block is Critical regardless of operator - HTML-escaping doesn't cover the JS string context; move it to an escaped `data-*` value (see Stimulus), which the browser entity-decodes as attribute text - safe under `=`, still Critical under an unescape operator. And user data in *attribute values* (`div class=user.theme`) is attribute-escaped but still allows class/attribute injection - allowlist the permitted values.
+Neither `raw` nor `html_safe` is ERB syntax - `raw` is an ActionView helper and `html_safe` an ActiveSupport `String` method - so both unescape in HAML and Slim exactly as in ERB (`= raw user.bio`). Only the operator column is engine-specific; grep for `raw\b` and `html_safe` in every engine.
+
+Slim review grep: `==` unanchored. `\s== ` misses the attribute form `a href==user.url` (no space on either side) and a column-0 `== x`; `^\s*[a-z]+ ==` additionally misses shortcut tags (`.row == x`, `#main == x`), whose leading `.`/`#` is not `[a-z]`. Every match must come from a trusted source (i18n, `link_to`, `form_with`) - flag any user-data path. Two adjacent escapes: user data interpolated into a `script` block is Critical regardless of operator - HTML-escaping doesn't cover the JS string context; move it to an escaped `data-*` value (see Stimulus), which the browser entity-decodes as attribute text - safe under `=`, still Critical under an unescape operator. And user data in *attribute values* (`div class=user.theme`) is attribute-escaped but still allows class/attribute injection - allowlist the permitted values.
+
+User-visible strings go through `t()`, and i18n is a third unescape surface - a narrower one than it looks. For a key ending in `_html` (or named `html`) Rails marks the *translation* html_safe but still HTML-escapes every interpolated value first (`html_escape_translation_options`), so `t(".greeting_html", name: user.name)` with a plain String is safe. Two things do get through: a value that is *already* `html_safe` (a `raw(...)` result, a SafeBuffer, another `_html` translation) passes untouched, and markup in the locale entry itself is rendered as-is. So the rule is about what you hand it - never interpolate a SafeBuffer built from user data - and about who may edit the locale file, which for user-editable translations is the whole attack.
 
 ### Slim Traps
 
@@ -59,9 +63,11 @@ Indentation defines scope - a misaligned line silently changes branch:
 ```slim
 - if order.shipped?
   p = "Shipped on #{order.shipped_at}"
- p = "Tracking: #{order.tracking}"
-/ BUG: the tracking line is indented 1 space, not 2 - it sits OUTSIDE the if
+p = "Tracking: #{order.tracking}"
+/ BUG: dedented to column 0, so it renders for every order, shipped or not
 ```
+
+That is the dangerous shape, because it compiles. A dedent to a level that matches no enclosing block (1 space here) is *not* silent - Slim raises `Slim::Parser::SyntaxError: Malformed indentation` and HAML raises `Inconsistent indentation`, so the template never renders at all.
 
 Enforce with `slim-lint` and a fixed 2-space indent.
 
@@ -112,7 +118,9 @@ Uniform lists use collection caching - one `read_multi` instead of a cache read 
 = render partial: "orders/order", collection: @orders, cached: true
 ```
 
-`cached: true` is partial-only. ViewComponent rows render via `OrderCardComponent.with_collection(@orders)`; don't wrap component renders in `cache` blocks - template digests don't track component files, so component edits never bust the fragment.
+`cached: true` keys on the record alone, so one partial reused with different `locals:` - a public variant and an operator variant with extra columns - collides, and whichever renders first is served to both. Put the distinguishing local in the key: `cached: ->(order) { [order, show_operator_columns] }`.
+
+`cached: true` is partial-only. ViewComponent rows render via `OrderCardComponent.with_collection(@orders)`, which passes the collection member as `order_card:` (derived from the class name) - so the component needs `with_collection_parameter :order` for an `order:` initializer, or it raises `ViewComponent::MissingCollectionArgumentError`. Don't wrap component renders in `cache` blocks - template digests don't track component files, so component edits never bust the fragment.
 
 Russian-doll: `touch: true` on child associations bubbles writes so the parent cache key invalidates:
 
@@ -126,15 +134,17 @@ Hot-key stampede protection (controller-computed aggregates cache here too, not 
 Rails.cache.fetch(key, expires_in: 5.minutes, race_condition_ttl: 30.seconds) { expensive_render }
 ```
 
-Caching and streams compose: broadcasts render fresh HTML and bypass fragment caches; a `cache record` key embeds `updated_at`, so the next full page load re-renders too. The combination is safe by construction - no manual invalidation.
+Caching and streams compose, but not because broadcasts skip the cache - they render through `ApplicationController.render`, which honours `perform_caching`, so `cache` blocks inside a broadcast partial read and write the store exactly as in a request render. What makes it safe is the key: the `after_*_commit` that triggers the broadcast has already bumped the record's `updated_at`, so a `cache record` key is new by the time the broadcast renders. A fragment whose key omits the record that was touched will happily broadcast stale HTML - that is the case to check.
 
 ### Turbo Frames and Streams
 
 ```slim
 - @orders.each do |order|
-  = turbo_frame_tag dom_id(order), src: order_path(order), loading: :lazy
+  = turbo_frame_tag dom_id(order), src: order_path(order), loading: :lazy do
     p Loading...
 ```
+
+The trailing `do` is required. Slim compiles a nested block under a bare `=` as its own block and still emits the closing `end`, so the placeholder never reaches the helper and the generated Ruby has an unbalanced `end` - a compile error inside the enclosing `each`.
 
 Frame vs stream: a frame with `src:` *pulls* on navigation/lazy-load; live in-place updates *push* via `turbo_stream_from` + a broadcast targeting `dom_id(record)`. Reuse the same partial for initial render and stream update so markup stays consistent (rows built as ViewComponents: have the broadcast render the component, or keep the row a partial both paths share):
 
@@ -177,34 +187,49 @@ end
   = sanitize comment.body, tags: %w[p br strong em a ul ol li blockquote code], attributes: %w[href]
 ```
 
-Markdown / rich-text passes through `sanitize` even if the renderer (Commonmarker, Redcarpet, Kramdown) claims safe-mode - one `raw_html: true` flag re-opens XSS. The allowlist is the trust boundary. Allowlisting `href` keeps user links live - also force `rel="nofollow noopener"` (a custom scrubber or post-process; `sanitize` won't add attributes) so user content can't vouch for or script-reach its targets.
+Markdown / rich-text passes through `sanitize` even if the renderer claims safe-mode - one flag re-opens XSS, and each renderer spells it differently: Commonmarker `unsafe: true`, Redcarpet the *absence* of `escape_html:`/`filter_html:`, Kramdown passes raw HTML through by default. The allowlist is the trust boundary. Allowlisting `href` keeps user links live - also force `rel="nofollow noopener"` (a custom scrubber or post-process; `sanitize` won't add attributes) so user content can't vouch for or script-reach its targets.
 
 ## Output Format
 
-Generating - multi-valued slots (`Turbo:`, `Fragment Caching:`) list every applying value, `+`-joined:
+Generating - emit the block, then the template code for every file it lists. Multi-valued slots (`Turbo:`, `Fragment Caching:`) list every applying value, `+`-joined:
 
 ```
 Engine: {ERB | HAML | Slim}
+
 Files Generated:
   app/views/{resource}/{action}.html.{ext}
   app/views/{resource}/_{partial}.html.{ext}
+  app/javascript/controllers/{name}_controller.js      # Stimulus, when one is added
+  config/locales/{locale}.yml                          # keys added, when strings are user-visible
+
 ViewComponents: {app/components/{name}_component.rb + .html.{ext} | None}
+
 Layout Slots: {content_for / yield keys | None}
+
 Turbo: {Frames | Streams | None}
+
 Stimulus Controllers: {list | None}
+
 Fragment Caching: {Russian-doll on X | Collection (cached: true) on X | Low-level | None}
+
 Logic Moves: {helper -> presenter/component verdicts | None}
 ```
 
 Reviewing - one block per finding in the format below; after all blocks, emit the corrected template code for each affected file:
 
 ```
-Severity: {Critical (XSS, JS-context injection, cross-tenant cache leak) | High (stale/never-invalidating cache, logic/indentation bug, frame collision) | Medium (attribute injection, helper/presenter misplacement) | Low (style, partial contract)}
+Severity: {Critical (XSS, JS-context injection, cross-tenant cache leak, a credential or token rendered into the markup) | High (stale/never-invalidating cache, logic/indentation bug, frame collision, per-row rendering or N+1 that degrades the page) | Medium (attribute injection, helper/presenter misplacement) | Low (style, partial contract)}
+
 Engine: {ERB | HAML | Slim}
+
 Location: file:line
+
 Issue: {one line, engine-specific idiom}
+
 Fix: {one-line remediation}
 ```
+
+An N+1 or a missing preload seen from the template gets a block here with the query fix named, and a pointer to `rails-activerecord-patterns` for the model-side change - the reader is looking at the view, so dropping the finding entirely is worse than a one-line handoff. Findings whose mechanism lives outside `app/views/**` (channel authorization, `current_account` resolution, broadcast scoping) get a block with `Location:` naming that file and one line saying the fix belongs to that skill.
 
 ## Avoid
 

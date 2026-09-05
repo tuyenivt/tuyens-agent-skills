@@ -23,7 +23,7 @@ user-invocable: false
 - Idempotency at shard granularity (not relying on Sidekiq retries)
 - Rake fan-out takes a leader lock first (`rails-rake-task-patterns`)
 - `push_bulk` in batches of ~1,000 - >5,000 risks Redis client buffer; <100 wastes round-trips
-- `SKIP LOCKED` claims hit a unique-index path (PK or unique secondary), never a non-unique scan
+- `SKIP LOCKED` claims are covered by one composite index over the filter plus the order key (`(state, id)`, `(name, state, id)`) - an uncovered scan locks and skips far more rows than it claims
 - Persist cursor / shard state so SIGTERM doesn't lose progress
 - Cap parallelism at the slowest shared resource (DB connections, replication lag, third-party rate limit)
 
@@ -33,17 +33,17 @@ user-invocable: false
 
 | Workload                                        | Pattern                            | Why                                       |
 | ----------------------------------------------- | ---------------------------------- | ----------------------------------------- |
-| Static dataset, uniform distribution            | Modulo partitioning                | No lock cost; reshard rare                |
+| Small table, uniform key, lock cost matters     | Modulo partitioning                | No lock cost - but N full scans (below)   |
 | Stream of new work (queue-shaped)               | `SKIP LOCKED`                      | Drains naturally; tolerates crashes       |
 | One-shot backfill of >100M rows, observable     | Shards table                       | Resumable, observable, throttle per-shard |
-| Skewed data (60% in last 18 months)             | Shards table with equal-row ranges | Modulo would skew                         |
+| Skewed data (60% in last 18 months)             | Shards table with equal-row ranges | Equal id-*width* ranges would skew        |
 | Per-tenant batches                              | Modulo or shards on `tenant_id`    | Natural sharding key                      |
 | Ordered per key, parallel across keys (outbox)  | `SKIP LOCKED` claims the KEY       | Claim a per-key lease row (table unique on key, rows created with the first item); drain that key's items in `ORDER BY id`, stop on first failure (head-of-line blocking is the ordering guarantee); keys run parallel. Heartbeat the lease's `claimed_at` between items so the reaper frees only dead workers - reaping a live lease lets a second worker break ordering |
-| Strict global ordering                          | Single-worker queue / Sidekiq Pro  | Row-level `SKIP LOCKED` won't preserve order |
+| Strict global ordering                          | Single-threaded consumer           | Row-level `SKIP LOCKED` won't preserve order. No Sidekiq Pro/Enterprise feature provides ordering - it takes a dedicated process at concurrency 1 (Sidekiq 7: a Capsule with `concurrency = 1`), or an ordered log outside Sidekiq |
 
 ### (a) Static Modulo Partitioning
 
-No lock; cheapest. Skew if data isn't uniform; reshard requires re-running.
+No lock. The cost is hidden: `id % N` is non-sargable against the PK, so each of the N jobs scans the whole table - the fan-out buys parallelism at N full passes. (An expression index on `(id % N)` - PG, or MySQL 8.0.13+ functional key parts - can serve it, but it is pinned to one N and must be rebuilt whenever the shard count changes.) Fine on a small table, wrong on a large one; there, use disjoint `id BETWEEN` ranges (PK range scan) or a shards table. Modulo also skews on a stepped sequence (`auto_increment_increment > 1` leaves shards empty) or a non-uniform key such as `tenant_id`; it does *not* skew on time-clustered ids, which distribute evenly across residues.
 
 ```ruby
 class BackfillShardJob
@@ -72,7 +72,7 @@ class DrainQueueJob
     loop do
       claimed = ApplicationRecord.transaction(isolation: :read_committed) do
         ids = WorkItem.where(state: "ready").order(:id).limit(BATCH)
-                      .lock("FOR UPDATE SKIP LOCKED").pluck(:id)
+                      .lock("FOR UPDATE SKIP LOCKED").pluck(:id)   # needs index on (state, id)
         WorkItem.where(id: ids).update_all(state: "claimed", claimed_at: Time.current)
         ids
       end
@@ -83,9 +83,11 @@ class DrainQueueJob
 end
 ```
 
-MySQL under default `REPEATABLE READ`: wrap the claim in per-transaction `:read_committed` (shown). Never set RC on the pool - web (RR) and Sidekiq would diverge. The `order(:id) LIMIT N` hits the PK; non-unique scans gap-lock. See `rails-db-locking-patterns`.
+MySQL under default `REPEATABLE READ`: wrap the claim in per-transaction `:read_committed` (shown). Never set RC on the pool - web (RR) and Sidekiq would diverge. RC is what removes the gap locks, and that is the whole reason for the escalation: at RR InnoDB takes next-key locks on every index record it scans, and `SKIP LOCKED` does not suppress gap locking on the records it does return, so a claim still locks the gaps between claimed rows however narrow the index is. The `(state, id)` index bounds the *scan*, not the gaps. See `rails-db-locking-patterns`.
 
-PostgreSQL default is RC - omit the parameter there: it buys nothing in production and explicit `isolation:` raises `TransactionIsolationError` inside any open transaction, transactional test fixtures included.
+PostgreSQL default is RC - omit the parameter there: it buys nothing in production.
+
+Either way the claim transaction must run flat. `isolation:` raises `TransactionIsolationError` inside any open transaction - transactional test fixtures included - and that is Active Record raising before it reaches the adapter, so it applies to the MySQL form above exactly as it does to PostgreSQL.
 
 Two non-negotiables for any claim shape:
 
@@ -97,7 +99,7 @@ WorkItem.where(state: "claimed").where("claimed_at < ?", 10.minutes.ago)
         .update_all(state: "ready", claimed_at: nil)   # cron, or head of each drain loop
 ```
 
-Size the staleness threshold above worst-case single-item time (plus the heartbeat interval, when leases heartbeat `claimed_at`) - a threshold shorter than a slow-but-live worker reaps it mid-work, and on the ordered per-key shape that breaks ordering.
+Size the staleness threshold above worst-case **whole-claim** time, not per-item: the claim above stamps one `claimed_at` for all `BATCH` rows and then processes them serially, so the bound is `BATCH x per-item` (plus the heartbeat interval, when leases heartbeat `claimed_at`). Size it per-item and the reaper resets the unprocessed tail of a live batch, which a second worker then redoes. The alternatives are re-stamping `claimed_at` per item, or claiming batches small enough that whole-batch time stays under the threshold. A threshold shorter than a slow-but-live worker reaps it mid-work, and on the ordered per-key shape that breaks ordering.
 
 ### (c) Shards Table
 
@@ -116,14 +118,17 @@ create_table :backfill_shards do |t|
   t.datetime :completed_at
   t.timestamps
 end
-add_index :backfill_shards, [:name, :state]
+add_index :backfill_shards, [:name, :state, :id]     # covers the SKIP LOCKED claim below
+add_index :backfill_shards, [:name, :start_id], unique: true   # makes re-seeding safe
 ```
 
-Seed with equal-row ranges (not equal-id) when data is skewed. The boundary scan below walks the whole table - run it against a read replica (or off-hours); it's index-only and read-only, but not free at 100M+ rows:
+Seed with equal-row ranges (not equal-id) when data is skewed. The boundary scan below walks the whole table - run it against a read replica (or off-hours); it's index-only and read-only, but not free at 100M+ rows. Seed under the same leader lock the fan-out uses, and bail if shards already exist: a re-run after a partial seed otherwise lays down a second, overlapping set of ranges and every row is processed twice.
 
 ```ruby
 def self.create_order_shards(name:, shard_size: 100_000)
-  cursor = Order.minimum(:id) - 1
+  # Resume, don't bail: a crash mid-seed leaves shards 1..k committed, and a plain
+  # `return if exists?` would then never seed the tail - silently skipping those rows.
+  cursor = BackfillShard.where(name: name).maximum(:end_id) || (Order.minimum(:id) - 1)
   while (boundary = Order.where("id > ?", cursor).order(:id).offset(shard_size - 1).limit(1).pick(:id))
     BackfillShard.create!(name: name, start_id: cursor + 1, end_id: boundary, state: "pending")
     cursor = boundary
@@ -139,9 +144,14 @@ Worker claims via `SKIP LOCKED`, processes the range, updates state:
 ```ruby
 class BackfillShardWorker
   include Sidekiq::Job
+  MAX_SHARD_RETRIES = 5
+  STALE_CLAIM = 30.minutes
 
   def perform(shard_name)
     loop do
+      reap_stale(shard_name)                 # every pass, not just at start: a worker that
+                                             # dies after the last claim is only recovered
+                                             # by a reaper that keeps running (or by cron)
       shard = ApplicationRecord.transaction(isolation: :read_committed) do
         s = BackfillShard.where(name: shard_name, state: "pending")
                          .order(:id).limit(1).lock("FOR UPDATE SKIP LOCKED").first
@@ -156,13 +166,29 @@ class BackfillShardWorker
 
   private
 
+  # A worker lost to OOM / SIGKILL leaves its shard "claimed" forever; nothing else selects it.
+  def reap_stale(shard_name)
+    BackfillShard.where(name: shard_name, state: "claimed")
+                 .where("claimed_at < ?", STALE_CLAIM.ago)
+                 .update_all(state: "pending", claimed_at: nil)
+  end
+
   def process_shard(shard)
     cursor = shard.cursor || (shard.start_id - 1)
     Order.where(id: (cursor + 1)..shard.end_id).in_batches(of: 1_000) do |batch|
-      ApplicationRecord.transaction { batch.each(&:recompute_total!) }
-      shard.update_columns(cursor: batch.last.id)
+      last_id = batch.last.id
+      stamp   = Time.current
+      ApplicationRecord.transaction do
+        batch.each(&:recompute_total!)
+        # Heartbeat with the cursor: without it STALE_CLAIM would have to exceed
+        # whole-shard time, and any overrun lets the reaper hand a live shard to a
+        # second worker. Same txn, so commit and progress advance together.
+        shard.update_columns(cursor: last_id, claimed_at: stamp)
+      end
     end
-    shard.update!(state: "done", completed_at: Time.current)
+    # Conditional: a worker whose claim was reaped must not mark a shard someone else owns.
+    BackfillShard.where(id: shard.id, state: "claimed", claimed_at: shard.claimed_at)
+                 .update_all(state: "done", completed_at: Time.current)
   rescue => e
     # back to "pending" keeps the shard claimable on retry (cursor makes the re-run resume);
     # "failed" is terminal - only after the budget is spent
@@ -179,8 +205,8 @@ Observability: `SELECT state, COUNT(*) FROM backfill_shards GROUP BY state`. Thr
 
 ### Fan-out Shapes
 
-- **Modulo:** rake (leader lock via `with_advisory_lock`, `timeout_seconds: 0`, abort cleanly) -> `push_bulk` N `(i, N)` job args. See `rails-rake-task-patterns`.
-- **Shards table:** rake seeds the table once, then enqueues `BackfillShardWorker.perform_async(shard_name)` N times.
+- **Modulo:** rake (leader lock via `with_advisory_lock`, `timeout_seconds: 0`; on lock-held, skip cleanly with `next` - not `abort`, which exits non-zero and trips cron alerting on a normal skip) -> `push_bulk` N `(i, N)` job args. See `rails-rake-task-patterns`.
+- **Shards table:** rake seeds the table under the same leader lock (`with_advisory_lock`, `timeout_seconds: 0`), then enqueues `BackfillShardWorker.perform_async(shard_name)` N times.
 - **`SKIP LOCKED` draining:** Sidekiq cron enqueues `DrainQueueJob` N times - workers self-coordinate, no rake leader needed.
 
 ### `push_bulk` Sizing
@@ -201,18 +227,22 @@ batch = Sidekiq::Batch.new
 batch.description = "recompute_totals #{Time.current.iso8601}"
 batch.on(:complete, "MyCallback", run_id: SecureRandom.uuid)
 batch.jobs do
-  Sidekiq::Client.push_bulk("class" => BackfillShardJob,
-                            "args" => Order.where(state: "stale").pluck(:id).map { |id| [id] })
+  Order.where(state: "stale").in_batches(of: 1_000) do |b|      # chunk inside batch.jobs
+    Sidekiq::Client.push_bulk("class" => ArchiveOrderJob,       # a per-id job, one arg each
+                              "args" => b.pluck(:id).map { |id| [id] })
+  end
 end
 ```
 
-Without Pro: the shards-table `SELECT COUNT(*) WHERE state != 'done'` works.
+Push the job whose `perform` arity matches the args: `ArchiveOrderJob#perform(id)` takes one, while `BackfillShardJob#perform(shard_index, shard_count)` takes two and would `ArgumentError` on every job. And chunk inside `batch.jobs` - a single `pluck` of the whole set both materialises every id in memory and blows the ~1,000-arg sizing rule.
+
+Without Pro: the shards-table completion check is `SELECT COUNT(*) WHERE state NOT IN ('done', 'failed')`, because `!= 'done'` never reaches zero once a shard is terminally `failed`. A *stranded* shard is a different case and is deliberately still counted - it sits in `claimed`, which this predicate includes, and the reaper is what clears it. So alert on two things beside the completion count: the `failed` total, and any `claimed` row older than `STALE_CLAIM`, which means the reaper is not running.
 
 ### Throttling
 
 Without a cap, N workers driving the DB at full tilt produce replication-lag spikes, connection exhaustion, lock-wait cascades.
 
-- Sidekiq queue concurrency (`concurrency: 5` for memory- or query-heavy queues); use a dedicated queue so deploy quiet/TERM cycles don't starve it
+- Worker concurrency cap for memory- or query-heavy work. `concurrency` is not per-queue: in Sidekiq 6 it is process-wide, so this takes a dedicated process (`-q heavy -c 5`); in Sidekiq 7 use a capsule (`config.capsule("heavy") { |c| c.concurrency = 5; c.queues = %w[heavy] }`). Either way give it its own queue so deploy quiet/TERM cycles don't starve it
 - Per-shard `sleep(0.05)` between batches
 - Replication-lag-aware throttle: in the worker's batch loop, poll lag (`SHOW REPLICA STATUS` / CloudWatch `ReplicaLag` / `pg_stat_replication.replay_lag`) every N batches; sleep until below ~half your alarm threshold
 - Token bucket via Redis for rate-limited downstream services
@@ -225,25 +255,37 @@ Sidekiq default 25 retries is too many for systemic failure. Use `sidekiq_option
 
 ## Output Format
 
-In review mode, precede the block with numbered findings citing the violated rule; the block describes the corrected design. `Coordination` lists every mechanism used, joined with ` + ` (the shards-table shape uses a leader lock for seeding plus a row lock per claim).
+One block per workload split. In review mode, precede the blocks with numbered findings citing the violated rule; the block describes the corrected design - that is where target state lives. `Coordination`, `Idempotency` and `Throttling` each list every mechanism that applies, joined with ` + ` (the shards-table shape uses a leader lock for seeding plus a row lock per claim). `Parallelism` names every binding cap, tightest first.
 
 ```
-Workload: {static backfill | streaming queue | per-tenant batch | one-shot migration}
+Workload: {static backfill | recurring bounded run | streaming queue | per-tenant batch | one-shot migration}
+
 Volume: {row count, expected runtime}
-Pattern: {modulo | SKIP LOCKED cursor (row or per-key lease) | shards table | single-worker queue (strict ordering)}
-Parallelism: {N workers, capped by {DB connections | replication lag | rate limit}}
+
+Pattern: {modulo | id-range | SKIP LOCKED cursor (row or per-key lease) | shards table | direct push_bulk fan-out | single-threaded consumer (strict ordering)}
+
+Parallelism: {N workers, capped by {DB connections | replication lag | rate limit | memory} - list all}
+
 Coordination: {leader lock for fan-out | row lock per claim | none}
+
 Cursor / state: {where progress is persisted}
-Idempotency: {state column | cursor | shard table | natural}
-Retry budget: {Sidekiq retries: N, dead-set alerting: yes/no}
-Throttling: {none | per-batch sleep | replication-lag check | gh-ost}
+
+Idempotency: {state column | cursor | shard table | natural | idempotency key (receiver dedupes) | none - GAP}
+
+Delivery semantics: {at-most-once - state flipped before the side effect | at-least-once - idempotency key the receiver dedupes on | n/a - no external side effect}
+
+Retry budget: {Sidekiq retries: N, dead-set alerting: yes/no | shard-level: max N then terminal "failed" | both, stated separately | target job outside reviewed scope - not assessed}
+
+Throttling: {none | per-batch sleep | replication-lag check | worker concurrency cap | Redis token bucket}
 ```
 
 ## Avoid
 
 - Mixing two work-splitting idioms in one job (both workers claim the same rows)
-- Modulo when data is skewed
-- `SKIP LOCKED` on non-unique scans - gap-lock cascades on MySQL RR
+- Modulo on a large table - N jobs, N full scans, no index can serve `id % N`
+- `SKIP LOCKED` claims with no covering index over filter + order key
+- A claim shape with no reaper - one SIGKILL strands those rows permanently
+- Seeding a shards table without an idempotency guard - a re-run overlaps ranges and doubles every row
 - Cron fan-out without a leader lock - two triggers double-enqueue
 - `push_bulk` calls of >5,000 args
 - Missing cursor persistence - SIGTERM mid-shard loses progress

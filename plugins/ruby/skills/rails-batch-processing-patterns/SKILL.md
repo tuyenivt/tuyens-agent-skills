@@ -114,7 +114,7 @@ First check what's *allocating*: `includes(...)` eager-loads every association's
 **1. jemalloc** - single highest-leverage change; typically 30-50% RSS reduction.
 
 ```dockerfile
-RUN apt-get install -y libjemalloc2
+RUN apt-get update && apt-get install -y libjemalloc2 && rm -rf /var/lib/apt/lists/*
 ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 ```
 
@@ -185,32 +185,45 @@ Tools: `get_process_mem`, `memory_profiler` (allocation reports), `derailed_benc
 ### MySQL Gotchas
 
 - `innodb_flush_log_at_trx_commit=1` (durable default) makes per-row transactions slow - fix chunk size, not flush mode
-- Long transactions on RDS/Aurora trip History List Length; the Aurora CloudWatch metric is `RollbackSegmentHistoryListLength` (writer instance)
-- Gap locks held by long write transactions under `REPEATABLE READ` produce surprising read-stalls
-- Backfills > 100M rows: evaluate `gh-ost` / `pt-online-schema-change` for replication-lag-aware throttling
+- Long transactions trip History List Length. On Aurora MySQL the CloudWatch metric is `RollbackSegmentHistoryListLength` (writer instance); on plain RDS MySQL there is no such metric - read it from `SHOW ENGINE INNODB STATUS` ("History list length") or `information_schema.INNODB_METRICS`
+- Gap locks held by long write transactions under `REPEATABLE READ` block *inserts* into the locked range and other locking reads - plain SELECTs are served from the MVCC snapshot and never stall. The symptom is insert stalls and deadlocks, not slow reads
+- Backfills > 100M rows need replication-lag-aware throttling, but `gh-ost` / `pt-online-schema-change` are online *schema-change* tools and cannot apply an UPDATE of computed values. For a computed-value backfill the only option here is app-level chunking with the replica-lag poll above. `pt-archiver --check-slave-lag` throttles well but only copies rows to `--dest` or purges them - it cannot apply an in-place UPDATE either. Reach for gh-ost/pt-osc only for an accompanying ALTER
 
 ### PostgreSQL Gotchas
 
 - Long transactions block VACUUM; watch `pg_stat_activity.xact_start`, `pg_stat_user_tables.n_dead_tup`
+- A high-churn backfill bloats the table without any long-held transaction: every chunked `UPDATE` leaves a dead tuple, and if the rewrite rate outruns autovacuum the heap grows and seq scans get slower every night. Watch `n_dead_tup` against `n_live_tup`, and for the duration make autovacuum both trigger sooner and work harder: lower `autovacuum_vacuum_scale_factor` (earlier trigger) while *raising* `autovacuum_vacuum_cost_limit` or lowering `autovacuum_vacuum_cost_delay` (more work before it sleeps) - lowering the cost limit slows it down, which is the opposite of what you want. Otherwise pace the backfill to autovacuum's throughput
 - Set `idle_in_transaction_session_timeout` so a crashed worker doesn't hold dead-tuple visibility
-- Cap per-chunk runtime with `SET LOCAL statement_timeout = '30s'` inside the transaction
+- `SET LOCAL statement_timeout = '30s'` caps each *statement*, not the chunk: an N-statement chunk can run N x 30s. For a whole-transaction bound, time the chunk in app code (PG 17 adds `transaction_timeout`; it does not exist on PG 16)
 
 ## Output Format
 
-In review or diagnosis mode, precede the block with numbered findings citing the violated rule or shape (A/B/C); any field may carry `- GAP` with the observed non-compliant value (`Transaction shape: single outer - GAP`). `Memory mitigations` and `Telemetry` list every applied value, joined with ` + `.
+One block per batch code path - a review covering a job and two rake tasks emits three. In review or diagnosis mode, precede the blocks with numbered findings citing the violated rule or shape (A/B/C); the blocks describe the corrected paths, so target state lives there. Any field may carry `- GAP` with the observed non-compliant value (`Transaction shape: single outer - GAP`). `Memory mitigations`, `Throttle` and `Telemetry` list every applied value, joined with ` + `.
 
 ```
-Workload: {backfill | recompute | export | migration}
-Volume: {row count, payload shape}
+Workload: {backfill | recompute | export | migration | fan-out dispatch (enqueues work, computes nothing)}
+
+Volume: {rows per invocation; state the aggregate separately when the code is scoped per tenant or date range}
+
 Database: {MySQL | PostgreSQL}
-Chunk size: {N} (rationale: {OLTP contention | cold table | large payload})
-Transaction shape: {chunked | per-statement | none - compliant for read-only chunks, GAP for multi-statement writes (Shape C)}
-Idempotency: {state column | cursor | progress table | natural}
-External side effects: {none | per-chunk call with completion flag | post-commit only}
+
+Chunk size: {N} (rationale: {OLTP contention | cold table | large payload | per-row external calls})
+
+Transaction shape: {chunked | per-statement | no transaction construct - each write auto-commits (GAP for multi-statement writes) | none - compliant for read-only chunks}
+
+Idempotency: {state column | cursor | progress table | natural | none - GAP for any restartable run}
+
+Cursor store: {durable table | Rails.cache - GAP if the store is eviction-prone (Memcached, :memory_store)}
+
+External side effects: {none | per-chunk call with completion flag | post-commit only | whole-job (non-chunked) | per-row unbatched - GAP}
+
 Throttle: {none | per-chunk sleep | replica-lag poll @ {threshold}s}
-Memory mitigations: {jemalloc | MALLOC_ARENA_MAX | pluck cursor | WorkerKiller@N MB | none (short run, bounded RSS)}
-Concurrency cap: {Sidekiq queue concurrency, if relevant}
-Telemetry: {RSS log every N batches | Prometheus | none}
+
+Memory mitigations: {jemalloc | MALLOC_ARENA_MAX | pluck cursor | WorkerKiller@N MB | periodic GC.start/compact + clear_query_cache | streamed artifact to tempfile/IO | none (short run, bounded RSS)}
+
+Concurrency cap: {N - the process-wide Sidekiq concurrency, narrowed by this queue's weight if it shares a pool, or the dedicated process/capsule that isolates it}
+
+Telemetry: {RSS log every N batches | statsd | Prometheus | none}
 ```
 
 ## Avoid

@@ -28,7 +28,7 @@ Rails PR observability check; pre-release for new service or major feature; post
 
 `/task-rails-review-observability [<branch>|pr-<N>] [standard|deep]` - current branch vs base; fails fast on trunk. Subagent invocation with pre-read artifacts skips Steps 2-3 (Step 1 still runs - behavioral rules are per-context).
 
-**Investigation mode** (no PR/diff: post-incident "diagnosis was slow" audit): skip Step 3. Scope = the paths involved in the incident (controllers, jobs, clients) plus their logging/tracing/tracker config; run Steps 4-10 against current code ("diffed" checks apply to every callsite in scope; a step whose surface doesn't exist in scope states N/A; Step 10 runs regardless of depth). There is no merge to block in this mode: the pre-existing-gap carve-outs don't apply - everything in scope files at its severity. Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and emit the report body as the response - no file is written.
+**Investigation mode** (no PR/diff: post-incident "diagnosis was slow" audit): skip Step 3. Scope = the paths involved in the incident (controllers, jobs, clients) plus their logging/tracing/tracker config; run Steps 4-10 against current code ("diffed" checks apply to every callsite in scope; a step whose surface doesn't exist in scope states N/A; Step 10 runs regardless of depth). There is no merge to block in this mode: the pre-existing-gap carve-outs don't apply - everything in scope files at its severity. Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and emit the report body as the response - no file is written. Every "skip when the diff ..." gate reads as "skip when the in-scope code has no such surface": gating removes atomic loads and rows with no matching code, never a row whose surface is present.
 
 ## Workflow
 
@@ -36,7 +36,7 @@ Rails PR observability check; pre-release for new service or major feature; post
 Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
-Use skill: `stack-detect`. Accept pre-confirmed from parent. If not Rails, redirect to `/task-code-review-observability`. Record **logger** (lograge / semantic_logger / raw), **tracer** (OpenTelemetry / Datadog / New Relic / Scout / Skylight / none), **error tracker** (Sentry / Honeybadger / Rollbar / none) - each as of the head (post-diff) state.
+Use skill: `stack-detect`. Accept pre-confirmed from parent. Where the project's declared stack and its code disagree, record what the code does and note the divergence.  If not Rails, redirect to `/task-code-review-observability`. Record **logger** (lograge / semantic_logger / raw / other - name the gem), **tracer** (OpenTelemetry / Datadog / New Relic / Scout / Skylight / none), **error tracker** (Sentry / Honeybadger / Rollbar / none) - each as of the head (post-diff) state.
 
 ### Step 3 - Resolve the Diff
 Use skill: `review-precondition-check`. On approval, read diff and log once. Skip if parent passed pre-read artifacts. Surface fail-fast verbatim and stop.
@@ -51,16 +51,16 @@ Inspect `config/environments/*.rb`, `config/initializers/lograge*.rb`/`semantic_
 
 `filter_parameters` coverage belongs to `task-rails-review-security`. Cross-flag here only when a new log line clearly leaks fields the security review wouldn't catch (e.g., custom `params.to_unsafe_h` log).
 
-The pre-existing-gap rule generalizes across Steps 4-9: config or instrumentation the diff doesn't touch files as `[Recommend]` context, never a merge blocker (investigation mode suspends this - see Invocation). Exception: a pre-existing gap that a **new surface in the diff newly depends on** (a new job with no middleware bridge to restore its context, a new outbound call with no propagation) files at full severity, anchored to the new callsite - the diff created the blind spot even though the config predates it.
+The pre-existing-gap rule generalizes across Steps 4-9: config or instrumentation the diff doesn't touch files as `[Recommend]` context, never a merge blocker (investigation mode suspends this - see Invocation). Exception: a pre-existing gap that a **new surface in the diff newly depends on** (a new job with no middleware bridge to restore its context, a new outbound call with no propagation) files at full severity, anchored to the new callsite - the diff created the blind spot even though the config predates it. This carve-out decides where the finding is anchored and that it is filed at all - not its published label. Hand it to the verify pass as `newly reachable via <the new callsite>`, which is the kind-change that skill recognises; where it still rules `Pre-existing`, the verified `Label` governs what is published.
 
 ### Step 5 - Business Events (AS::Notifications & custom spans)
 
 Treat `ActiveSupport::Notifications` events and tracer spans as **one axis** - both answer "is this domain operation visible?" One finding per missing-visibility callsite, not one per signal type. The same merging applies across Steps 4/5: a callsite lacking both a structured log (an interpolated-string log is not one) and a business event files once, here, with the log fix folded into the same finding.
 
-- [ ] **Custom business events instrumented**: domain operations (`order.fulfilled`, `payment.charged`) emitted via `ActiveSupport::Notifications.instrument` AND/OR wrapped in a tracer span (OTel `tracer.in_span`, Datadog `Datadog::Tracing.trace`)
+- [ ] **Custom business events instrumented**: domain operations (`fulfilled.order`, `charged.payment` - Rails orders these `verb.namespace`, as in `perform.active_job`) emitted via `ActiveSupport::Notifications.instrument` AND/OR wrapped in a tracer span (OTel `tracer.in_span`, Datadog `Datadog::Tracing.trace`)
 - [ ] **Subscribers exist or are documented** for emitted events
 - [ ] **Event naming `verb.namespace`**; high-cardinality data (user/order IDs) in payload, not name
-- [ ] **Rails internals consumed**: APM gem (`scout_apm`, `skylight`, `new_relic_rpm`, `ddtrace`) installed, or custom subscribers consuming `process.action_controller`, `sql.active_record`, `perform.active_job`
+- [ ] **Rails internals consumed**: APM gem (`scout_apm`, `skylight`, `newrelic_rpm`, `datadog` - renamed from `ddtrace` in dd-trace-rb 2.0) installed, or custom subscribers consuming `process_action.action_controller`, `sql.active_record`, `perform.active_job`
 
 ### Step 6 - Correlation Across Layers
 
@@ -70,7 +70,7 @@ Skip when diff doesn't touch correlation config (request-id middleware, `Current
 - [ ] **Request-scoped context** via `ActiveSupport::CurrentAttributes` for `user_id`, `tenant_id`, `request_id`. Flag new code adding the legacy `RequestStore` gem instead of extending `Current`
 - [ ] **Sidekiq middleware bridge**: client middleware captures `request_id`/`trace_id`/`tenant_id` at enqueue; server middleware restores it on `perform` (into `Current` or OTel context). Without this, new jobs orphan their trace
 - [ ] **Outbound HTTP propagates `X-Request-ID`** (+ W3C `traceparent` when a tracer is configured - with `tracer: none`, request-ID propagation alone satisfies this) - Faraday middleware, `Net::HTTP` patch, or APM auto-instrumentation
-- [ ] **`config.active_record.query_log_tags_enabled = true`** in production (Rails 7+) with `query_log_tags` covering `:controller`, `:action`, `:job`, `:request_id` (+ `:tenant` if multi-tenant). No PII in tags
+- [ ] **`config.active_record.query_log_tags_enabled = true`** in production (Rails 7+) with `query_log_tags` covering `:controller`, `:action`, `:job`. `:request_id` and `:tenant` are **not** built-in taggings - a bare symbol resolves against `ActiveSupport::ExecutionContext`, returns nil and is dropped silently, so they must be hash entries with a callable (`{ request_id: ->(ctx) { ctx[:controller]&.request&.request_id } }`). A config listing them as bare symbols emits no such tag - check the form, not just the presence. No PII in tags
 
 ### Step 7 - Tracing Setup (initializer/gem-change PRs only)
 
@@ -100,17 +100,18 @@ Setup checks (gem install, DSN-from-credentials, test-mode silent, release track
 - [ ] **Sidekiq integration**: failed jobs report with class, args summary (not raw args), retry count
 - [ ] **Unhandled `rescue_from` errors** still report to tracker (not swallowed). Inspect every new `rescue` in the diff
 - [ ] **DSN/API key in credentials**, test-mode silent (setup PRs only)
+- [ ] **`Error tracker: none`**: every check above is N/A - file one finding that no tracker exists, at High when the diff adds a failure path that would otherwise go unreported, Medium otherwise. Do not file the scrub, user-context, Sidekiq-capture, `rescue_from`-reporting or DSN rows individually against a tracker that is absent
 
-### Step 10 - Health Checks and SLIs (deep depth, explicit request, or a service-introducing PR)
+### Step 10 - Health Checks and SLIs (deep depth, explicit request, or a PR introducing a service or a feature with its own success/latency contract)
 
-Use skill: `ops-observability` for liveness/readiness shapes and SLI/SLO definitions. Rails specifics:
+Use skill: `ops-observability` for SLI/SLO definitions (it carries no probe shapes - the liveness/readiness rules are the Rails specifics below):
 
 - Liveness: Rails 7.1's built-in `/up` is correct - 200 unconditionally, no dependency checks
 - Readiness: own-pod DB pool + Redis client + warmed caches; **no third-party pings**
 - Dependency-health (`/internal/deps`): ops-dashboard signal, not a probe target
 - **Sidekiq SLI** for time-sensitive queues
 
-A Rails service with no SLI/SLO is a **High** observability gap - when the PR introduces the service or feature. On infra-only PRs (tracing setup, gem bumps), note the absence as a Recommendation instead of filing High. In investigation mode, a missing SLI/SLO for the audited path files High - the mode exists because diagnosis failed.
+A Rails service with no SLI/SLO is a **High** observability gap - when the PR introduces a new deployable service, or a feature with its own user-visible success/latency contract. A feature riding existing endpoints and existing SLOs does not trigger it. On infra-only PRs (tracing setup, gem bumps), note the absence as a Recommendation instead of filing High. In investigation mode, a missing SLI/SLO for the audited path files High - the mode exists because diagnosis failed.
 
 ### Verify Findings (all depths and modes)
 
@@ -118,13 +119,13 @@ Use skill: `review-finding-verify` with this lens's findings, the diff already r
 
 ### Step 11 - Write Report
 
-Standalone runs: use skill `review-report-writer` with `report_type: review-observability`. Assemble every checkpoint field the writer requires: `scope: +obs`, `depth` as invoked, `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-observability-<branch>.md` already exists with valid frontmatter (filename per the writer's sanitization: `/` and characters outside `[A-Za-z0-9_-]` become `-`), then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report.
+Standalone runs (resolved diff): use skill `review-report-writer` with `report_type: review-observability`. Assemble every checkpoint field the writer requires - `report_body` (the assembled body), `branch` (the head short name; it is also the report filename key), and `base_ref` / `head_ref` as the handle emitted them, plus: `scope: +obs`, `depth` as invoked, `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-observability-<branch>.md` already exists with valid frontmatter (filename per the writer's sanitization: `/` and characters outside `[A-Za-z0-9_-]` become `-`), then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report. (Investigation mode skips the writer too and emits the body as the response - see Invocation.)
 
 ## Output Format
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
-Fill rules: `Findings verified:` carries the verify tally on standalone runs, the literal `inline (no diff)` in investigation mode, and is omitted on subagent runs (the parent verifies). `Target:` appears only in investigation mode (it replaces writer checkpointing); omit otherwise. Pre-existing gaps filed as `[Recommend]` context render under Medium / Low Severity with a `(pre-existing)` prefix on Location.
+Fill rules: `Findings verified:` carries the verify tally on standalone runs, the literal `inline (no diff)` in investigation mode, and is omitted on subagent runs (the parent verifies). `Target:` appears only in investigation mode (it replaces writer checkpointing); omit otherwise. **One defect, one finding.** Several checklist rows, or several call sites, that describe one underlying defect file once - at the site where the fix lands, with the other sites named in the Location line. Genuinely distinct defects at one site, with different fixes, stay separate. Anchor to the narrowest `file:line` the fix touches; a range only when the fix spans contiguous lines. There is no finding count to hit or stay under: file every defect that meets the severity bar and nothing that does not. Two findings are the same defect when one fix removes both; different fixes at one site, or one fix that only masks the second, are two. Pre-existing gaps filed as `[Recommend]` context carry `_(pre-existing)_` appended to the Location line, under Medium when the gap would slow diagnosis of a failure the diff can cause, Low otherwise.
 
 ```markdown
 ## Rails Observability Review Summary
@@ -135,13 +136,14 @@ Fill rules: `Findings verified:` carries the verify tally on standalone runs, th
 - **Error tracker:** Sentry | Honeybadger | Rollbar | none
 - **Target:** <path(s)>
 - **Overall:** Adequate | Gaps Found - [High/Medium/Low count]
-- **Findings verified:** <per fill rules: the `review-finding-verify` tally line verbatim | inline (no diff) | omitted>
+- **Findings verified:** <per fill rules: `<N> confirmed, <M> reattributed, <K> dropped` from `review-finding-verify`, plus its false-positive/resolved split and unverified suffix when emitted | inline (no diff) | omitted>
 
 ## Findings
 
 ### High Severity (would prevent detection of a production failure; Medium = diagnosis materially slower or data leaks into telemetry; Low = polish)
 
-- **Location:** [file:line, controller, job, or initializer]
+- **Location:** [file:line, controller, job, or initializer] [+ `_(pre-existing)_` / `_(pre-existing; newly reachable via ...)_` / `_(unverified: <reason>)_` when the verify pass returned one]
+- **Label:** [Must] | [Recommend] _(the verified `Label`; else the severity mapping in Next Steps)_
 - **Missing:** [absent signal - log field, AS::Notifications event, query tag, span, scrubbing]
 - **Impact:** [what becomes invisible - e.g. "Sidekiq failures attributed to wrong request"]
 - **Fix:** [concrete Rails change with gem and code]
@@ -159,15 +161,18 @@ _Omit empty sections._
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: Sidekiq] - [one-line action]
 
-`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Severity maps to intent: High -> [Must], Medium/Low -> [Recommend]; when the verify pass changed a finding's label, its verified `Label` wins over this mapping. No other label is written. Order Must > Recommend. Omit if no gaps; state "No observability gaps found" when clean.
+`[Implement]` = localized. `[Delegate]` = cross-service tracing rollout / SLO workshop / alerting overhaul. Severity maps to intent: High -> [Must], Medium/Low -> [Recommend]; when the verify pass changed a finding's label, its verified `Label` wins over this mapping. No other label is written. `[Implement]` / `[Delegate]` and `[Must]` / `[Recommend]` are independent axes - a `[Delegate]` may carry `[Must]`. Order Must > Recommend. Omit if no gaps; state "No observability gaps found" when clean.
 ```
+
+
+**A defect this lens does not own is reported, never dropped.** Another lens's category, a plain correctness bug, or something a gate excluded but the reading surfaced: one line under `## Recommendations` giving its location and the workflow that owns it - untiered, uncounted in `Overall`, absent from Next Steps. The exception is a defect that makes this lens's own findings unreachable or wrong (a query that always raises, a guard that never runs): that files here at its own severity, because it changes what the rest of the report means.
 
 ## Self-Check
 
 - [ ] Steps 1-3 ran (or accepted from parent; investigation mode: Step 3 skipped); logger + tracer + error-tracker recorded
 - [ ] Step 4: every new `Rails.logger.*` call assessed; PII overlap with security only when novel
 - [ ] Step 5: business events and custom spans assessed as one axis
-- [ ] Step 6: ran when diff added jobs / outbound HTTP / async paths; skipped with note otherwise
+- [ ] Step 6: ran when the diff touched correlation config *or* added jobs / outbound HTTP / async paths; skipped with note only when neither applied
 - [ ] Step 7: tracing setup checked only on initializer/gem change (investigation mode: on in-scope tracer config, or N/A when none)
 - [ ] Step 8: retry/dead visibility and Sidekiq metrics covered
 - [ ] Step 9: scrub/user-context/Sidekiq capture every PR; setup checks only on initializer change

@@ -44,7 +44,8 @@ def perform(order_id)
   order = Order.find(order_id)
   return if order.fulfilled?
 
-  Stripe::Charge.capture(order.charge_id, idempotency_key: "fulfill-#{order_id}")
+  # third arg is `opts` - a trailing kwarg hash binds to `params` and Stripe rejects it
+  Stripe::Charge.capture(order.charge_id, {}, idempotency_key: "fulfill-#{order_id}")
   Order.transaction { order.lock!; order.update!(status: "fulfilled", fulfilled_at: Time.current) }
 end
 ```
@@ -74,14 +75,14 @@ ActiveRecord::Base.transaction { order.update!(status: :processing) }
 ShipmentNotificationJob.perform_async(order.id)
 ```
 
-When the service runs inside a caller's transaction, "after the local block" still fires before the outer commit. Use `after_commit_everywhere { Job.perform_async(id) }` or a model `after_commit` callback. Full transaction-boundary discipline: see `rails-transaction-patterns`.
+When the service runs inside a caller's transaction, "after the local block" still fires before the outer commit. Use the `after_commit_everywhere` gem - whose method is `after_commit`, not the gem's own name: `include AfterCommitEverywhere` then `after_commit { Job.perform_async(id) }`, or call `AfterCommitEverywhere.after_commit { ... }` directly. A model `after_commit` callback works too. Full transaction-boundary discipline: see `rails-transaction-patterns`.
 
 ### Backend Choice
 
 | Choice           | Use When                                                                |
 | ---------------- | ----------------------------------------------------------------------- |
 | `Sidekiq::Job`   | Default. Direct access to `sidekiq_options`, `sidekiq_retry_in`         |
-| `ApplicationJob` | Only when swapping backends or using `deliver_later` / `Mail#deliver_later` |
+| `ApplicationJob` | Backend portability, ActiveJob callbacks / `retry_on`, or interop with code that calls `perform_later` |
 
 Converting an existing `ApplicationJob` changes the enqueue API (`perform_later` -> `perform_async`) at every call site - flag it in review, don't silently convert. Inside a `Sidekiq::Job`, mailers use `deliver_now`; the job is already the async boundary.
 
@@ -98,7 +99,7 @@ For foreground ops / cron without retries, use a rake task (`rails-rake-task-pat
   - [low, 1]
 ```
 
-Time-sensitive / financial -> `critical`. Email -> `mailers`. Reports / cleanup -> `low`.
+Time-sensitive / financial -> `critical`. Reports / cleanup -> `low`. Email lands on `default`, not `mailers`, unless you say otherwise: `load_defaults 6.1`+ sets `config.action_mailer.deliver_later_queue_name = nil`, so a `mailers` queue in the YAML stays empty until you set that config. Per-mailer the knob is `self.deliver_later_queue_name = :mailers`, or `deliver_later(queue: "mailers")` per call - `queue_as` is an ActiveJob method and raises NoMethodError inside a mailer.
 
 ### Retry, Backoff, Error Handling
 
@@ -141,10 +142,10 @@ For >100 enqueues at once, use `push_bulk`. Cross-process fan-out, sharding, and
 
 ### Graceful Shutdown
 
-Sidekiq sends `SIGTERM` on deploy, stops fetching, and at `timeout` seconds (default 25) raises `Sidekiq::Shutdown` into still-busy threads and re-pushes their jobs - no opt-in needed. (The server-side re-push bypasses client middleware, so uniqueness locks don't drop it.) The job's duty is making that re-run resume, not detecting the signal:
+On deploy the supervisor - systemd, the k8s kubelet, the dyno manager - sends `SIGTERM` *to* Sidekiq. Sidekiq stops fetching, and at `timeout` seconds (default 25) it re-pushes every still-busy job to its queue **first**, then raises `Sidekiq::Shutdown` into those threads. That order is deliberate: running a job twice beats losing it. (The server-side re-push bypasses client middleware, so uniqueness locks don't drop it.) If the supervisor's own grace period is shorter than Sidekiq's `timeout`, SIGKILL lands before any of this runs and in-flight jobs are simply lost - keep `terminationGracePeriodSeconds` (or the Capistrano/systemd equivalent) above `timeout`. The job's duty is making the re-run resume, not detecting the signal:
 
 - Persist progress per chunk (state column / checkpoint) so the re-pushed job skips completed work
-- Never swallow `Sidekiq::Shutdown` in a broad `rescue` - let it propagate so the re-push happens
+- Never swallow `Sidekiq::Shutdown`. It descends from `Interrupt`, not `StandardError`, so a bare `rescue => e` never catches it - the shapes that do are `rescue Exception` and an explicit `rescue Sidekiq::Shutdown` / `rescue Interrupt`. Either way the re-push has already happened, so swallowing cannot prevent requeue; what it does is let the job keep working in a process about to die while a duplicate is already queued, guaranteeing the redo starts from an inconsistent point
 - For cooperative checkpoint-and-interrupt on long iterators, use the `sidekiq-iteration` gem (`each_iteration`)
 
 ### Deploy-Time Versioning
@@ -166,15 +167,25 @@ ProcessOrderJob.perform_async(order.id, ProcessOrderJob::CURRENT_VERSION)
 
 ## Output Format
 
-One block per job class (fan-out designs emit one per job). In review or diagnosis mode, precede the blocks with numbered findings citing the violated rule; blocks describe the corrected jobs.
+One block per job class (fan-out designs emit one per job). In review or diagnosis mode, precede the blocks with numbered findings citing the violated rule; blocks describe the corrected jobs, so target state lives there. A violation of these rules that does not belong to any job class - an HTTP call inside a transaction, `deliver_later` onto a queue no process consumes - is a numbered finding with no block; say which file it lives in. A field whose evidence is outside the reviewed files is `not in evidence` plus the file to read.
 
 ```
 Job: {class name}
-Queue: {critical | default | mailers | low | custom (state why - e.g. dedicated concurrency cap)}
-Trigger: {what causes enqueue}
-Arguments: {names and types - IDs only}
-Idempotency: {state check | sidekiq-unique-jobs | Redis fence - list all that apply}
-Retry: {count and backoff strategy}
+
+Queue: {critical | default | mailers | low | custom - name the isolation mechanism: a dedicated process (`-q x -c N`) or, on Sidekiq 7+, a capsule; a queue weight alone does not cap concurrency}
+
+Trigger: {what causes enqueue | not in evidence}
+
+Arguments: {names and types - IDs only; flag any mismatch between `perform`'s arity and what the call site passes}
+
+Idempotency: {state check | sidekiq-unique-jobs lock: <until_executed | while_executing | until_and_while_executing> + lock_ttl | Redis SET NX fence | none - GAP on an at-least-once path - list all that apply}
+
+Retry: {count and backoff strategy; name the single channel that owns it - `sidekiq_options retry:`, ActiveJob `retry_on`, or a bounded in-method loop, never two for one error class}
+
+Dead-letter: {dead set + alerting | sidekiq_retries_exhausted hook | none - GAP}
+
+Shutdown safety: {checkpointed per chunk - re-run resumes | short enough to finish inside `timeout` | GAP - long, uncheckpointed work}
+
 Dispatch: {post-commit | after_commit_everywhere | model after_commit | cron/scheduler}
 ```
 

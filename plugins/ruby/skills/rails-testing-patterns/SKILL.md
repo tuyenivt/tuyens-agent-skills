@@ -22,7 +22,8 @@ user-invocable: false
 - Request specs, never controller specs
 - Test through the public interface; no private-method specs
 - FactoryBot only - no fixtures; use state traits, not inline attribute overrides
-- `build_stubbed` by default; `build` in-memory; `create` only when the example needs persistence: DB reads (scopes, `reload`, uniqueness), request specs, policy Scope resolution. Pure attribute/permission checks don't.
+- `build_stubbed` by default; `build` in-memory; `create` only when the example needs persistence: DB reads (scopes, `reload`, uniqueness), code under test that performs real writes or reads them back, request specs, policy Scope resolution. Pure attribute/permission checks don't.
+- One example per distinct policy outcome, not per role - roles that resolve identically share one example (or a shared example group) rather than repeating it.
 - Mock at boundaries (HTTP, third-party SDKs); never mock internal code
 - Every Pundit policy has a spec covering each role
 - `travel` / `freeze_time`, never `Time.now =` stubs
@@ -53,13 +54,13 @@ RSpec.describe Order, type: :model do
 
   describe "validations" do
     it { is_expected.to validate_numericality_of(:total).is_greater_than(0) }
-    it { is_expected.to define_enum_for(:status).with_values(pending: 0, confirmed: 1, shipped: 2) }
+    it { is_expected.to define_enum_for(:status).with_values(pending: 0, confirmed: 1, processing: 2, shipped: 3) }
   end
 
   describe ".fulfillable" do
     it "returns only confirmed orders" do
       confirmed = create(:order, :confirmed)
-      create(:order, :pending)
+      create(:order)                            # base factory already defaults to :pending
       expect(described_class.fulfillable).to eq([confirmed])
     end
   end
@@ -171,9 +172,21 @@ FactoryBot.define do
     total  { 99.99 }
     status { :pending }
 
-    trait :confirmed  { status { :confirmed } }
-    trait :processing { status { :processing }; fulfilled_at { Time.current } }
-    trait :shipped    { status { :shipped };    fulfilled_at { 1.day.ago } }
+    # `trait :x { }` is a syntax error - a brace block cannot attach to a paren-less
+    # command call with arguments. Use do...end (or parenthesise: `trait(:x) { }`).
+    trait :confirmed do
+      status { :confirmed }
+    end
+
+    trait :processing do
+      status { :processing }
+      fulfilled_at { Time.current }
+    end
+
+    trait :shipped do
+      status { :shipped }
+      fulfilled_at { 1.day.ago }
+    end
 
     trait :with_order_items do
       transient { items_count { 3 } }
@@ -195,12 +208,19 @@ require "sidekiq/testing"
 Sidekiq::Testing.fake!  # jobs pushed to array
 
 RSpec.describe ShipmentNotificationJob, type: :job do
+  let(:order) { create(:order, :confirmed) }
+
   it "enqueues with the order id" do
     expect { described_class.perform_async(order.id) }.to change(described_class.jobs, :size).by(1)
     expect(described_class.jobs.last["args"]).to eq([order.id])
   end
 
+  # The negative assertion needs the positive control beside it: alone it passes if
+  # `perform` is deleted, if the job never mails, or if the mailer uses deliver_later.
   it "is idempotent - skips already-shipped orders" do
+    expect { described_class.new.perform(order.id) }
+      .to change { ActionMailer::Base.deliveries.count }.by(1)
+
     shipped = create(:order, :shipped)
     expect { described_class.new.perform(shipped.id) }
       .not_to change { ActionMailer::Base.deliveries.count }
@@ -218,6 +238,8 @@ Tasks are thin shells; service spec owns behavior, rake spec verifies wiring. `R
 
 ```ruby
 RSpec.describe "orders:fulfill_pending" do
+  # `require "rake"` belongs in rails_helper.rb: load_tasks is what requires it, so
+  # touching Rake::Task first raises NameError under `bundle exec rspec`.
   before(:all) { Rails.application.load_tasks if Rake::Task.tasks.empty? }  # re-loading appends duplicate task bodies
   let(:task) { Rake::Task["orders:fulfill_pending"] }
   after { task.reenable }
@@ -253,6 +275,8 @@ Use transactional fixtures, not `database_cleaner`. System specs share the conne
 RSpec.configure { |c| c.use_transactional_fixtures = true }
 ```
 
+Transactional fixtures roll back the database, and nothing else. State living outside it leaks between examples in random order and produces the classic "passes alone, fails in suite": Sidekiq's `fake!` job array (`Sidekiq::Job.clear_all` in a `before`), any `Singleton` or class-level memo the app fills lazily (reset it, or freeze it at boot), `Rails.cache`, and stubbed constants. Put the resets in `rails_helper.rb` once rather than per file.
+
 `database_cleaner-active_record` with `:truncation` only for cross-connection state (e.g., a separate analytics DB).
 
 ### Request Auth Helpers
@@ -278,9 +302,16 @@ module RequestHelpers
     token = JwtEncoder.encode(user_id: user.id)
     { "Authorization" => "Bearer #{token}", "Content-Type" => "application/json" }
   end
+
+  def json_response = JSON.parse(response.body)   # both shapes define it; specs call it
+  end
 end
 
-RSpec.configure { |c| c.include RequestHelpers, type: :request }
+RSpec.configure do |c|
+  c.include RequestHelpers, type: :request
+  # `sign_in` is Devise's, not rspec-rails' - without this the Devise variant raises NoMethodError
+  c.include Devise::Test::IntegrationHelpers, type: :request
+end
 ```
 
 Mixing both in one suite hides which path the endpoint actually exercises.
@@ -301,7 +332,7 @@ Built-in - no `timecop` needed; auto-resets after each example.
 
 ### N+1 Assertions
 
-Rails has no built-in query counter; subscribe to `sql.active_record` (or use `rspec-sqlimit` / `n_plus_one_control`):
+Rails 7.2+ ships `ActiveRecord::Assertions::QueryAssertions` - `config.include ActiveRecord::Assertions::QueryAssertions` then `assert_queries_count(4) { get orders_path }` (also `assert_no_queries`, `assert_queries_match`). Below 7.2, or for a custom report, subscribe to `sql.active_record` (or use `rspec-sqlimit` / `n_plus_one_control`):
 
 ```ruby
 it "index runs <= 4 queries regardless of order count" do
@@ -355,15 +386,20 @@ Job specs follow the same boundary rule: the HTTP client wrapper (`app/clients/`
 
 ## Output Format
 
-One block per spec file written. In review mode, precede the blocks with a findings list (each finding citing the violated rule); blocks describe the rewritten specs. `Examples:` counts examples actually written.
+One block per file written or reviewed - including the support files, since a suite-wide rule (`Sidekiq::Testing.fake!`, the Devise include, leak resets) is unenforceable if `rails_helper.rb` and the factories have nowhere to land. In review mode, precede the blocks with a findings list (each finding citing the violated rule); blocks describe the rewritten specs, so target state lives there. A finding with no single target file - suite runtime, a leak that spans examples - is a numbered finding with no block. `Examples:` counts examples actually written.
 
 ```
-Test Type: {Model | Service | Policy | Request | Job | Client | System | Rake}
+Test Type: {Model | Service | Policy | Request | Job | Client (HTTP wrapper unit spec) | System | Rake | Support (rails_helper, shared contexts) | Factory}
+
 File: spec/{type}/{path}_spec.rb
+
 Contexts: {happy path, not found, forbidden, validation failure, ...}
-Factories: {name with traits}
+
+Factories: {name with traits | none defined yet - list the ones this spec needs}
+
 Examples: {count}
 ```
+
 
 ## Avoid
 

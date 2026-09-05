@@ -22,7 +22,7 @@ user-invocable: false
 
 - One transaction boundary per business operation; the boundary belongs in the service object, not the model.
 - No network calls inside `Model.transaction`. HTTP/S3/Redis/Stripe held under a row lock cascades into fleet-wide lock-wait timeouts on upstream slowdown.
-- No `.perform_async` inside a transaction - the worker can run before commit and see uncommitted state. Use `after_commit_everywhere` when the dispatch lives inside a caller's transaction.
+- No `.perform_async` (or `deliver_later`, or any other post-commit dispatch) inside a transaction. The worker runs on its own connection, so it can never see your uncommitted writes - it sees the state *before* them: `RecordNotFound` for a row not yet committed, stale values for one being updated, and nothing at all if you roll back. Use `after_commit_everywhere` when the dispatch lives inside a caller's transaction.
 - Inner services that open `transaction` need `requires_new: true` if rescued by the caller - a fused inner block has no savepoint, so the caller's rescue commits the inner writes along with the outer transaction.
 - `after_commit` for side effects (jobs, email, HTTP). `after_save` only for in-aggregate derived columns that must be visible inside the same transaction.
 - Default isolation is adapter-default (MySQL `REPEATABLE READ`, PG `READ COMMITTED`). Bump only with a documented reason (multi-row invariants, financial ledgers); cost is higher deadlock rate.
@@ -47,7 +47,7 @@ A multi-model service with an external call follows one ordering:
 def call
   return Result.failure(["invalid"], code: :invalid) unless valid?
 
-  payment = Stripe::Charge.create(charge_params)  # outside transaction
+  payment = BillingClient.new.charge(charge_params)  # outside transaction, behind a client
 
   ActiveRecord::Base.transaction do
     @order.update!(status: :paid, stripe_charge_id: payment.id)
@@ -56,7 +56,7 @@ def call
 
   ShipmentNotificationJob.perform_async(@order.id)  # post-commit
   Result.success(@order.reload)
-rescue Stripe::CardError => e
+rescue BillingError::Declined => e     # domain error - services never name a vendor class
   Result.failure([e.message], code: :payment_declined)
 end
 ```
@@ -115,11 +115,11 @@ A callback inside a locked transaction (`with_lock`, `Model.lock.find`) that mak
 Two failure modes the table implies but reviews miss:
 
 - A derived column maintained by `after_commit` updates in a *separate* transaction - it can fail or interleave with concurrent writers and leave the column stale. That asymmetry, not style, is why derived columns use `after_save`.
-- In bulk loops (`rows.each { create! }` inside one transaction), a per-row callback that recomputes an aggregate runs N times and grows lock-hold time. Recompute once after the loop, or use `counter_cache` / `update_counters` for sum-style columns. A callback that writes a *different* model also adds a cross-model lock-order deadlock surface.
+- In bulk loops (`rows.each { create! }` inside one transaction), a per-row callback that recomputes an aggregate runs N times and grows lock-hold time. Recompute once after the loop, or push it into the database: `counter_cache` for association counts, `update_counters` (an atomic `SET col = col + n`) for sum-style columns - `counter_cache` only counts rows, it cannot maintain a sum. A callback that writes a *different* model also adds a cross-model lock-order deadlock surface.
 
-### `after_commit_everywhere` for nested dispatch
+### Post-commit dispatch from inside a caller's transaction
 
-When a service runs inside a caller's transaction, dispatching "after the local block" still fires before the outer commit. Use `after_commit_everywhere`:
+When a service runs inside a caller's transaction, dispatching "after the local block" still fires before the outer commit. Rails 7.2+ ships this natively - `ActiveRecord.after_all_transactions_commit { ... }` (which also runs immediately when no transaction is open) or `Model.current_transaction.after_commit { ... }`. The `after_commit_everywhere` gem is the pre-7.2 equivalent and remains fine where it is already in the Gemfile:
 
 ```ruby
 class ChargeService
@@ -142,7 +142,7 @@ The block fires after the outermost commit, regardless of nesting depth.
 | ----------------- | ----------------------------------------- | ----------------------------------------- |
 | `:read_committed` | PG default; opt-in on MySQL               | `SKIP LOCKED` claim; fresh reads of concurrent counters |
 | `:repeatable_read`| MySQL default; PG opt-in                  | Multi-row read consistency in same txn    |
-| `:serializable`   | Highest cost; deadlocks under contention  | Financial ledgers, accounting invariants  |
+| `:serializable`   | Highest cost. PG raises `SerializationFailure` (SSI, SQLSTATE 40001); MySQL promotes plain SELECTs to shared locks and deadlocks | Financial ledgers, accounting invariants  |
 
 ```ruby
 ActiveRecord::Base.transaction(isolation: :serializable) do
@@ -184,15 +184,29 @@ Split: open transaction late, close it early. External calls and computation hap
 
 ## Output Format
 
+One block per transaction boundary. A flow that opens two (claim, then finalize) emits two, named in order; a review spanning a service, a model method and a callback emits one per boundary and carries the rest as numbered findings.
+
 ```
-Boundary: <service.call | model callback | controller action>
+Boundary: <service.call | model callback | controller action | rake task | job perform>
+
 Network calls inside: <Yes (BLOCKER) | No>
-.perform_async inside: <Yes (BLOCKER) | No - uses after_commit | No>
+
+Post-commit dispatch inside: <Yes - name it: perform_async / deliver_later / cache write (BLOCKER) | No - uses after_commit | No>
+
 Nested transactions: <None | Inner uses requires_new | Inner relies on outer (caller-aware) | Inner fused + caller rescues (BLOCKER)>
+
+Side-effect hook: <after_commit (correct for side effects) | after_save - derived column (correct) | after_save - side effect (BLOCKER) | after_commit - derived column (GAP) | N/A - no callbacks>
+
 Isolation: <adapter default | :read_committed | :repeatable_read | :serializable - reason: <text>>
-Retry strategy: <None | None - GAP (isolation bumped, retry required) | Deadlock retry x N>
+
+Concurrent writers on the same column: <none | row lock / atomic UPDATE | unguarded read-modify-write (BLOCKER) - name the other writer>
+
+Retry strategy: <None | None - GAP (isolation bumped, retry required) | Deadlock retry x N | in-process retry AND job-level retry - GAP, pick one>
+
 Compensating action on partial failure: <Yes - <job> | No - acceptable | No - GAP>
 ```
+
+`isolation:` is only legal on the outermost transaction: nested, Active Record raises `TransactionIsolationError` before reaching the adapter, on every database. Transactional test fixtures open that outer transaction with `joinable: false`, which makes even a *flat* `transaction(isolation:)` take the savepoint path and raise - so flattening the call does not help and dropping the parameter deletes the behaviour under test. Set `self.use_transactional_tests = false` on that spec instead. Never set isolation on the pool. Lost-update mechanics and lock choice: use skill: `rails-db-locking-patterns`.
 
 ## Avoid
 

@@ -28,7 +28,7 @@ Reviewing a Rails PR for perf regressions; investigating a slow controller/view/
 
 `/task-rails-review-perf [<branch>|pr-<N>] [standard|deep]` - current branch vs base; fails fast on trunk. When invoked as subagent with pre-read artifacts, Steps 2-3 are skipped (Step 1 still runs - behavioral rules are per-context).
 
-**Investigation mode** (no PR/diff: slow endpoint, quarterly N+1 sweep): skip Step 3. Scope = the named path(s) plus the models, serializers, views, helpers, and jobs they touch; run Steps 4-9 against current code - "diff"-worded checks and skip predicates read as "the in-scope code". Impact numbers: use APM/log figures the user supplied; otherwise estimate and label them. Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and emit the report body as the response - no file is written.
+**Investigation mode** (no PR/diff: slow endpoint, quarterly N+1 sweep): skip Step 3. Scope = the named path(s) plus the models, serializers, views, helpers, and jobs they touch, plus the pool / Puma / Sidekiq config governing them - Step 8's ceiling checks run in this mode whenever that config is in scope, since there is no diff to trigger them; run Steps 4-9 against current code - "diff"-worded checks and skip predicates read as "the in-scope code". Impact numbers: use APM/log figures the user supplied; otherwise estimate and label them. Fill the Summary's `Target:` slot, skip `review-report-writer` checkpointing, and emit the report body as the response - no file is written. Every "skip when the diff ..." gate reads as "skip when the in-scope code has no such surface": gating removes atomic loads and rows with no matching code, never a row whose surface is present.
 
 ## Workflow
 
@@ -36,7 +36,7 @@ Reviewing a Rails PR for perf regressions; investigating a slow controller/view/
 Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
-Use skill: `stack-detect`. Accept pre-confirmed from parent. If not Rails, redirect to `/task-code-review-perf`. Record the **database** (Postgres or MySQL) - DB-specific checks below apply only to the detected DB.
+Use skill: `stack-detect`. Accept pre-confirmed from parent. Where the project's declared stack and its code disagree, record what the code does and note the divergence.  If not Rails, redirect to `/task-code-review-perf`. Record the **database** (Postgres or MySQL) - DB-specific checks below apply only to the detected DB.
 
 ### Step 3 - Resolve the Diff
 Use skill: `review-precondition-check`. On approval, read `git diff <base>...<head>` and `git log <base>..<head>` once. Skip if parent passed pre-read artifacts. Surface fail-fast verbatim and stop.
@@ -58,7 +58,7 @@ For N+1 on `update`/`save` paths (not list/index), also use skill: `rails-implic
 
 Skip when nothing under `db/migrate/` changed (investigation mode: skip unless a named path includes a migration - never audit migration history). Use skill: `rails-postgresql-migration-safety` **or** `rails-migration-safety` (MySQL) per detected DB - do not apply both.
 
-- [ ] Large-table indexes built non-blocking for the detected DB (PG: `algorithm: :concurrently` + `disable_ddl_transaction!`; MySQL: `algorithm: :inplace` or `INSTANT`)
+- [ ] Large-table indexes built non-blocking for the detected DB (PG: `algorithm: :concurrently` + `disable_ddl_transaction!`; MySQL: `algorithm: :inplace`, which is `LOCK=NONE` for a secondary index - there is no INSTANT path for `ADD INDEX`; a table past ~100M rows goes through `gh-ost` instead)
 - [ ] Unique constraints at DB level, not just `validates :uniqueness`
 - [ ] PG-only: partial indexes for selective boolean/enum filters
 - [ ] MySQL-only: a lone index on a low-selectivity boolean/enum flag rarely helps - composite it with the range/sort column (`[settled, id]`) or rely on the PK scan
@@ -77,9 +77,9 @@ Use skills: `rails-sidekiq-patterns`, `rails-transaction-patterns`.
 
 ### Step 7 - Caching and Rendering
 
-Skip when diff has no view, serializer, or cache change. Server-rendered: use skill `rails-view-templates`.
+Skip when the diff has no view, serializer, or cache change. An API-only controller shaping its own response (`render json:` with `as_json`, `include:`, or a hand-built hash) is a serializer surface for this gate. Server-rendered: use skill `rails-view-templates`.
 
-- [ ] Fragment cache keys include `updated_at` (`cache item`, pair with `belongs_to :parent, touch: true`); on hot keys add `race_condition_ttl`
+- [ ] Fragment cache keys include `updated_at` (`cache item`, pair with `belongs_to :parent, touch: true`); `race_condition_ttl` does **not** apply here - it is a `Cache::Store#fetch` option requiring `expires_in`, and fragment caching goes through `read_fragment`/`write_fragment`; put it on a controller-side `Rails.cache.fetch` for the expensive aggregate instead
 - [ ] Per-user vs global cache scope - no authorized-data leakage
 - [ ] HTTP caching (`fresh_when`, `stale?`) on read-heavy GETs
 - [ ] Serializer associations included in the controller's `includes`
@@ -91,9 +91,9 @@ Skip when diff has no view, serializer, or cache change. Server-rendered: use sk
 
 Skip the connection-pool checks unless the diff changes pool config, Puma/Sidekiq concurrency, or process count (at `deep`, run them regardless - Depth table). Use skills: `rails-connection-pool-sizing` (when applicable), `rails-db-locking-patterns`, `rails-batch-processing-patterns`, `rails-work-splitter-patterns` (when explicit work-splitting is involved).
 
-- [ ] **Pool sizing** (config-change PRs, or `deep`): per-process `pool` matched to the in-process thread count (>= threads; sizing far above it just consumes `max_connections`); total backend processes under DB `max_connections` with 15-25% headroom, sized for the rolling-deploy peak; multiplexer (RDS Proxy / PgBouncer / ProxySQL) when >~200
+- [ ] **Pool sizing** (config-change PRs, or `deep`): per-process `pool == max_threads_in_that_process` (+ documented executor / Cable extras when `load_async` or ActionCable share the process); AR checks out lazily, so an oversized pool reserves nothing at steady state - it removes the cap, letting a leak grow the process and blow the deployment-wide budget; total *connections* (workers x threads + Sidekiq concurrency + CLI / ops) under DB `max_connections` with 15-25% headroom, sized for the rolling-deploy peak; a multiplexer (RDS Proxy / PgBouncer / ProxySQL) once backend *processes* - pods x workers, plus Sidekiq pods x processes - pass ~200, which is a different quantity from the connection count above
 - [ ] **HTTP clients** reused; timeouts on every external call; circuit breaker on flaky deps
-- [ ] **Row locking** by primary key only; range scans under default RR on MySQL flagged (gap-lock); `SKIP LOCKED` claims hit a unique-index path
+- [ ] **Row locking** by primary key only; range scans under default RR on MySQL flagged (gap-lock); `SKIP LOCKED` claims are covered by one composite index over the filter plus the order key (`(state, id)`) - a claim filters a non-unique state column, so no unique index serves it
 - [ ] **No `find_each` inside `Model.transaction`**; chunked-transaction shape is `in_batches(of: N) { |batch| Model.transaction { ... } }`, not whole-run or per-row. When the same loop also fails Step 4's batching bullet, file one finding anchored at the chunked-transaction fix
 - [ ] **Chunk size** justified for row size + contention (500-1000 OLTP, 5000-10000 cold backfills); idempotent at chunk granularity
 - [ ] **No HTTP / Redis / S3 inside chunk transactions**, no network in held locks
@@ -103,23 +103,25 @@ Skip the connection-pool checks unless the diff changes pool config, Puma/Sideki
 
 ### Step 9 - Observability Hooks
 
+No atomic is loaded here - these are inline checks; depth belongs to `task-rails-review-observability`.
+
 If a new hot path lands without instrumentation, flag it (file under Quick Wins):
 
 - [ ] Slow paths emit `ActiveSupport::Notifications` or APM custom spans; `query_log_tags_enabled = true` so APM attributes queries; Bullet enabled in non-prod (flag any change disabling it)
 
 Depth owned by `task-rails-review-observability`; do not duplicate.
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary; dropped rows appear only in the tally, never in the body. Subagent runs skip this - the parent verifies the merged set once. Investigation mode also skips it (the skill requires a diff; there is none): instead re-read each cited `file:line` at `HEAD`, drop findings the code does not support, and report `Findings verified: inline (no diff)`.
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary; dropped rows appear only in the tally, never in the body. Subagent runs skip the delegation - the parent verifies the merged set once - but still re-read each cited `file:line` before handing off, and carry the provenance the parent cannot reconstruct (`pre-existing`, `newly reachable via <site>`) on the finding. Investigation mode also skips it (the skill requires a diff; there is none): instead re-read each cited `file:line` at `HEAD`, drop findings the code does not support, and report `Findings verified: inline (no diff)`.
 
 ### Step 10 - Write Report
 
-Standalone runs: use skill `review-report-writer` with `report_type: review-perf`. Assemble every checkpoint field the writer requires: `scope: +perf`, `depth` as invoked, `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter (filename per the writer's sanitization: `/` and characters outside `[A-Za-z0-9_-]` become `-`), then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report.
+Standalone runs (resolved diff): use skill `review-report-writer` with `report_type: review-perf`. Assemble every checkpoint field the writer requires - `report_body` (the assembled body), `branch` (the head short name; it is also the report filename key), and `base_ref` / `head_ref` as the handle emitted them, plus: `scope: +perf`, `depth` as invoked, `stack = ruby-rails`, `base_sha` / `head_sha` via `git rev-parse` on the handle's refs, and `mode: full`, `round: 1` - unless `review-perf-<branch>.md` already exists with valid frontmatter (filename per the writer's sanitization: `/` and characters outside `[A-Za-z0-9_-]` become `-`), then increment its `round` and pass its `head_sha` as `prior_head_sha` (check for that file yourself; `review-precondition-check` looks up `review-<branch>.md`, a different report). Print confirmation. Subagent runs (parent passed pre-read artifacts): skip the writer and return findings in this skill's Output Format to the parent - the parent owns the report. (Investigation mode skips the writer too and emits the body as the response - see Invocation.)
 
 ## Output Format
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
-Fill rules: `Findings verified:` carries the verify tally on standalone runs, the literal `inline (no diff)` in investigation mode, and is omitted on subagent runs (the parent verifies). `Target:` appears only in investigation mode (it replaces writer checkpointing); omit otherwise.
+Fill rules: `Findings verified:` carries the verify tally on standalone runs, the literal `inline (no diff)` in investigation mode, and is omitted on subagent runs (the parent verifies). `Target:` appears only in investigation mode (it replaces writer checkpointing); omit otherwise. **One defect, one finding.** Several checklist rows, or several call sites, that describe one underlying defect file once - at the site where the fix lands, with the other sites named in the Location line. Genuinely distinct defects at one site, with different fixes, stay separate. Anchor to the narrowest `file:line` the fix touches; a range only when the fix spans contiguous lines. There is no finding count to hit or stay under: file every defect that meets the severity bar and nothing that does not. Two findings are the same defect when one fix removes both; different fixes at one site, or one fix that only masks the second, are two.
 
 ```markdown
 ## Rails Performance Review Summary
@@ -127,14 +129,21 @@ Fill rules: `Findings verified:` carries the verify tally on standalone runs, th
 - **Stack Detected:** Ruby <version> / Rails <version> / <database>
 - **Scope:** Backend (Rails)
 - **Target:** <path(s)>
-- **Overall:** Clean | Issues Found - [High/Medium/Low count]
-- **Findings verified:** <per fill rules: the `review-finding-verify` tally line verbatim | inline (no diff) | omitted>
+- **Overall:** Clean | Issues Found - [High/Medium/Low/Quick Win count]
+- **Steps skipped:** <each step skipped, with its trigger - e.g. `Step 7 (no view / serializer / cache change)`; `none` when all ran>
+- **Findings verified:** <per fill rules: `<N> confirmed, <M> reattributed, <K> dropped` from `review-finding-verify`, plus its false-positive/resolved split and unverified suffix when emitted | inline (no diff) | omitted>
 
 ## Findings
 
+Tier by effect on the reviewed path: **High** = the dominant cost, or an
+unbounded growth in queries / memory / lock-hold with load; **Medium** = a measurable but
+bounded cost; **Low** = a cost too small to notice today that the pattern will grow;
+**Quick Win** = a fix of one line or one option, at any size.
+
 ### High Impact
 
-- **Location:** [file:line]
+- **Location:** [file:line] [+ `_(pre-existing)_` / `_(pre-existing; newly reachable via ...)_` / `_(unverified: <reason>)_` when the verify pass returned one]
+- **Label:** [Must] | [Recommend] _(the verified `Label`; else the tier mapping in Next Steps)_
 - **Issue:** [Rails idiom named: N+1, missing index, mid-transaction enqueue]
 - **Impact:** [estimated "N+1 in OrdersController#index adds ~200 queries at 100 orders" or measured "p95 800ms -> 120ms"]
 - **Fix:** [specific Rails change with code]
@@ -151,13 +160,16 @@ _Omit sections with no findings._
 
 ## Next Steps
 
-Prioritized. Each `[Implement]` (localized, incl. a one-file migration fix) or `[Delegate]` (work leaving the PR's scope: cross-cutting refactor, coordinated schema change, load-test). Order: Must > Recommend. Intent per finding: High Impact -> [Must]; Medium/Low/Quick Win -> [Recommend]; when the verify pass changed a finding's label, its verified `Label` wins over this mapping. No other label is written.
+Prioritized. Each `[Implement]` (localized, incl. a one-file migration fix) or `[Delegate]` (work leaving the PR's scope: cross-cutting refactor, coordinated schema change, load-test). `[Implement]` / `[Delegate]` and `[Must]` / `[Recommend]` are independent axes - a `[Delegate]` may carry `[Must]`. Order: Must > Recommend. Intent per finding: High Impact -> [Must]; Medium/Low/Quick Win -> [Recommend]; when the verify pass changed a finding's label, its verified `Label` wins over this mapping. No other label is written.
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]
 
 _Omit if no actionable findings._
 ```
+
+
+**A defect this lens does not own is reported, never dropped.** Another lens's category, a plain correctness bug, or something a gate excluded but the reading surfaced: one line under `## Recommendations` giving its location and the workflow that owns it - untiered, uncounted in `Overall`, absent from Next Steps. The exception is a defect that makes this lens's own findings unreachable or wrong (a query that always raises, a guard that never runs): that files here at its own severity, because it changes what the rest of the report means.
 
 ## Self-Check
 
@@ -166,8 +178,9 @@ _Omit if no actionable findings._
 - [ ] Step 5: migration-safety skill for the detected DB consulted on `db/migrate/` change
 - [ ] Step 6: every transaction boundary checked for HTTP / job / mailer leak; idempotency verified
 - [ ] Step 7: caching/rendering applied when diff touches views/serializers/cache
-- [ ] Step 8: pool sizing skipped unless config changed; locking / batching / memory applied where relevant
+- [ ] Step 8: pool sizing ran at `deep` regardless, and at `standard` only on a config change; locking / batching / memory applied where relevant
 - [ ] Step 9: instrumentation gap flagged on new hot paths
+- [ ] Verify pass ran (inline in investigation mode; skipped as subagent - the parent verifies); tally or omission per fill rules
 - [ ] Step 10: report via `review-report-writer` (subagent: findings returned to parent; investigation mode: body emitted as the response); confirmation printed when the writer ran
 - [ ] Every finding states impact - measured when APM data exists, estimated otherwise (`adds ~N queries at K rows`)
 - [ ] Findings ordered by impact; Next Steps `[Implement]`/`[Delegate]` ordered Must > Recommend

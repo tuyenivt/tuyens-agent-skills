@@ -37,13 +37,15 @@ user-invocable: false
 | Lock guards a database write               | DB advisory lock                  |
 | Lock guards a non-DB resource (API, cache) | Redis (Redlock, `redis-mutex`)    |
 | Cluster-wide leader election decoupled from app | Kubernetes Lease             |
-| Mutual exclusion within one process        | Mutex / `Concurrent::Lock`        |
+| Mutual exclusion within one process        | `Mutex` / `Monitor`               |
 
-A DB advisory lock taken in the same DB as the work commits/aborts atomically with the work. Redis without fencing tokens is not safe for "exactly once across N pods".
+A *transaction-scoped* advisory lock (`pg_advisory_xact_lock`) releases atomically with the work it guards. Session-scoped locks - `GET_LOCK`, `pg_advisory_lock`, and the `with_advisory_lock` default below - survive both COMMIT and ROLLBACK and must be released explicitly; they share the DB's failure domain, which is the reason to prefer them over Redis, but that is not atomicity. Redis without fencing tokens is not safe for "exactly once across N pods".
 
 ### `with_advisory_lock` (recommended abstraction)
 
 Wraps MySQL `GET_LOCK` and PG `pg_advisory_lock` behind one API. The gem holds the connection for the lock duration and releases the lock before checking the connection back in - safe under Sidekiq concurrency.
+
+Lock names share one namespace per database (PG hashes them into a single 64-bit space), so prefix every name with its owner and key: `"reconcile:account:#{id}"`, never `id.to_s`. Two unrelated features on a bare id will serialize against each other and neither team will know why. Re-entering the same name in a nested block is safe on both adapters - the lock is re-entrant per session - but the inner block does not extend the outer hold.
 
 ```ruby
 gem "with_advisory_lock"
@@ -71,7 +73,8 @@ namespace :reports do
     end
     unless acquired
       puts "another reports:rebuild is running - skipping"
-      exit 0   # skip-if-held is the expected outcome; nonzero exit would trip cron alerting
+      next   # skip-if-held is expected, not a failure. `next` leaves this task only;
+             # `exit 0` would end the process and silently skip the rest of a chain
     end
   end
 end
@@ -111,7 +114,7 @@ class LedgerEntriesController < ApplicationController
 end
 ```
 
-The explicit `isolation: :read_committed` here is the MySQL Tier-2 escalation - on PostgreSQL omit it (RC is already the default, and explicit `isolation:` raises under transactional fixtures).
+The explicit `isolation: :read_committed` here is the MySQL Tier-2 escalation - on PostgreSQL omit it, since RC is already the default. The transactional-fixtures constraint is adapter-independent and covered below; it applies to this MySQL form too.
 
 ### Transaction isolation: three tiers
 
@@ -135,7 +138,7 @@ end
 
 ### Nested `isolation:` raises
 
-Passing `isolation:` while any transaction is already open raises `ActiveRecord::TransactionIsolationError` ("cannot set transaction isolation in a nested transaction"). Transactional test fixtures count as the open outer transaction - this error often first appears in specs around code that runs flat in production. For different isolation per chunk, flatten:
+Passing `isolation:` while any transaction is already open raises `ActiveRecord::TransactionIsolationError`, on every adapter, before Active Record reaches the connection. The message names which case you hit: "cannot set isolation when joining a transaction" for a plain nested call, "cannot set transaction isolation in a nested transaction" on the savepoint path (`requires_new: true`, or a non-joinable outer transaction - which is what transactional fixtures give you). So this error often first appears in specs around code that runs flat in production. For different isolation per chunk, flatten:
 
 ```ruby
 slice_ids.each do |slice|
@@ -168,7 +171,7 @@ Inside `SKIP LOCKED` claim workers, claim small batches (50-500 rows) per transa
 
 ### Connection accounting
 
-Every advisory lock = one DB connection held for the lock duration. A 6-hour backfill lock holds a connection for 6 hours - usually acceptable for one coordinator, but it blocks nothing else and must be budgeted. When that's too costly, release-and-reacquire between work batches:
+Every advisory lock = one DB connection held for the lock duration. A 6-hour backfill lock holds a connection for 6 hours - usually acceptable for one coordinator, and it holds no *row* locks - but every other contender for that lock name waits behind it, and the connection must be budgeted. When that's too costly, release-and-reacquire between work batches:
 
 ```ruby
 loop do
@@ -196,22 +199,32 @@ The gap between iterations is a double-run window - safe only because progress l
 
 ## Output Format
 
-In review mode, precede the block with numbered findings citing the violated rule; the block describes the corrected design.
+One block per code path under review - three paths contending on one row emit three blocks, each naming its path. In review mode, precede the blocks with numbered findings citing the violated rule; the blocks describe the corrected design, so target state lives there. `Lock kinds`, `Scope` and `Failure modes considered` list every value that applies, joined with ` + `; a design legitimately combining a leader lock and a per-resource lock says both rather than picking one.
 
 ```
 Lock kinds: {advisory leader | advisory per-resource | row pessimistic | optimistic | transaction-scoped advisory}
+
 Adapter: {MySQL | PostgreSQL} (primitive: {GET_LOCK | pg_advisory_lock | pg_advisory_xact_lock | with_advisory_lock gem})
+
 Scope: {session | transaction}
+
 Hold time: {expected per lock kind; long leader holds stated in minutes and flagged with connection cost}
-Lock target: {PK lookup | ID list | non-PK scan (flagged)}
-Isolation tier: {Tier 1 default | Tier 2 per-tx escalation at call site (RC, or RR on PG for snapshot reads) | Tier 3 connection-level RC with documented rationale}
+
+Lock target: {PK lookup | ID list - ordered by PK to fix acquisition order | non-PK scan (flagged) | n/a (advisory only)}
+
+Isolation tier: {Tier 1 default | Tier 2 per-tx escalation at call site (RC, or RR on PG for snapshot reads) | Tier 3 connection-level RC with documented rationale | serializable - flag it: it is above every tier here and wants a row lock instead}
+
+Deadlock retry: {bounded N with backoff | none needed (single lock, ordered acquisition) | unbounded - GAP}
+
 Idempotency backing the lock: {unique index | upsert | state column | external idempotency key - list all that apply | none (flagged)}
-Failure modes considered: {deadlock cascade | leader-lock starvation | connection exhaustion | StaleObjectError storm}
+
+Failure modes considered: {deadlock cascade | leader-lock starvation | connection exhaustion | StaleObjectError storm | lock held across an external call, backing up writers | lost update on an unlocked read-modify-write - list each one considered, with its verdict}
 ```
 
 ## Avoid
 
-- Network calls inside an open transaction or advisory lock
+- Network calls inside an open transaction or row lock (a long-lived leader advisory lock spanning IO is the deliberate exception)
+- Unbounded `rescue ActiveRecord::Deadlocked; retry` - cap the attempts (3-5) and back off, or the loser spins against a live winner
 - `find_each` inside `Model.transaction { ... }`
 - Non-PK row locks on MySQL `REPEATABLE READ`
 - Session-scoped advisory locks for transactions that should use `pg_advisory_xact_lock`
@@ -219,6 +232,6 @@ Failure modes considered: {deadlock cascade | leader-lock starvation | connectio
 - "RR for web, RC for jobs" as a one-line recipe - changes shared-service behavior silently
 - Long-held `GET_LOCK` without budgeting it - one coordinator connection for hours is fine *if counted*; release-and-reacquire when the pool is tight
 - Conflating advisory locks (mutual exclusion) with row locks (data consistency)
-- Default `innodb_lock_wait_timeout` / `lock_timeout` (50s) - makes stuck holders look like a hang
+- Leaving the defaults: MySQL `innodb_lock_wait_timeout` is 50s, and PostgreSQL `lock_timeout` is `0` - disabled, so a blocked statement waits forever
 - Optimistic locking on hot rows - use pessimistic by PK
 - Nesting `transaction(isolation:)` - raises `TransactionIsolationError` (transactional fixtures included)

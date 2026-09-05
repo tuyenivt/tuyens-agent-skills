@@ -92,9 +92,13 @@ class ApplicationController < ActionController::API   # ActionController::Base f
 end
 ```
 
-Policies that only check `user.admin?` (no owner clause) silently lock owners out. Missing `rescue_from` leaks stack traces on denial. Relationship-based access (trainer->trainee, manager->team) extends the same shape: the member check tests the relationship, the Scope unions the related owner IDs (`scope.where(user_id: [user.id, *user.trainee_ids])`).
+Policies that only check `user.admin?` (no owner clause) silently lock owners out. Missing `rescue_from` returns a 500 instead of a 403 (and a full trace in development; production renders the generic error page). Relationship-based access (trainer->trainee, manager->team) extends the same shape: the member check tests the relationship, the Scope unions the related owner IDs (`scope.where(user_id: [user.id, *user.trainee_ids])`).
 
 IDOR: lookups on user-supplied IDs go through `policy_scope(Model).find(params[:id])` (404 on foreign records) or `find` + `authorize` (403). Never bare `Model.find(params[:id])` followed by render. Response exposure is part of authorization: render through a serializer field allowlist, never `render json: @record` raw.
+
+The same rule governs an ActionCable `subscribed` block, which is a lookup on a client-supplied identifier by another name - stream from an authorized object, never from a raw `params[:id]`. Channel actions (`receive`, custom methods) are unauthenticated RPC unless you check them individually; `subscribed` authorizes the subscription, not what the socket may then ask for.
+
+When the credential *is* the link - an emailed tracking URL, a document download, any anonymous holder-of-token access - use Rails' own signed ids rather than inventing a scheme: `record.signed_id(expires_in: 7.days, purpose: :tracking)` and `Model.find_signed!(token, purpose: :tracking)`. The purpose scopes the token to one use, the expiry bounds forwarding, and the signature makes ids unguessable without a lookup table. Authorization for such a request is the token verification itself - there is no `current_user` to `authorize` against, and that is the one legitimate exception to the rule above.
 
 ### SQL Injection
 
@@ -118,15 +122,26 @@ Rack::Attack.throttle("api/ip", limit: 300, period: 5.minutes) { |req| req.ip if
 
 Rack::Attack.throttle("logins/email_ip", limit: 5, period: 20.seconds) do |req|
   next unless req.path == "/api/v1/login" && req.post?
-  "#{req.ip}:#{req.params['email'].to_s.downcase}"
+  parsed = (JSON.parse(req.body.read) rescue nil)   # req.params is blind to a JSON body
+  req.body.rewind
+  email = parsed.is_a?(Hash) ? parsed["email"].to_s.downcase : ""
+  "#{req.ip}:#{email}"
 end
 ```
 
-Login throttles must key on IP **and** submitted email - IP-only is bypassed by credential stuffing via rotating proxies. JSON login bodies: `req.params` sees only query/form data, so parse the body yourself (`JSON.parse(req.body.read) rescue {}`, then `req.body.rewind`) or the email dimension silently drops out. Back the counters with a shared store (`Rack::Attack.cache.store = Redis`) - the in-memory default resets per process and undercounts under multi-process Puma.
+Login throttles must key on IP **and** submitted email - IP-only is bypassed by credential stuffing via rotating proxies. The body parse above is not optional on a JSON endpoint: `Rack::Request#params` merges query string and form-encoded body only, so with `req.params['email']` the discriminator silently collapses to `"#{ip}:"` and you are back to the IP-only throttle this rule exists to prevent.
+
+Counters are only as shared as the cache behind them. Inside Rails, Rack::Attack defaults its store to `Rails.cache`, so the failure is subtler than "per-process": a file store does not span hosts and `:memory_store` does not span processes. Point it somewhere genuinely shared, and pass an *instance* - `Rack::Attack.cache.store = Redis` assigns the class, which `StoreProxy` does not recognise, and the first request raises `NoMethodError` and takes throttling down with it:
+
+```ruby
+Rack::Attack.cache.store = ActiveSupport::Cache::RedisCacheStore.new(url: ENV["REDIS_URL"])
+```
+
+For a token-only endpoint with no email field, key on IP plus the token's *subject* once verified, and add a `Fail2Ban`-style blocklist on repeated signature failures so enumeration costs the attacker an IP ban rather than just a 429.
 
 ### Open Redirect
 
-Rails 7+ rejects cross-host `redirect_to` (`UnsafeRedirectError`), but same-origin open redirects still pass. Use a path allowlist; exact-match comparison also kills protocol-relative bypasses (`//evil.com`) that naive prefix checks miss:
+Rails rejects cross-host `redirect_to` with `UnsafeRedirectError` only when `config.action_controller.raise_on_open_redirects` is true - it defaults to false and is switched on by `load_defaults 7.0`+, so a 7.2 or 8.0 app upgraded on older defaults has no protection at all. `redirect_to url, allow_other_host: true` opts back out per call site. Same-origin open redirects pass either way. Use a path allowlist; exact-match comparison also kills protocol-relative bypasses (`//evil.com`) that naive prefix checks miss:
 
 ```ruby
 ALLOWED = %w[/dashboard /orders /profile].freeze
@@ -141,8 +156,10 @@ Dynamic in-app targets (`/orders/42`) that no enumerable list can express: requi
 
 ```ruby
 config.hosts << "app.example.com"
-config.hosts << /.*\.example\.com/
+config.hosts << ".example.com"        # leading dot = this host and its subdomains
 ```
+
+Rails anchors both forms: a String becomes `/\A(.+\.)?example\.com\z/i`, and a Regexp is wrapped by `sanitize_regexp` into `/\A...(?::\d+)?\z/i`. So a trailing-garbage `Host: www.example.com.evil.com` is rejected either way. The trap runs the other direction - because the anchoring is automatic, a Regexp must match the *whole* hostname (`/example\.com/` will not match `www.example.com`; write `/.*\.example\.com/`), and one left open in the middle still matches too much: `/.*example\.com/` accepts `evilexample.com`. Prefer the String form for that reason, not for anchoring.
 
 Blocks Host header injection; mismatched requests get 403. `config.hosts.clear` disables the protection entirely - it is never the fix for a host mismatch.
 
@@ -153,7 +170,9 @@ Blocks Host header injection; mismatched requests get 403. `config.hosts.clear` 
 ```ruby
 cookies.signed[:cart_id]                     # tamper-evident, readable
 cookies.encrypted[:user_preferences]         # tamper-evident + opaque
-cookies.permanent.encrypted[:remember_token, httponly: true, secure: true, same_site: :lax]
+# Flags are set on assignment - `cookies[...][key, **opts]` is a read and raises ArgumentError
+cookies.permanent.encrypted[:remember_token] =
+  { value: token, httponly: true, secure: true, same_site: :lax }
 ```
 
 Never store access-granting tokens / IDs in unsigned `cookies[...]`. Signing/encryption is not the same as `httponly`/`secure`/`same_site` - set the flags explicitly on auth cookies.
@@ -192,21 +211,28 @@ config.content_security_policy do |p|
   p.script_src  :self          # blocks inline scripts
   p.style_src   :self, :unsafe_inline
 end
-config.content_security_policy_nonce_generator = ->(req) { req.session.id.to_s }
+config.content_security_policy_nonce_generator  = ->(req) { req.session.id.to_s }
+config.content_security_policy_nonce_directives = %w[script-src]   # not style-src
 ```
+
+That last line is load-bearing. Rails nonces `script-src` *and* `style-src` by default, and a browser ignores `'unsafe-inline'` in any directive that also carries a nonce - so adding the generator without narrowing the directives silently breaks every inline style the `style_src` line above was written to allow.
 
 Existing inline scripts: migrate via nonces (`javascript_tag nonce: true`) rather than `:unsafe_inline`. Roll out with `config.content_security_policy_report_only = true` first.
 
 ## Output Format
 
-One block per finding (reviews and audits emit several) or per pattern applied (build mode - Severity then rates the risk the change closes, not a current exposure):
+One block per finding (reviews and audits emit several) or per pattern applied (build mode). Both modes fill every field; only two shift meaning. `Severity` in build mode rates the risk the change closes, not a current exposure. `Change` is the applied diff in build mode and the recommended remediation in review or audit mode - which is where target state lives, so no separate section is written. Lead an audit with a one-line posture summary before the blocks.
 
 ```
-Pattern: {Strong Params | Authentication | Pundit | CSRF | Rate Limit | Credentials | SQLi | IDOR | Open Redirect | Cookies | CSP | Host Auth | Transport | Webhook Signature}
+Pattern: {Strong Params | Authentication | Pundit | CSRF | Rate Limit | Credentials | SQLi | IDOR | Open Redirect | Cookies | CSP | Host Auth | Transport | Webhook Signature | Channel Authorization | Secret in Client Payload | Signed URL / Object Storage | Outbound Call Authentication | Error Response Leakage}
+
 Severity: {Critical - exploitable now | High - exploitable with effort | Medium - hardening | Low - defense in depth}
-Resource: {controller / model / config file}
-Change: {what was applied}
-Risk Mitigated: {mass assignment | unauthorized access | data exposure | injection | brute force | secret exposure | open redirect | session hijack | header injection | MITM}
+
+Resource: {controller / model / channel / view / config file}
+
+Change: {what was applied (build) | what to apply (review, audit)}
+
+Risk Mitigated: {mass assignment | unauthorized access | data exposure | injection | brute force | secret exposure | open redirect | session hijack | header injection | MITM | unauthenticated outbound call | internal detail in error response}
 ```
 
 ## Avoid

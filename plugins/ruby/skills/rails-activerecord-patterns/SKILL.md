@@ -22,13 +22,14 @@ user-invocable: false
 
 - Lazy load by default; eager load explicitly per query.
 - Never `default_scope` - infects every query including joins from unrelated models.
-- `dependent:` is required on every `has_many` / `has_one`.
+- `dependent:` is required on every `has_many` / `has_one` that owns its records. On a `has_many :through` it acts on the **join** records, not the target records (and the join model's source association must be a `belongs_to`), so a bare `through` is compliant as long as the direct `has_many` to the join model carries it.
 - `enum` with explicit integer mapping - positional shorthand shifts when entries reorder.
 - Parameterized queries only - never string interpolation.
 - `find_each` / `in_batches` for large datasets - never `.all.each`.
 - On unloaded relations, blockless `any?` and `exists?` both issue `SELECT 1 LIMIT 1`; `any? { }` with a block loads every row. On loaded associations: `size`/`any?` are free; `exists?`/`count` re-query.
 - `update!` over `update_attribute` (latter skips validations).
 - Pessimistic lock by PK only; keep the critical section short and free of network calls. Side-effect callbacks: see `rails-transaction-patterns`.
+- A read-modify-write on a column another process also writes *requires* a lock (or an atomic `UPDATE ... SET col = col + ?`); it is not a style choice. Optimistic vs pessimistic is the choice: `lock_version` when conflicts are rare and a retry is cheap, `with_lock` when the row is hot enough that `StaleObjectError` would storm.
 
 ## Patterns
 
@@ -36,13 +37,15 @@ user-invocable: false
 
 ```ruby
 # Bad - one query per user
-User.all.each { |u| u.orders.count }
+User.all.each { |u| u.orders.map(&:total_cents).sum }
 
 # Good - eager load
 User.includes(:orders)                                       # separate query (default)
 User.preload(:orders)                                        # always separate (safe with scopes)
 User.eager_load(:orders).where(orders: { status: :active })  # LEFT OUTER JOIN when WHERE on assoc
 ```
+
+Eager loading does not fix a per-row `count`: `u.orders.count` re-queries even on a loaded association (Rule above). That one needs `size`, or a `counter_cache`.
 
 Surface lazy loads in dev: `config.active_record.strict_loading_by_default = true` and `gem "bullet"`.
 
@@ -99,18 +102,18 @@ user.orders.size                              # uses counter_cache if available
 
 Index endpoints computing per-row aggregates (`sum`, `count` per parent) at scale: aggregate in SQL (`Order.group(:customer_id).sum(:total_cents)`, or a `counter_cache` column) and paginate - preloading every child row moves the N+1 into memory.
 
-`find_each` / `in_batches` ignore custom `ORDER BY` and force `ORDER BY id ASC`. If order matters, paginate with explicit `where("id > ?", cursor)`.
+`find_each` / `in_batches` discard a custom `ORDER BY` (logging "Scoped order is ignored, it's forced to be batch order") and batch on the primary key; `order: :asc | :desc` picks the direction. For any other order, Rails 8.0 adds a `cursor:` option that batches on arbitrary columns (`in_batches(cursor: [:shop_id, :id])`); on 7.2 hand-roll it with `where("id > ?", cursor)`.
 
 ### Bulk inserts and upserts
 
-`create!` in a loop fires one INSERT plus all callbacks per row. `insert_all` / `upsert_all` issue one multi-row statement and run 50-100x faster - but skip callbacks/validations and don't coerce serialized columns (timestamps are set: `record_timestamps` follows the model config, on by default). Untrusted input (CSV, API payloads) must be validated/coerced before the call - instantiate-and-`validate` (or a form object) per row, then feed the clean `attributes` to the bulk call; DB constraints are the only remaining guard. Slice into batches of 1-5K rows to bound statement size and undo-log growth.
+`create!` in a loop fires one INSERT plus all callbacks per row. `insert_all` / `upsert_all` issue one multi-row statement and run 50-100x faster - but skip validations, callbacks, and model-level `attribute ... default:` values. Type casting and serialization still apply (values go through `type_for_attribute`, so `enum` and `serialize` behave), and timestamps are set: `record_timestamps` follows the model config, on by default. Untrusted input (CSV, API payloads) must be validated/coerced before the call - instantiate-and-`validate` (or a form object) per row, then feed the clean `attributes` to the bulk call; DB constraints are the only remaining guard. Slice into batches of 1-5K rows to bound statement size and undo-log growth.
 
 ```ruby
 rows.each_slice(2_000) { |batch| OrderRollup.insert_all(batch, returning: %w[id]) }
 OrderRollup.upsert_all(rows, unique_by: :order_id, update_only: %i[total_cents updated_at])
 ```
 
-`unique_by:` is PostgreSQL/SQLite-only - on MySQL it raises; drop it and MySQL upserts via `ON DUPLICATE KEY` against the table's unique indexes. `returning:` is likewise PG-only.
+`unique_by:` is PostgreSQL/SQLite-only - on MySQL it raises; drop it and MySQL upserts via `ON DUPLICATE KEY` against the table's unique indexes. `returning:` has the same support: PostgreSQL and SQLite (both answer `supports_insert_returning?`), MySQL raises.
 
 ### Pessimistic locking
 
@@ -130,7 +133,7 @@ Retry on `ActiveRecord::Deadlocked` is the caller's job - pattern in `rails-tran
 
 **MySQL default `REPEATABLE READ`: row + gap (next-key) locks.** Non-unique-index range scans gap-lock the range and block inserts - the #1 source of MySQL deadlocks in Sidekiq workloads. Lock by PK; keep the critical section short. PostgreSQL has no gap-lock equivalent; same discipline still applies.
 
-For multiple rows, fetch IDs unlocked first, then lock per-ID:
+For multiple rows, fetch IDs unlocked first, then lock in small PK batches - one transaction per slice, never one over the whole set:
 
 ```ruby
 ids = Order.where(customer_id: id).pluck(:id)
@@ -158,27 +161,30 @@ Hot rows produce `StaleObjectError` storms - use pessimistic by PK instead.
 - `belongs_to :parent, touch: true` - saving the child touches the parent
 - `has_many :children, autosave: true` (explicit or via `accepts_nested_attributes_for`) - parent save iterates children
 - Callback reading `self.<association>` - forces a load at save time. Use `self.foo_id`, not `self.foo.id`, when only the FK is needed
-- Missing `inverse_of` under `load_defaults <= 6.1` (no `has_many_inversing`)
+- Missing `inverse_of` under `load_defaults < 6.1` (6.1 turns on `has_many_inversing`)
 
 For an audit of implicit-config state, see `rails-implicit-config-audit`.
 
 ### Async queries (`load_async`)
 
-For dashboards with several independent queries, wall clock becomes the slowest, not the sum:
+For dashboards with several independent queries, wall clock becomes the slowest, not the sum - but only once an executor is configured. `config.active_record.async_query_executor` defaults to `nil` in Rails 7.2/8.0 and no `load_defaults` sets it, so without this line every `load_async` runs inline and buys nothing:
 
 ```ruby
+config.active_record.async_query_executor = :global_thread_pool   # required prerequisite
+
 @recent_orders = Order.recent.limit(10).load_async
 @top_products  = Product.top_sellers.limit(5).load_async
+@order_count   = Order.recent.async_count                          # async calculations, 7.1+
 ```
 
-Each async query holds an extra connection (see `rails-connection-pool-sizing`). Never use inside transactions - the async thread can't see uncommitted state.
+The executor is process-global and bounded by `global_executor_concurrency` (default 4), so N async queries in one request cost at most 4 extra connections, not N (see `rails-connection-pool-sizing`). Inside an open transaction `load_async` silently degrades to foreground execution - no correctness risk, just no win, so calling it there is pointless rather than dangerous.
 
 ### DB-specific columns and indexes
 
 ```ruby
 # MySQL 8.0+ (InnoDB) - JSON, functional index (8.0.13+; JSON_VALUE form 8.0.21+), fulltext
 add_column :orders, :metadata, :json, null: false
-add_index :users, "(JSON_VALUE(metadata, '$.tier' RETURNING CHAR(50)))", name: "idx_users_tier"
+add_index :orders, "(JSON_VALUE(metadata, '$.tier' RETURNING CHAR(50)))", name: "idx_orders_tier"
 add_index :products, :description, type: :fulltext
 # No native array, no partial index. Slow-query: performance_schema.events_statements_summary_by_digest.
 
@@ -197,12 +203,18 @@ Migration safety for these operations: `rails-migration-safety` (MySQL) or `rail
 One block per pattern applied (a task spanning N+1 + Association emits two). In review mode, precede the blocks with numbered findings citing the violated rule; any field may carry `- GAP` with the observed non-compliant value.
 
 ```
-Pattern: {N+1 Fix | Scope | Enum | Association | Normalization | Callback | Batch | Locking | DB Feature}
+Pattern: {N+1 Fix | Scope | Enum | Association | Normalization | Callback | Batch | Locking | Implicit Load | Async Query | Parameterization | Denormalized Counter | DB Feature}
+
 Model: {name}
-Adapter: {MySQL | PostgreSQL}
+
+Adapter: {MySQL | PostgreSQL | n/a - adapter-independent | unknown}
+
 Change: {description}
-Queries: {before} -> {after}   # query counts or formulas, e.g. "1 + 4N -> 4"; "n/a" for greenfield or any non-query-shaped change (e.g. Locking, DB Feature, a counter_cache declaration)
+
+Queries: {before} -> {after}   # query counts or formulas, e.g. "1 + 4N -> 4". Write "n/a" for greenfield and for any change whose point is correctness rather than query shape - Locking, Parameterization, Denormalized Counter, DB Feature, Association config, Scope, a counter_cache declaration
 ```
+
+`Denormalized Counter` covers a state-scoped or conditional counter (`open_shipment_count`, "currently active" tallies), which `counter_cache:` cannot express - it counts unconditional create/destroy only. Name the single writer and the recompute path.
 
 ## Avoid
 
