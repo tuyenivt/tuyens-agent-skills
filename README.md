@@ -193,11 +193,6 @@ React / Next.js (plugin: react)
 - `core` is required by all other plugins.
 - Each plugin folder has its own README with stack-specific usage and examples.
 
-## Optional: Claude Code Settings Template
-
-- A `settings.template.json` is provided at `.claude/settings.template.json` as a starting point for your local Claude Code settings.
-- Copy it to `~/.claude/settings.json` (or merge into your existing one) to get recommended defaults for working with these plugins.
-
 ## License
 
 This project is proprietary. All rights reserved.
