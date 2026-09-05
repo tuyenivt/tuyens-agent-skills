@@ -10,7 +10,7 @@ user-invocable: true
 
 # Code Review (Router)
 
-Detects the project stack and delegates to the matching stack-specific review workflow (`task-{stack}-review`). When no stack workflow is available, runs a minimal generic Phases A-E review.
+Detects the project stack and delegates to the matching stack-specific review workflow (`task-{stack}-review`). When no stack workflow is available, runs a minimal generic Phase 0-E review.
 
 ## When to Use
 
@@ -43,11 +43,11 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review`   |
 | Node.js / TypeScript | `task-node-review`    |
 | Go / Gin             | `task-go-review`      |
-| React / Next.js      | `task-react-review`   |
+| React / Next.js / Vite | `task-react-review` |
 
-A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback); a row named by language alone (Python) matches that language under any framework. Dispatch keys on the detection's primary `Language`/`Framework` pair; a secondary stack in `Additional` never dispatches. When the matched row's workflow resolves, announce the dispatch in one line (`Dispatching to task-rails-review.` - substitute the target name), then forward the user's invocation verbatim - re-issue the argument string unchanged (target ref, `--base`, `--req`, scope, depth). The announcement is the router's only output; the detection block stays internal. The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 4-5.**
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback); a row named by language alone (Python) matches that language under any framework. Dispatch keys on the detection's primary `Language`/`Framework` pair; a secondary stack in `Additional` never dispatches. When the matched row's workflow resolves, announce the dispatch in one line (`Dispatching to task-rails-review.` - substitute the target name), then forward the user's invocation - re-issue the argument string unchanged (target ref, `--base`, `--req`, scope, depth), except `full`, which expands to `+perf +sec +obs +rel` because no stack umbrella accepts a bare `full` flag. The announcement is the router's only output; the detection block stays internal. The stack umbrella owns precondition checks, diff resolution, parallel sub-scope dispatch, and the final report. **If matched, stop. Skip Steps 4-5.**
 
-If a row matches but the target skill does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5 as a degraded generic review and note the degradation in the report.
+If a row matches but the target skill does not resolve (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5 as a degraded generic review and note the degradation in the report. If no row matches the detected stack at all, announce that in one line (`No stack workflow for <stack> - running the generic review.`) and run Steps 4-5.
 
 ### Step 4 - Generic Fallback (no dispatch)
 
@@ -64,7 +64,7 @@ Use skill: `review-precondition-check` with the user's target argument (default 
 | `prior head_sha == head_sha`, requested scope or depth exceeds the checkpoint's | `round: prior + 1` - same commits, wider lens                       |
 | Otherwise                                                                | `round: prior + 1`                                                 |
 
-**Prior-round reconciliation.** On round 2+, Use skill: `review-prior-findings-reconcile` with the prior report body, the full-range diff, and `git diff --name-status <base_ref>...<head_ref>`; its table and tally line go under `## Prior Round Reconciliation` in the report. Round 1 skips it. Run this after the phases below and after **Verify findings**, so reconciliation matches against the verified set. A Still-open prior finding the current phases re-derive publishes once, noted `carried from round <N>` on its heading line - the reconciliation table is its only other appearance. A Still-open finding the phases did not re-derive is carried into the findings sections at its prior label with the same note, skipping verify - reconciliation already re-checked it.
+**Prior-round reconciliation.** On round 2+, Use skill: `review-prior-findings-reconcile` with the prior report body, the full-range diff, and `git diff --name-status <base_ref>...<head_ref>`; its table and tally line go under `## Prior Round Reconciliation` in the report. Round 1 skips it. Run this after the phases below and after **Verify findings**, so reconciliation matches against the verified set. Reconcile marks a row `Still open` or `Needs re-check`; both are unresolved and both carry forward by the rules here. A carried prior finding the current phases re-derive publishes once, noted `carried from round <N>` on its heading line (`<N>` = the prior report's own `round` value from its frontmatter, not this round) - the reconciliation table is its only other appearance - and takes the label this round assigns it. A carried finding the phases did not re-derive is carried into the findings sections at its prior label with the same note, skipping verify - reconciliation already re-checked it. A prior label outside this workflow's vocabulary (`[Blocker]`, `[High]`, `[Question]` in a legacy report) stays verbatim in the reconciliation table, which reconcile owns, and maps through Feedback Labels before it is published in the findings sections. The table preserves each prior citation exactly; the published finding carries the corrected `file:line` when verification found the prior cite stale.
 
 **Depth.** `standard` (default): review diff hunks plus immediate context. `deep`: skip the Phase A fast-path and read each touched file in full.
 
@@ -84,15 +84,17 @@ Use skill: `review-precondition-check` with the user's target argument (default 
 
 **Phase E - Maintainability.** Use skill: `backend-coding-standards`. Use skill: `ops-observability` for logging/metrics/tracing coverage. Flag naming clarity, mixed responsibilities, large unreviewable chunks, hardcoded URLs/secrets/magic numbers.
 
-**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `+rel` was passed, spawn the matching `task-code-review-*` skill as a subagent (`full` = all four) with the read-once diff/log, the precondition handle, the active depth, and the stack-detect output. Run in parallel; when subagents are unavailable, run each sub-scope skill inline in sequence under the same contract. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend; highest wins on duplicates); preserve `file:line` citations.
+**Extra scopes.** If `+perf`, `+sec`, `+obs`, or `+rel` was passed, load the matching `task-code-review-*` skill (`full` = all four) and run it as a subagent, passing the read-once diff/log, the precondition handle, the active depth, and the stack-detect output. Each sub-scope skill defines the subagent contract it runs under in its own Invocation section. Run in parallel; when subagents are unavailable, run each sub-scope skill inline in sequence under the same contract. Sub-scopes return findings to this workflow and write no report - merge them by strongest intent (Must > Recommend; highest wins on duplicates); preserve `file:line` citations. A sub-scope may also return a coverage list (security's OWASP rows): it confirms the lens ran to completion and informs the review, and is not rendered.
 
-**Cross-phase dedup.** A single defect can surface in more than one phase or lens - the Phase B contract gate and a sub-scope, Phase 0 and Phase B, Phase B and the Phase C guardrail. Whether or not extra scopes ran, merge before **Verify findings**: publish one entry at the strongest intent whose Issue line names each lens that surfaced it; preserve `file:line`.
+**Cross-phase dedup.** A single defect can surface in more than one phase or lens - the Phase B contract gate and a sub-scope, Phase 0 and Phase B, Phase B and the Phase C guardrail. Whether or not extra scopes ran, merge before **Verify findings**: publish one entry at the strongest intent whose Issue line names each lens that surfaced it and whose System Risk line states the combined exposure in one sentence; preserve `file:line`.
 
-**Verify findings.** Use skill: `review-finding-verify` with the assembled findings (including any merged from sub-scopes), the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its `Findings verified:` Summary tally line verbatim - including the `(<F> false positive, <R> resolved by diff)` split and the `; <U> of these unverified` suffix when the atomic emits them. Atomic output blocks (risk, resiliency, guardrail, the verify table) inform the review and are never emitted - the report carries only the slots Output Format names.
+**Order of operations.** The phases above only gather. Then, in this order: merge sub-scope findings into the set, dedup across phases and lenses, run **Verify findings**, reconcile against the prior round (round 2+), then write Step 5. The reading order of this step is not its execution order.
+
+**Verify findings.** Use skill: `review-finding-verify` with the assembled findings (including any merged from sub-scopes), the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Fill the Summary's `Findings verified:` line as `<N> confirmed, <M> reattributed, <K> dropped` from its counts, appending the `(<F> false positive, <R> resolved by diff)` split and the `; <U> of these unverified` suffix when the atomic emits them. Atomic output blocks (risk, resiliency, guardrail, the verify table) inform the review and are never emitted - the report carries only the slots Output Format names.
 
 ### Step 5 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review` and every required input: `report_body` (the assembled report per Output Format), `branch` (head short name from the handle - for `head_ref: HEAD`, the handle's `current_branch`, never the literal `HEAD`; this is the review target and the checkpoint lookup key), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 4), `mode: full` (the writer's only accepted value), `round` (Step 4; plus `prior_head_sha` when round > 1 - on a same-SHA wider-lens round it equals `head_sha`, which is expected), `scope` (writer enum value - `core-only` when no scope flag was passed; combined flags join with single spaces in the canonical order `+perf +sec +obs +rel`; all four = `full`), `depth` (`standard` when no depth flag), `stack` (kebab-case `<language>-<framework>` from the stack-detect output, e.g. `elixir-phoenix`; drop a segment reported unknown; `unknown` only when detection failed entirely).
+Use skill: `review-report-writer` with `report_type: review` and every required input: `report_body` (the assembled report per Output Format), `branch` (head short name from the handle - for `head_ref: HEAD`, the handle's `current_branch`, never the literal `HEAD`; strip any leading `<remote>/` segment so a remote-resolved head and a later local review chain on one file; this is the review target and the checkpoint lookup key), `base_ref`/`head_ref`, `base_sha`/`head_sha` (Step 4), `mode: full` (the writer's only accepted value), `round` (Step 4; plus `prior_head_sha` when round > 1 - on a same-SHA wider-lens round it equals `head_sha`, which is expected), `scope` (writer enum value - `core-only` when no scope flag was passed; combined flags join with single spaces in the canonical order `+perf +sec +obs +rel`; all four = `full`), `depth` (`standard` when no depth flag), `stack` (kebab-case `<language>-<framework>` from the stack-detect output, e.g. `elixir-phoenix`; drop a segment reported unknown; `unknown` only when detection failed entirely).
 
 ## Feedback Labels
 
@@ -103,7 +105,7 @@ Use skill: `review-report-writer` with `report_type: review` and every required 
 
 No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 
-Findings arriving from phase atomics or sub-scopes with High/Medium/Low severity map High -> `[Must]`, Medium/Low -> `[Recommend]`; a phase's own mapping (the Phase B contract gate) governs its findings, and a defect outside that mapping's enum falls back to the general mapping.
+Findings arriving from phase atomics or sub-scopes with High/Medium/Low severity map High -> `[Must]`, Medium/Low -> `[Recommend]`; a phase's own mapping (the Phase B contract gate) governs its findings, and a defect outside that mapping's enum falls back to the general mapping. A maintainability-only High - complexity, structure, naming - carries `[Recommend]`: `[Must]` blocks a merge, and readability alone does not. A finding this workflow raises directly, with no atomic-supplied severity, takes `[Must]` when it risks incorrect behaviour, data loss, or a security hole, and `[Recommend]` otherwise. Where `review-finding-verify` publishes a different `Label` than the mapping assigned, the published label governs - including in Next Steps and in Assessment.
 
 ## Output Format
 
@@ -112,6 +114,8 @@ The fence below delimits the template for display only - it is not part of the r
 When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
 **Assessment** derives from the published findings - verified and carried-forward alike: any `[Must]` -> Request Changes; no `[Must]` but at least one `[Recommend]` -> Discuss; none -> Approve.
+
+**Annotations** sit on the `###` heading line after `file:line`: `review-finding-verify`'s `_(pre-existing)_` / `_(pre-existing; newly reachable via ...)_` / `_(unverified: ...)_`, and `carried from round <N>` for a carried finding. A heading may carry both.
 
 **Scope** displays combined flags capitalized in the canonical order (`+Perf +Sec`); the writer input keeps the lowercase form in the same order.
 
@@ -125,7 +129,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 - **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full
 - **Depth:** standard | deep
 - **Round:** <N> _(include from round 2 onward)_
-- **Findings verified:** <the tally from `review-finding-verify`, carried verbatim>
+- **Findings verified:** <`<N> confirmed, <M> reattributed, <K> dropped` from `review-finding-verify`, plus its false-positive/resolved split and unverified suffix when emitted>
 - **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 
@@ -145,7 +149,7 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 
 ## Prior Round Reconciliation
 
-<table from `review-prior-findings-reconcile` - round 2+ only; omit section otherwise>
+<table and tally from `review-prior-findings-reconcile` - round 2+ only; omit section otherwise>
 
 ## High-Impact Findings
 
@@ -180,9 +184,11 @@ When Step 3 dispatched: the stack workflow owns the output. When fallback ran:
 Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [one-line action]
-2. **[Delegate]** [Recommend] [scope] - [one-line action]
+2. **[Delegate]** [Recommend] [scope: owning area - dependencies, schema, platform, infra] - [one-line action]
 
 _Omit sections with no findings._
+
+_Publish every `[Must]`. Where `[Recommend]` findings exceed roughly a dozen, publish the highest-impact dozen and close High-Impact Findings with one line naming how many were folded and the files they sit in - never drop a `[Must]` to fit. A defect-dense diff legitimately yields many `[Must]` findings; that is the correct output, not a reason to demote._
 ```
 
 ## Self-Check
@@ -191,7 +197,7 @@ _Omit sections with no findings._
 - [ ] Step 2: `stack-detect` ran
 - [ ] Step 3: if matched and available, stack workflow ran with the invocation forwarded unchanged, Steps 4-5 skipped; if matched but unavailable, missing plugin named and fallback ran
 - [ ] Step 4: if no dispatch, SHAs captured; round decided from `prior_checkpoint`; prior findings reconciled on round 2+; Phase 0 `review-change-intent` ran on the full-range diff with its Change Brief in the report; Phase A risk stated before line findings; the Phase B API contract gate ran when the diff touched a route, controller, DTO, serializer, or spec file; missing tests raised as named finding; extra scopes spawned in parallel and merged without writing their own reports; `review-finding-verify` ran on the assembled findings with Dropped rows excluded; findings ordered Must > Recommend
-- [ ] Step 5: report written via `review-report-writer` with all required inputs (fallback path only)
+- [ ] Step 5: report written via `review-report-writer` with all required inputs, or the `No new commits since prior review.` stop line printed, or a precondition failure surfaced verbatim with no report written (fallback path only)
 
 ## Avoid
 

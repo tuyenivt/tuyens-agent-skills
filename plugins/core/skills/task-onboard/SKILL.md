@@ -30,6 +30,7 @@ Produces a structured codebase map calibrated to the reader's goal so engineer r
 | Focus mode        | No       | `first-pr`, `architect-survey`, `full` (default) - controls emphasis        |
 | Scope focus       | No       | Module, service, or concern to prioritize                                   |
 | Known pain points | No       | User-flagged areas of concern                                               |
+| First-PR candidate | No      | A file or change the user names as their likely first PR - triggers `dependency-impact-analysis` (Step 11) |
 
 If scope focus is given, cover its modules, flows, and hotspots at full depth; compress the rest of the repo to one-line entries (still present, never omitted).
 
@@ -43,9 +44,9 @@ If known pain points are given, investigate each: trace the implicated flow (Ste
 | `architect-survey` | Senior engineer / due diligence       | Full depth: Architecture, Key Patterns and Conventions, Tech Debt and Risk Hotspots, Ecosystem and Runtime Topology |
 | `full` (default)   | Anyone wanting the complete picture   | All sections at equal weight                                                                   |
 
-Weight shift: section order never changes and no section is dropped; write the mode's emphasized sections at full depth and compress every section not named in the mode's emphasis list - keep tables and command blocks, reduce prose to one-line notes, trim table bodies to the 1-3 most load-bearing rows. Scope focus wins over mode compression: focused content stays full depth wherever it lands. If the user's stated goal implies a mode, confirm rather than defaulting silently.
+Weight shift: section order never changes and no section is dropped; write the mode's emphasized sections at full depth and compress every section not named in the mode's emphasis list - keep tables and command blocks, reduce prose to one-line notes, trim table bodies to the 1-3 most load-bearing rows. Fixed tables (Stack, Operational Context, Ecosystem and Runtime Topology, Contribution Workflow) are exempt - compress their prose, never their rows. Compression never drops a High-severity Tech Debt finding: publish every High, then compress what is left. Scope focus wins over mode compression: focused content stays full depth wherever it lands. If the user's stated goal implies a mode, confirm rather than defaulting silently; when the run cannot ask, name the assumed mode in the report header and proceed.
 
-**Delegate outputs fold in.** Every atomic a step loads (stack atomic, guardrail, complexity, standards, observability) contributes content to the matching report sections with severities and labels preserved; this workflow's template governs final shape, and no atomic's own output envelope is emitted - a delegate's check-ran marker is satisfied by the folded content itself. For Tech Debt ordering, `[Must]` ranks High and `[Recommend]` Medium, the original label kept visible; when several delegates flag the same location, merge into one finding naming each source. Fixed tables are floors - append rows the folded content needs (extra Stack rows for Migrations or Lint). A cell the repo positively shows to be absent takes `none - <evidence>`; a cell nothing reveals takes `unknown - not discoverable from the repo`.
+**Delegate outputs fold in.** Every atomic a step loads (stack atomic, guardrail, complexity, standards, observability) contributes content to the matching report sections with severities and labels preserved; this workflow's template governs final shape, and no atomic's own output envelope is emitted - a delegate's check-ran marker is satisfied by the folded content itself. For Tech Debt ordering, `[Must]` ranks High and `[Recommend]` Medium, the original label kept visible; when several delegates flag the same location, merge into one finding naming each source. A finding that fits both Architecture and Tech Debt lands in Tech Debt, the only section with a findings slot; Architecture carries pattern and evidence only, and `architecture-guardrail`'s Step 4 output folds into Tech Debt the same way. Close Tech Debt with `Checked clean: <delegates that ran and found nothing>`, so a clean delegate is distinguishable from one that never ran. Fixed tables are floors - append rows the folded content needs (extra Stack rows for Migrations or Lint). A cell the repo positively shows to be absent takes `none - <evidence>`; a cell nothing reveals takes `unknown - not discoverable from the repo`.
 
 ## Workflow
 
@@ -55,7 +56,7 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Detect Stack and Load Atomic
 
-Use skill: `stack-detect` to identify language, framework, build tool, test framework, database / ORM, async / messaging, IaC / deployment tooling.
+Use skill: `stack-detect` to identify language, framework, build tool, test framework and database / ORM. Async / messaging and IaC / deployment tooling reach `stack-detect` only as `Additional` keys declared in the instruction file: take them from `Additional` when present, since an explicit declaration wins, and otherwise from the manifests and infrastructure files read below.
 
 Read repo context file (`CLAUDE.md` / `AGENTS.md` / `GEMINI.md`) plus build manifests (`package.json`, `build.gradle`, `go.mod`, `pyproject.toml`, `Gemfile`, `*.csproj`, `pom.xml`, `Cargo.toml`, `mix.exs`) to fill gaps. A stack-detect `unknown` may be upgraded from direct repo evidence (ExUnit from `test/test_helper.exs`); mark it Inferred.
 
@@ -68,9 +69,9 @@ If detected stack matches, load the atomic. It injects stack-specific bootstrap 
 | Ruby / Rails         | `rails-onboard-map`   |
 | Node.js / TypeScript | `node-onboard-map`    |
 | Go / Gin             | `go-onboard-map`      |
-| React / Next.js      | `react-onboard-map`   |
+| React / Next.js / Vite | `react-onboard-map` |
 
-A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the generic workflow). If no atomic matches the detected stack (e.g., Elixir), or the matched atomic does not resolve (stack plugin not installed), proceed with the generic workflow and note `no stack-specific onboarding atomic - generic guidance applied` under the Stack table.
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the generic workflow); a row named by language alone (Python, Node.js / TypeScript) matches that language under any framework. If no atomic matches the detected stack (e.g., Elixir), or the matched atomic does not resolve (stack plugin not installed), proceed with the generic workflow and note `no stack-specific onboarding atomic - generic guidance applied` under the Stack table.
 
 Also extract a **one-paragraph system summary**: what problem this system solves, who uses it, and 2-3 main capabilities. Source from `README.md`, repo context file, top-level package descriptions, or service manifest. If not declared, mark `unknown - repo does not declare purpose` rather than inferring from code.
 
@@ -83,7 +84,7 @@ Explore top-level layout. Identify entry points (`main`, `app`, `server`, `index
 Produce a **directory map** (top 2-3 levels, one-line annotations per significant directory) plus:
 
 - **Where to look first** - 2-3 high-leverage directories for early reading
-- **Safe to skip initially** - vendored deps, generated code, large fixtures, deprecated modules
+- **Safe to skip initially** - vendored deps, generated code, large fixtures, deprecated modules. Generated or gitignored artifacts left by earlier tooling (prior review reports, build output) are evidence about tooling, not about the code - never cite one as a finding's source
 
 ### Step 4 - Identify Architecture Pattern
 
@@ -95,7 +96,7 @@ Classify based on layout, naming, framework conventions, and detected `Stack Typ
 
 State which pattern(s) are used, citing file paths and naming evidence.
 
-Use skill: `architecture-guardrail` to spot existing layer violations or boundary erosion.
+Use skill: `architecture-guardrail` to spot existing layer violations or boundary erosion. It is change-scoped, so on a whole-repo read take its patterns and rate each finding on this workflow's own High / Medium / Low bar rather than carrying its change-relative labels.
 
 ### Step 5 - Map Key Modules and Data Flows
 
@@ -128,7 +129,7 @@ Cap each domain table at 5 most load-bearing items; cite where each is enforced.
 
 ### Step 7 - Surface Tech Debt and Risk Hotspots
 
-Use skill: `complexity-review` and `architecture-guardrail` to detect complexity concentrations and boundary violations.
+Use skill: `complexity-review` to detect complexity concentrations, and reuse the `architecture-guardrail` output already loaded in Step 4 rather than loading it again - its violations publish once.
 
 Scan for:
 
@@ -194,6 +195,10 @@ Capture the path from edit to merge. Read `CONTRIBUTING.md`, `.github/` (PR temp
 
 Use skill: `dependency-impact-analysis` when the user names a specific candidate change or file for their first PR, to estimate blast radius - a module-level scope focus alone does not trigger it. Its result folds into the First-PR Safe Zones / Avoid rationale for that candidate.
 
+### Step 12 - Synthesize Recommendations and Summary
+
+From Steps 2-11, produce `## Onboarding Recommendations` - the subsections whose tag list contains the active mode, plus First-Day Checklist and First-Week Knowledge Gaps (cap 5 each) - and `## Summary`: 3-5 bullets on architectural strengths, primary risk areas, the recommended first-PR target when the mode is `first-pr`, and the biggest first-week knowledge gaps. Invent nothing here that earlier steps did not establish.
+
 ## Output Format
 
 ```markdown
@@ -216,6 +221,9 @@ Use skill: `dependency-impact-analysis` when the user names a specific candidate
 | Database   | [PostgreSQL via GORM]   | Inferred            |
 | Async/Jobs | [Asynq (Redis)]         | Inferred            |
 | Deployment | [Docker + GH Actions]   | Inferred            |
+| Stack Type | [backend / frontend / fullstack] | Declared / Inferred |
+
+[`no stack-specific onboarding atomic - generic guidance applied` when Step 2 matched no row, or the matched atomic did not resolve; omit the line otherwise]
 
 ## Repository Structure
 
@@ -227,14 +235,19 @@ Use skill: `dependency-impact-analysis` when the user names a specific candidate
 
 ## Architecture
 
-**Pattern:** [Layered / Clean / Modular monolith / Vertical slice / Microservice / Event-driven]
+**Pattern:** [backend: Layered / Clean / Modular monolith / Vertical slice / Microservice / Event-driven | frontend: Feature-based / Atomic Design / Route-based / Module-based / Monolith integration - name one per applicable `Stack Type` half]
 
 **Evidence:** [2-3 paths / naming observations]
 
 ### Modules
 
-| Module | Responsibility | Data Owned | Dependencies |
-| ------ | -------------- | ---------- | ------------ |
+| Module | Responsibility | Data Owned | Dependencies | Entry Points | Data Access |
+| ------ | -------------- | ---------- | ------------ | ------------ | ----------- |
+
+### External Integrations
+
+| Service | Integration code | Credentials | Failure handling |
+| ------- | ---------------- | ----------- | ---------------- |
 
 ### Primary Flow
 
@@ -272,10 +285,14 @@ Include only rows relevant to detected `Stack Type`; draw concerns from the Step
 
 Verdict: `confirmed` / `not confirmed` / `not assessable from the repo`.
 
-Order findings High -> Medium -> Low. For each:
+### Findings
 
-- **[Severity]** - [short label]
-- **Location:** [path]  **Signal:** [observed]  **Risk:** [what breaks]
+Order findings High -> Medium -> Low. Publish every High; cap Medium and Low together at the 8 most load-bearing, closing the section with one line naming how many were folded. For each:
+
+- **[Severity]** [High | Medium | Low, keeping the delegate's own label alongside when it emitted one - `[Must]` ranks High, `[Recommend]` Medium] - [short label]
+- **Location:** [path]  **Signal:** [observed]  **Risk:** [what breaks]  **Source:** [delegate(s) that flagged it, or `direct scan` for a Step 7 finding no delegate produced - rate those on the same High / Medium / Low bar]
+
+`Checked clean:` [delegates that ran and found nothing; omit when none did]
 
 ## Common Pitfalls
 
@@ -283,6 +300,7 @@ Order findings High -> Medium -> Low. For each:
 - **Hidden side effects:** [module-level init, package `init()`, auto-registration]
 - **Legacy / deprecated:** [paths]
 - **Slow tests:** [paths + tag + how excluded]
+- **TODO/FIXME density:** [paths and approximate count; `none notable` when low]
 - **Other documented gotchas:** [cite source]
 
 ## Operational Context
@@ -337,17 +355,17 @@ Order findings High -> Medium -> Low. For each:
 
 | Concern                | Details |
 | ---------------------- | ------- |
-| Default branch         | |
+| Default branch         | [`git symbolic-ref refs/remotes/origin/HEAD`, else the branch CI and `CONTRIBUTING` treat as the merge target; `unknown - not discoverable from the repo` if neither resolves] |
 | Branch naming          | |
 | PR requirements        | |
-| CODEOWNERS             | [`none` if absent] |
-| Module owners          | [from CODEOWNERS / recent committers; `none discoverable` if absent] |
+| CODEOWNERS             | [`none - <evidence>` if absent] |
+| Module owners          | [from CODEOWNERS / recent committers; `none - <evidence>` if absent] |
 | Local quality gates    | [exact commands] |
 | Test commands          | [unit / integration / suite / single file] |
 | CI pipeline            | [PR vs merge; slowness/flake] |
-| Channels               | [`none documented` if absent] |
+| Channels               | [`none - <evidence>` if absent] |
 | Common rejection reasons | [cite source] |
-| Reference example PRs  | [`none cited` if absent] |
+| Reference example PRs  | [`none - <evidence>` if absent] |
 
 ### First-PR Safe Zones (cap 3)
 
@@ -404,15 +422,17 @@ Areas to study before broader work: why it matters; suggested reading path.
 - [ ] Step 8: Operational Context populated
 - [ ] Step 9: Local Quickstart commands cited from real files; missing prerequisites flagged as documentation gaps
 - [ ] Step 10: ecosystem unknowns marked, not invented
-- [ ] Step 11: contribution workflow with exact commands, channels, rejection reasons (or `none cited`); First-PR Safe Zones and Avoid each 1-3 items
+- [ ] Step 11: contribution workflow with exact commands, channels, rejection reasons (or `none - <evidence>`); First-PR Safe Zones and Avoid each 2-3 items
 - [ ] Focus mode honored: emphasized sections full depth, rest compressed, no section dropped; subsection tags applied; First-Day Checklist and First-Week Gaps each capped at 5
+- [ ] Delegates loaded where their step directs (`architecture-guardrail` Step 4, `backend-coding-standards` Step 6, `complexity-review` Step 7, `ops-observability` Step 8, `dependency-impact-analysis` Step 11 when a candidate was named); each that ran clean is named in `Checked clean:`
+- [ ] Step 12: Onboarding Recommendations and Summary produced from earlier steps
 - [ ] No invented paths, modules, commands, URLs, channels, PR numbers, or examples
 
 ## Avoid
 
 - Inventing file paths, module names, commands, env values, dashboard or environment URLs
 - Generating refactoring or migration plans (this produces a map, not a roadmap)
-- Commenting on code style or formatting as tech debt - focus on structural and operational risk
+- Commenting on pure style or formatting (whitespace, line length, quote style) as tech debt - a delegate's structural-drift finding is not style; focus on structural and operational risk
 - Over-exploring vendor, node_modules, build output
 - Producing an exhaustive inventory instead of a scannable summary
 - Recommending a first-PR area without cross-referencing hotspots and CODEOWNERS

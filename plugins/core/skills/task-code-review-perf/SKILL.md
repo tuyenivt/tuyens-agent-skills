@@ -45,9 +45,9 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review-perf`   |
 | Node.js / TypeScript | `task-node-review-perf`    |
 | Go / Gin             | `task-go-review-perf`      |
-| React / Next.js      | `task-react-review-perf`   |
+| React / Next.js / Vite | `task-react-review-perf` |
 
-A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback); a row named by language alone (Python) matches that language under any framework. Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow is unavailable (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5.
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the fallback); a row named by language alone (Python) matches that language under any framework. Forward arguments and stop. **If matched, skip Steps 4-5.** If the matched workflow is unavailable (stack plugin not installed), tell the user which plugin provides it, then run Steps 4-5. A detected stack matching no row at all falls through to the Step 4 generic fallback - say so in one line, then run it.
 
 ### Step 4 - Generic Fallback (no dispatch)
 
@@ -55,7 +55,7 @@ Use skill: `review-precondition-check` with the invocation's target and any `--b
 
 **Round gate (standalone only).** Before reviewing, check `review-perf-<branch>.md` (`<branch>` = head short name, for `head_ref: HEAD` the handle's `current_branch`; writer filename rules; the handle's `prior_checkpoint` is keyed to the general review report - never use it here). If it exists with valid frontmatter, its `head_sha` equals the current head, and the requested depth does not exceed its `depth` (`deep` exceeds `standard`), print `No new commits since prior perf review.` and stop - no review, no report. Otherwise set `round` = its `round` + 1 and `prior_head_sha` = its `head_sha`; absent file, or frontmatter missing/unparseable (legacy - the Step 5 write overwrites it) -> `round: 1`, no `prior_head_sha`. Then read the diff and commit log once.
 
-Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field, then cover the applicable categories. Atomics loaded here feed findings into this skill's template; their own output blocks are not emitted, and atomic-mandated content (lock-risk lines, `(unverified - confirm with EXPLAIN)` markers) folds into the finding's Impact/Fix fields. A defect spanning categories (one restructure fixing concurrency and caching at once) publishes once, its Fix owning all of them.
+Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `Stack Type` field, then cover the applicable categories. Atomics loaded here feed findings into this skill's template; their own output blocks are not emitted, and atomic-mandated content (lock-risk lines, `(unverified - confirm with EXPLAIN)` markers) folds into the finding's Impact/Fix fields. A defect spanning categories (one restructure fixing concurrency and caching at once) publishes once, in the section of its dominant cost, its Fix owning all of them.
 
 **Database (backend / fullstack).** N+1 detection (recommend the ORM's eager-load mechanism), missing indexes on WHERE/ORDER BY, over-fetching, no leading-wildcard LIKE on large tables, pagination, query timeouts, connection-pool sizing. Use skill: `backend-db-indexing`.
 
@@ -65,13 +65,13 @@ Determine `Scope` (`backend` / `frontend` / `fullstack`) from `stack-detect`'s `
 
 **Memory and I/O (all scopes).** Streaming for large payloads, timeouts and circuit breakers on external calls, reused HTTP clients.
 
-**Frontend (frontend / fullstack).** Unnecessary re-renders / change-detection cycles and heavy computation in the render path; virtualization for long lists (>100); route-level code splitting and lazy loading of below-the-fold or modal-only components; images without dimensions, modern format, or lazy loading; render-blocking third-party scripts (analytics, chat, tag managers - routinely heavier than first-party code); client-side caching of repeated fetches. State impact against Core Web Vitals (LCP <= 2.5s, INP <= 200ms, CLS <= 0.1) where the diff supports it, and note in the Fix when a dedicated frontend pass is warranted. React / Next.js dispatches at Step 3 to `task-react-review-perf`, which owns the deep frontend lens.
+**Frontend (frontend / fullstack).** Unnecessary re-renders / change-detection cycles and heavy computation in the render path; virtualization for long lists (>100); route-level code splitting and lazy loading of below-the-fold or modal-only components; images without dimensions, modern format, or lazy loading; render-blocking third-party scripts (analytics, chat, tag managers - routinely heavier than first-party code); client-side caching of repeated fetches. State impact against Core Web Vitals (LCP <= 2.5s, INP <= 200ms, CLS <= 0.1) where the diff supports it, and note in the Fix when a dedicated frontend pass is warranted. Server-rendered UI (Phoenix LiveView, Hotwire/Turbo, Blade, Django or Rails templates) is frontend surface: cover these categories for it even when `Stack Type` is `backend`. A React project reaching this step did not dispatch (no row matched, or the plugin is absent), so cover these categories here and note in the Fix that `task-react-review-perf` owns the deeper frontend lens when installed.
 
-**Observability cross-check (backend / fullstack).** RED metrics on critical paths, correlation IDs propagated, latency histograms. Use skill: `ops-observability`. Runs in subagent mode too - the parent dedups overlaps with `+obs`.
+**Observability cross-check (backend / fullstack).** RED metrics on critical paths, correlation IDs propagated, latency histograms. Use skill: `ops-observability`, scoped to those three - a finding it raises outside them (PII or secrets in logs) belongs to `+sec` or `+obs`, so leave it to that lens rather than publishing it here. Runs in subagent mode too - the parent dedups overlaps with `+obs`.
 
-Every finding states estimated impact derived from diff-visible quantities (row counts, loop bounds, call counts) with assumptions stated - e.g., "N+1 adds ~200ms per request at 1K rows"; unit costs are declared assumptions, not measurements - the scaling claim is what must hold. When no quantity is derivable, state the scaling shape (per row, per request) instead of inventing numbers; observability cross-check findings state the diagnostic gap in the Impact slot instead of a perf estimate. Tag each finding's Fix `(quick win)` (localized, a few lines) or `(structural)` (restructures a flow, moves work, or changes schema/infra) - sections order by impact alone. Next Steps map impact to intent (High -> `[Must]`, Medium/Low -> `[Recommend]`) and tag each step `[Implement]` (localized fix) or `[Delegate]` (cross-cutting, schema, platform, or infra-owned).
+Every finding states estimated impact derived from diff-visible quantities (row counts, loop bounds, call counts) with assumptions stated - e.g., "N+1 adds ~200ms per request at 1K rows"; unit costs are declared assumptions, not measurements - the scaling claim is what must hold. When no quantity is derivable, state the scaling shape (per row, per request) instead of inventing numbers; observability cross-check findings state the diagnostic gap in the Impact slot instead of a perf estimate. Tag each finding's Fix `(quick win)` (localized: a few lines, or one additive migration such as a new index) or `(structural)` (restructures a flow, moves work, or changes an existing schema, contract or infra topology) - sections order by impact alone. Impact assigns each finding an initial intent (High -> `[Must]`, Medium/Low -> `[Recommend]`); where `review-finding-verify` publishes a different `Label`, the published label governs every slot naming one. Next Steps carry each finding published label and tag each step `[Implement]` (localized fix) or `[Delegate]` (cross-cutting, schema, platform, or infra-owned).
 
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and fill the Summary's `Findings verified:` line with its tally, carried verbatim - the verify table itself stays internal. On round 2+, after verification, re-project the prior report's findings into reconcile's parse shape - a `## High-Impact Findings` section, one `### [Label] file:line` heading per finding (from its label and Location lines) with its Issue line as the smell - then Use skill: `review-prior-findings-reconcile` with that projection, the diff, and `git diff --name-status <base_ref>...<head_ref>`. Its table and tally render as `## Prior Round Reconciliation` between Findings and Next Steps; unresolved rows carry into their prior impact sections at their prior label, noted `carried from round <N>` on the label line. Subagent runs skip both - the parent verifies and reconciles its own merged set once.
+**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and fill the Summary's `Findings verified:` line as `<N> confirmed, <M> reattributed, <K> dropped` from its counts, appending its `(<F> false positive, <R> resolved by diff)` split and `; <U> of these unverified` suffix when it emits them - the verify table itself stays internal. On round 2+, after verification, re-project the prior report's findings into reconcile's parse shape - a `## High-Impact Findings` section, one `### [Label] file:line` heading per finding (from its label and Location lines) with its Issue line as the smell - then Use skill: `review-prior-findings-reconcile` with that projection, the diff, and `git diff --name-status <base_ref>...<head_ref>`. Its table and tally render as `## Prior Round Reconciliation` between Findings and Next Steps; unresolved rows carry into their prior impact sections at their prior label, noted `carried from round <N>` on the label line. A prior label outside `[Must]` / `[Recommend]` (`[Blocker]`, `[High]`, `[Question]` in a legacy report) stays verbatim in that table, which reconcile owns, and maps into this lens's two labels before it is published in a findings section. A carried finding this round's own pass re-derives publishes once, in the findings sections, not twice. The table preserves each prior citation exactly; the published finding carries the corrected `file:line` when verification found the prior cite stale. Subagent runs skip both - the parent verifies and reconciles its own merged set once.
 
 ### Step 5 - Write Report
 
@@ -81,35 +81,42 @@ Standalone only - subagent runs return findings to the parent instead. Use skill
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
-When Step 3 dispatched: the stack workflow owns the output. Subagent runs return the `## Findings` heading and its impact sections only - Summary, Prior Round Reconciliation, Next Steps, and the report file are standalone-only. In every mode each finding block opens with its label on its own line, `**[Must]**` (High) or `**[Recommend]**` (Medium/Low), before `Location`, and empty impact sections are omitted. Verify annotations (`_(pre-existing)_`, `(unverified ...)`) sit on the `Location` line (standalone only - subagent runs skip verification). A clean run in either mode returns `## Findings` containing `No performance issues found.`. Standalone runs emit the report body in chat, then the writer's confirmation line. When fallback ran standalone:
+When Step 3 dispatched: the stack workflow owns the output. Subagent runs return the `## Findings` heading and its impact sections only - Summary, Prior Round Reconciliation, Next Steps, and the report file are standalone-only. In every mode each finding block opens with its label on its own line, `**[Must]**` or `**[Recommend]**`, before `Location`, and empty impact sections are omitted. A finding sits in the section matching its **impact**; its label line and its Next Steps entry carry its **published label**. The two diverge whenever verification de-escalated a pre-existing finding - a `**[Recommend]**` inside a High section is correct, not a mismatch to fix. A defect outside this lens that would break the build, or corrupt or expose data gets one line at the end of `## Findings` marked `out of lens`, so it is not silently dropped; anything else outside the lens is left to `task-code-review`. Verify annotations (`_(pre-existing)_`, `(unverified ...)`) sit on the `Location` line (standalone only - subagent runs skip verification). A clean run in either mode returns `## Findings` containing `No performance issues found.`. Standalone runs emit the report body in chat, then the writer's confirmation line. When fallback ran standalone:
 
 ```markdown
 ## Performance Review Summary
 
-- **Stack Detected:** [detected stack, or unknown] (generic fallback applied)
+- **Stack Detected:** [kebab-case `<language>-<framework>`, versions dropped - the same string passed as the writer `stack` input; or `unknown`] (generic fallback applied)
 - **Scope:** Backend | Frontend | Fullstack
 - **Overall:** Clean | Issues Found - [High/Medium/Low counts]
-- **Findings verified:** [the tally from `review-finding-verify`, carried verbatim]
+- **Findings verified:** [`<N> confirmed, <M> reattributed, <K> dropped` from `review-finding-verify`, plus its false-positive/resolved split and unverified suffix when emitted]
 
 ## Findings
 
-### High Impact
+### High Impact (a user-visible slowdown, or a resource-exhaustion path under expected load)
 
 **[Must]**
-- **Location:** [file:line or component]
+- **Location:** [file:line - required, so verification, the reconcile projection and Next Steps can all consume it; name the component or boundary after it when that helps]
 - **Issue:**
 - **Impact:** [estimated effect with numbers or stated scaling shape]
 - **Fix:** [specific change, tagged (quick win) or (structural)]
 
-### Medium Impact
+### Medium Impact (measurable cost that does not yet threaten the request budget)
 
 [Same structure]
 
-### Low Impact
+### Low Impact (waste worth fixing when the area is next touched)
 
 [Same structure]
 
 _Omit sections with no findings. If all are omitted, state "No performance issues found." and omit Next Steps._
+
+[one `out of lens` line, when a defect outside this lens would break the build or corrupt or expose data]
+
+
+## Prior Round Reconciliation
+
+[table and tally from `review-prior-findings-reconcile` - round 2+ standalone runs only; omit the section otherwise]
 
 ## Next Steps
 
@@ -122,8 +129,8 @@ _Omit sections with no findings. If all are omitted, state "No performance issue
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: `stack-detect` ran (subagent runs: parent-supplied detection accepted instead)
 - [ ] Step 3: if matched and installed, stack workflow ran with arguments forwarded; Steps 4-5 skipped (skipped entirely on subagent runs)
-- [ ] Step 4: if no dispatch, round gate decided before any review; every applicable category (DB / concurrency / caching / I/O / frontend / observability) covered; every finding states estimated impact and a (quick win)/(structural) tag; prior findings reconciled on round 2+
-- [ ] Step 5: report written via `review-report-writer` with all required inputs, or the round-gate stop line printed (standalone fallback only; subagent runs return findings to the parent)
+- [ ] Step 4: if no dispatch, round gate decided before any review; every applicable category (DB / concurrency / caching / I/O / frontend / observability) covered; every finding states a rubric-based impact and a (quick win)/(structural) tag; prior findings reconciled on round 2+; the round gate, `review-finding-verify` (whose tally fills the `Findings verified:` Summary line) and reconciliation are standalone-only - subagent runs skip all three
+- [ ] Step 5: report written via `review-report-writer` with all required inputs, or the round-gate stop line printed, or a precondition failure surfaced verbatim with no report written (standalone fallback only; subagent runs return findings to the parent)
 
 ## Avoid
 
@@ -133,4 +140,4 @@ _Omit sections with no findings. If all are omitted, state "No performance issue
 - Premature optimization on cold paths
 - Recommending caching without addressing invalidation
 - Treating the fallback as equivalent to a stack workflow - install the matching stack plugin when one exists
-- Emitting labels outside `[Must]` / `[Recommend]`
+- Emitting labels outside `[Must]` / `[Recommend]` in the findings sections (the reconciliation table preserves prior labels verbatim)
