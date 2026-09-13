@@ -37,11 +37,11 @@ user-invocable: false
 3. **Route** - shift traffic gradually with a bake period at each step (e.g., 5% -> 25% -> 100%; default one week per step at production-representative load, shorter only with explicit justification). Start with the lowest-risk segment (internal users, read-only operations, low-volume endpoints). Routing methods compose - per-tenant migration is typically data-based partitioning plus a feature-flag registry. Compare responses (shadow or canary).
 4. **Verify** - the verification gate (below) is the promotion criterion at every traffic step; Route and Verify alternate until 100%, so a capability mid-ladder records the phase it is waiting on plus its current share. On a gate failure:
 
-   - **Go to 0%** when the failure corrupts data - writes bad state a fallback cannot repair.
-   - **Reduce** to the last share that passed the gate for any failure users can feel: elevated errors, or data divergence a re-sync can repair. Where no share has passed, that is 0%. Re-promotion re-enters Route at the failed step with a fresh bake period.
+   - **Go to zero** when the failure corrupts data - writes bad state a re-sync cannot repair.
+   - **Reduce** to the last share that passed the gate for any failure users can feel: elevated errors, a parity failure whose wrong outputs do not corrupt state, or data divergence a re-sync can repair, including a missed freshness target. Where no share has passed, that is zero too, and the capability re-enters at the failed step.
    - **Hold** at the current share for every other failure - latency outside its band, an untested rollback, an unchecked downstream consumer, an unhandled edge case. Nothing is harming users yet, and dropping traffic would not fix any of them; the capability simply stops advancing until it passes.
 
-   Schedule pressure never overrides the gate. Only after the capability is stable at 100% does the next capability enter Route.
+   When failures of more than one kind coincide, the strongest response wins: Go to zero over Reduce over Hold - an error-rate breach is user-felt even when its criterion row also carries a latency breach. Re-promotion after Reduce re-enters Route at the failed step; after Go to zero it restarts at the first step once the data path is repaired - both with a fresh bake period. A capability returned to zero by either response sits in `Rolled back` until it re-enters Route. Schedule pressure never overrides the gate. Only one capability advances through Route and Verify at a time; any other already there holds at its share until the advancing one is stable at 100%. Zero is `0%`, `0 of m partitions` or `0 of m event types`, in the capability's own Share form.
 5. **Decommission** - verify zero traffic to legacy for migrated capabilities. Remove legacy code paths, data sync jobs, compatibility shims, routing rules, and feature flags. Archive legacy documentation.
 
 ### Routing Strategy
@@ -68,7 +68,7 @@ Batch and cron capabilities migrate by handing over job ownership - exactly one 
 | Batch sync                | Freshness tolerance is hours/days             | Stale data, sync job failures                  |
 | Shared database           | Both systems use one DB during coexistence    | Schema coupling; migrations must stay additive |
 | Allocator handover        | A single-writer resource (gapless sequence, ID allocator) moves whole | No gradual step; the other system calls the allocator until decommission |
-| None - stateless          | The capability owns no data; it reads and acts    | Nothing to migrate, so the gate's data-consistency criterion is N/A |
+| None - stateless          | The capability owns no data; it reads and acts    | Nothing to migrate, so the gate's data-consistency criterion passes by construction |
 | Reverse sync (new -> legacy) | Writes have moved but rollback must stay open | Runs alongside the forward strategy until decommission |
 | Full migration            | Clean cutover possible for data partition     | Requires downtime or careful coordination      |
 
@@ -82,7 +82,7 @@ Stateless read-only -> stateless writes -> stateful with simple data models -> c
 
 Promote a capability only when all hold:
 
-- Functional parity confirmed (same inputs produce equivalent outputs; for batch jobs, dry-run output diffing against the legacy run)
+- Functional parity confirmed (same inputs produce equivalent outputs on at least 99.9% of compared requests, or a stated threshold; for batch jobs, dry-run output diffing against the legacy run)
 - Error rate at or below baseline; p99 latency within 10% of baseline (override these defaults explicitly if the plan needs different thresholds)
 - Data consistency verified (no loss, no duplicates) against a stated freshness target (e.g., CDC lag < 5s p99). Where the strategy has no replication lag - shared database, read from legacy - the target is "no lag by construction" and the check is that the coupling still holds
 - Rollback tested and confirmed working - re-validated at each promotion step, and covering the reverse-sync path once writes have moved
@@ -125,23 +125,23 @@ The Verification line records the state of all six criteria, since any left with
 | Legacy system     | {name, stack - supplied by the caller}                            |
 | Target system     | {name, stack - supplied by the caller}                            |
 | Routing layer     | {gateway, proxy, or facade; "mixed - see sequence table" when HTTP, event and job capabilities need different mechanisms} |
-| Data strategy     | {chosen from Data Migration Strategy table; "mixed - see sequence table" when capabilities differ} |
+| Data strategy     | {every strategy in play from the Data Migration Strategy table, forward plus reverse sync once writes move; "mixed - see sequence table" when capabilities differ} |
 | Capabilities      | {count} ({n} not started / {n} in flight / {n} done){, {n} rolled back} |
 
 ### Capability Migration Sequence
 
 | #   | Capability   | Phase | Share | Routing Method | Data Strategy | Verification Status | Rollback Method | Ordered before the next because |
 | --- | ------------ | ----- | ----- | -------------- | ------------- | ------------------- | --------------- | ------------------------------- |
-| 1   | {capability} | {Intercept / Build / Route / Verify / Decommission / Rolled back} | {current traffic share; "{n} of {m} partitions" or "{n} of {m} event types" for job and event capabilities} | {every composed method, each named from the Routing Strategy table} | {every strategy in play, each named from the Data Migration Strategy table} | {n of 6 criteria passing; "not started" before the first Route step; "not assessed" when it is past that step but no evidence was supplied} | {how to revert, and the reverse-sync path once writes have moved} | {the risk or dependency that fixes this position} |
+| 1   | {capability} | {Intercept / Build / Route / Verify / Decommission / Decommissioned / Rolled back} | {current traffic share; "{n} of {m} partitions" or "{n} of {m} event types" for job and event capabilities; "0% (whole)" or "100% (whole)" for one that cuts over in one step} | {every composed method, each named from the Routing Strategy table; "n/a - allocator, see Data Strategy" for a single-writer resource} | {every strategy in play, each named from the Data Migration Strategy table; "not chosen - Build" before one is} | {n of 6 criteria passing, a criterion without evidence counting as failing; "not started" before the first Route step; "{n} of 6 - rolled back" after a rollback} | {how to revert, and the reverse-sync path once writes have moved} | {the risk or dependency that fixes this position; "holds - {the advancing capability} must reach 100% first" on every other row in Route or Verify, which wins on a final row too; otherwise "last - nothing follows" on the final row} |
 
 ### Capability Phase Entries
 
 {One block per capability in the Example phase entry format: routing with promotion steps and bake time, data strategy with freshness target, evidence for all six gate criteria, rollback method and time-to-revert.}
 ```
 
-Not started counts Intercept and Build, in flight counts Route and Verify, done counts Decommission, and a rolled-back capability is counted separately. A capability holding at 100% with legacy code still present has finished Route and Verify but not removed anything, so it sits in `Decommission` and counts as in flight until the legacy path, sync jobs and flags are gone.
+Not started counts Intercept and Build, in flight counts Route, Verify and Decommission, done counts `Decommissioned`, and a rolled-back capability is counted separately. A capability holding at 100% with legacy code still present has finished Route and Verify but not removed anything, so it sits in `Decommission` until the legacy path, sync jobs and flags are gone, then reads `Decommissioned`.
 
-Phase reflects status at the time of writing, so a forward-looking plan reads `Intercept` with `Share: 0%`, and its Verification column and phase entries carry the gate criteria as a plan - what will be measured and against what - rather than evidence. Capabilities may sit at Intercept or Build together; the one-at-a-time rule binds Route onward, so only one capability is being promoted at a time.
+Phase and Share reflect status at the time of writing, before any gate action decided below is applied, so a forward-looking plan reads `Intercept` with `Share: 0%`, its Verification column reads `not started`, and its phase entries carry the gate criteria as a plan - what will be measured and against what - rather than evidence. Capabilities may sit at Intercept or Build together; the one-at-a-time rule binds Route and Verify, so only one capability advances at a time and the others there hold. A job capability is in Route from the first partition handed over, assessed on the partitions moved so far.
 
 `#` is migration order, set by risk and dependency; the last column states which of the two put each capability where it is, and reads "last - nothing follows" for the final row. Where a capability couples to one still in the monolith, say so in its phase entry's Data line.
 
@@ -150,20 +150,20 @@ The sequence table doubles as the live tracker during execution: it carries curr
 For each capability in Route or Verify, append a gate assessment:
 
 ```markdown
-### Gate Assessment - {capability} at {current traffic share}
+### Gate Assessment - {capability} at {Share, in the form the sequence table uses}
 
 | Gate Criterion | Status (Pass/Fail) | Evidence |
 | -------------- | ------------------ | -------- |
 | Functional parity | {Pass/Fail} | {evidence, or empty - which reads Fail} |
-| Error rate and p99 | {Pass/Fail} | {evidence} |
-| Data consistency | {Pass/Fail} | {evidence} |
-| Rollback tested | {Pass/Fail} | {evidence} |
-| Downstream consumers | {Pass/Fail} | {evidence} |
-| Edge cases | {Pass/Fail} | {evidence} |
+| Error rate and p99 | {Pass/Fail} | {evidence, or empty - reads Fail} |
+| Data consistency | {Pass/Fail} | {evidence, or empty - reads Fail} |
+| Rollback tested | {Pass/Fail} | {evidence, or empty - reads Fail} |
+| Downstream consumers | {Pass/Fail} | {evidence, or empty - reads Fail} |
+| Edge cases | {Pass/Fail} | {evidence, or empty - reads Fail} |
 
 **Promotion allowed:** {Yes | No - failing criteria}
 
-**Action:** {Promote to <share> | Hold at <share> | Reduce to <share> | Go to 0%} - {remediation, and what must pass before the next attempt}
+**Action:** {Promote to <share> | Promote to Decommission, from 100% | Hold at <share> | Reduce to <share, zero where none passed> | Go to zero} - {remediation, and what must pass before the next attempt}
 ```
 
 ## Avoid

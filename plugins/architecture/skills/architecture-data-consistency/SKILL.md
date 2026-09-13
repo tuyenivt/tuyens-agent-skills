@@ -34,7 +34,7 @@ user-invocable: false
 | Scenario                         | Model            | Pattern                              |
 | -------------------------------- | ---------------- | ------------------------------------ |
 | Single DB, single service        | Strong           | Database transaction                 |
-| Cross-module, same DB            | Strong (couples modules - flag as future split cost) | Shared transaction |
+| Cross-module, same DB            | Strong           | Shared transaction (couples modules - flag as future split cost) |
 | Cross-service, separate DBs      | Eventual         | Outbox + events                      |
 | Long-running multi-step process  | Eventual         | Saga (orchestrated or choreographed) |
 | Read-heavy, staleness acceptable | Eventual         | CQRS + async sync                    |
@@ -52,6 +52,18 @@ Use when publishing an event must be atomic with a database write - the dual-wri
 
 Guarantee: at-least-once. Consumers must be idempotent.
 
+Good - an explicit boundary contract, as one Boundaries Assessed row:
+
+| Boundary | Model | Pattern | Staleness Tolerance | Tolerated Anomaly | Concurrent-Writer Resolution | Recovery Mechanism |
+| -------- | ----- | ------- | ------------------- | ----------------- | ---------------------------- | ------------------ |
+| Order -> Payment | Eventual | outbox + events | <= 5s to payment initiation | Stale read | N/A - single writer | PaymentFailed reverts Order to PENDING_PAYMENT; DLQ with manual review; consumer dedupes on order ID |
+
+Bad - implicit assumption:
+
+```
+Order calls PaymentService REST inside the transaction.
+```
+
 ### Saga
 
 Use when a business operation spans services and each step must commit or compensate.
@@ -65,8 +77,8 @@ Step ordering:
 
 - Place compensatable steps first; non-compensatable steps (email, push notification) last
 - Within the compensatable prefix, place the most failure-prone step earliest to minimize compensation scope
-- Identify the **pivot transaction** - the go/no-go point, the step that is neither compensatable nor safely retriable. Fail before it and the saga unwinds; commit it and the saga must run forward to completion, so every step after it has to be retriable until it succeeds.
-- Example: reserve inventory (compensatable) -> charge payment (compensatable by refund) -> issue invoice (pivot: a tax record cannot be withdrawn, and re-issuing would duplicate it) -> send confirmation (retriable)
+- Identify the **pivot transaction** - the go/no-go point, the first step that is neither compensatable nor safely retriable. Fail before it and the saga unwinds; commit it and the saga must run forward to completion, so every step after it has to be retriable until it succeeds - a later non-compensatable step is simply post-pivot.
+- Example: reserve inventory (compensatable; stock-outs are the common failure, so it goes first) -> charge payment (compensatable by refund) -> issue invoice (pivot: a tax record cannot be withdrawn, and re-issuing would duplicate it) -> send confirmation (retriable)
 
 External API steps:
 
@@ -75,30 +87,18 @@ External API steps:
 - Compensation is a separate API call (e.g. refund), not a rollback
 - On a lost response, query the external state before compensating - avoid double-refund
 
-Good - an explicit boundary contract, as one Boundaries Assessed row:
-
-| Boundary | Model | Pattern | Staleness Tolerance | Tolerated Anomaly | Concurrent-Writer Resolution | Recovery Mechanism |
-| -------- | ----- | ------- | ------------------- | ----------------- | ---------------------------- | ------------------ |
-| Order -> Payment | Eventual | outbox + events | <= 5s to payment initiation | Stale read | N/A - single writer | PaymentFailed reverts Order to PENDING_PAYMENT; DLQ with manual review; consumer dedupes on order ID |
-
-Bad - implicit assumption:
-
-```
-Order calls PaymentService REST inside the transaction.
-```
-
 ### Eventual Consistency Read Anomalies
 
-For each eventually consistent boundary, name the tolerated anomaly and bound the window. Unknown tolerance is a Medium risk.
+For each eventually consistent boundary, name the tolerated anomaly and bound the window. Unknown tolerance is a risk that starts at Medium.
 
 | Anomaly              | Cause                                                        | Acceptable when                                       |
 | -------------------- | ------------------------------------------------------------ | ----------------------------------------------------- |
 | Stale read           | Read issued before the event propagates                      | The window is bounded and documented                  |
-| Read-your-writes     | The writer's next read is routed to a lagging replica         | The writer's own surfaces read from the primary        |
+| Read-your-writes     | The writer's next read is routed to a lagging replica         | The writer's surfaces show an optimistic pending state, or never re-read the value within the lag window |
 | Monotonic-read break | Consecutive reads land on replicas at different lag           | Staleness is invisible at this surface (no ordering cue shown) |
 | Read skew            | A concurrent commit lands between two reads of one operation  | The two values are never compared or totalled          |
 
-Concurrent writers are a separate problem from these read anomalies: a lost update is a write conflict, resolved by the mechanism below rather than tolerated as a window.
+Concurrent writers are a separate problem from these read anomalies: a lost update is a write conflict, resolved by the mechanism below rather than tolerated as a window. This holds inside one service too: two handlers writing the same row (a cancel endpoint and a settlement webhook) sit on the single-DB row of the matrix and still name a mechanism - a row lock or a status precondition.
 
 Conflict resolution, in order of increasing strength: last-write-wins is cheapest and accepts silent loss - document what is lost; single writer per entity (by home region or ownership key) avoids conflicts entirely at the cost of routing every write to its owner; a CRDT merge converges deterministically without routing, but constrains the data type to one with a commutative, associative, idempotent merge, and still discards a concurrent value where the type is register-like. Name the chosen mechanism on every boundary that admits concurrent writers.
 
@@ -108,13 +108,13 @@ Conflict resolution, in order of increasing strength: last-write-wins is cheapes
 - Rename = add new + dual-write and backfill + migrate readers + remove old - four phases, each a separate deploy verified before the next. Migrating readers is the phase that makes the rename safe under version skew; it is not optional
 - Never remove a column or field active code reads
 - Event consumers tolerate unknown fields; producers never reuse field IDs
-- Rolling deploys create version skew: treat old-version code <-> new schema (and event producer -> consumer) as boundaries in the assessment
+- Rolling deploys create version skew: treat old-version code <-> new schema (and event producer -> consumer) as boundaries in the assessment; their Pattern is `dual-field contract versioning` (both fields live until readers migrate) or, when reviewing a single-deploy rename, the defect `rename in one deploy`
 
 ## Output Format
 
-Rows describe what the boundary does TODAY when reviewing something already built, and what it will do when designing something new. A document containing both a current-state and a proposed section is a design: assess the proposed state and let the current state inform the risks. Fixes for a current-state defect go in Risks, never silently into the row.
+Rows describe what the boundary does TODAY when reviewing something already built, and what it will do when designing something new. A document containing both a current-state and a proposed section is a design: assess the proposed state and let the current state inform the risks. Fixes for a current-state defect go in Risks, never silently into the row. Where the design's own mechanism contradicts a stated requirement (last-write-wins where a requirement demands one writer), the row carries the design's mechanism and the contradiction is a High risk.
 
-One row per boundary, including each version-skew boundary a rolling deploy creates (old code to new schema, producer to consumer). Where boundaries were derived rather than stated, suffix the Model with `(derived)`. An at-least-once row - outbox, CQRS, or replication - states its consumer idempotency key under Recovery Mechanism. Severity in Risks reflects what the boundary can lose, not the instruction that raised it: an unconfirmed boundary starts at Medium and rises if its blast radius warrants.
+One row per boundary that data crosses in either direction, including each version-skew boundary a rolling deploy creates (old code to new schema, producer to consumer); a call whose result is never persisted is out of scope. Where the boundary itself was derived rather than stated, suffix the Model with `(derived)`; a stated boundary with an unstated mechanism keeps a bare Model and gets the Medium risk. An at-least-once row - outbox, CQRS, or replication - states its consumer idempotency key under Recovery Mechanism; for row-level replication that is the replica identity that makes a re-applied change a no-op. Severity in Risks reflects what the boundary can lose, not the instruction that raised it: an unconfirmed boundary starts at Medium and rises if its blast radius warrants.
 
 ```
 ## Data Consistency Assessment
@@ -125,7 +125,7 @@ Assessing: {current state as built | proposed design}
 
 | Boundary | Model | Pattern | Staleness Tolerance | Tolerated Anomaly | Concurrent-Writer Resolution | Recovery Mechanism |
 | -------- | ----- | ------- | ------------------- | ----------------- | ---------------------------- | ------------------ |
-| {e.g. Order -> Payment} | {Strong / Eventual / Version-skew}{ (derived)} | {database transaction / shared transaction / outbox + events / saga / CQRS + async sync / region-local strong + async replication / dual-field contract versioning; when reviewing, the defect as found: synchronous call in transaction / unguarded dual write / distributed transaction} | {N/A / duration / unbounded} | {N/A, or the anomaly name from the table above} | {N/A - single writer / single writer by home region / single writer by ownership key / last-write-wins, losing {what} / CRDT merge} | {N/A or description} |
+| {e.g. Order -> Payment} | {Strong / Eventual / Version-skew}{ (derived)} | {database transaction / shared transaction / outbox + events / saga, orchestrated or choreographed / CQRS + async sync / region-local strong + async replication / dual-field contract versioning; the defect, as found or as proposed: synchronous call in transaction / unguarded dual write / fire-and-forget call, no retry / non-durable in-process queue / distributed transaction / stale cache without invalidation / concurrent writers unresolved / direct read into another boundary's tables / rename in one deploy} | {N/A / duration / unbounded} | {N/A, the anomaly name from the table above, or "loss - see Risks" where delivery is not guaranteed} | {N/A - single writer / single writer by home region / single writer by ownership key / row lock or status precondition / last-write-wins, losing {what} / CRDT merge} | {N/A or description} |
 
 ### Saga Steps
 
@@ -146,7 +146,7 @@ Assessing: {current state as built | proposed design}
 ### Risks
 
 - [Severity: High | Medium | Low] {boundary} - {description}
-  - Issue: {implicit assumption / dual write / missing recovery / distributed transaction / schema break / unknown staleness / missing idempotency key / unnamed conflict resolution / unnamed anomaly / saga step ordering / blind external compensation / cross-module shared transaction / unconfirmed boundary}
+  - Issue: {implicit assumption / dual write / lost message / missing recovery / distributed transaction / schema break / unknown staleness / stale cache / direct cross-boundary read / missing or per-attempt idempotency key / unnamed conflict resolution / mechanism contradicts requirement / unnamed anomaly / saga step ordering / bounded retry after the pivot / blind external compensation / cross-module shared transaction / unconfirmed boundary}
   - Recommendation: {concrete mechanism, named in the detected stack's own primitives}
 
 ### No Risks Found
@@ -154,7 +154,7 @@ Assessing: {current state as built | proposed design}
 {State explicitly if all boundaries have explicit strategies - do not omit this section silently}
 ```
 
-Always produce the Boundaries Assessed table. A saga gets one row per boundary pair it crosses; its Staleness Tolerance is the end-to-end completion bound. Omit "No Risks Found" only when risks were listed. If boundaries are not yet defined, derive candidates from the described data flows, list each with its likely model, and flag a Medium risk per unconfirmed boundary.
+Always produce the Boundaries Assessed table. A saga gets one row per boundary pair its steps cross, in step order; each row repeats the end-to-end completion bound as its Staleness Tolerance. Omit "No Risks Found" only when risks were listed. If a boundary is not defined, or is described without its mechanism, derive it from the described data flows, list it with its likely model, and flag a Medium risk per unconfirmed boundary.
 
 ## Avoid
 
