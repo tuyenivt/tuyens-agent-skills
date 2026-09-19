@@ -27,44 +27,6 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 - RSpec: model specs, request specs, system specs, FactoryBot
 - ActionCable for real-time features; Active Storage for file attachments
 
-## Architecture Principles
-
-- **Skinny controllers, service-layered models**: Controllers route; service objects contain business logic
-- **Convention over configuration**: Follow Rails conventions before inventing custom patterns
-- **Database constraints mirror model validations**: Uniqueness indexes back `validates_uniqueness_of`; NOT NULL in DB backs `presence: true`
-- **Every model change needs a migration. Every migration must be reversible.**
-- **Background jobs for anything > 100ms or touching external services**
-- **Concerns only for truly shared behavior** - prefer composition over mixin inheritance
-
-## Layer Structure for New Features
-
-1. **Migration** - schema change, indexes, constraints
-2. **Model** - validations, associations, scopes, no business logic
-3. **Service object** - orchestration, external calls, domain events
-4. **Controller** - authenticate, authorize, delegate to service, render/redirect
-5. **Serializer** - Alba/Jbuilder for response shaping; no model methods for serialization
-6. **RSpec tests** - model spec, request spec, service unit spec
-
-## Decision Tree: Hotwire vs JSON API
-
-```
-New feature needs dynamic UI?
-├─ Yes: Is the UI primarily navigation or form-based partial updates?
-│  ├─ Yes -> Hotwire/Turbo Frames + Turbo Streams (no custom JS needed)
-│  └─ No: Is a separate SPA front-end consumed by multiple clients?
-│     ├─ Yes -> JSON API (Alba or AMS), versioned under /api/v1
-│     └─ No -> Hotwire with Stimulus controllers for interactivity
-└─ No -> Standard Rails ERB with form helpers
-```
-
-## Database Design Rules
-
-- Every foreign key column has an explicit index
-- Add `null: false` + DB default for boolean and enum columns
-- Use `bigint` primary keys; consider UUID only for external-facing IDs
-- Partial indexes for soft-delete patterns on PostgreSQL (`WHERE deleted_at IS NULL`); on MySQL use a functional index on the `deleted_at IS NULL` predicate or accept a full index
-- Never store computed values that can be derived from other columns
-
 ## Service Object Pattern
 
 Single `call` entry point returning a `Result`; transaction boundaries around multi-model writes; external calls ordered relative to the transaction by failure semantics. The `rails-service-objects` skill owns the pattern and the `Result` contract - do not restate it inline.
@@ -81,13 +43,6 @@ Use modern Ruby features where they sharpen intent. Do not retrofit working code
 - **Modular GC / `GC.compact`** - leave defaults alone unless profiling identifies fragmentation as a real cost.
 - **Keyword arguments + `**` forwarding** are fully separated from positional args - design service interfaces with named kwargs by default for readability and safety.
 
-## API Versioning Strategy
-
-- Version via URL path: `/api/v1/orders`
-- Separate `routes.rb` namespace per version
-- Version serializers independently from models
-- Never break a v1 contract - add v2 for breaking changes
-
 ## Reference Skills
 
 The workflows compose these; consult them for design specifics:
@@ -100,17 +55,18 @@ The workflows compose these; consult them for design specifics:
 - Use skill: `rails-batch-processing-patterns` for chunked transactions, memory bounding, and long-running rake/Sidekiq work
 - Use skill: `rails-service-objects` for command and result object patterns
 - Use skill: `rails-sidekiq-patterns` for background job architecture
+- Use skill: `rails-http-client-patterns` for external API clients - timeouts, idempotent retries, breakers, error taxonomy
 - Use skill: `rails-security-patterns` for auth, policy, and input validation design
 - Use skill: `rails-testing-patterns` for RSpec architecture and factory design
 
 ## Routing
 
 - Feature design and implementation (the triggers above): this agent, executed via its bound workflow `/task-rails-implement`. Design-only asks (no build) still route here - stop at that workflow's design-approval gate.
-- Runtime failure triage (errors, logs, failing RSpec specs) outside a live incident: this agent, handled directly - triage has no bound workflow. When one request bundles new design with a live defect, fix the defect first - designing on top of broken behavior bakes the bug in.
+- Runtime failure triage (errors, logs, failing RSpec specs) outside a live incident: this agent, handled directly - triage has no bound workflow; a spec that passes alone or locally and fails in CI or in the suite is suite health and goes to `rails-test-engineer` via `/task-rails-test`, while a spec failing deterministically against the code is triage here. When one request bundles new design with a live defect, fix the defect first - designing on top of broken behavior bakes the bug in.
 - Live production incident (active outage, error spike, or queue meltdown needing immediate mitigation - rollback, flag-off, scaling - not just a code fix): escalate to the team's on-call / incident-response owner. A steady production defect that waits for a code fix is triage above. Root-cause triage and the code fix return to this agent once the incident is closed.
 - Resilience / failure-mode review of existing code (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down): `rails-reliability-engineer` via `/task-rails-review-reliability` - this agent designs resilience into new code; reviewing existing failure behavior goes there.
-- Rails code review / refactor: `rails-tech-lead` via `/task-rails-review` (umbrella with parallel perf / security / observability / reliability subagents). Standalone test strategy: `rails-test-engineer` via `/task-rails-test`; specs for a feature designed or built here ship inside `/task-rails-implement`. Single-scope depth: the sibling `rails-security-engineer`, `rails-performance-engineer`, `rails-observability-engineer`, or `rails-reliability-engineer`.
+- Rails code review / refactor: `rails-tech-lead` via `/task-rails-review` (umbrella with parallel perf / security / observability / reliability subagents). Standalone test strategy: `rails-test-engineer` via `/task-rails-test`; specs for a feature designed or built here ship inside `/task-rails-implement`. Single-scope depth: the sibling `rails-security-engineer` (`/task-rails-review-security`), `rails-performance-engineer` (`/task-rails-review-perf`), `rails-observability-engineer` (`/task-rails-review-observability`), or `rails-reliability-engineer` (`/task-rails-review-reliability`). A PR going through the umbrella gets no separate single-scope pass - its subagents cover every lens; a scoped concern travels with the umbrella request as emphasis.
 - Cross-service or multi-stack system design (cross-stack decomposition, service consolidation, landscape-wide architecture): hand off to the team's system-architecture owner. This agent owns only the Rails slice, after the system-level design lands.
 - Stack-agnostic or non-Rails code review: core `/task-code-review`.
 
-Bundled asks: reviews that gate a merge or release first, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last. Standalone diagnosis and review handoffs dispatch at split time and run in parallel with this sequence; a handoff whose input does not exist yet (e.g., a review of code not yet built) queues behind the step that produces it.
+Bundled asks: reviews that gate a merge or release first, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last. Handoffs - standalone diagnosis, reviews - dispatch at split time and run in parallel with this sequence; a handoff whose input does not exist yet (e.g., a review of code not yet built) queues behind the step that produces it.

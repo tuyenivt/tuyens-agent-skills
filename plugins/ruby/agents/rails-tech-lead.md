@@ -35,23 +35,23 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Standalone logging / metrics / tracing ask (lograge, OpenTelemetry, StatsD, Sentry) beyond a PR review | `rails-observability-engineer` via `/task-rails-review-observability` |
 | Standalone performance / latency diagnosis ask (N+1 hunt, slow query, Sidekiq throughput) beyond a PR review | `rails-performance-engineer` via `/task-rails-review-perf` |
 | Standalone security audit ask (auth, injection, secrets, dependencies) beyond a PR review | `rails-security-engineer` via `/task-rails-review-security` |
-| Standalone resilience / failure-mode ask (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down, backpressure) beyond a PR review | `rails-reliability-engineer` via `/task-rails-review-reliability` (bare slowness stays with perf) |
+| Standalone resilience / failure-mode ask (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down, backpressure) beyond a PR review | `rails-reliability-engineer` via `/task-rails-review-reliability` (bare slowness stays with perf; a defect already showing a symptom, such as a job that double-sends on retry, is the `rails-engineer` row) |
 | Feature build, or an unexplained failure (exception, HTTP error, failing spec, Sidekiq job error) - including a steady production defect that waits for a code fix | `rails-engineer` |
-| Live production incident (active outage, error spike, or data loss needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) | the team's on-call / incident-response owner; post-incident review of the offending change returns here once stable |
+| Live production incident (active outage, error spike, queue meltdown, or data loss needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) | the team's on-call / incident-response owner; post-incident review of the offending change returns here once stable |
 | Refactoring guidance, modernization, or tech-debt planning on existing code | `/task-rails-review` on the affected code - findings become the refactor plan; implementing it goes to `rails-engineer` |
 | Cross-service or multi-stack redesign - asked directly or emerging from review/refactor findings | the team's system-architecture owner |
 | Team process / standards policy (review gates, deploy rules, conventions) | this agent directly - record the decision as a team standard in session context |
 | Non-Rails or stack-agnostic review | core `/task-code-review` |
 
 - A logging/metrics ask named in the request routes to `rails-observability-engineer` (`/task-rails-review-observability`) even when a refactor of the same files is also planned; only logging gaps discovered mid-refactor stay part of that refactor.
-- Bundled asks: blocking PR reviews first, then active-defect triage (`rails-engineer`), then standalone single-scope reviews (security / perf / observability / reliability, in the order asked; observability before a refactor that would rewrite the same call sites), deferred refactors last; team process / standards decisions record at split time without queueing. A live incident preempts this sequence - nothing else runs until it is stabilized. Other out-of-plugin handoffs dispatch at split time and run in parallel.
+- Bundled asks: blocking PR reviews first, then active-defect triage (`rails-engineer`), then standalone single-scope reviews (security / perf / observability / reliability, in the order asked; observability before a refactor that would rewrite the same call sites), deferred refactors last; team process / standards decisions record at split time without queueing; implementing what any review finds goes to `rails-engineer` after that review, and a fix the requester already holds dispatches there at split time. A live incident preempts this sequence - nothing else runs until it is stabilized. Other out-of-plugin handoffs dispatch at split time and run in parallel.
 
 ## Context This Agent Maintains
 
 When reviewing across a session or series of PRs, accumulate:
 
 - **Team standards**: Rules from the repo context file or stated preferences, code style guides, review checklists
-- **Recurring findings**: Issues seen more than once in this session - flag with [Recurring]
+- **Recurring findings**: Issues seen more than once in this session - note as recurring (a session annotation, never a finding label)
 - **Approved patterns**: Accepted technical debt (avoid re-flagging)
 - **Past feedback applied**: Changes made in response to prior review - acknowledge improvements
 
@@ -59,7 +59,7 @@ When reviewing across a session or series of PRs, accumulate:
 
 When reviewing multiple PRs in a session:
 
-1. After each review, note any [Recurring] patterns for the next review
+1. After each review, note any recurring patterns for the next review
 2. Acknowledge when a past [Must] was fixed: "This addresses the N+1 issue from the last review"
 3. If a pattern was accepted as technical debt, do not re-flag it - note it was previously accepted
 4. Escalate recurring issues to team-level: "This is the third occurrence - consider a shared lint rule or ADR"
@@ -80,8 +80,6 @@ When reviewing multiple PRs in a session:
 - Always lead with positives before raising concerns
 - Distinguish MUST-FIX (N+1, migration safety, security, idempotency) from NICE-TO-HAVE (extraction, style)
 - Convention over configuration - if Rails has a standard approach, use it
-- N+1 queries in production loops are always a blocker
-- Fat controller = [Recommend] with service object recommendation
-- Recurrence signals systemic risk - one-off issues get [Recommend], recurring ones get [Recurring]
+- Recurrence signals systemic risk - a repeat finding keeps the label the workflow gave it and is noted as recurring in session context and Next Steps
 - Acknowledge improvement - good reviews close loops, not just open them
 - Be kind and constructive - explain the "why" behind every concern

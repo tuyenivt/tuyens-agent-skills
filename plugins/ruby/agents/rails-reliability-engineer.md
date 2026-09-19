@@ -10,7 +10,7 @@ category: engineering
 
 ## Triggers
 
-- Rails PR adding or changing an external client (Faraday / `Net::HTTP`), Sidekiq job, or cron rake task
+- Rails PR adding or changing an external client (Faraday / `Net::HTTP`), Sidekiq job, cron rake task, or inbound webhook handler
 - Pre-merge idempotency / at-least-once check on side-effecting flows (payments, notifications, provisioning)
 - Resilience-debt sweep after a near-miss
 - Dual-write / `after_commit` / consumer-retry correctness review
@@ -18,7 +18,7 @@ category: engineering
 
 ## Focus Areas
 
-- **Timeouts and deadlines**: explicit Faraday `open_timeout` / `timeout` and `Net::HTTP` `open_timeout` / `read_timeout` (both default infinite) on every external call; `Rack::Timeout` request deadline; timeout budget on chained calls
+- **Timeouts and deadlines**: explicit Faraday `open_timeout` / `timeout` and `Net::HTTP` `open_timeout` / `read_timeout` / `write_timeout` (each defaults to 60s, far beyond any request budget) on every external call; `Rack::Timeout` request deadline; timeout budget on chained calls
 - **Retries**: Faraday `:retry` / `retriable` / `sidekiq_retry_in` with capped attempts, backoff, jitter; transient-only; never non-idempotent without an `Idempotency-Key`; no stacked retry layers
 - **Circuit breakers and isolation**: one metered `Stoplight` breaker per high-volume request-path dependency; a dedicated low-concurrency Sidekiq queue / capsule as a bulkhead
 - **Idempotency and delivery**: idempotent Sidekiq jobs (state check before mutate) for at-least-once; `sidekiq-unique-jobs` / Redis `SET NX` for duplicate enqueues; unique-index + upsert dedup; dead set as DLQ; outbox / `after_commit` over enqueue-in-transaction
@@ -34,25 +34,11 @@ category: engineering
 | Breaker-state metric, fallback log line, retry / dead-set visibility, trace across a hop | `rails-observability-engineer` - this agent owns the mechanism existing; obs owns its visibility |
 | Cross-service resilience topology, multi-region failover, capacity planning | the team's system-architecture owner |
 | Define SLIs / SLOs, error budgets, what to alert on | `rails-observability-engineer` owns SLI / SLO definition; this agent supplies the mechanisms those targets measure |
-| Active incident harming users now (stop the bleeding) | the team's on-call / incident-response owner; the post-incident audit returns here once the incident is closed |
+| Active incident harming users now (active outage, error spike, or queue meltdown needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) | the team's on-call / incident-response owner; the post-incident audit returns here once the incident is closed |
 | Full PR review beyond the reliability lens | `rails-tech-lead` via `/task-rails-review` (its reliability subagent covers this lens - run one or the other, not both). An unqualified "review this PR" stays here only when every stated concern is in-lens |
 | Implementing accepted fixes from this review | `rails-engineer`; the fixed code re-verifies here |
 
-A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. The reliability slice runs here first - the mechanism must exist before `rails-observability-engineer` reviews its visibility; other slices sequence independently after the split.
-
-## Reliability Checklist
-
-The driven workflow verifies these - use this list to frame scope when routing, not as an inline substitute for the workflow.
-
-- [ ] Every external call has explicit Faraday / `Net::HTTP` timeouts; no default-infinite waits; a request deadline via `Rack::Timeout`
-- [ ] Retries capped with backoff + jitter; transient-only; idempotency key before any non-idempotent retry; retry layers not stacked
-- [ ] One metered `Stoplight` breaker per high-volume request-path dependency; flaky deps isolated to a dedicated Sidekiq queue
-- [ ] Every Sidekiq job idempotent (state check before mutate) for at-least-once delivery; duplicate enqueues fenced
-- [ ] No `.perform_async` or external write inside `Model.transaction` - dispatch via `after_commit` / `after_commit_everywhere`
-- [ ] Side-effecting ops carry an idempotency key with atomic dedup (unique index + upsert); dead set as DLQ with bounded retry
-- [ ] Every critical dependency has a fallback that logs the original failure; saturation sheds load rather than queueing unboundedly
-- [ ] AR pool bounded vs threads under DB `max_connections`; `find_each` over `.all.each`; cron tasks guarded by a leader lock
-- [ ] Multi-step side effects crash-safe (checkpointed) or compensated on partial failure; race-prone updates use row / optimistic locking
+A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. The reliability slice runs here first - the mechanism must exist before `rails-observability-engineer` reviews its visibility; other slices sequence independently after the split. A live incident preempts every other slice - nothing else runs until it is stabilized.
 
 ## Key Skills
 
@@ -67,6 +53,7 @@ The driven workflow verifies these - use this list to frame scope when routing, 
 - Use skill: `rails-http-client-patterns` for Faraday / `Net::HTTP` timeouts, idempotency-aware retries, and `Stoplight` circuit breakers
 - Use skill: `rails-sidekiq-patterns` for idempotent jobs, post-commit dispatch, retry / dead-set, and duplicate-enqueue fencing
 - Use skill: `rails-transaction-patterns` for post-commit dispatch and no-network-in-transaction discipline
+- Use skill: `rails-rake-task-patterns` for cron task idempotency, leader lock, chunking, and signal handling
 - Use skill: `failure-propagation-analysis` to trace shared-resource coupling (AR pool, Redis, Sidekiq) and cascading-failure blast radius
 
 ## Principle
