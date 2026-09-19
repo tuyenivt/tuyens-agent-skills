@@ -7,7 +7,7 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first to determine DB adapter (MySQL/PostgreSQL) - isolation defaults and savepoint behavior differ.
+> Load `Use skill: stack-detect` first to determine the DB adapter (MySQL/PostgreSQL) - isolation defaults differ; on `Database: unknown` read `config/database.yml`.
 
 ## When to Use
 
@@ -22,8 +22,8 @@ user-invocable: false
 
 - One transaction boundary per business operation; the boundary belongs in the service object, not the model.
 - No network calls inside `Model.transaction`. HTTP/S3/Redis/Stripe held under a row lock cascades into fleet-wide lock-wait timeouts on upstream slowdown.
-- No `.perform_async` (or `deliver_later`, or any other post-commit dispatch) inside a transaction. The worker runs on its own connection, so it can never see your uncommitted writes - it sees the state *before* them: `RecordNotFound` for a row not yet committed, stale values for one being updated, and nothing at all if you roll back. Use `after_commit_everywhere` when the dispatch lives inside a caller's transaction.
-- Inner services that open `transaction` need `requires_new: true` if rescued by the caller - a fused inner block has no savepoint, so the caller's rescue commits the inner writes along with the outer transaction.
+- No `.perform_async` (or `deliver_later`, or any other post-commit dispatch) inside a transaction. The worker runs on its own connection, so it can never see your uncommitted writes - it sees the state *before* them: `RecordNotFound` for a row not yet committed, stale values for one being updated, and nothing at all if you roll back. Use `ActiveRecord.after_all_transactions_commit` (7.2+) or `after_commit_everywhere` when the dispatch lives inside a caller's transaction.
+- Inner services that open `transaction` need `requires_new: true` when the caller rescues inside its own transaction block - a fused inner block has no savepoint, so that rescue commits the inner writes along with the outer transaction.
 - `after_commit` for side effects (jobs, email, HTTP). `after_save` only for in-aggregate derived columns that must be visible inside the same transaction.
 - Default isolation is adapter-default (MySQL `REPEATABLE READ`, PG `READ COMMITTED`). Bump only with a documented reason (multi-row invariants, financial ledgers); cost is higher deadlock rate.
 - Retry on `ActiveRecord::Deadlocked` and `ActiveRecord::SerializationFailure` (PG) - both expected under contention. Cap at 3 attempts with backoff.
@@ -56,6 +56,9 @@ def call
 
   ShipmentNotificationJob.perform_async(@order.id)  # post-commit
   Result.success(@order.reload)
+rescue ActiveRecord::ActiveRecordError => e      # the write failed after the charge - compensate, never refund inline
+  PaymentReconciliationJob.perform_async(payment.id, "order_write_failed")
+  raise
 rescue BillingError::Declined => e     # domain error - services never name a vendor class
   Result.failure([e.message], code: :payment_declined)
 end
@@ -94,7 +97,7 @@ Two fixes:
    end
    ```
 
-2. **Inner uses `requires_new: true`** (savepoint; supported on MySQL and PG). Only when the inner must roll back independently while the outer continues.
+2. **Inner uses `requires_new: true`** (savepoint; supported on MySQL and PG). Only when the inner must roll back independently while the outer continues - which needs the caller to rescue *inside* its block, right around the inner call. An inner service signals failure by raising; a caller rescue outside the outer block rolls everything back, and a `Result` is read after the block.
 
    ```ruby
    ActiveRecord::Base.transaction(requires_new: true) { @record.update!(...) }
@@ -123,18 +126,16 @@ When a service runs inside a caller's transaction, dispatching "after the local 
 
 ```ruby
 class ChargeService
-  include AfterCommitEverywhere
-
   def call
     ActiveRecord::Base.transaction do
       @order.update!(status: :paid)
-      after_commit { ShipmentNotificationJob.perform_async(@order.id) }
+      ActiveRecord.after_all_transactions_commit { ShipmentNotificationJob.perform_async(@order.id) }
     end
   end
 end
 ```
 
-The block fires after the outermost commit, regardless of nesting depth.
+The block fires after the outermost commit, regardless of nesting depth (the gem form: `include AfterCommitEverywhere`, then `after_commit { ... }` inside the transaction).
 
 ### Isolation levels
 
@@ -184,24 +185,26 @@ Split: open transaction late, close it early. External calls and computation hap
 
 ## Output Format
 
-One block per transaction boundary. A flow that opens two (claim, then finalize) emits two, named in order; a review spanning a service, a model method and a callback emits one per boundary and carries the rest as numbered findings.
+One block per transaction boundary. A flow that opens two (claim, then finalize) emits two, named in order; a review spanning a service, a model method and a callback emits one per boundary, and observations that name no boundary - a lock order, a callback on another model, a dispatch reached transitively through a composed service - are numbered findings with no block. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. `Nested transactions:` states this block's own relationship to its caller; a service reached from two call sites emits one block per call site when the relationship differs. A callback on the boundary's own model folds into that block; in build mode the numbered findings carry pre-existing violations the design replaces. A `retry` around a fused inner block re-runs the caller's whole transaction - retry only at the outermost boundary.
 
 ```
-Boundary: <service.call | model callback | controller action | rake task | job perform>
+Boundary: <service.call | model callback | controller action | rake task | job perform | out of the read set - name the file>
 
 Network calls inside: <Yes (BLOCKER) | No>
 
-Post-commit dispatch inside: <Yes - name it: perform_async / deliver_later / cache write (BLOCKER) | No - uses after_commit | No>
+Post-commit dispatch inside (list every dispatch): <Yes - name it: perform_async / deliver_later / cache write (BLOCKER) | No - deferred via after_all_transactions_commit / current_transaction.after_commit / after_commit_everywhere | No - uses after_commit | No>
 
-Nested transactions: <None | Inner uses requires_new | Inner relies on outer (caller-aware) | Inner fused + caller rescues (BLOCKER)>
+Hold time: <under 100 ms | long - name the work inside that could move out (GAP)>
 
-Side-effect hook: <after_commit (correct for side effects) | after_save - derived column (correct) | after_save - side effect (BLOCKER) | after_commit - derived column (GAP) | N/A - no callbacks>
+Nested transactions (list every value that applies, ` + `-joined): <None | Inner uses requires_new | Inner relies on outer (caller-aware) | Inner fused + caller rescues (BLOCKER) | ActiveRecord::Rollback inside a fused block (BLOCKER - swallowed) | rescue inside the transaction block (BLOCKER - commits partial state) | isolation: on a nested call (BLOCKER - raises)>
 
-Isolation: <adapter default | :read_committed | :repeatable_read | :serializable - reason: <text>>
+Side-effect hook (list every hook): <after_commit (correct for side effects) | before_save / after_save - derived column (correct) | after_save - atomic counter via update_counters or counter_cache (correct) | after_save - side effect (BLOCKER) | after_commit - derived column (GAP) | N/A - no callbacks>
 
-Concurrent writers on the same column: <none | row lock / atomic UPDATE | unguarded read-modify-write (BLOCKER) - name the other writer>
+Isolation: <adapter default | :read_committed | :repeatable_read | :serializable - every non-default with reason: <text>>
 
-Retry strategy: <None | None - GAP (isolation bumped, retry required) | Deadlock retry x N | in-process retry AND job-level retry - GAP, pick one>
+Concurrent writers on the same column: <none | row lock (ids ordered) / atomic UPDATE | unguarded read-modify-write (BLOCKER) - name the other writer | unknown - the other writer's source is out of scope>
+
+Retry strategy: <None | None - GAP (contended write path, or isolation bumped) | Deadlock retry x N | SerializationFailure retry x N (PG serializable) | unbounded, or wrapping side effects - GAP | in-process retry AND job-level (Sidekiq) retry of the enclosing job - GAP, pick one>
 
 Compensating action on partial failure: <Yes - <job> | No - acceptable | No - GAP>
 ```
@@ -211,7 +214,8 @@ Compensating action on partial failure: <Yes - <job> | No - acceptable | No - GA
 ## Avoid
 
 - Network/HTTP/S3 calls inside `Model.transaction` - holds locks across round-trip
-- `.perform_async` inside `Model.transaction` without `after_commit_everywhere`
+- `.perform_async` inside `Model.transaction` without `after_all_transactions_commit` / `after_commit_everywhere`
+- `transaction(isolation:)` on a nested call, or isolation set on the pool - `TransactionIsolationError`, or every connection paying for one path's invariant
 - Rescuing inside nested `transaction` blocks without `requires_new` - leaves inner writes committed
 - `after_save` for side effects that require the row to exist (jobs read a not-yet-persisted record)
 - Bumping isolation level "for safety" without a documented invariant - pays deadlock cost for no gain

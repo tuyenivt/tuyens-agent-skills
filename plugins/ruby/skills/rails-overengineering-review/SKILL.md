@@ -15,20 +15,20 @@ Reviewing a Rails diff that adds validations, `rescue` blocks, service objects, 
 
 ## Rules
 
-- Every finding cites the specific constraint making the code redundant: FK name, NOT NULL column, unique index, enum, framework guarantee - or, for Category 3, the absence of a second call site/type/consumer. No citation, no finding.
+- Every finding cites the specific constraint making the code redundant: FK name, NOT NULL column, unique index, enum, framework guarantee - or, for Categories 3 and 4, the absence of a second call site/type/consumer or of any behaviour the layer adds. No citation, no finding.
 - Default intent is `[Recommend]`. Escalate to `[Must]` only when there is measurable cost: extra SELECT on a hot path, blanket `rescue` masking real bugs, a service hiding a transaction boundary the call site should see, or silent data corruption (racing uniqueness with no index).
 - Use `[Recommend]` with the open assumption stated when justification is plausible but not evidenced. Facts supplied alongside the diff (schema, call-site counts, form usage) count as evidence - don't re-ask what the requester already answered.
 - Cite locations as the diff presents them (hunk/line); never invent file paths.
-- Don't flag redundancy with a legitimate reason: form-level error messages, system-boundary validation on untrusted input, an interface stabilized across 3+ call sites, intentional `touch:` side effects, a guard enforcing a legal state transition (the usual justification for a state-machine class), or uniqueness validation paired with a unique index as advisory UX.
+- Don't flag redundancy with a legitimate reason: form-level error messages, system-boundary validation on untrusted input, an interface stabilized across 3+ call sites, intentional `touch:` side effects, a guard enforcing a legal state transition (the usual justification for a state-machine class), uniqueness validation paired with a unique index as advisory UX, or a `rescue_from` at the application boundary that reports before rendering. A validation with no DB backing shown (numericality, format) is not redundant - leave it.
 - Rules win over Patterns where they disagree. The don't-flag list above is unconditional; a Pattern's narrower framing ("keep it if a form needs the message") explains the common case, it does not reopen the rule.
 
 ## Patterns
 
 ### Category 1: Redundant Validation vs DB Constraints
 
-App-side validations cost a SELECT (uniqueness, `belongs_to` presence) or CPU. When the DB enforces the rule, the validation adds load without adding safety - but removing it is never free, and the cost is bigger than a lost error message. With the validation gone, non-bang `save`/`update` stops returning `false` and the DB raises instead: `ActiveRecord::NotNullViolation`, `RecordNotUnique`, `StatementInvalid`. **Every** caller changes failure mode, not just form paths. Recommend removal only where the callers are ready to rescue - or where the code already uses the bang methods.
+App-side validations cost a SELECT (uniqueness, `belongs_to` presence) or CPU. When the DB enforces the rule, the validation adds load without adding safety - but removing it is never free, and the cost is bigger than a lost error message. With the validation gone, non-bang `save`/`update` stops returning `false` and the DB raises instead: `ActiveRecord::NotNullViolation`, `RecordNotUnique`, `StatementInvalid`. Every caller whose only check was that validation changes failure mode, not just form paths - bang callers too, since a `rescue ActiveRecord::RecordInvalid` stops matching `NotNullViolation`/`RecordNotUnique` (both `StatementInvalid`). Recommend removal only where those callers are ready to rescue the `StatementInvalid` subclasses; a duplicate of a check that stays (`belongs_to` presence, enum assignment) changes nothing and goes freely.
 
-Note also what "the DB enforces it" means: FK, NOT NULL, UNIQUE and CHECK are DB constraints; a Rails integer-backed `enum` is not - it is a framework guarantee with no database enforcement at all, so raw SQL or `update_column` writes any value it likes.
+Note also what "the DB enforces it" means: FK, NOT NULL, UNIQUE and CHECK are DB constraints; a Rails integer-backed `enum` is not - it is a framework guarantee with no database enforcement at all, so raw SQL (`update_all` with a SQL string, `connection.execute`) or an out-of-band writer stores any value it likes.
 
 #### Presence on `belongs_to`
 
@@ -77,7 +77,16 @@ enum :status, { pending: 0, confirmed: 1 }
 
 #### Presence on NOT NULL with no form path
 
-Internal table fed by Sidekiq, no controller form - DB constraint suffices for *correctness*. Flag only after confirming no form/controller consumes `errors.full_messages` for this attribute, and note the failure-mode change: the job now raises `NotNullViolation` where it used to get `save => false`, so a permanently invalid payload retries until the budget is spent instead of being rejected once. That is acceptable when the job treats a raise as dead-letter-worthy, and a regression when it doesn't.
+Internal table fed by Sidekiq, no controller form - DB constraint suffices for *correctness*. One entry per column. Flag only after confirming no form/controller consumes `errors.full_messages` for this attribute, and note the failure-mode change:
+
+```ruby
+# Bad - invoices.number is NOT NULL; only ImportInvoiceJob writes it
+validates :number, presence: true
+
+# Good - the job rescues NotNullViolation (dead-letter) instead of reading save => false
+```
+
+The failure-mode change: the job now raises `NotNullViolation` where it used to get `save => false`, so a permanently invalid payload retries until the budget is spent instead of being rejected once. That is acceptable when the job treats a raise as dead-letter-worthy, and a regression when it doesn't.
 
 ### Category 2: Defensive Code for Impossible States
 
@@ -86,7 +95,7 @@ Re-checking guarantees Rails or the DB already provides adds noise and hides reg
 #### Nil guard on a non-nullable column
 
 ```ruby
-# Bad - status is NOT NULL with default; guard never fires
+# Bad - status is an integer enum with a default; guard never fires (a NOT NULL string column still admits "")
 return unless @order.status.present?
 @order.update!(status: :processing)
 
@@ -105,7 +114,7 @@ rescue ActiveRecord::RecordNotFound
 end
 ```
 
-Conversion to a 404 belongs in `ApplicationController`'s `rescue_from`, not in every action.
+Rails already maps an uncaught `RecordNotFound` to 404 through `config.action_dispatch.rescue_responses`; a `rescue_from` in `ApplicationController` is only for custom rendering, and never in every action.
 
 #### `present?` on a guaranteed-present user
 
@@ -212,6 +221,10 @@ belongs_to :post
 
 Justified when a second type is already designed and lands in the same release.
 
+### Category 4: Redundant Indirection
+
+A layer that only forwards - `OrderRepository#find(id)` calling `Order.find(id)`, a wrapper returning the wrapped call's value unchanged, an alias method - adds a name and a file, not behaviour. Justified when it hides a real seam (a second data source, a vendor SDK). A `Result` wrapper around one predicate (`CheckEligibility`) is Category 3, not this.
+
 ## Output Format
 
 Findings contribute to the consuming workflow's unified output. Each entry:
@@ -219,10 +232,11 @@ Findings contribute to the consuming workflow's unified output. Each entry:
 ```
 ### [Must | Recommend] file:line
 
-- Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction | Redundant Indirection (a layer that only forwards - repository, wrapper, alias)} (append "(inverted)" for missing-constraint findings)
+- Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction | Redundant Indirection} (append "(inverted)" for missing-constraint findings)
 - Code: {one-line citation, e.g., `validates :user, presence: true`}
-- Redundant because: {FK name | NOT NULL column | unique index | enum | framework guarantee | speculative - no second call site/type/consumer, or a consumer that discards the value}   (or `Unsafe because:` for inverted findings)
-- Cost: {extra SELECT per save | masked exception | hidden transaction boundary | silent duplicates | speculative surface area}   (required for [Must]; optional context otherwise)
+- Redundant because: {FK name | NOT NULL column | unique index | enum | framework guarantee | speculative}   (or `Unsafe because:` for inverted findings; `speculative` = no second call site, type or consumer, or a consumer that discards the value)
+- Evidence: {schema.rb | migrations shown | call-site count supplied | config not in evidence}
+- Cost: {extra SELECT per save | masked exception | hidden transaction boundary | silent duplicates | speculative surface area | negligible (CPU only)}   (required for [Must], and then one of the four escalation costs in Rules - the last two are [Recommend]-only)
 - Recommendation: {concrete edit}
 - Justified when: {one-line note, if a legitimate reason might apply; otherwise omit}
 ```
@@ -231,13 +245,19 @@ Findings contribute to the consuming workflow's unified output. Each entry:
 
 A line that fits two categories gets one entry under the dominant category, with the second concern folded into the Recommendation. Several findings resolved by one fix (delete the class) merge into a single entry citing all of them.
 
-When a category has no findings, state it explicitly (`No redundant validations detected.`), followed by one-line justification bullets for candidates that matched a don't-flag rule - reviewers and re-reviews need to see what was considered and why it passed.
+Every category ends with this footer, so reviewers and re-reviews see what was considered and why it passed:
+
+```
+### {Category}: {N findings | no findings}
+
+- Considered, not flagged: {code} - {the don't-flag rule it matched | config not in evidence}
+```
 
 ## Avoid
 
 - Flagging validations on user-submitted models without checking whether the form consumes the error message
 - Recommending removal of uniqueness validation without confirming a unique index exists. The validation races and does not *prevent* duplicates, but it is often the only thing keeping them rare and visible - removing it makes them silent
 - Reading "no index in the migrations I was shown" as "no index exists" - say which schema evidence you had
-- Flagging a controller's `rescue ActiveRecord::RecordNotFound` before checking `ApplicationController`'s `rescue_from` config
+- Flagging a controller's `rescue ActiveRecord::RecordNotFound` as live before checking `rescue_responses` and `ApplicationController`'s `rescue_from` - an uncaught one is already a 404
 - Recommending changes that require a migration without saying so
 - Confusing "duplicated" with "defense in depth" - validation + unique index is correct for form UX

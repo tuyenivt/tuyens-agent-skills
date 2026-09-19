@@ -42,7 +42,7 @@ User.all.each { |u| u.orders.map(&:total_cents).sum }
 # Good - eager load
 User.includes(:orders)                                       # separate query (default)
 User.preload(:orders)                                        # always separate (safe with scopes)
-User.eager_load(:orders).where(orders: { status: :active })  # LEFT OUTER JOIN when WHERE on assoc
+User.eager_load(:orders).merge(Order.active)                 # LEFT OUTER JOIN when WHERE on assoc
 ```
 
 Eager loading does not fix a per-row `count`: `u.orders.count` re-queries even on a loaded association (Rule above). That one needs `size`, or a `counter_cache`.
@@ -174,7 +174,7 @@ config.active_record.async_query_executor = :global_thread_pool   # required pre
 
 @recent_orders = Order.recent.limit(10).load_async
 @top_products  = Product.top_sellers.limit(5).load_async
-@order_count   = Order.recent.async_count                          # async calculations, 7.1+
+@order_count   = Order.recent.async_count                          # async calculations, 7.1+ (async_sum, async_pluck ...); plain count/sum run inline
 ```
 
 The executor is process-global and bounded by `global_executor_concurrency` (default 4), so N async queries in one request cost at most 4 extra connections, not N (see `rails-connection-pool-sizing`). Inside an open transaction `load_async` silently degrades to foreground execution - no correctness risk, just no win, so calling it there is pointless rather than dangerous.
@@ -200,18 +200,20 @@ Migration safety for these operations: `rails-migration-safety` (MySQL) or `rail
 
 ## Output Format
 
-One block per pattern applied (a task spanning N+1 + Association emits two). In review mode, precede the blocks with numbered findings citing the violated rule; any field may carry `- GAP` with the observed non-compliant value.
+One block per pattern applied (a task spanning N+1 + Association emits two). In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Any field may carry `- GAP` with the observed non-compliant value. In build mode, a pre-existing violation the change touches (positional enum, `default_scope`, missing `dependent:`) is a numbered finding too.
 
 ```
-Pattern: {N+1 Fix | Scope | Enum | Association | Normalization | Callback | Batch | Locking | Implicit Load | Async Query | Parameterization | Denormalized Counter | DB Feature}
+Pattern: {N+1 Fix | Projection (pluck/select) | Scope | Enum | Association | Counter Cache | Normalization | Callback | Batch (read batching) | Bulk Write (insert_all / upsert_all) | Locking | Implicit Load | Async Query | Parameterization | Denormalized Counter | DB Feature}
 
-Model: {name}
+Model: {name, or the models a cross-model pattern spans}
 
-Adapter: {MySQL | PostgreSQL | n/a - adapter-independent | unknown}
+Adapter: {MySQL | PostgreSQL | SQLite | n/a - adapter-independent | unknown - read config/database.yml}
 
-Change: {description}
+Change: {description; a Denormalized Counter names the single writer and the recompute path}
 
-Queries: {before} -> {after}   # query counts or formulas, e.g. "1 + 4N -> 4". Write "n/a" for greenfield and for any change whose point is correctness rather than query shape - Locking, Parameterization, Denormalized Counter, DB Feature, Association config, Scope, a counter_cache declaration
+Schema: {migration DDL in one line | none}
+
+Queries: {before} -> {after}   # query counts or formulas, e.g. "1 + 4N -> 4" (nest fan-outs as "1 + N + NM"). Write "n/a" for greenfield and for any change whose point is correctness rather than query shape - Locking, Parameterization, DB Feature, Association config, Scope, Enum, Normalization, Callback placement. A Counter Cache or Denormalized Counter states the read it removes ("1 + N -> 1"); Projection states the payload change and Async Query the wall-clock change instead of a count
 ```
 
 `Denormalized Counter` covers a state-scoped or conditional counter (`open_shipment_count`, "currently active" tallies), which `counter_cache:` cannot express - it counts unconditional create/destroy only. Name the single writer and the recompute path.

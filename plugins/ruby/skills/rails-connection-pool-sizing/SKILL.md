@@ -21,10 +21,11 @@ user-invocable: false
 
 - Each AR-calling thread checks out one connection - count threads, not pods.
 - Per-process `pool == max_threads_in_that_process` (+ executor/Cable extras when `load_async` / ActionCable share the process - see Headroom).
-- Deployment-wide sum stays under DB `max_connections` with headroom: 15% when the deploy peak is bounded and measured, 25% when it is not (unbounded surge, or an instance shared with analytics). `available_for_app = max_connections * (1 - headroom) - reserved_for_cli - reserved_for_ops`, and both steady state *and* deploy peak must fit under it.
+- Deployment-wide sum stays under DB `max_connections` with headroom: 15% only when the deploy peak is bounded and has been observed (a surge knob exists and someone measured the overlap); 25% otherwise - unmeasured, no surge knob (Capistrano, ASG), or an instance shared with analytics. `available_for_app = max_connections * (1 - headroom) - reserved_for_cli - reserved_for_ops`, and both steady state *and* deploy peak must fit under it.
 - Rolling deploys hold old + new pool simultaneously - size for the peak.
 - A long-running query holds the connection for its full duration.
 - Never tune `pool` without re-deriving the deployment-wide total.
+- Each database (primary, replica, queue DB) has its own `max_connections`; a process with `connects_to` reading and writing draws from both, so budget one block per database.
 
 ## Patterns
 
@@ -48,7 +49,7 @@ Deploy peak (rolling, old + new alive): ~900   # reserved does not double - nobo
                                                # opens a second console for a deploy
 ```
 
-On `db.t3.large` (~683 max_connections, minus the 5 reserved and 15% headroom -> ~575 available) the 450 steady state fits, but the ~900 deploy peak exhausts the pool before new pods serve traffic.
+On `db.t3.large` (~683 max_connections, minus the 5 reserved and 25% headroom for an unmeasured 2x peak -> ~507 available) the 450 steady state fits, but the ~900 deploy peak exhausts the pool before new pods serve traffic.
 
 ### Per-process pool size
 
@@ -69,7 +70,7 @@ pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
 
 ### Headroom for non-request work
 
-`load_async` (Rails 7.0+, but inert until `config.active_record.async_query_executor` is set - only then does it draw connections), ActionCable subscribers, ActiveStorage analyzers, custom `Concurrent::FixedThreadPool` - all check out from the same pool. The async executor is one per process, shared across requests, sized by `global_executor_concurrency` (default 4) - 6 async queries in one request still cap at 4 extra connections. Size `pool = puma_threads + executor_concurrency (+ Cable worker threads, default 4, if mounted in-process)`. Count these extras in the deployment-wide sum as `pods x workers x (pool - threads)` - the formula's `threads` term misses them.
+`load_async` (Rails 7.0+, but inert until `config.active_record.async_query_executor` is set - only then does it draw connections), ActionCable subscribers, ActiveStorage analyzers, custom `Concurrent::FixedThreadPool` - all check out from the same pool. The async executor is one per process, shared across requests, sized by `global_executor_concurrency` (default 4) - 6 async queries in one request still cap at 4 extra connections. (`:multi_thread_pool` builds one executor per connection pool instead, sized by that database's `max_threads` in `database.yml`.) The executor checks out from whichever role's pool the query targets - the writer unless the call is inside `connected_to(role: :reading)`. Size `pool = puma_threads + executor_concurrency (+ Cable worker threads, default 4, if mounted in-process)`. Count these extras in the deployment-wide sum as `pods x workers x (pool - threads)` - the formula's `threads` term misses them. That only holds when `pool` was derived this way: an arbitrarily oversized `pool` (25 over 5 threads) is a mis-sizing finding, and its real extra draw is the executor and Cable threads, not `pool - threads`.
 
 ### Sidekiq sizing
 
@@ -79,7 +80,7 @@ Sidekiq pods are a separate process from Puma - separate pool entry in the deplo
 :concurrency: 15
 ```
 
-Set `RAILS_MAX_THREADS=15` in the Sidekiq deployment env so `pool=15` matches.
+Set `RAILS_MAX_THREADS=15` in the Sidekiq deployment env so `pool=15` matches. A `database.yml` that hardcodes one `pool` for every process mis-sizes whichever tier's thread count differs.
 
 Partition memory- or query-heavy queues onto a separate Sidekiq process with lower `concurrency`. A queue running 10s SQL at `concurrency: 25` holds 25 connections for ten seconds.
 
@@ -148,7 +149,7 @@ Easy to forget; commonly the last 5% that pushes a deploy over:
 - Backup tools (`mysqldump`, `pg_dump`)
 - Schema tools (`db-ops`, `liquibase`, `gh-ost` heartbeat)
 
-Reserve 5-10 connections.
+Reserve 5-10 connections - 10 when a backup or ETL tool connects on a schedule.
 
 ### Fork resets
 
@@ -158,16 +159,18 @@ Active Record discards parent connections in forked children automatically (Rail
 
 - **RDS Proxy**: transparent to Rails; pinning on `LOCK TABLES`, temp tables, prepared-statements-without-parameters. Watch `DatabaseConnectionsCurrentlySessionPinned` for pinning, with `DatabaseConnectionsCurrentlyBorrowed` and `DatabaseConnectionsBorrowLatency` for pool pressure.
 - **ProxySQL**: query routing, read/write splitting; more ops overhead than RDS Proxy.
-- **PgBouncer**: transaction-pool mode multiplexes (what you usually want); it requires `prepared_statements: false` (per-query replan cost) unless PgBouncer >= 1.21 with `max_prepared_statements` set. Session-pool only bounds backend count - one client per backend, no multiplexing - useful as a connection cap, not a fleet-size fix. Statement-pool breaks transactions.
+- **PgBouncer**: transaction-pool mode multiplexes (what you usually want); `database.yml` points `url`/`host` at the PgBouncer listener and it requires `prepared_statements: false` (per-query replan cost) unless PgBouncer >= 1.21 with `max_prepared_statements` set. Session-pool only bounds backend count - one client per backend, no multiplexing - useful as a connection cap, not a fleet-size fix. Statement-pool breaks transactions.
 
 ## Output Format
+
+One block per database instance (a read replica is its own budget; a documented replica no process connects to gets one line, no block). A proposal (N pods -> M) gets one block per state. Two independent symptoms get two `Result:` lines.
 
 ```
 Database: {MySQL | PostgreSQL} on {RDS / Aurora / self-hosted, instance class}
 
 max_connections: {value}
 
-Headroom target: {15% bounded+measured deploy peak | 25% unbounded surge or shared instance}
+Headroom target: {15% bounded and measured deploy peak | 25% unmeasured, unbounded, or shared instance}
 
 Reserved (CLI + ops): {N}
 
@@ -175,17 +178,17 @@ Available for app: {max_connections x (1 - headroom) - reserved} = {value}   # g
 
 Web tier: {pods} x {workers} x {threads} = {total}, pool = {N}
 
-Executor / Cable extras: {provisioned: pods x workers x (pool - threads)} / {required: executor_concurrency + Cable threads}   # equal is correct; provisioned 0 with a required >0 is the GAP that causes timeouts
+Executor / Cable extras: per process {pool - threads} provisioned vs {executor_concurrency + Cable threads} required; fleet {pods x workers x required}   # equal is correct; provisioned 0 with a required >0 is the GAP that causes timeouts; provisioned above required is the mis-sized pool
 
-Worker tier: {pods} x {processes} x {concurrency} = {total}, pool = {N}   # name any job that holds a connection for minutes
+Worker tier: {pods} x {processes (1 per pod unless the manifest says otherwise)} x {concurrency} = {total}, pool = {N}   # name any job that holds a connection for minutes
 
-Cron / rake: {peak parallel scheduled app processes} = {total}   # ad-hoc console/ops live in Reserved
+Cron / rake: {peak parallel scheduled app processes - schedules that overlap in time count together} = {total}   # ad-hoc console/ops live in Reserved
 
 Steady-state total: {sum}
 
 Deploy peak (rolling): {steady x (1 + maxSurge) bounded - k8s | ~2x full overlap - default when the rollout has no surge knob (Capistrano, ASG) or no manifest is in scope | measured}
 
-Result: {within budget | within budget but a per-process pool is mis-sized - state which tier and the corrected pool | exceeds by {N} - mitigation: {multiplexer (RDS Proxy / PgBouncer / ProxySQL) | reduce threads | larger instance | maxSurge=0}}
+Result: {within budget | within budget, multiplexer not yet warranted (< ~200 backend processes) | a per-process pool is mis-sized - state which tier and the corrected pool (combines with either outcome) | exceeds by {N} - mitigation: {raise max_connections or larger instance (below ~200 backend processes) | multiplexer (RDS Proxy / PgBouncer / ProxySQL) | reduce threads | maxSurge=0}}
 ```
 
 ## Avoid

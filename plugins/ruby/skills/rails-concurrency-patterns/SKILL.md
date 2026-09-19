@@ -7,7 +7,7 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first for Ruby version and database adapter. The app server is not a stack-detect field - read it from the Gemfile and `config/puma.rb`. Ruby 3.0+ for `Fiber::Scheduler` / `Ractor`; Falcon required for fiber-driven request handling.
+> Load `Use skill: stack-detect` first for the Ruby version (when `## Tech Stack` omits it, read `.ruby-version` or the Gemfile `ruby` line). The DB adapter gem (pg / mysql2 / trilogy) and the app server are not stack-detect fields - read them from the Gemfile and `config/puma.rb`. Ruby 3.0+ for `Fiber::Scheduler` / `Ractor`; Falcon required for fiber-driven request handling.
 
 ## When to Use
 
@@ -41,6 +41,7 @@ user-invocable: false
 | CPU-bound transform, in-process     | Process forks (`Parallel` gem) / `Ractor` | GVL serializes threads for CPU |
 | Fire-and-forget side effect         | Sidekiq job                   | Durable across restarts, retry semantics |
 | I/O fan-out inside one request/job (results aggregated) | `Concurrent::Promises` / pool | Thread-friendly, releases GVL during I/O; aggregate into ONE write at the end |
+| I/O-bound durable batch (many rows, restart-safe) | Sidekiq chunk jobs (sized per `rails-batch-processing-patterns`), each fanning out with `Concurrent::Promises` | Durability from the job, overlap from the futures; the one aggregated write is an upsert keyed on the unit so a retried chunk is safe; the width cap is per process, so a partner rate limit shared across pods needs a Redis token bucket (`rails-work-splitter-patterns`) |
 
 When work is both CPU-bound and a durable batch, durability wins: Sidekiq chunk jobs over Ractor/forks.
 
@@ -64,7 +65,7 @@ Good - `load_async` overlaps DB time:
 
 `load_async` is inert until `config.active_record.async_query_executor` is set (default `nil` runs the query in the foreground - no error, no win). To confirm on a live app, read `Rails.application.config.active_record.async_query_executor` in a console rather than inferring from the absence of a setter. Set `:global_thread_pool` (one executor, `global_executor_concurrency` default 4); each in-flight query still checks a connection out of the *main* AR pool. Budget per request: `1 (request thread) + min(async queries, executor concurrency) + spawned AR threads` - at `pool: 5` with 4 async queries you are saturated, and the budget is *per request*: N concurrent Puma threads multiply the draw on one process pool. For pool math, use skill: `rails-connection-pool-sizing`.
 
-Mixing both fan-outs in one action is the normal shape: kick off `load_async` queries first (DB time overlaps everything after), then the HTTP futures, then consume.
+Terminal calculations (`count`, `sum`) run inline; the `async_*` forms (`async_count`, `async_sum`, 7.1+) go through the executor. Mixing both fan-outs in one action is the normal shape: kick off `load_async` queries first (DB time overlaps everything after), then the HTTP futures, then consume.
 
 ### Fan-Out Across HTTP Services
 
@@ -88,12 +89,12 @@ profile, balance, prefs = Concurrent::Promises.zip(profile_f, balance_f, prefs_f
 ```ruby
 require "async"
 
-Async do |task|
+profile, balance, prefs = Async do |task|   # Async {} returns the task; .wait yields the block's value
   profile_t = task.async { ProfileClient.fetch(user.id) }
   balance_t = task.async { BillingClient.fetch(user.id) }
   prefs_t   = task.async { PrefsClient.fetch(user.id) }
   [profile_t.wait, balance_t.wait, prefs_t.wait]
-end
+end.wait
 ```
 
 ### CPU-Bound Work
@@ -123,7 +124,7 @@ Without `with_connection`, the connection stays checked out for the thread's lif
 
 ### Fiber Scheduler (Ruby 3.0+)
 
-Per-process opt-in:
+Per-thread opt-in (`Fiber.set_scheduler` binds to the calling thread; every Puma thread would need its own):
 
 ```ruby
 Fiber.set_scheduler(MyScheduler.new)
@@ -134,18 +135,20 @@ Use the `Async` gem rather than hand-rolling a scheduler. Falcon (`gem "falcon"`
 
 ## Output Format
 
-One block per workload. A review spanning several artifacts folds them into the one workload they serve and carries the rest as numbered findings; a review ruling on competing proposals emits one block for the recommended design and gives every rejected proposal a numbered finding with its verdict. In review mode, precede the blocks with numbered findings citing the violated rule; the block describes the corrected design, so target state lives there.
+One block per workload. A review spanning several artifacts folds them into the one workload they serve and carries the rest as numbered findings; a review ruling on proposals (competing or unrelated) emits one block per accepted design and gives every proposal a numbered finding with a verdict of `Accepted`, `Accepted with changes` or `Rejected`. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. The block describes the corrected design, so target state lives there.
 
 ```
-Workload: <I/O-bound | CPU-bound | mixed>
+Workload: <I/O-bound | CPU-bound | mixed (a CPU phase and an I/O phase in one unit of work)>
 
 Primitive: <load_async | Concurrent::Promises | async gem / async-http | Ractor | process forks (Parallel) | shell-out (open3) | Sidekiq fan-out | none - stays serial (say why) - list each one used, in kickoff order, and name any synchronous step interleaved between them>
 
-Server: <Puma threads N | Falcon fibers | Sidekiq>
+Server: <Puma threads N | Falcon fibers | Sidekiq processes x concurrency>
 
-Connection budget: <queries x connections, vs pool size>
+Connection budget: <per request: 1 + min(async queries, executor concurrency) + spawned AR threads, x Puma threads, vs pool | Sidekiq: concurrency x processes vs pool, reads inside with_connection and released before a CPU phase | HTTP-only fan-out: none beyond the caller's | n/a - DB work in the parent only (Ractor, forks, open3) | leak: connections never returned (with_connection missing)>
 
-Risks: <GVL serialization | pool exhaustion | executor pool unbounded | shared mutable state race | write race on one row | durability loss | Ractor sharing | scheduler gaps - list all that apply>
+Join: <all-or-nothing (zip.value!) | per-source degrade (value! each, rescued) | Thread#join (re-raises the first failure) | task.wait per child (async) | ractors.map(&:value) | n/a>
+
+Risks: <GVL serialization | pool exhaustion | fiber-shared connection (isolation_level :thread) | executor pool unbounded | load_async inert (executor nil) | silent nil from value / value! on timeout | partner rate limit exceeded across pods | no client timeout (`rails-http-client-patterns`) | shared mutable state race | write race on one row | durability loss | Ractor sharing | scheduler gaps - list all that apply>
 ```
 
 ## Avoid

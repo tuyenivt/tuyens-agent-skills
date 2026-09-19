@@ -22,10 +22,11 @@ user-invocable: false
 - Pick one idiom (modulo / SKIP LOCKED / shards table) - mixing creates ambiguous row ownership
 - Idempotency at shard granularity (not relying on Sidekiq retries)
 - Rake fan-out takes a leader lock first (`rails-rake-task-patterns`)
-- `push_bulk` in batches of ~1,000 - >5,000 risks Redis client buffer; <100 wastes round-trips
+- `push_bulk` in slices of ~1,000 - it pipelines its own Redis batches (`batch_size`, default 1,000), so the cost of an oversized call is the argument array you materialise; <100 wastes round-trips
 - `SKIP LOCKED` claims are covered by one composite index over the filter plus the order key (`(state, id)`, `(name, state, id)`) - an uncovered scan locks and skips far more rows than it claims
 - Persist cursor / shard state so SIGTERM doesn't lose progress
 - Cap parallelism at the slowest shared resource (DB connections, replication lag, third-party rate limit)
+- Bulk write paths bypass per-row callbacks (`update_all`) or budget for them - `recompute_total!` on a model with `after_commit` jobs fans out N side effects
 
 ## Patterns
 
@@ -37,8 +38,8 @@ user-invocable: false
 | Stream of new work (queue-shaped)               | `SKIP LOCKED`                      | Drains naturally; tolerates crashes       |
 | One-shot backfill of >100M rows, observable     | Shards table                       | Resumable, observable, throttle per-shard |
 | Skewed data (60% in last 18 months)             | Shards table with equal-row ranges | Equal id-*width* ranges would skew        |
-| Per-tenant batches                              | Modulo or shards on `tenant_id`    | Natural sharding key                      |
-| Ordered per key, parallel across keys (outbox)  | `SKIP LOCKED` claims the KEY       | Claim a per-key lease row (table unique on key, rows created with the first item); drain that key's items in `ORDER BY id`, stop on first failure (head-of-line blocking is the ordering guarantee); keys run parallel. Heartbeat the lease's `claimed_at` between items so the reaper frees only dead workers - reaping a live lease lets a second worker break ordering |
+| Per-tenant batches                              | Shards table keyed on `tenant_id`  | Natural sharding key; modulo on it skews (below) |
+| Ordered per key, parallel across keys (outbox)  | `SKIP LOCKED` claims the KEY       | Claim a per-key lease row (table unique on key, rows created with the first item); drain that key's items in `ORDER BY id`, stop on first failure (head-of-line blocking is the ordering guarantee); a head item past its attempt budget is marked failed and skipped, or the key stays wedged - decide per payload type; each delivery is bounded by a client timeout (`rails-http-client-patterns`); keys run parallel. Heartbeat the lease's `claimed_at` between items so the reaper frees only dead workers - reaping a live lease lets a second worker break ordering |
 | Strict global ordering                          | Single-threaded consumer           | Row-level `SKIP LOCKED` won't preserve order. No Sidekiq Pro/Enterprise feature provides ordering - it takes a dedicated process at concurrency 1 (Sidekiq 7: a Capsule with `concurrency = 1`), or an ordered log outside Sidekiq |
 
 ### (a) Static Modulo Partitioning
@@ -99,7 +100,7 @@ WorkItem.where(state: "claimed").where("claimed_at < ?", 10.minutes.ago)
         .update_all(state: "ready", claimed_at: nil)   # cron, or head of each drain loop
 ```
 
-Size the staleness threshold above worst-case **whole-claim** time, not per-item: the claim above stamps one `claimed_at` for all `BATCH` rows and then processes them serially, so the bound is `BATCH x per-item` (plus the heartbeat interval, when leases heartbeat `claimed_at`). Size it per-item and the reaper resets the unprocessed tail of a live batch, which a second worker then redoes. The alternatives are re-stamping `claimed_at` per item, or claiming batches small enough that whole-batch time stays under the threshold. A threshold shorter than a slow-but-live worker reaps it mid-work, and on the ordered per-key shape that breaks ordering.
+Size the staleness threshold above the worst-case gap between `claimed_at` writes: the claim above stamps one `claimed_at` for all `BATCH` rows and then processes them serially, so without a heartbeat the bound is whole-claim time, `BATCH x per-item`; with a per-batch heartbeat it is one batch plus any throttle sleep inside the loop (heartbeat after the sleep, not before). Size it per-item and the reaper resets the unprocessed tail of a live batch, which a second worker then redoes. The alternatives are re-stamping `claimed_at` per item, or claiming batches small enough that whole-batch time stays under the threshold. A threshold shorter than a slow-but-live worker reaps it mid-work, and on the ordered per-key shape that breaks ordering.
 
 ### (c) Shards Table
 
@@ -122,7 +123,7 @@ add_index :backfill_shards, [:name, :state, :id]     # covers the SKIP LOCKED cl
 add_index :backfill_shards, [:name, :start_id], unique: true   # makes re-seeding safe
 ```
 
-Seed with equal-row ranges (not equal-id) when data is skewed. The boundary scan below walks the whole table - run it against a read replica (or off-hours); it's index-only and read-only, but not free at 100M+ rows. Seed under the same leader lock the fan-out uses, and bail if shards already exist: a re-run after a partial seed otherwise lays down a second, overlapping set of ranges and every row is processed twice.
+Seed with equal-row ranges (not equal-id) when data is skewed. The boundary scan below walks the whole table - run it against a read replica (or off-hours); it's index-only and read-only, but not free at 100M+ rows. Seed under the same leader lock the fan-out uses and resume from the highest committed `end_id`: a re-run after a partial seed otherwise lays down a second, overlapping set of ranges and every row is processed twice - the `[:name, :start_id]` unique index is the backstop.
 
 ```ruby
 def self.create_order_shards(name:, shard_size: 100_000)
@@ -149,9 +150,9 @@ class BackfillShardWorker
 
   def perform(shard_name)
     loop do
-      reap_stale(shard_name)                 # every pass, not just at start: a worker that
-                                             # dies after the last claim is only recovered
-                                             # by a reaper that keeps running (or by cron)
+      reap_stale(shard_name)                 # every pass, so a shard reaped mid-run is re-claimed;
+                                             # a worker that dies after the last claim is
+                                             # recovered by cron or the next run
       shard = ApplicationRecord.transaction(isolation: :read_committed) do
         s = BackfillShard.where(name: shard_name, state: "pending")
                          .order(:id).limit(1).lock("FOR UPDATE SKIP LOCKED").first
@@ -167,10 +168,11 @@ class BackfillShardWorker
   private
 
   # A worker lost to OOM / SIGKILL leaves its shard "claimed" forever; nothing else selects it.
+  # Reaping counts as a retry, or a poison shard that kills every worker cycles forever.
   def reap_stale(shard_name)
-    BackfillShard.where(name: shard_name, state: "claimed")
-                 .where("claimed_at < ?", STALE_CLAIM.ago)
-                 .update_all(state: "pending", claimed_at: nil)
+    stale = BackfillShard.where(name: shard_name, state: "claimed").where("claimed_at < ?", STALE_CLAIM.ago)
+    stale.where("retries >= ?", MAX_SHARD_RETRIES).update_all(state: "failed", last_error: "reaped past retry budget")
+    stale.update_all("state = 'pending', claimed_at = NULL, retries = retries + 1")
   end
 
   def process_shard(shard)
@@ -178,13 +180,17 @@ class BackfillShardWorker
     Order.where(id: (cursor + 1)..shard.end_id).in_batches(of: 1_000) do |batch|
       last_id = batch.last.id
       stamp   = Time.current
-      ApplicationRecord.transaction do
+      owned = ApplicationRecord.transaction do
         batch.each(&:recompute_total!)
-        # Heartbeat with the cursor: without it STALE_CLAIM would have to exceed
-        # whole-shard time, and any overrun lets the reaper hand a live shard to a
-        # second worker. Same txn, so commit and progress advance together.
-        shard.update_columns(cursor: last_id, claimed_at: stamp)
+        # Heartbeat with the cursor, conditional on still owning the lease: without it
+        # STALE_CLAIM would have to exceed whole-shard time, and a shard the reaper handed
+        # to another worker must never be overwritten. Same txn, so commit and progress
+        # advance together - and 0 rows rolls the batch back with it.
+        BackfillShard.where(id: shard.id, state: "claimed", claimed_at: shard.claimed_at)
+                     .update_all(cursor: last_id, claimed_at: stamp).nonzero? or raise ActiveRecord::Rollback
       end
+      return unless owned   # lease lost: stop; the new owner resumes from the cursor
+      shard.claimed_at = stamp
     end
     # Conditional: a worker whose claim was reaped must not mark a shard someone else owns.
     BackfillShard.where(id: shard.id, state: "claimed", claimed_at: shard.claimed_at)
@@ -193,7 +199,8 @@ class BackfillShardWorker
     # back to "pending" keeps the shard claimable on retry (cursor makes the re-run resume);
     # "failed" is terminal - only after the budget is spent
     state = shard.retries + 1 < MAX_SHARD_RETRIES ? "pending" : "failed"
-    shard.update!(state: state, retries: shard.retries + 1, last_error: e.message)
+    BackfillShard.where(id: shard.id, state: "claimed", claimed_at: shard.claimed_at)   # same ownership guard
+                 .update_all(state: state, retries: shard.retries + 1, last_error: e.message)
     raise
   end
 end
@@ -208,6 +215,7 @@ Observability: `SELECT state, COUNT(*) FROM backfill_shards GROUP BY state`. Thr
 - **Modulo:** rake (leader lock via `with_advisory_lock`, `timeout_seconds: 0`; on lock-held, skip cleanly with `next` - not `abort`, which exits non-zero and trips cron alerting on a normal skip) -> `push_bulk` N `(i, N)` job args. See `rails-rake-task-patterns`.
 - **Shards table:** rake seeds the table under the same leader lock (`with_advisory_lock`, `timeout_seconds: 0`), then enqueues `BackfillShardWorker.perform_async(shard_name)` N times.
 - **`SKIP LOCKED` draining:** Sidekiq cron enqueues `DrainQueueJob` N times - workers self-coordinate, no rake leader needed.
+- **Per-key lease (outbox):** the insert path enqueues one `DrainKeyJob(key)` per new item (deduped with `until_executed` or a SET NX fence); a cron sweep re-enqueues keys that have unsent items and no live lease.
 
 ### `push_bulk` Sizing
 
@@ -247,34 +255,40 @@ Without a cap, N workers driving the DB at full tilt produce replication-lag spi
 - Replication-lag-aware throttle: in the worker's batch loop, poll lag (`SHOW REPLICA STATUS` / CloudWatch `ReplicaLag` / `pg_stat_replication.replay_lag`) every N batches; sleep until below ~half your alarm threshold
 - Token bucket via Redis for rate-limited downstream services
 
-Deriving worker count from a deadline: required rows/s = volume / deadline; run ONE worker on one shard to measure actual rows/s; N = ceil(required / measured) with 2-4x headroom for lag pauses and deploys - then verify lag stays under threshold as you step N up.
+Deriving worker count from a deadline: required rows/s = volume / deadline; run ONE worker on one shard to measure actual rows/s; N = ceil(required / measured) x 2-4 headroom for lag pauses and deploys - then verify lag stays under threshold as you step N up. An event-driven queue with no volume has no deadline math: size N to the claimable keys and the downstream timeout.
 
 ### Retry Budgets
 
-Sidekiq default 25 retries is too many for systemic failure. Use `sidekiq_options retry: 5`, route exhausted to dead set with alerting. **Sidekiq retries are not resumability** - design for shard-level retry instead (the shards table's `retries` column). For non-idempotent side effects per item (email, charges), a crash between send and mark forces a choice - make it explicitly: flip state *before* the side effect = at-most-once (a crash loses the send; acceptable for emails), or flip after with an idempotency key the receiver dedupes on = at-least-once (required for charges/webhooks). "Send then mark" with retries and no key duplicates sends.
+Sidekiq default 25 retries is too many for systemic failure. Use `sidekiq_options retry: 5`, route exhausted to dead set with alerting. **Sidekiq retries are not resumability** - design for shard-level retry instead (the shards table's `retries` column). For non-idempotent side effects per item (email, charges), a crash between send and mark forces a choice - make it explicitly: flip state *before* the side effect = at-most-once (a crash loses the send; acceptable for emails), or flip after with an idempotency key the receiver dedupes on = at-least-once (required for charges/webhooks). "Send then mark" with retries and no key duplicates sends. Flipping state and sending in one transaction is the send-then-mark case in disguise - a rollback after the send re-sends - so the flip's commit and the send are never one atomic step.
 
 ## Output Format
 
-One block per workload split. In review mode, precede the blocks with numbered findings citing the violated rule; the block describes the corrected design - that is where target state lives. `Coordination`, `Idempotency` and `Throttling` each list every mechanism that applies, joined with ` + ` (the shards-table shape uses a leader lock for seeding plus a row lock per claim). `Parallelism` names every binding cap, tightest first.
+One block per workload split. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. The block describes the corrected design - that is where target state lives. A non-compliant field is written as the observed value plus ` - GAP`; the target lives in the findings and the rest of the block. A scaffolded but unwired idiom (a shards table no job reads) is a finding against Rule 1; a shards table missing the pattern's columns or indexes is a finding naming each one. `Coordination`, `Idempotency` and `Throttling` each list every mechanism that applies, joined with ` + ` (the shards-table shape uses a leader lock for seeding plus a row lock per claim). `Parallelism` names every binding cap, tightest first.
 
 ```
-Workload: {static backfill | recurring bounded run | streaming queue | per-tenant batch | one-shot migration}
+Workload: {static backfill | one-shot migration (schema-driven) | recurring bounded run | streaming queue | ordered per key (outbox) | strict global order | per-tenant batch}
 
-Volume: {row count, expected runtime}
+Volume: {row count, expected runtime | unknown - measure one worker on one shard or one key}
 
-Pattern: {modulo | id-range | SKIP LOCKED cursor (row or per-key lease) | shards table | direct push_bulk fan-out | single-threaded consumer (strict ordering)}
+Pattern: {modulo | id-range | SKIP LOCKED row claim | per-key lease (SKIP LOCKED or CAS) | shards table | direct push_bulk fan-out | single-threaded consumer (strict ordering)}
 
-Parallelism: {N workers, capped by {DB connections | replication lag | rate limit | memory} - list all}
+Parallelism: {N workers, capped by {DB connections | replication lag | rate limit | memory | claimable keys | downstream timeout | ordering (N = 1)} - list all}
 
-Coordination: {leader lock for fan-out | row lock per claim | none}
+Sizing: {shard count x shard size, N workers -> projected completion vs deadline | n/a}
+
+Coordination: {leader lock for fan-out | leader lock for seeding | row lock per claim | enqueue dedupe fence (until_executed / SET NX) | none - list all}
+
+Claim isolation: {MySQL - per-transaction read_committed | PostgreSQL - default RC, no parameter | n/a - single-row CAS update or no row claim}
 
 Cursor / state: {where progress is persisted}
+
+Reaper: {staleness threshold N (>= the gap between claimed_at writes: one batch plus throttle with a heartbeat, whole-claim time without), runs at loop head or cron, alert on claimed rows older than N | n/a - no claim | none - GAP}
 
 Idempotency: {state column | cursor | shard table | natural | idempotency key (receiver dedupes) | none - GAP}
 
 Delivery semantics: {at-most-once - state flipped before the side effect | at-least-once - idempotency key the receiver dedupes on | n/a - no external side effect}
 
-Retry budget: {Sidekiq retries: N, dead-set alerting: yes/no | shard-level: max N then terminal "failed" | both, stated separately | target job outside reviewed scope - not assessed}
+Retry budget: {Sidekiq retries: N, dead-set alerting: yes/no | shard-level: max N then terminal "failed" | Sidekiq retries: 0, an attempts column owns backoff and the terminal state | both, stated separately | none - GAP | target job outside reviewed scope - not assessed}
 
 Throttling: {none | per-batch sleep | replication-lag check | worker concurrency cap | Redis token bucket}
 ```
@@ -287,7 +301,7 @@ Throttling: {none | per-batch sleep | replication-lag check | worker concurrency
 - A claim shape with no reaper - one SIGKILL strands those rows permanently
 - Seeding a shards table without an idempotency guard - a re-run overlaps ranges and doubles every row
 - Cron fan-out without a leader lock - two triggers double-enqueue
-- `push_bulk` calls of >5,000 args
+- `push_bulk` calls that materialise the whole id set in one array
 - Missing cursor persistence - SIGTERM mid-shard loses progress
 - Running backfill at full DB throughput - replication lag spikes
 - Optimistic locking on the claim path - `StaleObjectError` storms

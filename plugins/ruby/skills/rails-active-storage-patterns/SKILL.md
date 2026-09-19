@@ -7,7 +7,7 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first to determine the storage service (S3/GCS/Azure/disk) and image processor (libvips/ImageMagick).
+> Load `Use skill: stack-detect` first. The storage service and image processor are not stack-detect fields - read `config/storage.yml` and `config.active_storage.variant_processor` (`config/application.rb`), unless declared under `## Tech Stack`.
 
 ## When to Use
 
@@ -27,7 +27,7 @@ user-invocable: false
 - libvips is already the processor under `load_defaults 7.0`+ (`variant_processor = :vips`) - an app that never sets it is compliant, not a GAP. Only flag an explicit `:mini_magick`, or a missing `libvips` / `image_processing` install
 - Variants are lazy by default; warm them in a background job for high-traffic paths
 - Signed URLs only (`rails_blob_url` / `url_for`); never expose raw blob keys. Note the two knobs differ: `ActiveStorage.urls_expire_in` defaults to `nil`, so `rails_blob_url` signed ids never expire until you set it, and it is app-wide; the 5-minute default belongs to `service_urls_expire_in` on the redirect target. For a per-viewer window use `blob.url(expires_in: 5.minutes)` at the call site
-- One service per environment in `config/storage.yml`; reference by symbol in `config.active_storage.service`; never hardcode bucket names
+- One service per environment in `config/storage.yml`; reference by symbol in `config.active_storage.service`; never hardcode bucket names or keys (credentials via `credentials.dig`)
 
 ## Patterns
 
@@ -49,7 +49,7 @@ amazon:
 <%= form.file_field :avatar, direct_upload: true %>
 ```
 
-The form POSTs metadata to `/rails/active_storage/direct_uploads`, receives a signed PUT URL, uploads directly to S3, then submits with the resulting `signed_id`. Puma sees only the small metadata roundtrip.
+The form POSTs metadata to `/rails/active_storage/direct_uploads`, receives a signed PUT URL, uploads directly to S3, then submits with the resulting `signed_id`. Puma sees only the small metadata roundtrip. API-only apps drive the same endpoint from the client (`DirectUpload` in `@rails/activestorage`) and submit the `signed_id` in the JSON body.
 
 Bucket CORS for browser PUT:
 
@@ -118,7 +118,10 @@ class ProcessUploadJob
   def perform(blob_signed_id, record_global_id)
     record = GlobalID::Locator.locate(record_global_id)
     blob   = ActiveStorage::Blob.find_signed!(blob_signed_id)
-    record.avatar.attach(blob)
+    unless record.avatar.attach(blob)   # nil on a validation rejection - never silent
+      blob.purge_later
+      raise ActiveRecord::RecordInvalid, record
+    end
     record.avatar.variant(:thumb).processed
     record.avatar.variant(:medium).processed
   end
@@ -174,32 +177,32 @@ No model or dual-read changes are needed beyond those two.
 
 ## Output Format
 
-One block per attachment declaration - a model with both a `has_one_attached` and a `has_many_attached` emits two. In review mode, precede the blocks with numbered findings citing the violated rule; the block describes the corrected attachment, so target state lives there. Mark non-compliant fields `- GAP`, and any field whose evidence is outside the reviewed files `not in evidence` plus the file to read.
+One block per attachment declaration - a model with both a `has_one_attached` and a `has_many_attached` emits two. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. The block describes the corrected attachment, so target state lives there. Mark non-compliant fields `- GAP`, and any field whose evidence is outside the reviewed files `not in evidence` plus the file to read. A blob served from an unscoped lookup (`Document.find(params[:id])` with no ownership check) is an `Access` GAP here and its authorization fix belongs to `rails-security-patterns`; a hardcoded key in `storage.yml` is a numbered finding with no block. A migration plan reviews the current declarations the same way, then emits the target blocks.
 
 ```
 Attachment: <model>.<has_one_attached | has_many_attached :name>
 
-Service: <amazon | google | azure | disk - reason>
+Service: <amazon | google | azure | disk - reason | mirror (service move in progress)>
 
 Direct upload: <Yes (>1 MB expected) | No (small files only) | not in evidence>
 
 Validation: <content_type allowlist | size limit | magic-byte sniff | post-attach valid? + purge - list all that apply>
 
-Variants: <list with sizes | none | conditional on blob.image? (mixed-type attachment)>
+Variants: <list with sizes | none | conditional on blob.image?, previews guarded by previewable? (mixed-type attachment; name the system dependency)>
 
-Variant warming: <lazy | background job | not in evidence>
+Variant warming: <lazy | background job | n/a - no variants | not in evidence>
 
-Processor: <vips (default, 7.0+) | mini_magick - reason | not configured - compliant>
+Processor: <vips (default, 7.0+) | mini_magick - reason | not configured - compliant (load_defaults 7.0+) | vips configured, libvips or image_processing missing - GAP | pre-7.0 defaults with no backend installed - GAP | not in evidence>
 
-Purge: <purge_later (default) | purge method in a rake/admin script | dependent: false - GAP>
+Purge: <purge_later (default) | purge method in a rake/admin script | dependent: false - GAP | dependent: :purge or any other value - GAP (Rails honours none of them; the blob orphans)>
 
-Orphan cleanup: <scheduled rake | none - GAP when direct upload is Yes | n/a (no direct upload)>
+Orphan cleanup: <scheduled rake | none - GAP when direct upload is Yes, dependent: false exists, or a backfill creates blobs | n/a (none of those) | not in evidence>
 
-Retention: <business rule + the state-transition timestamp it keys on + scheduled job | indefinite (stated) | none (GAP for regulated data)>
+Retention: <business rule + the state-transition timestamp it keys on + scheduled job | indefinite (stated) | none (GAP for regulated data - anything a law or contract obliges you to keep or delete: KYC, financial, medical)>
 
-Access: <signed URL default | controller-gated + per-call expiry (any private file, staff or customer) | proxy mode behind CDN (high-traffic, authorization still at the controller)>
+Access: <signed URL default | controller-gated + per-call expiry (any private file, staff or customer; quarantined files gated until the sniff passes) | proxy mode behind CDN (high-traffic, authorization still at the controller) | not in evidence>
 
-Migration: <none | from <uploader> - step N of 7 | service move via MirrorService>
+Migration: <none | from <uploader> - step N of 7 (the next step to run) | service move via MirrorService>
 ```
 
 Previews are warmed in the same job as variants, so `Variant warming` has no separate preview value. When the retention rule keys on a state transition the model does not record, say so - the timestamp column is part of the deliverable.

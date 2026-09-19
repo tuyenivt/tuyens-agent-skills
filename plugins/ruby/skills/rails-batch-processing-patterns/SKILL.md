@@ -21,10 +21,11 @@ user-invocable: false
 
 - One transaction per chunk - never one over the whole run, never one per row
 - Idempotency at chunk granularity - retries skip completed chunks
-- No HTTP / Redis / S3 inside an open chunk transaction
+- No HTTP / Redis / S3 / job enqueue inside an open chunk transaction
+- Bulk write paths bypass per-row callbacks (`update_all` / `update_columns` / `insert_all`) or budget for them - `after_commit` jobs, `touch:` and broadcasts turn N rows into N side effects
 - `find_each` yields records (per-row Ruby work); `in_batches` yields relations (bulk SQL per chunk, or an explicit transaction around per-row work); `pluck(:id)` cursors when full AR objects aren't needed
 - Size chunks by row weight, not row count alone
-- Cap concurrency on memory-heavy queues (`concurrency: 25` x 200 MB jobs = 5 GB peak)
+- Cap concurrency on memory-heavy queues (`concurrency: 25` x 200 MB jobs = 5 GB peak) with a dedicated process or capsule - a queue weight caps nothing - and never above the process's DB `pool` (`rails-connection-pool-sizing`)
 - jemalloc or `MALLOC_ARENA_MAX=2` for any long-running batch process
 - `Sidekiq::WorkerKiller` at 70-80% of container memory limit
 
@@ -82,17 +83,17 @@ Order.where(needs_recompute: true).in_batches(of: 1_000) do |batch|
   end
 end
 
-# Cursor in cache or column
-last_id = Integer(Rails.cache.read("backfill:orders:cursor") || 0)
-Order.where("id > ?", last_id).find_in_batches(batch_size: 1_000) do |batch|
+# Cursor in a durable row (Rails.cache evicts under Memcached / :memory_store and loses progress)
+checkpoint = Checkpoint.find_or_create_by!(name: "backfill:orders")
+Order.where("id > ?", checkpoint.last_id.to_i).find_in_batches(batch_size: 1_000) do |batch|
   ApplicationRecord.transaction { batch.each(&:recompute_total!) }
-  Rails.cache.write("backfill:orders:cursor", batch.last.id)
+  checkpoint.update!(last_id: batch.last.id)
 end
 ```
 
 For multi-day backfills with retry/observability needs, use a shards table - see `rails-work-splitter-patterns`.
 
-Per-chunk external side effects (POST a checksum, notify an API) get their own completion flag (`posted_at`) separate from the write's - restart then re-sends only un-posted chunks, never re-writes posted ones.
+Per-chunk external side effects (POST a checksum, notify an API) get their own completion flag (`posted_at`) separate from the write's - restart then re-sends only un-posted chunks, never re-writes posted ones. A crash between the partner's 2xx and the flag write re-sends that one chunk, so the call carries an idempotency key (the chunk id).
 
 ### Replication-Lag Throttle
 
@@ -129,7 +130,7 @@ Order.in_batches(of: 5_000) do |relation|
 end
 ```
 
-**4. `Sidekiq::WorkerKiller`** - restart before the kernel does. A backstop, not a fix: it quiets then TERMs the process, so in-flight jobs are interrupted (idempotency/state columns make the restart resume, not redo). Rake processes have no equivalent - they rely on chunking + cursor resume. Derive the queue's concurrency cap the same way: `cap = (pod_limit x 0.7) / per_job_peak_rss`.
+**4. `Sidekiq::WorkerKiller`** - restart before the kernel does. A backstop, not a fix: it quiets the process (TSTP), waits `grace_time` (default 900s) for in-flight jobs to finish, then TERMs - a job longer than the grace is interrupted, so idempotency/state columns still make the restart resume, not redo. Deploy-time interruption (`terminationGracePeriodSeconds` vs Sidekiq `timeout`) is `rails-sidekiq-patterns`' rule. Rake processes have no equivalent - they rely on chunking + cursor resume. Derive the queue's concurrency cap the same way: `cap = (pod_limit x 0.7) / per_job_peak_rss`.
 
 ```ruby
 Sidekiq.configure_server do |config|
@@ -147,7 +148,7 @@ Order.in_batches(of: 1_000).each_with_index do |batch, i|
   if (i % 50).zero?
     ActiveRecord::Base.connection.clear_query_cache
     GC.start(full_mark: true, immediate_sweep: true)
-    GC.compact if GC.respond_to?(:compact)
+    GC.compact
   end
 end
 ```
@@ -159,7 +160,7 @@ The same streaming discipline applies to file artifacts (CSV, PDF, exports): wri
 ```ruby
 # Bad - peaks at full batch in memory before write
 batch = Order.where(needs_export: true).limit(10_000).to_a
-ExportRow.insert_all(batch.map { |o| ExportRow.from(o).to_h })
+ExportRow.insert_all(batch.map { |o| ExportRow.row_for(o) })
 
 # Good - stream batch -> derived -> write, bounded by inner chunk
 Order.where(needs_export: true).in_batches(of: 1_000) do |relation|
@@ -198,30 +199,30 @@ Tools: `get_process_mem`, `memory_profiler` (allocation reports), `derailed_benc
 
 ## Output Format
 
-One block per batch code path - a review covering a job and two rake tasks emits three. In review or diagnosis mode, precede the blocks with numbered findings citing the violated rule or shape (A/B/C); the blocks describe the corrected paths, so target state lives there. Any field may carry `- GAP` with the observed non-compliant value (`Transaction shape: single outer - GAP`). `Memory mitigations`, `Throttle` and `Telemetry` list every applied value, joined with ` + `.
+One block per batch code path - a review covering a job and two rake tasks emits three. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Findings cite the shape letter (A/B/C) where one applies; in diagnosis mode they are ordered by leverage, the first fix first. A finding whose evidence is infrastructure (Dockerfile, a manifest, `sidekiq.yml`) is a numbered finding with no block. A non-compliant field is written as the observed value plus ` - GAP`; the target lives in the findings and the rest of the block. `Memory mitigations`, `Throttle` and `Telemetry` list every applied value, joined with ` + `; `Idempotency` lists one value per phase when the write and an external call differ.
 
 ```
 Workload: {backfill | recompute | export | migration | fan-out dispatch (enqueues work, computes nothing)}
 
-Volume: {rows per invocation; state the aggregate separately when the code is scoped per tenant or date range}
+Volume: {rows per invocation, or jobs x rows per job; state the aggregate separately when the code is scoped per tenant or date range}
 
-Database: {MySQL | PostgreSQL}
+Database: {MySQL | MariaDB (MySQL rules) | PostgreSQL | unknown - read config/database.yml}
 
-Chunk size: {N} (rationale: {OLTP contention | cold table | large payload | per-row external calls})
+Chunk size: {N} (rationale: {OLTP contention | cold table | large payload | per-row external calls}) | unchunked - GAP
 
-Transaction shape: {chunked | per-statement | no transaction construct - each write auto-commits (GAP for multi-statement writes) | none - compliant for read-only chunks}
+Transaction shape: {chunked | per-statement (one bulk SQL statement per chunk) | single outer - GAP (Shape A) | per-row - GAP (Shape B, including per-row save! auto-commits) | one unchunked transaction around the whole job - GAP | no transaction construct - each write auto-commits (GAP for multi-statement writes, Shape C) | none - compliant for read-only chunks}
 
 Idempotency: {state column | cursor | progress table | natural | none - GAP for any restartable run}
 
-Cursor store: {durable table | Rails.cache - GAP if the store is eviction-prone (Memcached, :memory_store)}
+Cursor store: {durable table | Rails.cache - GAP if the store is eviction-prone (Memcached, :memory_store) | n/a - state column, no cursor}
 
-External side effects: {none | per-chunk call with completion flag | post-commit only | whole-job (non-chunked) | per-row unbatched - GAP}
+External side effects: {none | per-chunk call with completion flag | post-commit only | whole-job (non-chunked) | per-row unbatched - GAP | inside the open chunk transaction - GAP}
 
-Throttle: {none | per-chunk sleep | replica-lag poll @ {threshold}s}
+Throttle: {none | per-chunk sleep | replica-lag poll @ {threshold}s (~half the paging alarm)}
 
-Memory mitigations: {jemalloc | MALLOC_ARENA_MAX | pluck cursor | WorkerKiller@N MB | periodic GC.start/compact + clear_query_cache | streamed artifact to tempfile/IO | none (short run, bounded RSS)}
+Memory mitigations: {drop eager-load / narrow columns | jemalloc | MALLOC_ARENA_MAX | pluck cursor | WorkerKiller@N MB | periodic GC.start/compact + clear_query_cache | streamed artifact to tempfile/IO | none (short run, bounded RSS)}
 
-Concurrency cap: {N - the process-wide Sidekiq concurrency, narrowed by this queue's weight if it shares a pool, or the dedicated process/capsule that isolates it}
+Concurrency cap: {N - the Sidekiq concurrency of the process or capsule that runs this queue (a queue weight does not cap it) | n/a - rake process, one connection}
 
 Telemetry: {RSS log every N batches | statsd | Prometheus | none}
 ```

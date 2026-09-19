@@ -24,6 +24,8 @@ user-invocable: false
 - No HTTP / S3 / Redis inside `Model.transaction` - holds row locks for the network round-trip
 - Rescue known errors; let unknown propagate to Sidekiq retry
 - Cap `perform` at ~5 min; longer jobs split or fan out
+- `concurrency` never exceeds the process's DB `pool` (`RAILS_MAX_THREADS`) - `rails-connection-pool-sizing`
+- Bulk jobs bypass per-row callbacks (`update_all`) or budget for them - an `after_commit` enqueue per row turns one job into N
 
 ## Patterns
 
@@ -33,11 +35,11 @@ Pick by requirement; combine when requirements combine (list every mechanism use
 
 | Requirement                                            | Mechanism                                          |
 | ------------------------------------------------------ | -------------------------------------------------- |
-| Re-run safety (always required)                         | State check in `perform` (DB column, S3 key, etc.) |
+| Re-run safety (always required)                         | State check in `perform` (DB column, S3 key, etc.); a naturally idempotent write (recompute from source, upsert on a key) is its own state check |
 | Duplicate enqueues (webhook retries, after_commit bulk) | `sidekiq-unique-jobs` `lock: :until_executed`      |
 | Mutual exclusion only (dups allowed, no overlap)        | `lock: :while_executing`                           |
 | Both dedup and mutual exclusion                         | `lock: :until_and_while_executing`                 |
-| No gem available                                        | Redis `SET NX` fence                               |
+| No gem available                                        | Redis `SET NX` fence (exclusion; a lock manager already in the Gemfile, `redlock`, counts) + state or monotonic check (dedup) |
 
 ```ruby
 def perform(order_id)
@@ -53,13 +55,19 @@ end
 For external side effects, also forward an idempotency key. For sources that deliver out of order (webhook retries), guard with a monotonic field: return early when the payload's `updated_at` <= the stored one.
 
 ```ruby
-sidekiq_options lock: :until_executed, on_conflict: :log,
+sidekiq_options lock: :until_executed, on_conflict: :log, lock_ttl: 1.hour.to_i,   # class body
                 lock_args_method: ->(args) { [args[0]] }
 
-Sidekiq.redis { |r| r.set("sync_customer:#{id}", "1", nx: true, ex: 60) } or return  # SET NX fence
+def perform(id)                                                                     # no gem: a Redis lease
+  acquired = Sidekiq.redis { |r| r.set("sync_customer:#{id}", "1", nx: true, ex: 60) }
+  return unless acquired
+  # ...
+ensure
+  Sidekiq.redis { |r| r.del("sync_customer:#{id}") } if acquired   # never release another worker's lease
+end
 ```
 
-Give every `until_executed` lock a `lock_ttl` - a worker killed without the graceful path (OOM, SIGKILL) orphans the lock, silently blocking all future enqueues for those args until it expires. Size the TTL above worst-case runtime plus retry window.
+Give every `until_executed` lock a `lock_ttl` - a worker killed without the graceful path (OOM, SIGKILL) orphans the lock, blocking enqueues for those args until the gem's reaper (default every 10 min) or the TTL clears it. Size the TTL above worst-case runtime plus retry window. For mutual exclusion under load use `while_executing` with `on_conflict: { client: :log, server: :reschedule }` - the server strategy re-enqueues without touching the retry counter - rather than a hand-rolled rescue-and-`perform_in`.
 
 ### Post-Commit Dispatch
 
@@ -75,7 +83,7 @@ ActiveRecord::Base.transaction { order.update!(status: :processing) }
 ShipmentNotificationJob.perform_async(order.id)
 ```
 
-When the service runs inside a caller's transaction, "after the local block" still fires before the outer commit. Use the `after_commit_everywhere` gem - whose method is `after_commit`, not the gem's own name: `include AfterCommitEverywhere` then `after_commit { Job.perform_async(id) }`, or call `AfterCommitEverywhere.after_commit { ... }` directly. A model `after_commit` callback works too. Full transaction-boundary discipline: see `rails-transaction-patterns`.
+When the service runs inside a caller's transaction, "after the local block" still fires before the outer commit. Use `ActiveRecord.after_all_transactions_commit { Job.perform_async(id) }` (Rails 7.2+), or the `after_commit_everywhere` gem - whose method is `after_commit`, not the gem's own name: `include AfterCommitEverywhere` then `after_commit { Job.perform_async(id) }`, or call `AfterCommitEverywhere.after_commit { ... }` directly. A model `after_commit` callback works too. Full transaction-boundary discipline: see `rails-transaction-patterns`.
 
 ### Backend Choice
 
@@ -84,7 +92,7 @@ When the service runs inside a caller's transaction, "after the local block" sti
 | `Sidekiq::Job`   | Default. Direct access to `sidekiq_options`, `sidekiq_retry_in`         |
 | `ApplicationJob` | Backend portability, ActiveJob callbacks / `retry_on`, or interop with code that calls `perform_later` |
 
-Converting an existing `ApplicationJob` changes the enqueue API (`perform_later` -> `perform_async`) at every call site - flag it in review, don't silently convert. Inside a `Sidekiq::Job`, mailers use `deliver_now`; the job is already the async boundary.
+Converting an existing `ApplicationJob` changes the enqueue API (`perform_later` -> `perform_async`) at every call site - flag it in review, don't silently convert. `sidekiq_options` inside an `ApplicationJob` is honoured, but `retry:` there plus `retry_on` is two retry channels. Inside a `Sidekiq::Job`, mailers use `deliver_now`; the job is already the async boundary.
 
 For foreground ops / cron without retries, use a rake task (`rails-rake-task-patterns`).
 
@@ -125,9 +133,9 @@ class ImportDataJob
 end
 ```
 
-Pick one retry channel per error class: either let it propagate (counted, `sidekiq_retry_in` controls delay) or rescue-and-`perform_in` (re-enqueue resets the retry counter - unbounded; avoid unless intentional). Per-job `Retry-After` handling doesn't enforce a global rate budget - for hard provider limits, bound concurrency (dedicated low-concurrency queue/capsule or a rate limiter).
+Pick one retry channel per error class: either let it propagate (counted, `sidekiq_retry_in` controls delay) or rescue-and-`perform_in` (re-enqueue resets the retry counter - unbounded; avoid unless intentional). A `rescue` inside `perform` for a class also named in `retry_on` wins and silently disables that retry. Per-job `Retry-After` handling doesn't enforce a global rate budget - for hard provider limits, bound concurrency (dedicated low-concurrency queue/capsule) or share a Redis token bucket across processes (`rails-work-splitter-patterns`).
 
-Bare `rescue => e; logger.error(...)` swallows errors and blocks retry.
+Bare `rescue => e; logger.error(...)` swallows errors and blocks retry. `dead: true` (the default) parks exhausted jobs in the Dead set, which nothing watches by itself - alert on its size, or add a `sidekiq_retries_exhausted` block that reports and marks the record.
 
 ### Payload Discipline
 
@@ -167,26 +175,28 @@ ProcessOrderJob.perform_async(order.id, ProcessOrderJob::CURRENT_VERSION)
 
 ## Output Format
 
-One block per job class (fan-out designs emit one per job). In review or diagnosis mode, precede the blocks with numbered findings citing the violated rule; blocks describe the corrected jobs, so target state lives there. A violation of these rules that does not belong to any job class - an HTTP call inside a transaction, `deliver_later` onto a queue no process consumes - is a numbered finding with no block; say which file it lives in. A field whose evidence is outside the reviewed files is `not in evidence` plus the file to read.
+One block per job class (fan-out designs emit one per job). In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Blocks describe the corrected jobs, so target state lives there. A non-compliant field is written as the observed value plus ` - GAP`; the target lives in the findings and the rest of the block. A violation of these rules that does not belong to any job class - an HTTP call inside a transaction, `deliver_later` onto a queue no process consumes, a model callback enqueueing an AR object - is a numbered finding with no block; say which file it lives in and give the fix there. Any field whose evidence is outside the reviewed files is `not in evidence` plus the file to read.
 
 ```
 Job: {class name}
 
-Queue: {critical | default | mailers | low | custom - name the isolation mechanism: a dedicated process (`-q x -c N`) or, on Sidekiq 7+, a capsule; a queue weight alone does not cap concurrency}
+Queue: {critical | default | mailers | low | custom - name the isolation mechanism: a dedicated process (`-q x -c N`) or, on Sidekiq 7+, a capsule; a queue weight alone does not cap concurrency | shared weighted pool, no isolation - GAP when the job is heavy or rate-limited}
 
 Trigger: {what causes enqueue | not in evidence}
 
+Rate budget: {none | capsule or dedicated process at concurrency N | Redis token bucket N/min shared across processes | n/a - no hard quota}
+
 Arguments: {names and types - IDs only; flag any mismatch between `perform`'s arity and what the call site passes}
 
-Idempotency: {state check | sidekiq-unique-jobs lock: <until_executed | while_executing | until_and_while_executing> + lock_ttl | Redis SET NX fence | none - GAP on an at-least-once path - list all that apply}
+Idempotency: {state check | natural (recompute from source) | external idempotency key forwarded | monotonic guard (updated_at) | sidekiq-unique-jobs lock: <until_executed | while_executing | until_and_while_executing> + lock_ttl | Redis SET NX fence | none - GAP on an at-least-once path - list all that apply}
 
-Retry: {count and backoff strategy; name the single channel that owns it - `sidekiq_options retry:`, ActiveJob `retry_on`, or a bounded in-method loop, never two for one error class}
+Retry: {count and backoff; channel: `sidekiq_options retry:` + `sidekiq_retry_in` | ActiveJob `retry_on` | rescue-and-`perform_in` - GAP (resets the counter) | rescue swallows, nothing retries - GAP | two channels for one class - GAP}
 
-Dead-letter: {dead set + alerting | sidekiq_retries_exhausted hook | none - GAP}
+Dead-letter: {dead set + alerting on its size | sidekiq_retries_exhausted hook | dead set, no alerting - GAP | unreachable - perform swallows every error - GAP | none - GAP (retry: false or dead: false)}
 
-Shutdown safety: {checkpointed per chunk - re-run resumes | short enough to finish inside `timeout` | GAP - long, uncheckpointed work}
+Shutdown safety: {checkpointed per chunk - re-run resumes | short enough to finish inside `timeout` | GAP - long, uncheckpointed work | GAP - supervisor grace shorter than `timeout` (state both values)}
 
-Dispatch: {post-commit | after_commit_everywhere | model after_commit | cron/scheduler}
+Dispatch: {post-commit | after_all_transactions_commit / after_commit_everywhere | model after_commit | cron/scheduler | inside a transaction - GAP}
 ```
 
 ## Avoid

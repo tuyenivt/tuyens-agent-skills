@@ -19,7 +19,7 @@ user-invocable: false
 ## Rules
 
 - Always match the existing template engine; detect via `gem "slim"` / `gem "haml"`, else ERB
-- Default to escaped output (`=` in all three engines); `==` (Slim), `!=` (HAML), `<%==`/`raw`/`html_safe` (ERB) only on server-trusted strings
+- Default to escaped output (`=` in all three engines); `==` (Slim), `!=` (HAML), `<%==` (ERB), and `raw` / `html_safe` in any engine, only on server-trusted strings
 - User-supplied HTML passes through `sanitize` with an explicit tag/attribute allowlist - never `raw` / `html_safe`
 - Helpers are presentation-only: no DB queries, no service calls, no business logic
 - Partials take explicit locals; one concern per partial
@@ -107,7 +107,7 @@ Presenter vs component when both fit: formatting that belongs to one reusable pi
 - cache order.id do
   = render order
 
-/ Right - cache_key_with_version embeds updated_at
+/ Right - the record supplies cache_key + cache_version (updated_at), so an update invalidates
 - cache order do
   = render order
 ```
@@ -146,10 +146,15 @@ Caching and streams compose, but not because broadcasts skip the cache - they re
 
 The trailing `do` is required. Slim compiles a nested block under a bare `=` as its own block and still emits the closing `end`, so the placeholder never reaches the helper and the generated Ruby has an unbalanced `end` - a compile error inside the enclosing `each`.
 
-Frame vs stream: a frame with `src:` *pulls* on navigation/lazy-load; live in-place updates *push* via `turbo_stream_from` + a broadcast targeting `dom_id(record)`. Reuse the same partial for initial render and stream update so markup stays consistent (rows built as ViewComponents: have the broadcast render the component, or keep the row a partial both paths share):
+Frame vs stream: a frame with `src:` *pulls* on navigation/lazy-load; live in-place updates *push* via `turbo_stream_from` + a broadcast targeting `dom_id(record)`. Reuse the same partial for initial render and stream update so markup stays consistent (rows built as ViewComponents: have the broadcast render the component, or keep the row a partial both paths share); a local the broadcast cannot pass defaults via `local_assigns.fetch(:operator, false)`:
 
 ```ruby
+# push path (model callback or job) - the partial receives the record only
+order.broadcast_replace_later_to [order.user, :orders], partial: "orders/order", locals: { order: order }
+# request path
 render turbo_stream: turbo_stream.append("orders", partial: "orders/order", locals: { order: @order })
+# in the shared partial
+- operator = local_assigns.fetch(:operator, false)
 ```
 
 For subscription scope and channel authorization see `rails-actioncable-patterns`.
@@ -162,7 +167,7 @@ div data-controller="dropdown"
   ul data-dropdown-target="menu" hidden=true
 ```
 
-`data-action` syntax is `event->controller#method`, parsed by Stimulus - no Ruby expressions in `data-action` values.
+`data-action` syntax is `event->controller#method`, parsed by Stimulus - no Ruby expressions in `data-action` values. A new controller under `app/javascript/controllers/` is registered by `controllers/index.js` (`stimulus-rails` pins the directory); nothing else to wire.
 
 Server data reaches controllers through the values API with the escaped operator - `div data-controller="chart" data-chart-points-value=@points.to_json` - never an inline `script`.
 
@@ -170,6 +175,8 @@ Server data reaches controllers through the values API with the escaped operator
 
 ```ruby
 class OrderCardComponent < ViewComponent::Base
+  with_collection_parameter :order   # with_collection passes `order_card:` otherwise
+
   def initialize(order:, show_actions: false)
     @order, @show_actions = order, show_actions
   end
@@ -187,11 +194,11 @@ end
   = sanitize comment.body, tags: %w[p br strong em a ul ol li blockquote code], attributes: %w[href]
 ```
 
-Markdown / rich-text passes through `sanitize` even if the renderer claims safe-mode - one flag re-opens XSS, and each renderer spells it differently: Commonmarker `unsafe: true`, Redcarpet the *absence* of `escape_html:`/`filter_html:`, Kramdown passes raw HTML through by default. The allowlist is the trust boundary. Allowlisting `href` keeps user links live - also force `rel="nofollow noopener"` (a custom scrubber or post-process; `sanitize` won't add attributes) so user content can't vouch for or script-reach its targets.
+Markdown / rich-text passes through `sanitize` even if the renderer claims safe-mode - one flag re-opens XSS, and each renderer spells it differently: Commonmarker `unsafe: true`, Redcarpet the *absence* of `escape_html:`/`filter_html:`, Kramdown passes raw HTML through by default. The allowlist is the trust boundary. Allowlisting `href` keeps user links live - also force `rel="nofollow noopener"` so user content can't vouch for or script-reach its targets: either a post-process on the sanitized fragment, or a `Rails::HTML::PermitScrubber` subclass that carries the allowlist and adds `rel` - passing `scrubber:` replaces `tags:`/`attributes:`, so a rel-only scrubber would drop the allowlist. `sanitize` itself won't add attributes.
 
 ## Output Format
 
-Generating - emit the block, then the template code for every file it lists. Multi-valued slots (`Turbo:`, `Fragment Caching:`) list every applying value, `+`-joined:
+Generating - emit the block, then the template code for every file it lists. Multi-valued slots (`Turbo:`, `Fragment Caching:`) list every applying value, `+`-joined. A pre-existing bug the page inherits (a global broadcast scope, a helper that queries) gets one numbered finding above the block, naming the owning skill when it is a sibling's:
 
 ```
 Engine: {ERB | HAML | Slim}
@@ -200,6 +207,7 @@ Files Generated:
   app/views/{resource}/{action}.html.{ext}
   app/views/{resource}/_{partial}.html.{ext}
   app/javascript/controllers/{name}_controller.js      # Stimulus, when one is added
+  app/helpers/{name}_helper.rb                          # when a stateless transform is added
   config/locales/{locale}.yml                          # keys added, when strings are user-visible
 
 ViewComponents: {app/components/{name}_component.rb + .html.{ext} | None}
@@ -210,23 +218,23 @@ Turbo: {Frames | Streams | None}
 
 Stimulus Controllers: {list | None}
 
-Fragment Caching: {Russian-doll on X | Collection (cached: true) on X | Low-level | None}
+Fragment Caching: {Record (cache record) on X | Russian-doll on X | Collection (cached: true, or a lambda key when locals vary) on X | Low-level | None}
 
 Logic Moves: {helper -> presenter/component verdicts | None}
 ```
 
-Reviewing - one block per finding in the format below; after all blocks, emit the corrected template code for each affected file:
+Reviewing - one block per finding in the format below, Critical first; after all blocks, emit the corrected template code for each affected file. A project-wide finding (no linter) takes `Location: Gemfile`; a cross-file finding cites the file where the fix lands; a finding on a non-template file takes `Engine: n/a`:
 
 ```
-Severity: {Critical (XSS, JS-context injection, cross-tenant cache leak, a credential or token rendered into the markup) | High (stale/never-invalidating cache, logic/indentation bug, frame collision, per-row rendering or N+1 that degrades the page) | Medium (attribute injection, helper/presenter misplacement) | Low (style, partial contract)}
+Severity: {Critical (XSS, JS-context injection, a cache or stream that leaks across users, roles or tenants, a credential or token rendered into the markup - a key designed as publishable is not one) | High (stale/never-invalidating cache, logic/indentation bug, frame collision, per-row rendering or N+1 that degrades the page, a user-supplied href with an unrestricted scheme) | Medium (attribute injection, helper/presenter misplacement) | Low (style, partial contract)}
 
-Engine: {ERB | HAML | Slim}
+Engine: {ERB | HAML | Slim | n/a (non-template file)}
 
 Location: file:line
 
 Issue: {one line, engine-specific idiom}
 
-Fix: {one-line remediation}
+Fix: {one-line remediation | handoff: <skill> - one line when the mechanism lives outside app/views}
 ```
 
 An N+1 or a missing preload seen from the template gets a block here with the query fix named, and a pointer to `rails-activerecord-patterns` for the model-side change - the reader is looking at the view, so dropping the finding entirely is worse than a one-line handoff. Findings whose mechanism lives outside `app/views/**` (channel authorization, `current_account` resolution, broadcast scoping) get a block with `Location:` naming that file and one line saying the fix belongs to that skill.

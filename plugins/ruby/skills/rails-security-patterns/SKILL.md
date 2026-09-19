@@ -25,9 +25,12 @@ For template-layer XSS (`sanitize` allowlists, engine escape operators), see `ra
 - Never `params.permit!` / `params.to_unsafe_h`; never permit ownership FKs (`:user_id`, `:account_id`, `:tenant_id`)
 - Every resource action calls `authorize`; every index uses `policy_scope`; enforce with `after_action :verify_authorized` / `:verify_policy_scoped`
 - Parameterized queries only - never string interpolation in `where`
-- Secrets via Rails credentials; never hardcoded
+- Secrets via Rails credentials (or an injected `ENV` read through a single config object); never hardcoded
 - Validate `redirect_to` targets against an allowlist
 - API-only controllers carry token/JWT auth; do not blanket `skip_before_action :verify_authenticity_token` on session controllers
+- Secrets never reach a client payload: server-side keys stay out of rendered JS, JSON and HTML (`javascript:` blocks, `data-*`, serializers); only keys designed as publishable are rendered, scoped to the page
+- Outbound calls to partners authenticate (bearer from credentials, HMAC-signed body) and pin the host; an unauthenticated outbound call is a finding
+- Error responses carry no internal detail (backtrace, SQL, class names, file paths) - the ladder in `rails-exception-handling` renders typed responses
 
 ## Patterns
 
@@ -98,7 +101,7 @@ IDOR: lookups on user-supplied IDs go through `policy_scope(Model).find(params[:
 
 The same rule governs an ActionCable `subscribed` block, which is a lookup on a client-supplied identifier by another name - stream from an authorized object, never from a raw `params[:id]`. Channel actions (`receive`, custom methods) are unauthenticated RPC unless you check them individually; `subscribed` authorizes the subscription, not what the socket may then ask for.
 
-When the credential *is* the link - an emailed tracking URL, a document download, any anonymous holder-of-token access - use Rails' own signed ids rather than inventing a scheme: `record.signed_id(expires_in: 7.days, purpose: :tracking)` and `Model.find_signed!(token, purpose: :tracking)`. The purpose scopes the token to one use, the expiry bounds forwarding, and the signature makes ids unguessable without a lookup table. Authorization for such a request is the token verification itself - there is no `current_user` to `authorize` against, and that is the one legitimate exception to the rule above.
+When the credential *is* the link - an emailed tracking URL, a document download, any anonymous holder-of-token access - use Rails' own signed ids rather than inventing a scheme: `record.signed_id(expires_in: 7.days, purpose: :tracking)` and `Model.find_signed!(token, purpose: :tracking)`. The purpose scopes the token to one use case (a `:tracking` token is refused by `find_signed!` for any other purpose), the expiry bounds forwarding, and the signature makes ids unguessable without a lookup table; the token stays replayable until it expires - single use needs your own nonce table. Authorization for such a request is the token verification itself - there is no `current_user` to `authorize` against, and that is the one legitimate exception to the rule above.
 
 ### SQL Injection
 
@@ -113,7 +116,7 @@ User.where("name LIKE ?", "%#{User.sanitize_sql_like(params[:q])}%")
 
 ### CSRF
 
-Session controllers: `protect_from_forgery with: :exception` (default). API-only (`ActionController::API`) has no CSRF middleware - use token/JWT auth. Never globally skip the token check on session controllers.
+Session controllers: `protect_from_forgery with: :exception` (default). API-only (`ActionController::API`) does not include `RequestForgeryProtection` (nor the session middleware it needs) - use token/JWT auth. Never globally skip the token check on session controllers.
 
 ### Rate Limiting - Rack::Attack
 
@@ -159,7 +162,7 @@ config.hosts << "app.example.com"
 config.hosts << ".example.com"        # leading dot = this host and its subdomains
 ```
 
-Rails anchors both forms: a String becomes `/\A(.+\.)?example\.com\z/i`, and a Regexp is wrapped by `sanitize_regexp` into `/\A...(?::\d+)?\z/i`. So a trailing-garbage `Host: www.example.com.evil.com` is rejected either way. The trap runs the other direction - because the anchoring is automatic, a Regexp must match the *whole* hostname (`/example\.com/` will not match `www.example.com`; write `/.*\.example\.com/`), and one left open in the middle still matches too much: `/.*example\.com/` accepts `evilexample.com`. Prefer the String form for that reason, not for anchoring.
+Rails anchors both forms and tolerates a port on both: `".example.com"` becomes `/\A(.+\.)?example\.com(?::\d+)?\z/i` (a bare `"app.example.com"` matches that host only), and a Regexp is wrapped by `sanitize_regexp` into `/\A...(?::\d+)?\z/` - case-sensitive unless you add `/i` yourself. So a trailing-garbage `Host: www.example.com.evil.com` is rejected either way. The trap runs the other direction - because the anchoring is automatic, a Regexp must match the *whole* hostname (`/example\.com/` will not match `www.example.com`; write `/.*\.example\.com/`), and one left open in the middle still matches too much: `/.*example\.com/` accepts `evilexample.com`. Prefer the String form for that reason, not for anchoring.
 
 Blocks Host header injection; mismatched requests get 403. `config.hosts.clear` disables the protection entirely - it is never the fix for a host mismatch.
 
@@ -221,18 +224,20 @@ Existing inline scripts: migrate via nonces (`javascript_tag nonce: true`) rathe
 
 ## Output Format
 
-One block per finding (reviews and audits emit several) or per pattern applied (build mode). Both modes fill every field; only two shift meaning. `Severity` in build mode rates the risk the change closes, not a current exposure. `Change` is the applied diff in build mode and the recommended remediation in review or audit mode - which is where target state lives, so no separate section is written. Lead an audit with a one-line posture summary before the blocks.
+One block per finding (reviews and audits emit several) or per pattern applied (build mode). Both modes fill every field; only two shift meaning. `Severity` in build mode rates the risk the change closes, not a current exposure. `Change` is the applied diff in build mode and the recommended remediation in review or audit mode - which is where target state lives, so no separate section is written. An audit walks a whole surface and opens with the `Posture:` line; a review takes the named files, and everything in a named file is in scope. A named surface with no finding gets one line - `Clean: <surface> - <what was checked>` - and no block. One block per distinct code-level fix - findings sharing one root cause (a missing `verify_authorized`) merge into one block listing the affected actions; `IDOR` is the unscoped lookup, `Pundit` the policy or scope wiring, one block each when both are missing. An observation owned by a sibling skill (template escaping, upload validation) gets one line naming the skill and no block; a fact outside the read set is `not in evidence` plus the file.
 
 ```
+Posture: {one line, audit mode only, once before the blocks}
+
 Pattern: {Strong Params | Authentication | Pundit | CSRF | Rate Limit | Credentials | SQLi | IDOR | Open Redirect | Cookies | CSP | Host Auth | Transport | Webhook Signature | Channel Authorization | Secret in Client Payload | Signed URL / Object Storage | Outbound Call Authentication | Error Response Leakage}
 
-Severity: {Critical - exploitable now | High - exploitable with effort | Medium - hardening | Low - defense in depth}
+Severity: {Critical - exploitable now | High - exploitable with effort | Medium - hardening, including fail-closed misconfiguration (a too-narrow host regexp, a nonce directive that breaks styles) | Low - defense in depth}
 
-Resource: {controller / model / channel / view / config file}
+Resource: {controller#actions / policy / model / channel / view / route / config file / initializer / migration - name every file a fix spans, with the actions or lines inside it}
 
 Change: {what was applied (build) | what to apply (review, audit)}
 
-Risk Mitigated: {mass assignment | unauthorized access | data exposure | injection | brute force | secret exposure | open redirect | session hijack | header injection | MITM | unauthenticated outbound call | internal detail in error response}
+Risk Mitigated: {mass assignment | unauthorized access | data exposure | injection | script injection (XSS via CSP gap) | cross-site request forgery | brute force | user enumeration | availability (a control that fails open or takes itself down) | secret exposure | open redirect | session hijack | header injection | MITM | unauthenticated outbound call | internal detail in error response}
 ```
 
 ## Avoid

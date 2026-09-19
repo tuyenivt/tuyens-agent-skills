@@ -7,7 +7,7 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first to confirm Rails; the report reads the exact Rails version from `Gemfile.lock`, which stack-detect does not supply.
 
 ## When to Use
 
@@ -18,7 +18,7 @@ user-invocable: false
 ## Rules
 
 - The declared `load_defaults` version is the contract the app was written against. Report state; never call 6.1 "wrong".
-- Findings inventory the *current state*. Suggestions are optional cherry-picks from 7.0+. Keep them in separate output sections.
+- Findings inventory the *current state*. Suggestions are optional cherry-picks from 6.1 onward (Pattern E). Keep them in separate output sections.
 - Cite `file:line` on every Finding, Suggestion, and per-model/env entry.
 - `Current value` is the *effective* value; when a flag is textually set but not applied (initializer-timing), state both.
 - Severity mapping: Critical = security/data-loss exposure; High = active correctness bug or a set-but-not-applied flag tied to a reported symptom; Medium = latent footgun; Low = harmless redundancy; Informational = explicit setting matching the baseline; Divergent-by-design = a deliberate, documented departure needing no action.
@@ -41,6 +41,7 @@ Hidden defaults invisible from the call site:
 - **Association side effects on save**: `belongs_to ... touch:`, `accepts_nested_attributes_for` with assigned attributes, and callbacks reading `self.<association>` all force association loads during save. `has_many ... autosave:` does so only when the association is *already* instantiated - its callbacks read `association.target`, which is `[]` when unloaded, so it issues no query on its own. When multiple converge on one model, emit a synthesis line tying them to the observed symptom.
 - **Missing `inverse_of:` under `load_defaults <= 6.1`**: `has_many_inversing` (6.1, unscoped) and `automatic_scope_inversing` (7.0, scoped) close this. Apps at 6.1 with scoped associations re-fetch the parent on traversal.
 - **`default_scope`**: applied to every query through the model, including association loads. Invisible at the call site.
+- **`serialize` without a coder**: the pre-7.1 default coder is YAML (an RCE vector on untrusted data); with `default_column_serializer = nil` (7.1) a coderless `serialize` raises at load.
 - **`attr_readonly`**: pre-7.1 silently filters the column out of UPDATE; with `raise_on_assign_to_attr_readonly = true` (7.1) it raises `ActiveRecord::ReadonlyAttributeError` on assignment **to a persisted record**. Assignment on a new record stays legal - that is the point of `attr_readonly`, set-at-create.
 - **`ApplicationController` `before_action` chain**: Devise, Pundit, and custom filters fire on every action unless skipped.
 - **Autoloading (Zeitwerk)**: `autoload_paths` / `eager_load_paths` additions, `autoload_lib(ignore:)`, and anything under `lib/` decide which constants resolve and when. The failure is environment-shaped: with `eager_load = true` a missing path fails at boot - including in Sidekiq, which boots through `config/environment.rb` and so eager-loads exactly as the web tier does. Any process whose env leaves `eager_load = false` (development, test, rake tasks not covered by `rake_eager_load`) instead resolves lazily and raises `NameError` only on the first code path that needs the constant. Report the paths, and which processes eager-load.
@@ -49,13 +50,13 @@ Hidden defaults invisible from the call site:
 
 The 7.x upgrade flow generates `config/initializers/new_framework_defaults_7_X.rb` with each flip commented out, to be enabled one at a time before bumping `load_defaults`.
 
-**Three AR flags are silent no-ops when set in this initializer** because AR reads them at `on_load(:active_record)` time, before initializers run. Set them in `config/application.rb` (or eagerly inside `ActiveSupport.on_load(:active_record) { ... }`):
+**Three AR flags are silent no-ops when set in this initializer** because their values are copied out of `config.active_record` during boot, before `config/initializers` run - they are module-level `ActiveRecord.*` attributes, not `Base` class attributes that wait for `on_load`. Set them in `config/application.rb` (or eagerly inside `ActiveSupport.on_load(:active_record) { ... }`):
 
 - `config.active_record.has_many_inversing` ([rails#45683](https://github.com/rails/rails/issues/45683))
 - `config.active_record.automatic_scope_inversing` ([rails#46208](https://github.com/rails/rails/issues/46208))
 - `config.active_record.run_after_transaction_callbacks_in_order_defined` ([rails#52098](https://github.com/rails/rails/issues/52098))
 
-`config.active_support.cache_format_version` is a fourth: the `:initialize_cache` bootstrap builds `Rails.cache` before `config/initializers/*` runs, so setting it there is a silent no-op (Rails removed it from the generated template for that reason).
+`config.active_support.cache_format_version` is a fourth: the `:initialize_cache` bootstrap builds `Rails.cache` before `config/initializers/*` runs, so setting it there is a silent no-op (the generated template's own comment says to set it in `config/application.rb`).
 
 If the initializer exists and any of these four lines is uncommented there, report `Footgun: initializer-timing` regardless of stated intent. Other AR/AS flags work from the initializer; report `Footgun: none`.
 
@@ -64,18 +65,18 @@ If the initializer exists and any of these four lines is uncommented there, repo
 `config/environments/{development,test,production,staging}.rb` can flip behaviour per-env. Failure mode: a correctness- or security-affecting flag is set in one env in a way that hides bugs from another. Recurring examples:
 
 - `strict_loading_by_default = true` in development/test only - N+1s raise for developers and pass silently in production (no `load_defaults` version turns this on, so `false` everywhere is the baseline, not a divergence)
-- `active_job.queue_adapter = :async` in development masks the enqueue-inside-transaction race (the job runs before COMMIT), plus Redis/JSON round-trip and Sidekiq `strict_args!` differences. It does *not* mask ActiveJob serialization errors - the async adapter serializes eagerly at enqueue
+- `active_job.queue_adapter = :async` in development masks the enqueue-inside-transaction race (the job runs before COMMIT) unless `active_job.enqueue_after_transaction_commit` is in effect (a 7.2 default - read its value rather than assuming), plus the Redis/JSON round-trip. It does *not* mask ActiveJob serialization errors - the async adapter serializes eagerly at enqueue
 - `eager_load = true` in production only surfaces autoload bugs after deploy
-- Worker processes are the third environment nobody writes down: Sidekiq loads the same `production.rb` but with its own concurrency, its own pool, and (usually) `eager_load` behaviour set by the same flag - divergences between the web and worker tiers belong in this section even though there is no `config/environments/worker.rb`
+- Worker processes are the third environment nobody writes down: Sidekiq loads the same `production.rb` but with its own concurrency, its own pool (`RAILS_MAX_THREADS` vs `concurrency` - `rails-connection-pool-sizing`), and (usually) `eager_load` behaviour set by the same flag - divergences between the web and worker tiers belong in this section even though there is no `config/environments/worker.rb`; cite the manifest or `sidekiq.yml` line as the `File:`
 
-Report any env-only override that affects correctness, security, or production behaviour as `Footgun: env-only` in Findings.
+Report any env-only override that affects correctness, security, or production behaviour as `Footgun: env-only` in Findings - any framework's flag, not only AR/AJ (`raise_on_open_redirects`, `force_ssl`), when the audited files set it.
 
-### E. Nice-to-have cherry-picks (Rails 6.1 - 7.1)
+### E. Nice-to-have cherry-picks (Rails 6.1 onward)
 
-Individual flips adoptable without bumping `load_defaults`. **Never required; acceptance is per-project.** Most are framework defaults at the version in the `From` column - listing them here means the audited app's pinned `load_defaults` is below that version, so it does not have them yet. The one marked "manual opt-in" is never a default at any version.
+Individual flips adoptable without bumping `load_defaults`; the 7.2 and 8.0 flags in Pattern A are cherry-picked the same way. **Never required; acceptance is per-project.** Most are framework defaults at the version in the `From` column - listing them here means the audited app's pinned `load_defaults` is below that version, so it does not have them yet. The one marked "manual opt-in" is never a default at any version.
 
-| Cherry-pick | From | Consider if | Risk | Where |
-| ----------- | ---- | ----------- | ---- | ----- |
+| Cherry-pick | From (on by default at this load_defaults and above) | Consider if | Risk | Where |
+| ----------- | ------------------------------------ | ----------- | ---- | ----- |
 | `active_record.automatic_scope_inversing = true` | 7.0 | Hot serializers/decorators/child callbacks traverse scoped associations; APM shows redundant parent SELECTs | Low | `application.rb` (initializer-timing) |
 | `active_record.raise_on_assign_to_attr_readonly = true` | 7.1 | Any `attr_readonly` declarations | Low | initializer |
 | `active_record.run_after_transaction_callbacks_in_order_defined = true` | 7.1 | Multiple `after_commit` per model AND reverse-order has caused a bug, OR gems with their own `after_commit` chains. (Baseline pre-7.1 behavior: `after_commit` fires in *reverse* declaration order.) | Medium | `application.rb` (initializer-timing) |
@@ -97,7 +98,9 @@ When the request includes symptoms ("update fires N queries", "callbacks run out
 
 Rails version: {from Gemfile.lock}
 
-config.load_defaults: {version from config/application.rb:NN}
+config.load_defaults: {version from config/application.rb:NN | none - the call is absent, pre-5.0 defaults apply}
+
+Target load_defaults: {the upgrade target when the request names one - list the flags every block between the pinned version and the target adds | n/a}
 
 ## Diagnosis (only when symptoms were reported)
 
@@ -113,14 +116,14 @@ Every reported symptom gets a line, including the ones nothing here explains - a
   Modern default: {value at the newest load_defaults the installed Rails offers - name that version}
   Severity: {Critical | High | Medium | Low | Informational | Divergent-by-design (deliberate, documented, no action)}
   Why it matters: {one sentence}
-  Footgun: {none | initializer-timing | env-only}
+  Footgun: {none | initializer-timing | env-only | not provided (the initializer or env file is outside the evidence)}
 
 An env-only flag is reported here with `Footgun: env-only`, and again in Environment Overrides with the per-env values - the two sections answer different questions and the duplication is intended.
 
 ## Implicit Per-Model / Per-Controller Behaviours
 
-- Path: {app/models|app/controllers/<file>.rb:NN}
-  Behaviour: {touch | autosave | nested-attributes | default_scope | inverse_of-missing | callback-touches-association | attr_readonly | serialize-without-coder | before_action-chain | autoload-path}
+- Path: {app/models|app/controllers/<file>.rb:NN | config/application.rb:NN (autoload-path)}
+  Behaviour: {touch | autosave | nested-attributes | default_scope | inverse_of-missing | callback-touches-association | validation-touches-association | attr_readonly | serialize-without-coder | before_action-chain | autoload-path}
   Effect: {one sentence}
 
 `inverse_of-missing` is reported only where it still bites at the app's pinned `load_defaults`: `has_many_inversing` (6.1) closes it for unscoped associations, `automatic_scope_inversing` (7.0) for scoped ones.
@@ -129,7 +132,7 @@ When multiple behaviours on one model converge, append a synthesis line: "Behavi
 
 ## Environment Overrides
 
-- File: {config/environments/<env>.rb:NN}
+- File: {config/environments/<env>.rb:NN | config/sidekiq.yml:NN | deploy manifest:NN (worker-tier divergence)}
   Flag: {full path}
   Value: {value}
   Concern: {why this env-only flip matters}
@@ -138,11 +141,11 @@ When multiple behaviours on one model converge, append a synthesis line: "Behavi
 
 Not defects, not defaults. Each entry stands alone; skipping is fine.
 
-- Flag: {flag}
-  From version: {6.1 | 7.0 | 7.1}
+- Flag: {flag, or `inverse_of:` on <Model#association> for the surgical alternative}
+  From version: {6.1 | 7.0 | 7.1 | 7.2 | 8.0 | manual opt-in (never a default)}
   Consider if: {condition}
   Risk: {Low | Medium | High}
-  Where to set: {application.rb | initializer | env config}
+  Where to set: {application.rb | initializer | env config | model}
   Rationale: {one sentence}
 ```
 

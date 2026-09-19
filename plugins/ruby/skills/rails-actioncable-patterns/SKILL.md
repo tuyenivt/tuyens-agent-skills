@@ -19,7 +19,7 @@ user-invocable: false
 
 ## Rules
 
-- `identified_by :current_user` in `ApplicationCable::Connection`; `reject_unauthorized_connection` on missing/invalid identity. Anonymous capability access (an emailed tracking link, no session) adds a second identifier rather than weakening the first: `identified_by :current_user, :verified_resource`, `connect` sets whichever the request carries and rejects when neither verifies, and the resource identifier comes from a signed, expiring token (`find_signed!`) - never a raw id
+- `identified_by :current_user` in `ApplicationCable::Connection`; `reject_unauthorized_connection` on missing/invalid identity. Anonymous capability access (an emailed tracking link, no session) adds a second identifier rather than weakening the first: `identified_by :current_user, :verified_resource`, `connect` sets whichever the request carries and rejects when neither verifies, and the resource identifier comes from a signed, expiring token (`find_signed` - the non-bang form returns nil on a bad or expired token, so the reject branch runs) - never a raw id
 - Every channel `subscribed` authorizes the requested resource - never `stream_from` a client-supplied identifier without an ownership check
 - `turbo_stream_from` scope is a capability; pass model objects, not public IDs. Per-user data: `turbo_stream_from current_user, :orders`. Shared resources: `turbo_stream_from project, :comments` - authorization is the controller only rendering the tag for permitted viewers
 - Keep `allowed_request_origins` strict in production and never set `disable_request_forgery_protection` - cookie-authenticated connections are Cross-Site WebSocket Hijacking targets otherwise
@@ -44,7 +44,7 @@ module ApplicationCable
 end
 ```
 
-For JWT/API apps, prefer the `Sec-WebSocket-Protocol` subprotocol header for the token - headers don't land in access logs; in `connect`, read `request.headers["Sec-WebSocket-Protocol"]` and take the entry that isn't `actioncable-v1-json`. Query params are acceptable only for short-lived single-use tickets minted per connection. Never put the long-lived JWT itself in a URL. Devise apps can identify via `env["warden"].user` instead of the cookie lookup.
+For JWT/API apps, prefer the `Sec-WebSocket-Protocol` subprotocol header for the token - headers don't land in access logs; in `connect`, read `request.headers["Sec-WebSocket-Protocol"]` and take the entry that isn't `actioncable-v1-json`. Query params are acceptable only for short-lived single-use tickets minted per connection. Never put the long-lived JWT itself in a URL. A mailed capability token lives as long as the link must work (`expires_in:` on the signed id, days for a shipment); the cable ticket minted per page load stays short-lived, and an expired identifier is refused on the next reconnect rather than by dropping live sockets. Devise apps can identify via `env["warden"].user` instead of the cookie lookup.
 
 ### Subscription Authorization (IDOR Prevention)
 
@@ -67,6 +67,8 @@ class OrderChannel < ApplicationCable::Channel
 end
 ```
 
+Two roles on one resource (owner + support agent): `subscribed` checks the policy rather than ownership alone (`OrderPolicy.new(current_user, order).show?` covers both) and both stream `stream_for order`.
+
 Same rule for Turbo Stream scope:
 
 ```erb
@@ -77,7 +79,7 @@ Same rule for Turbo Stream scope:
 <%= turbo_stream_from current_user, :orders %>
 ```
 
-`turbo_stream_from` signs the scope so the signature proves the server emitted it - **not** that the current viewer is entitled. Authorization is the scope the controller chooses to render. For a user-owned resource, scope as `[current_user, record]` (and broadcast to the identical array) - including the owner makes the scope unguessable even if a signed tag leaks. For a shared resource (project, team, room), scope as `[record, :collection]` and gate access in the controller/policy before rendering the tag - every holder of the signed tag can read the stream. A singleton scope with no record (admin dashboard, site status) follows the same shared-resource rule: a bare symbol scope is acceptable exactly when the controller renders the tag only to the entitled audience - the audience gate, not the scope name, is the control.
+`turbo_stream_from` signs the scope so the signature proves the server emitted it - **not** that the current viewer is entitled. Authorization is the scope the controller chooses to render. For a user-owned resource, scope as `[current_user, record]` (and broadcast to the identical array) - including the owner narrows what a leaked tag grants to one user's view of one record. For a shared resource (project, team, room), scope as `[record, :collection]` and gate access in the controller/policy before rendering the tag - every holder of the signed tag can read the stream. A singleton scope with no record (admin dashboard, site status) follows the same shared-resource rule: a bare symbol scope is acceptable exactly when the controller renders the tag only to the entitled audience - the audience gate, not the scope name, is the control.
 
 ### Broadcast Adapters
 
@@ -171,26 +173,28 @@ end
 
 ## Output Format
 
-In review or diagnosis mode, precede the block with numbered findings citing the violated rule; the block describes the corrected channel, so target state lives there rather than in a separate section. Any field may carry `- GAP` with the observed non-compliant value (`Broadcast adapter: async - GAP`), and any field whose evidence is outside the reviewed files is `not in evidence` plus the file to read. Emit one block per channel. Pure `turbo_stream_from` flows have no custom channel: write `Channel: Turbo::StreamsChannel (turbo_stream_from)` and pick the signed-scope authorization value.
+In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. The block describes the corrected channel, so target state lives there. A finding with no channel - a controller lookup, `allowed_request_origins`, a Redis instance shared with Sidekiq - is a numbered finding with no block, naming the file, in build mode too. An observation owned by a sibling skill (template escaping, a key rendered into JS) gets one line naming the skill and no block. Any field may carry `- GAP` with the observed non-compliant value (`Broadcast adapter: async - GAP`), and any field whose evidence is outside the reviewed files is `not in evidence` plus the file to read. Emit one block per channel. Pure `turbo_stream_from` flows have no custom channel: write `Channel: Turbo::StreamsChannel (turbo_stream_from)` and pick the signed-scope authorization value.
 
 ```
 Channel: <name | Turbo::StreamsChannel (turbo_stream_from)>
 
-Identified by: <current_user | session token | JWT (transport) | signed resource ticket (anonymous) | not in evidence>
+Identified by: <current_user | session token | JWT (transport) | signed resource ticket (anonymous) | not in evidence - list every identifier the Connection declares, ` + `-joined>
 
 Stream scope: <per-user | per-tenant | per-resource | global - reason>
 
-Authorization in subscribed: <Yes - policy/ownership check | Signed scope + controller gate (turbo_stream_from) | No - GAP>
+Authorization in subscribed: <Yes - policy/ownership check | fixed at connect (the identifier is the resource) | Signed scope + controller gate (turbo_stream_from) | No - GAP>
 
 Authorization in actions: <per-action check + rate limit | no receiving actions | No - GAP>
 
-Broadcast adapter: <redis | solid_cable | postgresql | async | not in evidence>
+Broadcast adapter: <redis | solid_cable | postgresql | async | test (test env only) | not in evidence>
 
-Broadcast hook: <after_commit (inline | later) | service explicit | broadcasts directive>
+Request origins: <allowed_request_origins strict, forgery protection on | disable_request_forgery_protection - GAP | not in evidence>
 
-Fan-out volume: <distinct targets per event - sync or batched | single shared stream (subscriber count is not fan-out) | not enumerable from the reviewed files>
+Broadcast hook: <after_commit (inline | later) | service explicit | broadcasts directive | channel action broadcasts inline - GAP (persist in the action, let the callback announce) | after_save - GAP>
 
-Tests: <channel spec | broadcast assertion | both | none - GAP>
+Fan-out volume: <distinct targets per event - sync or batched | single shared stream (subscriber count is not fan-out; a shared stream carrying per-user data is an authorization GAP, not a cost) | not enumerable from the reviewed files>
+
+Tests: <channel spec | broadcast assertion | broadcast assertion + request/system test (turbo_stream_from flows - full coverage) | both | none - GAP>
 ```
 
 ## Avoid

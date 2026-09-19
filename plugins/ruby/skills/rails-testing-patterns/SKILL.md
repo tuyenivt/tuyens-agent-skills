@@ -19,15 +19,14 @@ user-invocable: false
 
 ## Rules
 
-- Request specs, never controller specs
+- Request specs, never controller specs (a controller spec moves to `spec/requests/<route path>_spec.rb`)
 - Test through the public interface; no private-method specs
 - FactoryBot only - no fixtures; use state traits, not inline attribute overrides
 - `build_stubbed` by default; `build` in-memory; `create` only when the example needs persistence: DB reads (scopes, `reload`, uniqueness), code under test that performs real writes or reads them back, request specs, policy Scope resolution. Pure attribute/permission checks don't.
-- One example per distinct policy outcome, not per role - roles that resolve identically share one example (or a shared example group) rather than repeating it.
+- Every Pundit policy spec covers every role and the `Scope`; roles that resolve identically for an action share one example (or a shared example group) rather than repeating it.
 - Mock at boundaries (HTTP, third-party SDKs); never mock internal code
-- Every Pundit policy has a spec covering each role
 - `travel` / `freeze_time`, never `Time.now =` stubs
-- One canonical `auth_headers` helper per project - don't mix session and bearer in the same suite
+- One canonical `auth_headers` helper per surface - a JWT API and a Devise web app each get one; never both on one endpoint
 
 ## Patterns
 
@@ -199,13 +198,14 @@ build_stubbed(:order)
 create(:order, :confirmed, :with_order_items)
 ```
 
+Factory defaults must satisfy the model's callbacks - a `before_save` that recomputes from an association needs the association present before save (`after(:build) { |o| o.order_items << build(:order_item, order: o) }`, not `after(:create)`), or the default is overwritten and the record fails validation.
+
 ### Sidekiq
 
 Two distinct assertions, two call shapes: *enqueueing* uses `perform_async` under `fake!` (jobs pushed to an array - assert size and `jobs.last["args"]`); *behavior* calls `described_class.new.perform(...)` directly, no Sidekiq involved.
 
 ```ruby
-require "sidekiq/testing"
-Sidekiq::Testing.fake!  # jobs pushed to array
+# rails_helper.rb, once: require "sidekiq/testing"; Sidekiq::Testing.fake!   (jobs pushed to an array)
 
 RSpec.describe ShipmentNotificationJob, type: :job do
   let(:order) { create(:order, :confirmed) }
@@ -217,12 +217,13 @@ RSpec.describe ShipmentNotificationJob, type: :job do
 
   # The negative assertion needs the positive control beside it: alone it passes if
   # `perform` is deleted, if the job never mails, or if the mailer uses deliver_later.
-  it "is idempotent - skips already-shipped orders" do
+  # The job mails with deliver_now (a Sidekiq::Job is already the async boundary);
+  # a job that uses deliver_later is asserted with have_enqueued_mail instead.
+  it "is idempotent - a second run on the same order does not mail again" do
     expect { described_class.new.perform(order.id) }
       .to change { ActionMailer::Base.deliveries.count }.by(1)
 
-    shipped = create(:order, :shipped)
-    expect { described_class.new.perform(shipped.id) }
+    expect { described_class.new.perform(order.id) }
       .not_to change { ActionMailer::Base.deliveries.count }
   end
 end
@@ -234,7 +235,7 @@ Services with idempotency keys get the same two-call test at the service layer: 
 
 > See `rails-rake-task-patterns` for task design.
 
-Tasks are thin shells; service spec owns behavior, rake spec verifies wiring. `Rails.application.load_tasks` once; `task.reenable` after each example; `climate_control` for per-example ENV.
+Tasks are thin shells; service spec owns behavior, rake spec verifies wiring. A task with inline logic gets a review finding (extract the service) before a wiring spec. `Rails.application.load_tasks` once; `task.reenable` after each example; `climate_control` for per-example ENV.
 
 ```ruby
 RSpec.describe "orders:fulfill_pending" do
@@ -275,7 +276,7 @@ Use transactional fixtures, not `database_cleaner`. System specs share the conne
 RSpec.configure { |c| c.use_transactional_fixtures = true }
 ```
 
-Transactional fixtures roll back the database, and nothing else. State living outside it leaks between examples in random order and produces the classic "passes alone, fails in suite": Sidekiq's `fake!` job array (`Sidekiq::Job.clear_all` in a `before`), any `Singleton` or class-level memo the app fills lazily (reset it, or freeze it at boot), `Rails.cache`, and stubbed constants. Put the resets in `rails_helper.rb` once rather than per file.
+Transactional fixtures roll back the database, and nothing else. State living outside it leaks between examples in random order and produces the classic "passes alone, fails in suite": Sidekiq's `fake!` job array (`Sidekiq::Job.clear_all` in a `before`), any `Singleton` or class-level memo the app fills lazily (reset it, or freeze it at boot), `Rails.cache`, and constants mutated by hand (`const_set`; rspec-mocks' `stub_const` resets itself). Put the resets in `rails_helper.rb` once rather than per file.
 
 `database_cleaner-active_record` with `:truncation` only for cross-connection state (e.g., a separate analytics DB).
 
@@ -292,9 +293,15 @@ module RequestHelpers
 
   def json_response = JSON.parse(response.body)
 end
+
+RSpec.configure do |c|
+  c.include RequestHelpers, type: :request
+  # `sign_in` is Devise's, not rspec-rails' - without this the Devise variant raises NoMethodError
+  c.include Devise::Test::IntegrationHelpers, type: :request
+end
 ```
 
-JWT bearer (Warden::JWTAuth / Devise-JWT / custom encoder):
+JWT bearer (Warden::JWTAuth / Devise-JWT / custom encoder) - the configure block includes `RequestHelpers` only:
 
 ```ruby
 module RequestHelpers
@@ -304,13 +311,6 @@ module RequestHelpers
   end
 
   def json_response = JSON.parse(response.body)   # both shapes define it; specs call it
-  end
-end
-
-RSpec.configure do |c|
-  c.include RequestHelpers, type: :request
-  # `sign_in` is Devise's, not rspec-rails' - without this the Devise variant raises NoMethodError
-  c.include Devise::Test::IntegrationHelpers, type: :request
 end
 ```
 
@@ -346,7 +346,7 @@ it "index runs <= 4 queries regardless of order count" do
 end
 ```
 
-Pin the count so raising it requires an explicit review decision.
+Pin the count at the fixed behaviour so raising it requires an explicit review decision.
 
 ### Turbo Stream and Broadcast Assertions
 
@@ -386,18 +386,18 @@ Job specs follow the same boundary rule: the HTTP client wrapper (`app/clients/`
 
 ## Output Format
 
-One block per file written or reviewed - including the support files, since a suite-wide rule (`Sidekiq::Testing.fake!`, the Devise include, leak resets) is unenforceable if `rails_helper.rb` and the factories have nowhere to land. In review mode, precede the blocks with a findings list (each finding citing the violated rule); blocks describe the rewritten specs, so target state lives there. A finding with no single target file - suite runtime, a leak that spans examples - is a numbered finding with no block. `Examples:` counts examples actually written.
+One block per file written or reviewed, each followed by that file's code - including the support files, since a suite-wide rule (`Sidekiq::Testing.fake!`, the Devise include, leak resets) is unenforceable if `rails_helper.rb` and the factories have nowhere to land. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Blocks describe the rewritten specs, so target state lives there; a finding fixed inside a block is still numbered. A finding with no single target file - suite runtime, a leak that spans examples - is a numbered finding with no block. In either mode, a bug in the code under test found while writing or reviewing the spec is a numbered finding too, and the spec pins the fixed behaviour. A file that moves (controller spec to request spec) is one block keyed on the target path, naming the old one. `Examples:` counts examples actually written.
 
 ```
 Test Type: {Model | Service | Policy | Request | Job | Client (HTTP wrapper unit spec) | System | Rake | Support (rails_helper, shared contexts) | Factory}
 
-File: spec/{type}/{path}_spec.rb
+File: {spec/{type}/{path}_spec.rb | spec/factories/{name}.rb | spec/rails_helper.rb | spec/support/{name}.rb}
 
-Contexts: {happy path, not found, forbidden, validation failure, ...}
+Contexts: {happy path, not found, forbidden, validation failure, ... | n/a (Factory, Support)}
 
-Factories: {name with traits | none defined yet - list the ones this spec needs}
+Factories: {name with traits | none defined yet - list the ones this spec needs | model absent - GAP | n/a (Factory, Support)}
 
-Examples: {count}
+Examples: {count | n/a (Factory, Support)}
 ```
 
 

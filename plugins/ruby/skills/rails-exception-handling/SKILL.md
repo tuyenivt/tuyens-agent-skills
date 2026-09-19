@@ -7,7 +7,7 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first to determine the project stack (API-only vs server-rendered, error reporter gem).
+> Load `Use skill: stack-detect` first. API-only vs server-rendered and the reporter gem are not stack-detect fields - read `config.api_only` / the base controller class and the Gemfile.
 
 ## When to Use
 
@@ -24,7 +24,7 @@ user-invocable: false
 - Domain errors inherit from one app-level base (`ApplicationError`) so they rescue as a group.
 - Services: `Result` for expected failures (validation, not-found, policy denial); raise for programmer errors and unexpected state.
 - Sidekiq: rescue domain errors that should not retry; let everything else propagate so Sidekiq retries.
-- SDK errors translate at the boundary (`app/clients/`); business code rescues domain errors only, never `Faraday::Error` or `Stripe::Error`.
+- SDK errors translate at the boundary (`app/clients/`); business code rescues domain errors only, never `Faraday::Error` or `Stripe::StripeError`.
 - Never `rescue Exception` - it swallows `SignalException`, `SystemExit` and `NoMemoryError`, which is how a job survives the shutdown signal meant to stop it. `rescue` on its own is `rescue StandardError`, so it catches none of those; its fault is being indiscriminate within `StandardError` and discarding the exception object. Use `rescue => e` and name the classes you actually handle.
 - Every `rescue` re-raises, returns a typed Result, or renders a documented response. Never log-and-continue silently.
 - Error reporter (Sentry/Honeybadger/Bugsnag) fires once per error at the highest sensible boundary. Lower layers don't double-report.
@@ -45,6 +45,8 @@ class ApplicationController < ActionController::API
   rescue_from ApplicationError::PolicyDenied,            with: :forbidden
   rescue_from ApplicationError::IdempotencyConflict,     with: :conflict             # 409
   rescue_from ApplicationError::ExternalUnavailable,     with: :service_unavailable  # 503 (502 if proxying the upstream's failure verbatim)
+  rescue_from BillingError::Unavailable,                 with: :service_unavailable  # client-local vocabulary maps onto the same statuses;
+  rescue_from BillingError::NotFound,                    with: :not_found            # BillingError::Unexpected stays unrescued - it is a bug
 
   private
 
@@ -53,7 +55,7 @@ class ApplicationController < ActionController::API
   def conflict(e)             = render_error(e, :conflict)
   def not_found(e)            = render_error(e, :not_found)
   def forbidden(e)            = render_error(e, :forbidden)
-  def service_unavailable(e)  = render_error(e, :service_unavailable)
+  def service_unavailable(e)  = (Rails.error.report(e); render_error(e, :service_unavailable))   # a 503 is reported; needs config.rails.register_error_subscriber = true (Single-Source Reporting)
   def unprocessable(e)        = render json: { error: e.message, request_id: request.request_id,
                                                details: e.try(:record)&.errors || e.try(:details) },
                                        status: :unprocessable_entity
@@ -61,7 +63,7 @@ class ApplicationController < ActionController::API
 end
 ```
 
-`rescue_from` handlers are searched bottom-up: the **last-declared** handler whose class matches wins. So declare broad classes at the top, narrow ones at the bottom. Every domain error in the taxonomy gets a ladder entry and an HTTP status; include `request_id` so users can quote it in reports. Malformed JSON (`ActionDispatch::Http::Parameters::ParseError`) raises before controllers - handle via `config.action_dispatch.rescue_responses` or middleware, not `rescue_from`.
+`rescue_from` handlers are searched bottom-up: the **last-declared** handler whose class matches wins. So declare broad classes at the top, narrow ones at the bottom. Every domain error - app-level or client-local - gets a ladder entry and an HTTP status, except `Unexpected`-style bugs, which stay unrescued; include `request_id` so users can quote it in reports. Malformed JSON (`ActionDispatch::Http::Parameters::ParseError`) raises before controllers - handle via `config.action_dispatch.rescue_responses` or middleware, not `rescue_from`.
 
 Server-rendered apps keep the identical ladder; handlers render an error template or `redirect_back` with a flash instead of JSON (`render "errors/not_found", status: :not_found`), and the `request_id` goes in the page footer rather than the payload.
 
@@ -84,7 +86,7 @@ class ApplicationError < StandardError
 end
 ```
 
-Group by **how the caller responds**, not where the error originated. `BillingError`/`PaymentError`/`StripeError` is the wrong axis - callers care about "validation", "transient", "policy", "not found".
+Group by **how the caller responds**, not where the error originated. `BillingError`/`PaymentError`/`StripeError` is the wrong axis - callers care about "validation", "transient", "policy", "not found". A counterparty's business refusal (account frozen, limit exceeded) is `ValidationFailed`-shaped when the caller can change the input and `PolicyDenied`-shaped when it cannot.
 
 ### Result vs Raise
 
@@ -140,7 +142,7 @@ class FulfillOrderJob
 end
 ```
 
-`rescue => e; logger.error(...)` in a job prevents retry and hides incidents. So do unbounded `retry`/`sleep` loops inside service code - retry belongs to Sidekiq, bounded and observable. If you swallow, document why and call the reporter explicitly. For per-item batch work, don't swallow per item silently: collect failures, report one aggregate `Rails.error.report` with counts and sample rows in context (not one report per item - 10k failing rows must not page 10k times), raise if everything failed.
+`rescue => e; logger.error(...)` in a job prevents retry and hides incidents. So do unbounded `retry`/`sleep` loops inside service code - retry belongs to Sidekiq, bounded and observable. A `rescue` inside `perform` for a class the retry channel owns (ActiveJob `retry_on`, or Sidekiq's `sidekiq_options retry:` + `sidekiq_retry_in`) wins and silently disables the retry - one channel per class. Batch re-entry after an all-failed raise reprocesses succeeded rows unless the job checkpoints (`rails-batch-processing-patterns`). If you swallow, document why and call the reporter explicitly. For per-item batch work, don't swallow per item silently: collect failures, report one aggregate `Rails.error.report` with counts and sample rows in context (not one report per item - 10k failing rows must not page 10k times), raise if everything failed (`ExternalUnavailable` when a retry can help, a plain error when the data is bad).
 
 ### Boundary Translation
 
@@ -176,25 +178,25 @@ Modern reporter gems self-wire, but through two independent mechanisms - conflat
 
 ## Output Format
 
-One block per layer touched (a feature spanning client + service + job emits three). Fields that don't apply to a layer take `N/A`. In review mode, blocks describe the post-fix state, preceded by findings:
+One block per layer touched (a feature spanning client + service + job emits three). Fields that don't apply to a layer take `N/A`. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Blocks describe the post-fix state. In build mode, a pre-existing violation the change touches (an unclassed `raise`, an unbounded `retry`) is a numbered finding too. One controller block per base class when `ActionController::Base` and `ActionController::API` carry separate ladders:
 
 ```
-Layer: <controller | service | job | client | rake>
+Layer: <controller | service | job | client | rake | middleware / config (rescue_responses, reporter initializer)>
 
-Rescue strategy: <rescue_from ladder (controller) | Result on expected | raise on unexpected | boundary translation (client: catch vendor, raise domain) | per-item isolation (batch: collect failures, raise only if all failed) | none - unhandled (GAP) | mixed (justified)>
+Rescue strategy: <rescue_from ladder (controller) | Result on expected | raise on unexpected | boundary translation (client: catch vendor, raise domain) | per-item isolation (batch: collect failures, raise only if all failed) | none - unhandled (GAP) | mixed (justified - say which path takes which) | mixed - unjustified (GAP)>
 
 Domain errors: <ApplicationError::X | client-local boundary vocabulary (BillingError::Declined) | framework only>
 
-SDK translation: <at boundary | leaked into service (FIX) | N/A>
+SDK translation: <at boundary | at boundary but undifferentiated - one class for timeout, 4xx and 5xx (FIX) | leaked into service (FIX) | N/A>
 
-rescue_from coverage: <listed classes | missing: ...>
+rescue_from coverage: <listed classes; missing: ...>
 
-Sidekiq retry: <propagate | swallow with reason | bounded local retry then propagate (transient DB only) | N/A>
+Sidekiq retry: <propagate | swallow with reason | per-item: swallow partial failures, propagate when all failed | bounded local retry then propagate (transient DB only) | N/A>
 
-Reporter call: <Rails.error / Sentry at <layer> | none (auto middleware reports) | swallowed before the middleware saw it (FIX) | integration gem absent - under-reported (FIX) | every-retry, should be retries-exhausted (FIX) | double-reported (FIX)>
+Reporter call: <Rails.error / reporter notifier at <layer> | none (auto middleware reports) | none - rescue_from-handled 4xx (intended) | swallowed before the middleware saw it (FIX) | Rails.error.report with register_error_subscriber off - reaches nobody (FIX) | integration gem absent - under-reported (FIX) | every-retry, should be retries-exhausted (FIX) | double-reported (FIX)>
 ```
 
-A ladder shared by HTML and JSON clients branches on `request.format` inside the handler rather than splitting the app into two profiles. `ExternalUnavailable` (503) reports like a 5xx, not like the 4xx handlers - the no-report rule covers client-fault statuses only. A transient `ActiveRecord::Deadlocked` inside a job may take a bounded local retry (2-3, backed off) *when the work is idempotent*; otherwise let it propagate and let Sidekiq own the retry - never both.
+An app with both `ActionController::Base` and `ActionController::API` bases keeps one ladder in a concern included by both; handlers branch on `request.format` (the API base has no view renderer, so its branch renders JSON only). `ExternalUnavailable` (503) reports like a 5xx, not like the 4xx handlers - the no-report rule covers client-fault statuses only. A transient `ActiveRecord::Deadlocked` inside a job may take a bounded local retry (2-3, backed off) *when the work is idempotent*; otherwise let it propagate and let Sidekiq own the retry - never both.
 
 ## Avoid
 
