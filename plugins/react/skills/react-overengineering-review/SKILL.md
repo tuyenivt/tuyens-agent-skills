@@ -9,7 +9,7 @@ user-invocable: false
 
 # React Overengineering Review
 
-> Load `Use skill: stack-detect` first to confirm the project is React and to read its build tooling; the detection is context for the compiler and store questions below, not an output field. For framework-neutral complexity heuristics defer to `complexity-review`; this skill owns React-specific overengineering.
+> Load `Use skill: stack-detect` first to confirm the project is React and whether it is Next.js, whose installed `next` major selects the compiler config key below; the detection is context, not an output field. `stack-detect` has no field for this (it carries versions only when a `## Tech Stack` section declares them): read the compiler plugin, the `next` version and store libraries from `package.json` dependencies (the owning app's manifest in a monorepo) and the imports in the files in scope. For framework-neutral complexity heuristics defer to `complexity-review`; this skill owns React-specific overengineering.
 
 ## When to Use
 
@@ -25,11 +25,11 @@ The bar: an abstraction earns its keep when **at least two real consumers exist 
 - One real consumer is not a reusable abstraction. Inline first; extract on the second use.
 - **Establish whether the React Compiler is on before judging memoization.** Look for `babel-plugin-react-compiler`, `reactCompiler: true` (Next 16) or `experimental.reactCompiler` (Next 15). Where it is on and compiling the file - `compilationMode: 'annotation'` compiles only functions marked `"use memo"`, and `"use no memo"` or a Rules-of-React violation bails a component out - new manual memoization is not needed, so flag it in code being written. Existing manual memoization is a different question: the compiler preserves it deliberately, React's own guidance is to leave it alone, and `useMemo`/`useCallback` remain the supported escape hatch for a value an effect depends on. Never file a bulk-delete finding.
 - Memoization added by hand requires a named reason: a memoized child whose identity drives renders, an expensive computation profiled, or a value in a downstream effect's dep array. "Just in case" is not a reason.
-- Context with one consumer is a prop chain in disguise. Pass the prop.
+- Context with one consumer is a prop chain in disguise. Pass the prop - unless that one consumer is a deep descendant the intermediate layers never read (see the Context bar).
 - A global store for fewer than three shared slices is overhead whatever the library - the bar in the Pattern below is library-neutral. The library only changes how much the overhead costs: Redux adds store wiring, a `<Provider>` and `useDispatch`/`useSelector` at every call site, while Zustand and Jotai are lighter (though in the App Router both still need a per-request store behind a client provider to be SSR-safe). Weigh that cost in the Fix, not in whether to flag.
 - Generic types (`<T>`) on a component or hook with one concrete usage are wrong - delete the parameter, hardcode the type.
 - A custom hook used once that wraps `useState` + one effect is a function pretending to be infrastructure. Inline it.
-- Compound components (`<X.Root><X.Trigger>`) are for multi-piece interactions (Dialog, Tabs, Menu). For single-shape components, a flat API is correct.
+- Compound components (`<X.Root><X.Trigger>`) are for multi-piece interactions (Dialog, Tabs, Menu). For single-shape components, a flat API is correct. The right shape still owes the consumer bar: a hand-rolled compound with one consumer and no hosting design system is `PrematureCompound` too, its Verdict set by the Question rule below.
 
 ## Patterns
 
@@ -48,7 +48,7 @@ const total = price * qty;
 return <button onClick={() => setOpen(true)}>Open</button>;
 ```
 
-Reason it earns its place: `<Child>` is wrapped in `React.memo`, or the callback feeds an effect's deps. Otherwise delete.
+Reason it earns its place: the callback is passed to a child wrapped in `React.memo`, or feeds an effect's deps. Otherwise delete.
 
 ### React.memo Overuse
 
@@ -58,7 +58,7 @@ const Badge = memo(function Badge({ label }: { label: string }) { return <span>{
 
 // Bad - memo defeated by a prop rebuilt every render, so it never hits.
 const Row = memo(function Row({ item, onSelect }: RowProps) { ... });
-<Row item={item} onSelect={() => select(item.id)} />
+<Row item={item} onSelect={(id) => select(id)} />   // Row calls onSelect(item.id)
 
 // Good - drop memo from the cheap leaf; keep it on the expensive one and stabilise its props.
 function Badge({ label }: { label: string }) { return <span>{label}</span>; }
@@ -111,7 +111,7 @@ const [open, setOpen] = useState(false);
 <Sidebar open={open} onToggle={() => setOpen(o => !o)} />
 ```
 
-Bar: 3+ shared slices, OR cross-cutting devtools / middleware needs, OR a team that already runs the store. Otherwise local state + lift.
+Bar: 3+ shared slices, OR cross-cutting devtools / middleware needs, OR a team that already runs the store (adding a slice to the store library already in place - not introducing a second library beside it). Otherwise local state + lift.
 
 ### Single-Use Custom Hook
 
@@ -170,14 +170,14 @@ if (!user) return <Navigate to="/login" replace />;   // React Router; Next: red
 
 ```tsx
 // Bad - mirror prop into state, sync via effect.
-function Greeting({ name }) {
+function Greeting({ name }: { name: string }) {
   const [n, setN] = useState(name);
   useEffect(() => setN(name), [name]);
   return <p>Hi {n}</p>;
 }
 
 // Good - use the prop.
-function Greeting({ name }) { return <p>Hi {name}</p>; }
+function Greeting({ name }: { name: string }) { return <p>Hi {name}</p>; }
 ```
 
 `useEffect` to sync a prop into state is almost always wrong. Either compute during render or lift state to the parent.
@@ -195,7 +195,7 @@ type ButtonProps = { variant?: "primary" | "destructive" };
 
 ## Output Format
 
-When auditing, open with one line `Scope: <files reviewed>`, then emit one block per finding, ordered by severity (a Question sorts with its severity; within a band, file order), one finding per root cause - an under-bar hook's internal memoization folds into the hook finding; an HoC + wrapper + render-prop trio for one concern is one `RedundantHoC` (`RenderPropOverkill` covers a lone render-prop); repeated instances of one Issue in the same component merge into one block listing each location:
+When auditing, open with one line `Scope: <files reviewed>`, then emit one block per finding, ordered by severity (a Question sorts with its severity; within a band, file order (the order the input lists the files, a glob expanding alphabetically; ascending line within a file)), one finding per root cause - an under-bar hook's internal memoization folds into the hook finding; an HoC + wrapper + render-prop trio for one concern is one `RedundantHoC` (`RenderPropOverkill` covers a lone render-prop); repeated instances of one Issue in the same component merge into one block listing each location:
 
 ```
 Scope: <files reviewed>
@@ -208,25 +208,25 @@ Scope: <files reviewed>
   Consumers found: <count + locations; "n/a" when the issue is not consumer-counted, e.g. PrematureMemo, PropStateEffectSync; a counted value wins over "many (not enumerated)", the provider-bag fallback>
   Fix: <one-line action; reference a Pattern by name>
 
-Cleared: <reviewed and justified - one line, no blocks>
+Cleared: <reviewed and justified - one line, no blocks; `none` when nothing was cleared>
 Tally: <N> findings, <Q> questions
 Notes: <off-scope defects noticed in passing, each naming the concern that owns it (hooks discipline, state architecture, accessibility) rather than a skill filename; omit when none>
 ```
 
-Set `Verdict: Question` (not `Finding`) when an abstraction is under-bar now but plausibly justified soon - a second consumer in flight, a component the team says it is about to reuse. A Question asks the author to confirm; a Finding asserts overengineering. When in doubt, prefer Question. Design-system intent already documented in the repo (a README or spec naming the surface as a hosted primitive) is settled, so it is neither: list it under `Cleared:`. A Question carries the severity the issue would have if confirmed. `ContextSingleConsumer` covers any under-bar context (one or two consumers).
+Set `Verdict: Question` (not `Finding`) when an abstraction is under-bar now but plausibly justified soon - a second consumer in flight, a component the team says it is about to reuse. A Question asks the author to confirm; a Finding asserts overengineering. When in doubt, prefer Question. Design-system intent already documented in the repo (a README or spec naming the surface as a hosted primitive) is settled, internal Context included, so it is neither: list it under `Cleared:`. A Question carries the severity the issue would have if confirmed. `ContextSingleConsumer` covers any under-bar context (one or two consumers); a consumer in the provider's own file still counts as one. `SingleUseHook` also covers a `use*` function that calls no hooks at all. `SpeculativeConfigurability` covers props declared but never read and props declared but never implemented alike. A stated reason the code contradicts (the profiled route never renders the component) is not a reason: say so in Evidence.
 
 One block per root cause. Repeated instances of one Issue in a component merge into a single block listing each location; two different Issue values in one component stay separate blocks, because their fixes are independent.
 
 Severity guide:
-- **High**: `PropStateEffectSync` (correctness drift, not just complexity); `MegaProvider` bundling several unrelated slices (breadth is the evidence; measurement not required); `StoreForTwoSlices` adding a global concept the team must learn for trivial benefit (a single-slice store included).
-- **Medium**: `ContextSingleConsumer`; `SingleUseHook`; `PrematureCompound`; `GenericForOneUsage`; an HoC/wrapper/render-prop trio shipped together for one concern.
-- **Low**: `PrematureMemo`; `SpeculativeConfigurability` on unused variants; `RenderPropOverkill` for a lone render prop; `ReactMemoOveruse`.
+- **High**: `PropStateEffectSync` (correctness drift, not just complexity); `MegaProvider` bundling slices that change at different rates (breadth is the evidence; measurement not required); `StoreForTwoSlices` adding a global concept the team must learn for trivial benefit (a single-slice store included).
+- **Medium**: `ContextSingleConsumer`; `SingleUseHook`; `PrematureCompound`; `GenericForOneUsage`; `RedundantHoC` (a lone single-consumer HoC, or an HoC/wrapper/render-prop trio shipped together for one concern).
+- **Low**: `PrematureMemo`; `SpeculativeConfigurability` (unused variants, props never read or never implemented); `RenderPropOverkill` for a lone render prop; `ReactMemoOveruse`.
 
-No Issue value is left unscored: where a value appears in more than one band the band naming your defect's condition wins, and a defect matching two takes the higher. `MegaProvider` is High whenever the provider bundles slices that change at different rates, whether or not their domains are related - breadth of re-render is the harm. `StoreForTwoSlices` is High for any under-bar store, single-slice included, whatever the library. `RedundantHoC` is Medium for a lone single-consumer HoC and for the shipped-together trio alike. `PrematureMemo` and `ReactMemoOveruse` stay Low regardless of what is memoized.
+No Issue value is left unscored: where a value appears in more than one band the band naming your defect's condition wins, and a defect matching two takes the higher. `MegaProvider` is High whenever the provider bundles slices that change at different rates, whether or not their domains are related - breadth of re-render is the harm; slices that all change together are not a `MegaProvider` finding. `StoreForTwoSlices` is High for any under-bar store, single-slice included, whatever the library. `RedundantHoC` is Medium for a lone single-consumer HoC and for the shipped-together trio alike. `PrematureMemo` and `ReactMemoOveruse` stay Low regardless of what is memoized.
 
-Count consumers as the distinct modules that read the value - one file reading it three times is one consumer. `Consumers found: n/a` applies to exactly `PrematureMemo`, `ReactMemoOveruse`, `PropStateEffectSync` and `SpeculativeConfigurability`; every other value carries a count. A finding whose one root cause spans a definition and its call sites lists them in `Location` separated by commas.
+Count consumers as the distinct modules that read the value - one file reading it three times is one consumer; a store's consumers are the components and hooks that call it. Files outside Scope may be read to count consumers or to establish the incumbent store; defects found there go in `Notes:`. `Consumers found: n/a` applies to exactly `PrematureMemo`, `ReactMemoOveruse`, `PropStateEffectSync` and `SpeculativeConfigurability`; every other value carries a count, except that a `MegaProvider` whose readers cannot be enumerated from the files in scope writes `many (not enumerated)`. A finding whose one root cause spans a definition and its call sites lists them in `Location` separated by commas.
 
-If no issues, emit `Scope:`, then `No overengineering signals found in <scope>.`, then the same `Cleared:`, `Tally: 0 findings, <Q> questions` and `Notes:` lines as any other run - only the finding blocks are omitted.
+With no findings, emit `Scope:`, any Question blocks, then `No overengineering findings in <scope>.`, then the same `Cleared:`, `Tally: 0 findings, <Q> questions` and `Notes:` lines as any other run.
 
 ## Avoid
 

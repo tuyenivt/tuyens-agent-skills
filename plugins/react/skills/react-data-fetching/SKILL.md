@@ -22,7 +22,7 @@ user-invocable: false
 - Never `fetch` + `useState` in `useEffect`. Use a Server Component (data needed at render) or TanStack Query / SWR (interactive, user-specific, or revalidating client data).
 - Query keys are arrays containing every variable the query depends on. Same key = same cache entry; different inputs = different keys.
 - Every mutation invalidates or sets the affected queries. Untouched cache after a write is a bug.
-- Components handle `loading`, `error`, and `empty` (`data` exists but is null/empty) explicitly. No blank-screen fallthroughs.
+- Components handle `loading`, `error`, and `empty` (data arrived and holds no rows) explicitly. A query that is pending but not fetching (disabled, paused offline) renders the prerequisite's or an offline state. No blank-screen fallthroughs.
 - Fetch/transform logic lives in named module-scope functions; the thin `queryFn: () => fetchUser(id)` arrow at the call site is idiomatic. `Inline-Fn` flags fetch logic written inline in the options object, not the thin wrapper.
 - For Next.js App Router: fetch on the server, hydrate to TanStack Query via `HydrationBoundary` when the same data must stay interactive on the client.
 
@@ -32,11 +32,12 @@ user-invocable: false
 | --------------------------------------------------- | -------------------------------------------- |
 | Render-time data, SEO, no client interactivity      | Server Component (`async`/`await`)           |
 | User-specific, mutates, polls, refetches            | TanStack Query in Client Component          |
+| Changes on the server while watched (webhook-driven status, live stock) | TanStack Query with `refetchInterval` that returns `false` at a terminal state, or a push channel (SSE / WebSocket) that invalidates the key |
 | Same data on server then interactive on client      | RSC prefetch + `HydrationBoundary`           |
-| Cacheable public data with ISR                      | Server Component + `revalidate` / tags       |
+| Cacheable public data with ISR                      | Server Component + `revalidate` / tags (Next 16 with Cache Components: `"use cache"` + `cacheLife` / `cacheTag`) |
 | Project already standardised on SWR                 | SWR (URL-keyed, simpler API)                 |
 
-TanStack Query is the default client choice: dependent queries, infinite queries, optimistic updates, and richer cache APIs. SWR is fine where the team has chosen it.
+TanStack Query is the default client choice for what SWR lacks: `gcTime` control, built-in prefix matching of hierarchical keys (SWR needs a hand-written `mutate(key => ...)` matcher), the mutation lifecycle (`onMutate` / `cancelQueries`), and devtools. SWR covers dependent, infinite and optimistic fetching too and is fine where the team has chosen it.
 
 Cache sizing: `staleTime` = how long serving stale data is acceptable (0 only when per-interaction freshness matters; minutes for reference data); `gcTime` > `staleTime`. The client-setup example's 60s/5min are starting defaults, not law. Polling: `refetchInterval` (TanStack) / `refreshInterval` (SWR). SWR vocabulary: `dedupingInterval` ~ staleTime (SWR has no `gcTime` counterpart - say so in the Cache config cell rather than inventing one), `revalidateOnFocus` ~ refetchOnWindowFocus; conditional fetch = null key (`useSWR(id ? key : null)`); cursor pagination = `useSWRInfinite`.
 
@@ -65,15 +66,20 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
 
 ```tsx
 "use client";
+const makeQueryClient = () => new QueryClient({
+  defaultOptions: { queries: { staleTime: 60_000, gcTime: 5 * 60_000, retry: 1, refetchOnWindowFocus: false } },
+});
+let browserClient: QueryClient | undefined;
+function getQueryClient() {
+  if (typeof window === "undefined") return makeQueryClient(); // a fresh client per server request
+  return (browserClient ??= makeQueryClient());                 // one client per browser tab
+}
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: { queries: { staleTime: 60_000, gcTime: 5 * 60_000, retry: 1, refetchOnWindowFocus: false } },
-  }));
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return <QueryClientProvider client={getQueryClient()}>{children}</QueryClientProvider>;
 }
 ```
 
-`useState` (not module scope) so each request on the server gets its own client.
+The shape of TanStack's Advanced SSR guide. `useState(() => new QueryClient())` also isolates requests, but React discards that client if the first render suspends with no Suspense boundary between the provider and the suspending code.
 
 ### Query with all three states
 
@@ -86,22 +92,22 @@ const { data, isLoading, error } = useQuery({
 // Plain isPending stays true forever for a query that never runs (enabled: false, offline).
 if (isLoading) return <ProfileSkeleton />;
 if (error) return <ErrorState message="Failed to load profile" />;
-if (!data) return null;                            // gated query: render the prerequisite's state
-if (data.items.length === 0) return <EmptyState />;   // empty = data arrived and holds nothing
+if (!data) return <ProfileUnavailable />;          // pending, not fetching (paused offline): never a blank
 return <ProfileCard user={data} />;
+// A list query adds the empty branch: if (data.length === 0) return <EmptyState />;
 ```
 
 ### Dependent query
 
 ```tsx
-const { data: user } = useQuery({ queryKey: ["user", userId], queryFn: () => fetchUser(userId) });
+const { data: user } = useQuery({ queryKey: ["users", "detail", userId], queryFn: () => fetchUser(userId) });
 const posts = useQuery({
-  queryKey: ["user", userId, "posts"],
+  queryKey: ["users", userId, "posts"],
   queryFn: () => fetchUserPosts(userId),
   enabled: !!user,                       // gate on prerequisite
 });
-// A gated query is pending, not loading: render the prerequisite's own state until `user` arrives,
-// or `posts.isPending` shows a spinner that never clears.
+// A gated query is pending, not loading: render the prerequisite's own state until `user` arrives -
+// a spinner keyed on `posts.isPending` never clears if the `user` query errors or stays disabled.
 ```
 
 ### Infinite (cursor) pagination
@@ -124,7 +130,7 @@ Prefer cursor (`nextCursor`) over `offset` for stability under concurrent writes
 const qc = useQueryClient();
 const m = useMutation({
   mutationFn: createPost,
-  onSuccess: () => qc.invalidateQueries({ queryKey: ["posts"] }),
+  onSuccess: (post) => qc.invalidateQueries({ queryKey: ["users", post.authorId, "posts"] }),
   onError: (e) => toast.error(e.message),
 });
 ```
@@ -177,27 +183,31 @@ qc.invalidateQueries({ queryKey: userKeys.all });
 
 ```tsx
 const { data, error, isLoading } = useSWR<User>(`/api/users/${id}`, fetcher);
-const { trigger, isMutating } = useSWRMutation("/api/posts", postFetcher);
-// Cache key is the URL string. The read key and the mutation key usually differ,
-// so SWR will NOT auto-revalidate the read; refresh it explicitly:
-const { mutate } = useSWRConfig();
+// Bound to the read key, the mutation revalidates it after trigger (revalidate defaults to true).
+const { trigger, isMutating } = useSWRMutation(`/api/users/${id}`, updateUser); // updateUser(key, { arg })
 async function save(changes: Partial<User>) {
-  await trigger(changes);
-  mutate(`/api/users/${id}`);            // revalidate the affected read key
+  await trigger(changes, { optimisticData: (cur) => ({ ...cur!, ...changes }), rollbackOnError: true });
 }
-// Optimistic equivalent: mutate(key, optimisticData, { revalidate: false }) then mutate(key) on settle.
+// A mutation on another key (POST /api/posts) leaves this read untouched: call
+// const { mutate } = useSWRConfig() at the top level, then mutate(readKey) after the write,
+// or the read serves pre-write data.
 ```
 
 ## Output Format
 
-When reviewing, emit one Finding per issue, ordered by severity; emit a finding even when a broader refactor would subsume it, naming the subsuming change in Fix. When consulting (strategy choice, cache sizing), emit one prescription row per data type - {Data type | Strategy | Key | Cache config | Invalidation trigger} - then Findings for any defective code shown; the concluding Summary block covers reviewed code only (omit it in a pure consult).
+When reviewing, emit one Finding per issue, ordered by severity; emit a finding even when a broader refactor would subsume it, naming the subsuming change in Fix. When consulting (strategy choice, cache sizing), emit one prescription row per data type - {Data type | Strategy | Key | Cache config | Invalidation trigger} - then Findings for any defective code shown; the concluding Summary block covers reviewed code only (omit it only when no code is shown).
 
 ```
 ### Finding: <short title>
+
 Category: {Effect-Fetch | Query-Key | Invalidation | State-Handling | Optimistic | Hydration | Stale-Time | RSC-Boundary | Inline-Fn | Client-Setup}
+
 Severity: {Critical | High | Medium | Low}
+
 Location: <file>:<line> or <component>
+
 Issue: <one-line problem>
+
 Fix: <concrete change, reference Pattern by name>
 ```
 
@@ -205,22 +215,27 @@ Conclude with:
 
 ```
 Summary: <N> findings (<C> Critical, <H> High, <M> Medium, <L> Low)
+
 Client Library: {TanStack Query | SWR | Mixed | None}
+
 RSC Usage: {Server-First | Client-First | Mixed | None in scope | N/A (SPA)}
-Invalidation Coverage: <mutations with invalidation> / <total mutations>  (write `0 / 0` when no mutation is in scope)
+
+Invalidation Coverage: <mutations with invalidation> / <total mutations>
+
 Not assessed: <input never shown or unverifiable from it - a parent Server Component outside the file set, a module whose behaviour decides a severity; omit when none>
+
 Notes: <off-enum observations; omit when none>
 ```
 
-`Client-Setup`: QueryClient construction or provider defects (module-scope client on a server runtime, missing provider). A prefetch/client key mismatch is `Hydration`, not `Query-Key`. `Mixed` Client Library = two libraries, or a library plus raw effect-fetches. A mutation counts as covered only when it invalidates or sets the affected queries on settlement; an `onMutate` optimistic write alone does not count. Non-finding observations (out-of-enum defects, confirmed-fine calls) go in a single trailing `Notes:` line.
+`Client-Setup`: QueryClient construction or provider defects (an unguarded module-scope client on a server runtime, missing provider). A server cache keyed without an input its function reads (`unstable_cache` key parts omitting the user) is `Query-Key`. A fetch dispatched into a UI store (a Redux thunk in an effect) is `Effect-Fetch`; the store holding server data belongs to state architecture and goes in `Notes:`. A prefetch/client key mismatch is `Hydration`, not `Query-Key`. `Mixed` Client Library = two libraries, or a library plus raw effect-fetches. A mutation counts as covered when it invalidates or sets the affected queries on success or settlement (`onSuccess`, `onSettled`, or after `mutateAsync`); an `onMutate` optimistic write alone does not count; with no mutation in scope, write `0 / 0`. One Finding per root cause: occurrences with the same Category and the same fix in one file merge into one Finding listing each location; different Categories never merge. An effect that triggers fetches without calling fetch (an observer calling `setSize`) is `Effect-Fetch` when it leaks or duplicates them; a raw call fetching what a hook in scope already caches is `Effect-Fetch` on the raw path, the Fix naming the hook. Non-finding observations (out-of-enum defects, confirmed-fine calls) go in a single trailing `Notes:` line.
 
 Severity guide:
-- **Critical**: data loss, wrong-user data, unbounded refetch loops; module-scope `QueryClient` on a server runtime (cross-request leakage).
-- **High**: stale data after writes (missing `invalidateQueries`); an effect-fetch that races, refetches unboundedly, or leaks on unmount (a correctly guarded one is still `Effect-Fetch`, at Medium, since the Rule is absolute); a `queryFn`-read variable absent from the `queryKey` (cache collision, wrong data shown; Low when the value is a build-time constant); a prefetch/client key mismatch defeating hydration; race conditions from manual effects.
+- **Critical**: data loss, wrong-user data, unbounded refetch loops; an unguarded module-scope `QueryClient` on a server runtime (cross-request leakage; a `"use client"` module still runs during SSR).
+- **High**: stale data after writes (missing `invalidateQueries`); a missing `QueryClientProvider` (throws at runtime); an effect-fetch that races, refetches unboundedly, leaks on unmount, or omits an input it reads from its deps (another entity's data stays after the id or the signed-in user changes) (a correctly guarded one is still `Effect-Fetch`, at Medium, since the Rule is absolute); a `queryFn`-read variable absent from the `queryKey` (cache collision, wrong data shown; Critical when the missing input is the user's identity, since another user's data is then served; Low when the value is a build-time constant); a prefetch/client key mismatch defeating hydration; race conditions from manual effects.
 - **Medium**: missing empty/error UI (High when a failed load leaves the UI stuck, e.g. a spinner that never clears); missing optimistic rollback; client-fetching public data a Server Component should own (`RSC-Boundary`); truly cosmetic key instability (string-vs-array of same data).
-- **Low**: fetch logic written inline in the options object (`Inline-Fn`; the thin `queryFn: () => fetchUser(id)` wrapper is idiomatic and never a finding); default `staleTime: 0` where freshness isn't required.
+- **Low**: fetch logic written inline in the options object (`Inline-Fn`; the thin `queryFn: () => fetchUser(id)` wrapper is idiomatic and never a finding); default `staleTime: 0` where freshness isn't required and focus refetch is off.
 
-No Category value is left unscored. Where a value appears in more than one band, the band naming your defect's condition wins; where two fit equally, take the higher. `staleTime: 0` together with `refetchOnWindowFocus: true` on stable data is `Stale-Time` at Medium - bounded, but a refetch on every tab focus.
+No Category value is left unscored. Where a value appears in more than one band, the band naming your defect's condition wins; where two fit equally, take the higher. `staleTime: 0` with `refetchOnWindowFocus` on (its default) on stable data is `Stale-Time` at Medium - bounded, but a refetch on every tab focus.
 
 ## Avoid
 
@@ -229,6 +244,6 @@ No Category value is left unscored. Where a value appears in more than one band,
 - Mutations without `invalidateQueries` / `setQueryData` - users see pre-write data until refresh.
 - Client fetching data a parent Server Component could fetch and pass down.
 - Inline `queryFn: () => fetch(...)` closures that capture changing props without the variable in the key.
-- Module-scope `new QueryClient()` in Next.js (cross-request leakage); construct inside `useState` in a Client Component.
+- An unguarded module-scope `new QueryClient()` in Next.js (cross-request leakage); use `getQueryClient()` or construct inside `useState` in a Client Component.
 - `staleTime: 0` plus `refetchOnWindowFocus: true` for stable data (refetch storm on tab focus).
 - Optimistic updates without `cancelQueries` + snapshot + `onError` rollback.

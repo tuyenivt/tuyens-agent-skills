@@ -45,7 +45,7 @@ Classify each piece of state before choosing a tool:
 | Form         | Inputs, validation, dirty   | Field values, errors, touched     | Form library or local state       |
 | Transient    | Ephemeral, never persisted  | Animation progress, scroll pos    | A non-reactive holder (React `useRef`, a plain variable) |
 
-State owned outside the app - a global a legacy script writes, a host page's variable - takes the category its *use* fits with Owner naming the external writer; the finding is the missing single owner, not the category. Persistence (reload survival) and cross-browser-tab sync are layers on an existing owner, not new owners: keep the state in its category's home and attach a persist plugin / storage adapter, with BroadcastChannel or storage events for cross-tab sync.
+State owned outside the app - a global a legacy script writes, a host page's variable - takes the category its *use* fits with Owner naming the external writer; the finding is the missing single owner, not the category. Persistence (reload survival) and cross-browser-tab sync are layers on an existing owner, not new owners: keep the state in its category's home and attach a persist plugin / storage adapter, with storage events for a localStorage-backed owner (they fire only on storage writes in other tabs) and BroadcastChannel for everything else, such as telling other tabs to invalidate a query cache. State whose owner differs by session (guest in local storage, signed-in on the server) takes one State Map row per owner; the hand-off at login (post the local entries, then clear the local owner) is a Recommendation.
 
 URL is the one owner the user can write directly - back button, pasted link, bookmark. Treat navigation as an inbound mutation: read from the URL on every render rather than seeding a copy on mount, or a bookmark opens the app with the wrong state and the back button silently desyncs.
 
@@ -105,7 +105,7 @@ const theme = useStore(s => s.theme)
 return <div>Theme: {theme}</div>
 ```
 
-Same idea in Redux (`useSelector`) and Zustand (selector argument). Vue and Angular need no equivalent: Pinia tracks per property and signals are per-signal, so each re-renders only for what it reads. `storeToRefs` keeps reactivity when destructuring rather than narrowing a subscription; NgRx narrows with `store.select`/`selectSignal`.
+Same idea in Redux (`useSelector`) and Zustand (selector argument). Pinia and Angular signals need no equivalent: Pinia tracks per property and signals are per-signal, so each re-renders only for what it reads; `storeToRefs` keeps reactivity when destructuring rather than narrowing a subscription. NgRx Store is Observable-based and does need it - narrow with `store.select` / `selectSignal`.
 
 **React Context note:** Context re-renders all consumers when the value object changes. Split into focused contexts (Theme, Auth, Layout) or use a state library with selectors for high-frequency updates.
 
@@ -139,7 +139,7 @@ store.users = await fetchUsers()
 store.usersLoading = false
 
 // Good: UI store for client state; query library for server state
-setTheme("dark")                       // through the store's own setter, never direct assignment
+setTheme("dark")                       // through the store's setter (Pinia and Vue refs take direct assignment)
 const { data: users, isPending } = useQuery({ queryKey: ["users"], queryFn: fetchUsers })
 ```
 
@@ -159,7 +159,7 @@ After `stack-detect`, apply patterns using ecosystem idioms:
 - **Vue**: `ref`/`reactive` local; Pinia global; composable stores; Nuxt `useAsyncData` or TanStack Query Vue for server
 - **Angular**: Signals local/shared; NgRx for app-wide state, `@ngrx/signals` SignalStore or `@ngrx/component-store` for feature state; RxJS `BehaviorSubject` for service state; `toSignal` to bridge observables
 
-For unknown stacks, apply universal patterns and point the user to the framework's state docs.
+For any framework not bound above - `unknown`, or a detected one such as Svelte or Solid - apply the universal patterns and point the user to that framework's state docs.
 
 ---
 
@@ -170,9 +170,9 @@ Consuming workflow skills depend on this structure.
 ```
 ## State Management Assessment
 
-**Stack:** {detected language / framework}
+**Stack:** {Framework and Language as a display name (`Next.js 15.5 / TypeScript` for stack-detect's `React (Next.js)`) - the major.minor from the owning app's `package.json` (`^15.5.0` -> 15.5); with no `tsconfig.json`, the extensions of the files in scope decide JS vs TS, overriding stack-detect's Language; in a monorepo, the app owning the reviewed code; "unknown - universal patterns applied" when inconclusive}
 
-**State library:** {detected or recommended library; list each when more than one is in use and mark any that is installed but unread `(unused)`; write `{current} -> {target}` in migration mode}
+**State library:** {detected or recommended library; list each when more than one is in use and mark any that is installed but unread `(unused)` - a library reached through an import in scope counts as read; write `{current} -> {target}` in migration mode}
 
 ### State Map
 
@@ -180,23 +180,27 @@ Consuming workflow skills depend on this structure.
 | ------------ | ---------- | ------------------------- | ------------------------------- |
 | {state name} | {category} | {component or store name} | {useState / Pinia / NgRx / ...} |
 
-### Recommendations
+### Recommendations {when at least one applies}
 
 - {recommendation with rationale}
 
 ### Issues Found
 
 - [Severity: High | Medium | Low] {description}
-  - Location: {file}:{line}
+  - Location: {file}:{line}, or `design` for a planned owner with no file yet
   - Problem: {what is wrong}
   - Fix: {concrete correction for the detected stack, or the universal pattern when the stack is unknown}
 
 ### No Issues Found
 
-{Emit only when Issues Found is empty: in review mode state that the state management is adequate; in design mode state that the proposed placement carries no residual risk}
+{Emit only when Issues Found is empty: in review mode state that the state management is adequate; in design mode that the proposed placement carries no residual risk; in migration mode that the target placement introduces no new owner or stored derivation}
+
+Not assessed: {input the review needed but never saw - a file referenced but not provided, a module whose behaviour decides a severity, a symptom whose trigger lies outside scope; never a guessed finding; omit when none}
+
+Notes: {observations outside this skill's concern, each naming the owning concern; omit when none}
 ```
 
-Include exactly one of `Issues Found` / `No Issues Found`. A clean run emits every header field, the in-scope table, `Recommendations` when any apply, and `No Issues Found`; only the `Issues Found` blocks are omitted. Order Issues Found by severity, highest first; within a band, file order. The State Map covers the state in scope - the change's touched state when reviewing, the feature's state when designing or migrating - never a whole-app inventory. In review mode, `Owner` is the current owner; the recommended owner goes in the issue's Fix. In migration mode, write `Owner` as `{current} -> {target}` so the table is the migration map. In design mode (new feature, no code yet), `Owner` is the planned owner and Issues Found carries only residual risks knowingly accepted. Severity calibration: High = correctness or staleness bugs (duplicated server state, stored derived values, multiple owners); Medium = performance or maintainability (form drafts in global store, whole-store subscriptions, missing memoization of expensive derivations); Low = style and minor structure.
+Include exactly one of `Issues Found` / `No Issues Found`. A clean run emits every header field, the in-scope table, `Recommendations` when any apply, and `No Issues Found`; only the `Issues Found` blocks are omitted. Order Issues Found by severity, highest first; within a band, file order (the order the input lists the files; ascending line within a file). `Location` may list several `file:line` entries (or several lines of one file), comma-separated, when one root cause spans them; lead with the file the fix changes (the recommended owner's file when the fix is an owner decision; the earliest in file order on a tie), and sort the finding by that lead file. `stack-detect` has no field for this (it carries versions only when a `## Tech Stack` section declares them): read `State library` (framework-built-in stores such as Nuxt `useState` count) from `package.json` dependencies (the owning app's manifest in a monorepo) and the imports in the files in scope. Two owners merging keep the one most readers already use; the Fix names it. The State Map covers the state in scope - the change's touched state when reviewing, the feature's state when designing or migrating - never a whole-app inventory. In review mode, `Owner` is the current owner; the recommended owner goes in the issue's Fix. In migration mode, write `Owner` as `{current} -> {target}` so the table is the migration map, and Issues Found carries the architecture problems the migration would otherwise carry over. In design mode (new feature, no code yet), `Owner` is the planned owner and Issues Found carries residual risks knowingly accepted. When the build or design touches existing code, defects already in it are ordinary Issues Found entries marked `(pre-existing)` at their own severity; the residual-risk reading covers only the new work. Severity calibration: High = correctness or staleness bugs (duplicated server state, stored derived values, multiple owners); Medium = performance or maintainability (form drafts in global store, whole-store subscriptions, missing memoization of expensive derivations, URL-shaped state held outside the URL, two client-state libraries serving overlapping concerns); Low = style and minor structure.
 
 ---
 
@@ -208,4 +212,4 @@ Include exactly one of `Issues Found` / `No Issues Found`. A clean run emits eve
 - Duplicating entity data across stores or nested structures
 - Context for high-frequency updates (re-renders all consumers)
 - Spinning up a new global store per feature (proliferation)
-- Direct mutation outside reducers/actions/signals (breaks reactivity and devtools)
+- In-place mutation in an immutable-update store (Redux, Zustand, NgRx) or of a signal's value without `set`/`update` (breaks change detection and devtools); in Pinia and Vue, direct assignment is the mechanism

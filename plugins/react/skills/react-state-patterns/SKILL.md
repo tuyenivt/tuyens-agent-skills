@@ -20,7 +20,7 @@ user-invocable: false
 ## Rules
 
 - Climb the ladder only when forced: useState -> useReducer -> Context -> Zustand/Jotai -> Redux Toolkit.
-- Server data lives in TanStack Query / SWR. Never mirror it into Zustand, Redux, or Context.
+- Server data lives in a server-cache library (TanStack Query, SWR, RTK Query). Never hand-copy it into Zustand, Redux slices, or Context.
 - Context carries low-frequency values (theme, auth identity, locale). Never form fields, mouse, or animation state.
 - One store per domain boundary. Cart, auth, and notifications are separate stores.
 - Derived values are selectors, not stored fields. State updates go through the library's setter; no direct mutation outside Immer-backed reducers.
@@ -36,7 +36,7 @@ user-invocable: false
 | useReducer     | Related local fields with coupled transitions        | Multi-field form, state machine    |
 | Context *or* tiny Zustand | Low-frequency, app-wide identity                | Theme, auth user, locale           |
 | Zustand        | Shared client state across unrelated components      | Cart, toast queue, UI prefs        |
-| Jotai          | Many independent atoms read by different consumers   | Per-row selection in a large grid  |
+| Jotai          | Many independent atoms read by different consumers   | Per-cell values in a large grid    |
 | Redux Toolkit  | Large team needing middleware, time-travel, sagas    | Complex workflows, audited apps    |
 | URL            | Shareable, bookmarkable, back-button-safe state      | Filters, sort, page, search query  |
 | TanStack Query | Server data (fetch, cache, revalidate)               | User profile, product list         |
@@ -88,17 +88,16 @@ function CartBadge() {
 }
 ```
 
-Add `persist` only when reload must preserve state; add `devtools` in development. Stores stay flat per domain - do not nest `cart`, `auth`, `ui` inside one store. With SSR (Next.js), a `persist` store backed by `localStorage` rehydrates while the module evaluates - before the first client render - so the client's first paint disagrees with the server HTML that was rendered without it. Gate on a mounted flag (or `persist`'s `skipHydration` + a manual `rehydrate()`) before rendering persisted values. Separately, a module-scope store is one instance per server process and is shared across concurrent requests: create it per request behind a provider, or keep it in `"use client"` modules only.
+Add `persist` only when reload must preserve state; add `devtools` in development. Stores stay flat per domain - do not nest `cart`, `auth`, `ui` inside one store. With SSR (Next.js), a `persist` store backed by `localStorage` rehydrates while the module evaluates - before the first client render - so the client's first paint disagrees with the server HTML that was rendered without it. Gate on a mounted flag (or `persist`'s `skipHydration` + a manual `rehydrate()`) before rendering persisted values. Separately, a module-scope store is one instance per server process and is shared across concurrent requests - a `"use client"` module still runs on the server during SSR, so moving it there changes nothing. Create it per request behind a provider, or keep it module-scope only if nothing writes per-request data into it during a server render.
 
 ### Jotai for independent atoms
 
 ```tsx
 import { atom, useAtom } from "jotai";
-import { atomFamily } from "jotai/utils";
+import { atomFamily } from "jotai-family"; // the jotai/utils export is deprecated, slated for removal in Jotai 3
 
 // One atom per cell - editing a cell re-renders only that cell, not the grid.
 const cellAtom = atomFamily((id: string) => atom(""));
-const selectedCellAtom = atom<string | null>(null);
 
 function Cell({ id }: { id: string }) {
   const [value, setValue] = useAtom(cellAtom(id));
@@ -112,10 +111,10 @@ Reach for Jotai over Zustand when consumers read disjoint slices that would othe
 
 ```tsx
 // Bad - every keystroke re-renders every consumer of FormContext.
-const FormContext = createContext<{ values: Record<string,string>; set: (k:string,v:string)=>void }>(...);
+const FormContext = createContext<{ values: Record<string, string>; set: (k: string, v: string) => void } | null>(null);
 
 // Good - form values in useReducer / React Hook Form / Zustand; Context holds only stable identity.
-const AuthContext = createContext<{ user: User; logout: () => void }>(...);
+const AuthContext = createContext<{ user: User; logout: () => void } | null>(null);
 ```
 
 Splitting one Context into a value-Context and a setter-Context only helps if setters are stable; for high-frequency updates, switch mechanism.
@@ -139,7 +138,7 @@ function useFilters() {
 }
 ```
 
-The component calling this must sit under a `<Suspense>` boundary: `useSearchParams` opts its route out of static rendering and fails the build on a prerendered page without one.
+On a statically prerendered route, the component calling this sits under a `<Suspense>` boundary: `useSearchParams` makes the subtree up to the nearest boundary render on the client, and with no boundary the build fails. A dynamic route needs none.
 
 Read filters directly from `searchParams` per render - that *is* the source of truth. Vite / React Router: same rule via `useSearchParams` from `react-router` (v7 consolidated the package; `react-router-dom` is a deprecated re-export) - read `params` per render, write with `setParams`.
 
@@ -156,16 +155,16 @@ const cart = createSlice({
 });
 ```
 
-Use only when the project already needs middleware (sagas, undo/redo, cross-cutting logging). RTK Query already in the tree is not a reason on its own: it holds server data in the store, which the server-state rule forbids - migrating that data to a query library is the fix, not an argument for keeping Redux. For a greenfield slice, Zustand is shorter and cheaper.
+Use only when the project already needs middleware (sagas, undo/redo, cross-cutting logging). RTK Query already in the tree is a server-cache library and fine where it is, but it is not on its own a reason to keep Redux for client state. For a greenfield slice, Zustand is shorter and cheaper.
 
 ## Output Format
 
-When migrating, write `Primary library` as `{incumbent} -> {target}`, `Owner` as `{current} -> {target}` per slice, and order Findings as the migration sequence - server state out first, then one slice at a time; a slice nobody reads from the old store is done. When designing, the State Map and Stores describe the proposed architecture and Findings flag risks in it, using the same Issue values to name the mistake the design would otherwise make; state that has no owner yet takes the proposed name. When auditing, the consuming workflow owns the finding envelope; invoked standalone, emit the State Map and Stores as the target state, order Findings by severity, one finding per root cause (Location may name several files). `Primary library` is the recommendation, not the incumbent.
+When migrating, write `Primary library` as `{incumbent} -> {target}`, `Owner` as `{current} -> {target}` per slice, and order Findings as the migration sequence - server state out first, then one slice at a time; a slice nobody reads from the old store is done. When designing, the State Map and Stores describe the proposed architecture and Findings flag risks in it, using the same Issue values to name the mistake the design would otherwise make; state that has no owner yet takes the proposed name. When auditing, the consuming workflow owns the finding envelope; invoked standalone, emit the State Map and Stores as the target state, order Findings by severity, one finding per root cause (Location may name several files); `Primary library` is then the recommendation, not the incumbent. A design spanning several mechanisms names the one holding the largest client-state surface as `Primary library` and a scoped store as `Secondary`.
 
 ```
 ## React State Architecture
 
-Stack: {framework}
+Stack: {stack-detect's Framework value, e.g. `React (Next.js)`}
 
 Primary library: {Zustand | Redux Toolkit | Jotai | Context-only | none - useState/useReducer plus a server-cache library}
 
@@ -189,17 +188,19 @@ Secondary (scoped): {client-state library - the one domain it serves | none}
   Issue: {Wrong-Mechanism | Server-State-In-Store | Context-Re-render | Mega-Store | Stored-Derived | Mutation | URL-Candidate | Over-Subscription | Hydration-Mismatch | Duplicate-Source}
   Location: {file/component or "design"}
   Fix: {one-line action}
+
+Not assessed: {input the review needed but never saw - a file referenced but not provided, a module whose behaviour decides a severity, a symptom whose trigger lies outside scope; never a guessed finding; omit when none}
 ```
 
-Derived values are not slices - they never get a State Map row; a stored one is a `Stored-Derived` finding. Jotai atom families take a Stores row with Middleware `-`; Context providers do not get Stores rows. Category `Identity` covers auth/theme/locale; feature-scoped shared values (grid atoms) are `Shared UI`. `Duplicate-Source`: the same state has two owners (URL copied into `useState`, one slice duplicated across stores); the Fix names the surviving owner. Server data mirrored into a store stays `Server-State-In-Store`.
+Derived values are not slices - they never get a State Map row; a stored one is a `Stored-Derived` finding. Jotai atom families take a Stores row with Middleware `-`; Context providers and server-cache libraries do not get Stores rows, and a target with no store at all writes one row `none`. A migration map lists unchanged slices too, owner unchanged; a slice written but never read takes the row with Owner `{current} -> removed` and no finding. A context bundling unrelated values is `Context-Re-render` (the re-render is the defect); a store bundling domains is `Mega-Store`. Category `Identity` covers auth/theme/locale; feature-scoped shared values (grid atoms) are `Shared UI`. `Duplicate-Source`: the same state has two owners (URL copied into `useState`, one slice duplicated across stores); the Fix names the surviving owner. Server data mirrored into a store stays `Server-State-In-Store`.
 
-Severity: **Critical** = wrong data shown or updates lost (store mutation without a new reference, two sources of truth disagreeing); **High** = broad re-render or staleness (server data mirrored into a store, context re-rendering per keystroke, SSR hydration mismatch); **Medium** = structure debt (mega-store, stored derived, URL candidate, over-subscription); **Low** = convention drift. Every Issue value sits in exactly one row; `Wrong-Mechanism` is Medium, rising to High when the wrong mechanism is already producing staleness or a broad re-render. A defect matching a named example takes that row's severity; where a named example and a general clause both fit, the named example wins. The general clauses cover unnamed cases.
+Severity: **Critical** = wrong data shown or updates lost (store mutation without a new reference, two sources of truth disagreeing); **High** = broad re-render or staleness (server data mirrored into a store, context re-rendering per keystroke, SSR hydration mismatch); **Medium** = structure debt (mega-store, stored derived, URL candidate, over-subscription); **Low** = convention drift (a `Wrong-Mechanism` that costs only idiom - Context where a tiny store would read better, with no re-render cost). An Issue value's row is set by the condition named; `Wrong-Mechanism` is Low when it costs only idiom, Medium otherwise, High when it is already producing staleness or a broad re-render. `Duplicate-Source` owners that still agree are High (a staleness risk); once they disagree - a stored derived value already out of step with its source included - Critical. A defect matching a named example takes that row's severity; where a named example and a general clause both fit, the named example wins; where two named examples fit, the higher row wins. The general clauses cover unnamed cases.
 
-If the project has no React sources, emit `Findings: none (no React detected)` and stop.
+If stack-detect's Framework is not React and the project has no React sources, emit `Findings: none (no React detected)` and stop - a greenfield design on a React stack proceeds.
 
 ## Avoid
 
-- Server data in Zustand/Redux/Context - use TanStack Query / SWR.
+- Server data hand-copied into Zustand/Redux slices/Context - use a server-cache library.
 - Context for inputs, mouse, scroll, drag, animation - re-renders every consumer.
 - One mega-store/mega-context coupling unrelated domains.
 - Storing derived values (totals, filtered lists) instead of computing in a selector.

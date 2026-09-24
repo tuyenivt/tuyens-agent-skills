@@ -53,11 +53,11 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
 **Auto-escalation signals (React-tuned):**
 
-- **+Sec:** new Server Action / Route Handler / `middleware.ts`, `dangerouslySetInnerHTML`, auth / session config, `NEXT_PUBLIC_*` additions, file upload / `<form action={...}>`, `redirect(...)` from user input, CSP / `next.config.headers()` change
+- **+Sec:** new Server Action / Route Handler / `pages/api/**` API route / `middleware.ts` (`proxy.ts` on 16), `dangerouslySetInnerHTML`, auth / session config, `NEXT_PUBLIC_*` additions, file upload / `<form action={...}>`, `redirect(...)` from user input, CSP / `next.config.headers()` change
 - **+Perf:** new route / page / layout, new `"use client"` component, new client dependency, new TanStack Query usage, `next/image` / `next/font` change, `next/dynamic` / `React.lazy`, ISR / `revalidate` change, long-list rendering
-- **+Obs:** new or modified `instrumentation.ts`, `app/global-error.tsx`, `web-vitals` wiring / reporter, Sentry / RUM / OTel SDK init, new error boundary, new logging utility, analytics call
-- **+Rel:** new `fetch` / client call without an `AbortSignal.timeout`, TanStack Query `retry` / `retryDelay` config, new or removed `error.tsx` / `global-error.tsx` / error boundary, `useOptimistic` or mutation rollback path, offline / reconnect handling, `revalidatePath` / `revalidateTag` invalidation change, `next/dynamic` / `React.lazy` chunk boundary
-- **2+ categories -> Full**
+- **+Obs:** new or modified `instrumentation.ts` (its `onRequestError` export included), `instrumentation-client.ts`, `app/global-error.tsx`, `web-vitals` wiring / reporter, Sentry / RUM / OTel SDK init, new error boundary, new logging utility, analytics call
+- **+Rel:** new `fetch` / client call without an `AbortSignal.timeout`, TanStack Query `retry` / `retryDelay` config, new or removed `error.tsx` / `global-error.tsx` / error boundary, `useOptimistic` or mutation rollback path, offline / reconnect handling, `revalidatePath` / `revalidateTag` / `updateTag` / `refresh` invalidation change, `next/dynamic` / `React.lazy` chunk boundary
+- **2+ categories -> Full**, counted by independent constructs: one construct listed under two categories (a lone `next/dynamic`, a lone new `error.tsx`) adds only the first category it is listed under
 
 ## Invocation
 
@@ -81,17 +81,17 @@ Use skill: `behavioral-principles`. Accept parent's confirmation if invoked as a
 
 ### Step 2 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect`. Accept pre-detected stack from parent if applicable. If not React, stop and recommend `/task-code-review`.
+Use skill: `stack-detect`. Accept pre-detected stack from parent if applicable. If not React, stop and recommend `/task-code-review`. `stack-detect` keys the primary stack on the root manifest, so in a polyglot repo (a React app under `apps/<name>` beside a Rails root) React may appear only under `Additional`; that counts as React when the diff or request sits inside that package - confirm React against the package's own `package.json`, scope the run to it, and name the package in the Summary's `Notes`.
 
-Detect framework: Next.js (App Router / Pages Router) vs Vite + React Router. Record `Framework`, `React: <version>` for branching in later phases.
+Detect framework: Next.js (App Router / Pages Router) vs Vite + React Router. Record `Framework` and the React, TypeScript and `next` / `react-router` versions from the (package's) `package.json` - `stack-detect` emits no versions.
 
 ### Step 3 - Resolve the Diff
 
-Use skill: `review-precondition-check`. Forward `--base` if passed. If it fails fast (dirty tree, trunk branch, missing PR ref, denied head-vs-current confirmation), surface verbatim and stop. Never run state-changing git commands from this workflow.
+Use skill: `review-precondition-check` with the invocation's target argument and any `--base`. If it fails fast (dirty tree, trunk branch, missing PR ref, denied head-vs-current confirmation), surface verbatim and stop. Never run state-changing git commands from this workflow, except Step 3.5a's `git fetch`.
 
 The handle may include a `prior_checkpoint` block (a prior `review-<branch>.md` exists). Decision logic is Step 3.5; for now, just hold onto it.
 
-Once approved, read once and reuse:
+Capture the current SHAs for the report's checkpoint frontmatter - `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>` - and decide the round (Step 3.5) before reading anything else. Then read once and reuse:
 
 - `git diff <base>...<head>`
 - `git diff --name-status <base>...<head>`
@@ -99,14 +99,9 @@ Once approved, read once and reuse:
 
 **Skip entirely** when invoked as a subagent and the parent passed the handle plus pre-read artifacts.
 
-Also capture the current SHAs for the report's checkpoint frontmatter:
-
-- `current_head_sha = git rev-parse <head_ref>`
-- `current_base_sha = git rev-parse <base_ref>`
-
 ### Step 3.5 - Decide Round (re-review auto-detect)
 
-**Every round analyzes the full `<base_ref>...<head_ref>` range read in Step 3.** Risk, blast radius, scope signals, depth promotion, and requirement fit are scored on the whole change on every round, so a small follow-up commit cannot under-score a large PR and a defect missed in round 1 stays reachable in round 2. Rounds differ only in that round 2+ reconciles against the prior report.
+**Every round analyzes the full `<base_ref>...<head_ref>` range Step 3 reads once the round is decided.** Risk, blast radius, scope signals, depth promotion, and requirement fit are scored on the whole change on every round, so a small follow-up commit cannot under-score a large PR and a defect missed in round 1 stays reachable in round 2. Rounds differ only in that round 2+ reconciles against the prior report.
 
 Skip if the handle has no `prior_checkpoint` -> `round = 1`, no fetch, no reconciliation. Continue to Step 4.
 
@@ -126,13 +121,13 @@ If `upstream` resolves to `<remote>/<branch>` form, split and run:
 git fetch <remote> <branch>
 ```
 
-No checkout, no merge. This updates `refs/remotes/<remote>/<branch>`, not the local branch, so re-resolve against the remote-tracking ref: `current_head_sha = git rev-parse <remote>/<branch>`. If `upstream` does not resolve (pr-ref with no upstream, detached HEAD, no remote configured), or if `<remote>/<branch>` does not exist afterwards (a remote with no configured fetch refspec updates only `FETCH_HEAD`), skip silently and keep `current_head_sha` from Step 3. If `git fetch` fails (offline, auth, deleted remote branch), continue silently - this is a convenience, not a gate. **If the re-resolved SHA differs from Step 3's, stop and tell the user to fast-forward the local branch** (`git merge --ff-only <remote>/<branch>`) and re-run. Do not analyze the remote SHA while `head_ref` still points at the local one: Step 6.5's verify reads code with `git show <head_ref>:<path>`, so the two must agree.
+No checkout, no merge. This updates `refs/remotes/<remote>/<branch>`, not the local branch, so re-resolve against the remote-tracking ref: `current_head_sha = git rev-parse <remote>/<branch>`. If `upstream` does not resolve (pr-ref with no upstream, detached HEAD, no remote configured), or if `<remote>/<branch>` does not exist afterwards (a remote with no configured fetch refspec updates only `FETCH_HEAD`), skip silently and keep `current_head_sha` from Step 3. If `git fetch` fails (offline, auth, deleted remote branch), continue silently - this is a convenience, not a gate. **If the re-resolved SHA differs from Step 3's, stop and tell the user to fast-forward the local branch** (`git merge --ff-only <remote>/<branch>` when the target is the checked-out branch, else `git fetch <remote> <branch>:<head_short_name>`) and re-run. Do not analyze the remote SHA while `head_ref` still points at the local one: Step 6.5's verify reads code with `git show <head_ref>:<path>`, so the two must agree.
 
 **Step 3.5b - Compare checkpoints.**
 
 | Condition                                                              | Decision                                                                                                                            |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `prior_checkpoint.head_sha == current_head_sha`, and the invocation adds no scope or depth beyond the prior checkpoint | **No-op.** Print `No new commits on <head_ref_short> since prior review at <sha_short>. Prior report unchanged.` (where `<head_ref_short>` is the short name of `head_ref` - the review target, not the user's current branch - and `<sha_short>` is the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
+| `prior_checkpoint.head_sha == current_head_sha` and `prior_checkpoint.base_ref == base_ref`, and the invocation adds no scope or depth beyond the prior checkpoint | **No-op.** Print `No new commits on <head_ref_short> since prior review at <sha_short>. Prior report unchanged.` (where `<head_ref_short>` is the short name of `head_ref` - the review target, not the user's current branch - and `<sha_short>` is the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
 | `prior_checkpoint.head_sha == current_head_sha`, but the invocation expands scope or depth beyond it | `round = prior.round + 1`. Note in Summary: `Same head as round <prior.round>; re-review for expanded <scope\|depth>.` |
 | `git merge-base --is-ancestor <prior_head_sha> <current_head_sha>` fails (prior SHA unreachable) | `round = prior.round + 1`. Note in Summary: `Prior checkpoint unreachable - history rewritten.`      |
 | `prior_checkpoint.base_sha != current_base_sha`                        | `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round>.`       |
@@ -162,7 +157,7 @@ Surface the decision in Summary; if escalated, append `auto-escalated from Core;
 
 ### Phase 0 - Change Intent
 
-Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req <path>` file when passed, and `prior_checkpoint.report_path` when round > 1.
+Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req <path>` file when passed, and the handle's `report_path` when round > 1.
 
 Its `## Change Brief` block goes into the report verbatim, its `Requirement Source` and `Requirement Fit` lines into Summary, and its findings join the assembled set verified in Step 6.5. With no requirement source the Brief still renders, and the traceability block and its two Summary lines are omitted. Runs before Phase A - acceptance criteria decide what counts as a defect downstream - and the low-risk short-circuit never skips it.
 
@@ -173,37 +168,39 @@ Its `## Change Brief` block goes into the report verbatim, its `Requirement Sour
 
 Output risk level and blast radius before any findings.
 
-**Auto-promote depth:** `review-blast-radius` can return two values with a `Mitigation:` line (`Critical (unmitigated) -> Wide (with the flag off)`); gate on the mitigated value only when the mitigation is tagged `in-place:`, otherwise on the unmitigated one, and record the value you gated on. If Blast Radius is Wide / Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E (so historical pattern matching, cross-PR context, and anemic-prop assessment are in scope). On round 2+ nothing is inherited; when the resolved depth falls below the checkpoint's (round 1 was user-flagged `deep`), note in Summary: `Depth narrowed vs round <prior.round> - re-run with deep to re-cover.`
+**Auto-promote depth:** `review-blast-radius` can return two values with a `Mitigation:` line (`Critical (unmitigated) -> Wide (with the flag off)`); gate on the mitigated value only when the `Mitigation:` line's leading tag is `in-place:`, otherwise on the unmitigated one, and record the gated value in Summary (`Blast Radius: <unmitigated> -> <mitigated> (gated on <value>)`). If Blast Radius is Wide / Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E (so the Phase C unchanged-module read, the Phase D repo grep and the `deep` lens spawns in Step 5 are in scope). On round 2+ nothing is inherited; when the resolved depth falls below the checkpoint's (round 1 was user-flagged `deep`), note in Summary: `Depth narrowed vs round <prior.round> - re-run with deep to re-cover.`
 
-**Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth config, middleware, route layouts, shared providers / contexts, `next.config.*`, `vite.config.*`, top-level `App.tsx` / `app/layout.tsx`), skip Phases C-D and produce a streamlined report: Summary, the Phase 0 outputs (Change Brief, traceability, requirement findings), High-Impact Findings (Phases B and E), `## Scope Sections` when an auto-escalated scope returned one, `## Prior Round Reconciliation` when round > 1, `## Key Takeaways`, and Next Steps - each omitted when empty, per the Output Format's Omit-empty-sections rule. Phase E still runs; its findings join High-Impact Findings rather than getting their own Notes section.
+**Low-risk short-circuit:** if depth is not `deep`, Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth config, `middleware.ts` / `proxy.ts`, route layouts, shared providers / contexts, `next.config.*`, `vite.config.*`, top-level `App.tsx` / `app/layout.tsx`), skip Phases C-D and produce a streamlined report: Summary, the Phase 0 outputs (Change Brief, traceability), High-Impact Findings (Phases 0, B, E and any extra scope that ran), `## Scope Sections` when an extra scope returned one, `## Prior Round Reconciliation` when round > 1, `## Key Takeaways`, and Next Steps - each omitted when empty, per the Output Format's Omit-empty-sections rule. Phase E still runs; its findings join High-Impact Findings rather than getting their own Notes section.
 
 ### Phase B - React Correctness and Safety
 
 Apply atomic skills. Each owns canonical patterns; this phase flags deviations:
 
 - Use skill: `react-hooks-patterns` - hooks rules at top level, `useEffect` discipline (no derived state, no event-handler-via-effect), missing deps / stale closures, missing cleanup on subscriptions / intervals, `AbortController` on async setters
-- Use skill: `react-component-patterns` - `forwardRef` and ref-prop conventions, error boundary placement. List `key` correctness (no `key={index}` on reorderable lists) and `useRef` vs `useState` are `react-hooks-patterns` rules, checked there
-- Use skill: `react-state-patterns` - URL / server / client state categorization (filter / page / sort belong in search params), context value memoization, no client-side caching of server state when TanStack Query / RSC owns it
+- Use skill: `react-component-patterns` - `forwardRef` and ref-prop conventions, error boundary placement. `useRef` vs `useState` is a `react-hooks-patterns` rule, checked there; list `key` correctness is a local check below
+- Use skill: `react-state-patterns` - URL / server / client state categorization (filter / page / sort belong in search params), context re-render scope, no client-side caching of server state when TanStack Query / RSC owns it
 - Use skill: `react-data-fetching` - fetch in Server Components or via TanStack Query; flag `useEffect(() => fetch(...))` in Client Components when a Server Component parent could fetch
-- Use skill: `react-nextjs-patterns` (skip on Vite) - `"use client"` placement at the leaf (not layout root), Server Action `auth()` + Zod / `zod-form-data` validation, `'use server'` file exports only actions. DTO projection of Server Action / RSC return values is `react-server-data-layer`'s rule and `middleware.ts` `matcher` scoping is `react-routing-patterns`' - load those two below rather than expecting them here
-- Use skill: `react-routing-patterns` if the diff touches `app/**/page.tsx`, `app/**/layout.tsx`, `middleware.ts`, or router config - it owns `matcher` scoping
+- Use skill: `react-nextjs-patterns` (skip on Vite) - `"use client"` placement at the leaf (not layout root), Server Action `auth()` + Zod `safeParse` validation, `'use server'` file exports only actions, raw ORM rows to Client Components (`OrmRowToClient` here, `RawRowToClient` in `react-server-data-layer` - Step 6 collapses them). `middleware.ts` / `proxy.ts` `matcher` scoping is `react-routing-patterns`'
+- Use skill: `react-routing-patterns` if the diff touches `app/**/page.tsx`, `app/**/layout.tsx`, `middleware.ts` / `proxy.ts`, or router config - it owns `matcher` scoping
 - Use skill: `react-server-data-layer` if the diff touches an ORM client, a schema file, `src/server/**`, or any Server Action / Route Handler that reads or writes persistent state - client singleton and hot-reload guard, server-only boundary, service-layer placement, RSC N+1, request memoization vs data cache, raw ORM rows crossing the client boundary
 - Use skill: `backend-transaction-patterns` if the diff opens a transaction or dispatches a side effect (queue, mail, outbound HTTP) alongside a write
-- Use skill: `react-selfhost-operations` if the diff touches `next.config.*`, `Dockerfile`, CDN or cache rules, or `NEXT_PUBLIC_` environment wiring. `instrumentation.ts` content belongs to `task-react-review-observability`; flag its presence here only as a scope signal
+- Use skill: `react-selfhost-operations` if the diff touches `next.config.*`, `Dockerfile`, CDN or cache rules, `NEXT_PUBLIC_` environment wiring, or the shutdown handling in `instrumentation.ts` `register()`. Its telemetry wiring (`onRequestError`, OTel, Sentry) belongs to `task-react-review-observability`
 
-When a delegated atomic emits its own severity, map it to labels: `Critical` or `Blocker` or `High` -> `[Must]`, `Medium` -> `[Recommend]`, `Low` -> below the reporting bar. Every severity value any loaded atomic emits appears in that mapping - `react-hooks-patterns`, `react-state-patterns` and `react-data-fetching` all emit `Critical`.
+When a delegated atomic emits its own severity, map it to labels: `Critical` or `Blocker` or `High` -> `[Must]`, `Medium` -> `[Recommend]`, `Low` -> below the reporting bar except in Phase D, where the overengineering smells it names are `Low` and publish as `[Recommend]`. Every severity value any loaded atomic emits appears in that mapping - `react-hooks-patterns`, `react-state-patterns` and `react-data-fetching` all emit `Critical`. A maintainability-only High (`complexity-review`, and `react-overengineering-review` except `PropStateEffectSync`, which shows the user a stale value and follows the incorrect-behaviour rule) is `[Recommend]`: readability alone does not block a merge. A `react-overengineering-review` `Verdict: Question` publishes as `[Recommend]` whatever its severity. A finding this workflow raises directly, with no atomic severity, is `[Must]` when it risks incorrect behaviour, data loss or a security hole, `[Recommend]` otherwise.
 
-**API contract gate (mandatory when triggered).** When the diff touches an `app/**/route.ts` Route Handler, a published spec or generated client, or a response shape returned from one, Use skill: `backend-api-guidelines` and Use skill: `ops-backward-compatibility`. Both run - the first judges design, the second judges consumer breakage. Apply the same coverage and the same severity-to-label mapping as the core `task-code-review` Phase B gate: removed, renamed, or retyped fields, tightened constraints, new required request fields, and changed status codes or error shapes are breaking until proven otherwise; DTOs never return raw ORM rows; collections are paginated; RFC 9457 error shape.
+**API contract gate (mandatory when triggered).** When the diff touches an `app/**/route.ts` Route Handler or a `pages/api/**` API route, a published spec or generated client, or a response shape returned from one, Use skill: `backend-api-guidelines` and Use skill: `ops-backward-compatibility`. Both run - the first judges design, the second judges consumer breakage. Apply the same coverage and the same severity-to-label mapping as the core `task-code-review` Phase B gate: removed, renamed, or retyped fields, tightened constraints, new required request fields, and changed status codes or error shapes are breaking until proven otherwise; DTOs never return raw ORM rows; collections are paginated; RFC 9457 error shape.
 
-**Server Actions are excluded from this gate.** They have no stable URL and ship with their only caller, so they carry no compatibility surface. A monolith is still in scope when a Route Handler serves a consumer it cannot redeploy - a mobile client, an inbound webhook, or a public read surface. When consumption is unknown, treat a published or versioned surface (`/api/v1/`, OpenAPI-documented) as externally consumed. Server Action authorization and input validation belong to `task-react-review-security`, not here.
+**Server Actions are excluded from this gate.** They carry no published API contract; their deploy-skew surface (build-specific action IDs seen by tabs still on the old build) is reliability's and self-hosting's concern, not this gate's. A monolith is still in scope when a Route Handler serves a consumer it cannot redeploy - a mobile client, an inbound webhook, or a public read surface. When consumption is unknown, treat a published or versioned surface (`/api/v1/`, OpenAPI-documented) as externally consumed. Server Action authorization and input validation belong to `task-react-review-security`, not here.
 
 **Additional React-specific checks (deviation-flagging only; canonical rules live in the atomics above):**
 
 - **Test coverage finding** (named, not buried). PR adds logic without Vitest / Testing Library coverage -> `[Recommend]`; escalate to `[Must]` on critical paths: auth UI, Server Actions, money / billing UI, form validation, error boundaries.
 - **Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
 - **TypeScript strict**: no `strict: false`, no `props: any`, no `as any` outside test setup.
+- **List keys**: no `key={index}` on a list that reorders, filters, or loses rows optimistically; `[Recommend]`, `[Must]` when the list holds form state or per-row effects that remount.
+- **Build-breaking imports**: `dynamic(..., { ssr: false })` in an App Router Server Component (no `"use client"` boundary above it) fails `next build` - `[Must]`, even when it arrives as the fix for an earlier finding; Pages Router files and client-only modules are unaffected.
 - **Accessibility**: labels associated, `aria-describedby` for errors, dialogs use `<dialog>` or full ARIA, images have `alt`. Explicit `width`/`height` is a CLS concern owned by `task-react-review-perf`.
-- **Canonical security rules** are defined in `react-nextjs-patterns` (loaded above): cite by name, do not restate. If the +Sec subagent is running, defer depth to it.
+- **Security in Core**: `react-nextjs-patterns` covers Server Action authorization and validation, server-only imports and client leaks - cite those by name. XSS sinks, open redirects and `NEXT_PUBLIC_*` secrets have no Core atomic: when +Sec is not running, raise them directly at `[Must]`; when it is, defer depth to it.
 
 ### Phase C - React Architecture Guardrails
 
@@ -238,10 +235,10 @@ Use skill: `react-overengineering-review` for React-specific overengineering: pr
 - **Speculative configurability:** props with documented but unused values; theme variants for a single design
 - **Redundant prop transforms:** prop -> state-for-prop -> effect syncing them; use the prop directly. The "store prop in state" pattern is almost always wrong
 - **`useEffect` for event handlers:** `useEffect(() => { if (clicked) handleClick() })` triggered by `setClicked(true)` in `onClick` - just call `handleClick`
-- **`useMemo` / `useCallback` everywhere:** memoization on cheap values costs more than it saves; only use when the value feeds `React.memo` children or an effect's deps
+- **`useMemo` / `useCallback` everywhere:** memoization on cheap values costs more than it saves; it earns its place for an expensive computation, a value fed to a `React.memo` child, or a hook dependency. On a React Compiler project new manual memoization is usually redundant; do not ask for existing memoization to be stripped
 - **Test verbosity:** wrapper-chain setups; full-tree snapshots; mocking entire modules when a single function would do
 - **`as any` / `as unknown as T`:** legitimate uses are rare; `as React.FC<Props>` may signal copy-paste from older docs
-- **Try-catch noise:** `try { await x() } catch (e) { throw e }` - delete; catches that swallow `cause` - use `e instanceof Error ? e : new Error(String(e))`
+- **Try-catch noise:** `try { await x() } catch (e) { throw e }` - delete; a rethrow that adds context keeps the original as `cause`: `throw new Error("<context>", { cause: e })`
 - **Anonymous default-export components:** breaks DevTools display names and stack traces - use named functions or set `displayName`
 
 ### Phase E - Maintainability and Clarity
@@ -250,7 +247,7 @@ Use skill: `ops-observability` for cross-cutting logging/metrics presence (depth
 
 **React-specific:**
 
-- **Naming:** components PascalCase (`OrderList`); hooks `use<Noun>`; handlers `handle<Event>` or `on<Event>`; no abbreviations; `displayName` set on memoized / forwardRef components
+- **Naming:** components PascalCase (`OrderList`); hooks `use<Noun>`; handlers `handle<Event>` or `on<Event>`; no abbreviations; a memoized component (or a legacy `forwardRef` one) is a named function or sets `displayName`
 - **Co-location:** feature folder holds its components, hooks, types, tests together - not scattered across `src/components/`, `src/hooks/`, `src/types/`
 - **Magic numbers / strings:** module-level constants; route paths in a typed `routes.ts`
 - **Hardcoded URLs / endpoints:** in env / typed config, not inline
@@ -262,7 +259,7 @@ Use skill: `ops-observability` for cross-cutting logging/metrics presence (depth
 
 If scope is **Core only**, skip.
 
-Spawn these as early as Step 4, so they run while Phases 0 and A-E proceed on the main thread. For each selected scope, spawn one independent subagent **in parallel**. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `react-tech-lead` spawn:
+Spawn these right after Phase A, once depth is final (an auto-promotion to `deep` must reach every lens with a depth knob: perf, observability, reliability), so they run while Phases B-E proceed on the main thread. For each selected scope, spawn one independent subagent **in parallel**. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `react-tech-lead` spawn:
 
 | Scope | Skill                             | Subagent (`subagent_type`)     |
 |-------|-----------------------------------|--------------------------------|
@@ -275,14 +272,14 @@ Spawn these as early as Step 4, so they run while Phases 0 and A-E proceed on th
 
 **Subagent prompt contract** - each must include:
 
-- The resolved review target (`base_ref`, `head_ref`) plus the pre-read diff and commit log (no re-running git)
+- The resolved review target (`base_ref`, `head_ref`) plus the pre-read diff, `--name-status` list and commit log (no re-running git)
 - The depth level
 - Pre-confirmed stack (React `<version>`) + detected framework (Next.js App Router / Pages Router / Vite + React Router) with version
 - Instruction to return findings in its own Output Format
 
 **Failure isolation:** if a subagent fails or times out, continue with the rest. Note the missing scope in Summary.
 
-**No-subagent runtime:** if the runtime cannot spawn subagents, run each selected lens inline in sequence and merge identically - the Step 6 contract is agnostic to how findings were produced. An inline lens is still in subagent mode: it returns its findings to this workflow and **writes no report of its own**, so a Full review produces one file, not five.
+**No-subagent runtime:** if the runtime cannot spawn subagents, run each selected lens inline in sequence and merge identically - the Step 6 contract is agnostic to how findings were produced. An inline lens is still in subagent mode: it skips its own precondition, round gate, reconcile and writer, returns its findings to this workflow and **writes no report of its own**, so a Full review produces one file, not five.
 
 ### Step 6 - Assemble and Deduplicate
 
@@ -290,9 +287,10 @@ Runs on every scope, whether or not Step 5 ran: Phase 0, Phase B, Phase C and Ph
 
 When Step 5 ran, also merge the subagent findings into the single Output Format below. Do not append raw subagent reports.
 
-- **Deduplicate** cross-cutting findings (one entry citing all scopes that raised it)
+- **Deduplicate** cross-cutting findings (one entry citing all scopes that raised it); defects that different skills raise on the same handler and that compose into a worse outcome (a non-idempotent webhook that also refunds a client-set amount) merge into one entry at the higher label, citing each part
 - **Carry each finding's `Label` through unchanged.** Every lens computes its own `[Must]` / `[Recommend]` before returning; re-deriving a label from the bucket heading would override the lens's own rule and the verify pass's `Label` column, which both take precedence. Where two reports raise the same finding with different labels, `[Must]` wins. Nothing is dropped for its bucket: a lens that labelled a finding `[Recommend]` meant it to be emitted
-- **Preserve `file:line` citations** from the originating subagent
+- **Preserve `file:line` citations** from the originating subagent; a multi-site Location puts its first `file:line` in the heading and the rest in the Issue line
+- **Route each lens's `out of lens:` line** into this workflow's finding set, where Step 6.5 verifies it
 - **Order by intent**, not by scope
 - **Note missing scopes** in Summary as `Scope incomplete: <scope>`
 - **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by intent
@@ -302,27 +300,28 @@ When Step 5 ran, also merge the subagent findings into the single Output Format 
 
 Use skill: `review-finding-verify` with the assembled findings (including any merged back from subagents), the diff already read, and `base_ref` / `head_ref`.
 
-Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary in the full contracted shape - the `(<F> false positive, <R> resolved by diff)` parenthetical when K > 0, and the `; <U> of these unverified` clause when any surviving row is unverified.
+Runs before reconciliation so prior-round matching sees the corrected set; findings carried from a prior round are not re-verified. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` and `Annotation` columns - the annotation goes on the finding's heading. Carry its tally into Summary in the atomic's Summary form.
 
 ### Step 6.6 - Reconcile Prior Findings (round 2+ only)
 
-Skip on round 1. Otherwise Use skill: `review-prior-findings-reconcile` with:
+Skip on round 1. Otherwise Use skill: `review-prior-findings-reconcile` with the inputs below. Before accepting an `Addressed` row, read the code that replaced the smell: a fix that brings its own defect (a heavy import moved behind `dynamic(..., { ssr: false })` in a Server Component) keeps the row `Addressed` and files that defect as a new finding.
 
-- `prior_report`: read `prior_checkpoint.report_path` now and pass its body (frontmatter excluded)
+- `prior_report`: read the handle's `report_path` now and pass its body (frontmatter excluded); its headings are already reconcile's shape (reconcile's `prior_report_path` input is this same path)
 - `diff`: the full-range diff from Step 3
 - `name_status`: the full-range `git diff --name-status <base_ref>...<head_ref>` from Step 3
+- `head_sha`: `current_head_sha`
 
 The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
 
-`Still open` **and `Needs re-check`** rows are unresolved: carry both into `## High-Impact Findings` with their original label and a `(open since round <prior.round>)` suffix, so the Assessment rule sees a carried `[Must]` and the next round can reconcile them again. Mirror each in `## Next Steps` with the same suffix. Do not emit a standalone "Carry-Over Open Items" section.
+`Still open` **and `Needs re-check`** rows are unresolved: carry both into `## High-Impact Findings` at their prior label, mapped before publication (`[Blocker]`, `[High]`, `[Critical]` -> `[Must]`; any other label outside the two -> `[Recommend]`; `[Praise]` never carried), keeping the prior heading's annotations and adding `_(carried from round <N>)_` as its own heading group (`<N>` = the round the finding first appeared: the prior's own carried marker when present, else `prior.round`), so the Assessment rule sees a carried `[Must]` and the next round can reconcile them again. A carried finding this round's own pass re-derives publishes once, at the higher label. Mirror each in `## Next Steps` with the same marker. Do not emit a standalone "Carry-Over Open Items" section.
 
 ### Step 7 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review` and these checkpoint fields:
+Use skill: `review-report-writer` with `report_type: review`, `report_body` (the assembled report), `pr_url` when the invocation carried one or the prior checkpoint has one, and these checkpoint fields:
 
-- `branch` = the head's short name: when the handle's `head_ref` is the literal `HEAD` use its `current_branch`, and when it resolved from `refs/remotes/` strip the leading `<remote>/` segment (`origin/feature/x` -> `feature/x`) so this round and the next chain on one file. Never pass `HEAD` or a remote-prefixed name, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
+- `branch` = the handle's `head_short_name`, `base_ref`, `base_sha = current_base_sha`, `head_ref` (both refs as the handle emitted them), `head_sha = current_head_sha`
 - `mode: full` (the writer's only accepted value), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = typescript-nextjs` (Vite: `typescript-react`)
+- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full`; two or three explicit extra scopes map to their tokens space-joined in `+perf +sec +obs +rel` order, and four are `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = typescript-nextjs` (Vite: `typescript-react`)
 
 Write before ending; print the confirmation line.
 
@@ -339,6 +338,8 @@ No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
+**Heading annotations** follow the bare `file:line`, each as its own group: the verify pass's `_(pre-existing)_` (its combined `_(pre-existing; newly reachable via <path>)_` written as `_(pre-existing)_ _(newly reachable via <path>)_`), `_(unverified: <reason>)_`, `_(mechanism: <actual>)_`, and `_(carried from round <N>)_`; none on a `Confirmed` finding without a mechanism note. `review-prior-findings-reconcile` keys its `untouched` classification on `_(pre-existing)_` in the heading, so dropping it misclassifies the finding next round.
+
 **Assessment follows the open-label set, not a mood:** `Request Changes` when any `[Must]` is open (new this round or carried); `Approve` when no `[Must]` is open, even if `[Recommend]`s remain; `Discuss` when the blocker is a design disagreement a finding cannot settle.
 
 ```markdown
@@ -349,14 +350,14 @@ The fence below delimits the template for display only - it is not part of the r
 - **Blast Radius:** Narrow | Moderate | Wide | Critical
 - **Stack Detected:** React <version> / TypeScript <version>
 - **Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
-- **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
+- **Scope:** Core | +Sec | +Perf | +Obs | +Rel | two or three of those | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <categories>`)_
 - **Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 - **Assessment basis:** <the open-label set the Assessment line was read from: `<n> Must open, <n> Recommend open`>
 - **Round:** <N>                                _(include from round 2 onward)_
-- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped (<F> false positive, <R> resolved by diff) _(the parenthetical only when K > 0)_; <U> of these unverified _(that clause only when a surviving row is unverified)_
+- **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped (<F> false positive, <R> resolved by diff) _(the parenthetical only when K > 0)_
 - **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
-- **Notes:** <one line per round, scope or depth note the Workflow requires - `Prior report lacks checkpoint metadata`, `Same head as round <N>`, `Prior checkpoint unreachable`, `Base branch advanced`, `Base ref changed`, `Scope expanded round <N>`, `Scope narrowed vs round <N>`, `Depth narrowed vs round <N>`, `Scope incomplete: <scope>`, and the auto-escalation signal log; omit the line when none apply>
+- **Notes:** <one line per round, scope or depth note the Workflow requires - `Prior report lacks checkpoint metadata`, `Same head as round <N>`, `Prior checkpoint unreachable`, `Base branch advanced`, `Base ref changed`, `Scope expanded round <N>`, `Scope narrowed vs round <N>`, `Depth narrowed vs round <N>`, `Scope incomplete: <scope>`, the package the run was scoped to, and the per-signal `signal: <category> -> <file:line>` log; omit the line when none apply>
 
 ## Change Brief
 
@@ -384,9 +385,8 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
-### [Must] file:line
+### [Must] file:line <annotations>
 
-- Provenance: [only when the verify pass set one: `_(pre-existing)_`, `_(pre-existing; newly reachable via <path>)_`, `(unverified: <reason>)`. `review-prior-findings-reconcile` keys its `untouched` classification on this, so dropping it misclassifies the finding next round. Omit the line when the verdict was `Confirmed`.]
 - Issue: [name the React idiom: `"use client"` at root of layout, missing Zod on Server Action, RSC leaking `passwordHash` across Client boundary, `useEffect` for derived state, missing `key`, `dangerouslySetInnerHTML` on user input, `NEXT_PUBLIC_` secret, etc.]
 - Impact: [user-visible or operational]
 - System Risk: [why this is system-level, not just a local bug]
@@ -423,10 +423,10 @@ _One subsection per extra scope that returned content the merged Findings list c
 
 ## Next Steps
 
-On round 2+, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
+On round 2+, prior-round Still open and Needs re-check items are folded in with their `_(carried from round <N>)_` marker and ordered by intent alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
 
 1. **[Implement]** [Must] file:line - [one-line action, e.g., move `"use client"` from app/dashboard/layout.tsx to app/dashboard/_components/Filters.tsx and revert the layout to a Server Component]
-2. **[Implement]** [Recommend] OldList.tsx:88 - missing key on reorderable list (open since round 1)
+2. **[Implement]** [Recommend] OldList.tsx:88 - missing key on reorderable list _(carried from round 1)_
 3. **[Delegate]** [Recommend] [scope: design-system] - [one-line action]
 
 _Omit if no actionable findings._
@@ -446,26 +446,26 @@ _Omit if no actionable findings._
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded (or accepted from parent)
-- [ ] Step 2: stack confirmed as React; framework and React version recorded
-- [ ] Step 3: `review-precondition-check` ran (or handle received); a fail-fast was surfaced verbatim and stopped the run; diff and commit log read once and reused; current_head_sha and current_base_sha captured, and `branch` resolved to a real branch name rather than `HEAD`
+- [ ] Step 2: stack confirmed as React (against the package's own manifest in a monorepo); framework and React version recorded
+- [ ] Step 3: `review-precondition-check` ran (or handle received); a fail-fast was surfaced verbatim and stopped the run; current_head_sha and current_base_sha captured and the round decided before the diff and commit log were read once and reused
 - [ ] Step 3.5 - round decided (1 / prior + 1 / no-op); auto-fetch attempted only when prior checkpoint exists; the full `<base_ref>...<head_ref>` range analyzed regardless of round; no-op path exits without writing the report
 - [ ] Step 4: scope auto-escalation evaluated; promotion (or `core-only` suppression) recorded with firing signals
 - [ ] Phase 0 - `review-change-intent` ran on the cumulative diff; Change Brief carried into the report; requirement lines in Summary, or all three requirement outputs omitted when no source resolved; its findings verified with the rest
 - [ ] Phase A: risk level and blast radius stated before any finding; depth auto-promoted to `deep` when Blast Radius is Wide/Critical; low-risk short-circuit applied when applicable
-- [ ] Phase B: atomic skills applied (`react-hooks-patterns`, `react-component-patterns`, `react-state-patterns`, `react-data-fetching`, plus `react-nextjs-patterns` / `react-routing-patterns` when relevant); the conditional delegations fired when their trigger appeared (`react-server-data-layer`, `backend-transaction-patterns`, `react-selfhost-operations`, and the API contract gate's `backend-api-guidelines` + `ops-backward-compatibility`); test coverage, RSC -> Client ORM leak, TS strict and a11y checked. Security depth (`dangerouslySetInnerHTML`, open redirect, `NEXT_PUBLIC_*`) is checked here only when the +Sec scope is not running
+- [ ] Phase B: atomic skills applied (`react-hooks-patterns`, `react-component-patterns`, `react-state-patterns`, `react-data-fetching`, plus `react-nextjs-patterns` / `react-routing-patterns` when relevant); atomic severities, maintainability Highs, `Question` verdicts and directly raised findings labelled per the mapping; the conditional delegations fired when their trigger appeared (`react-server-data-layer`, `backend-transaction-patterns`, `react-selfhost-operations`, and the API contract gate's `backend-api-guidelines` + `ops-backward-compatibility`); test coverage, list keys, build-breaking `ssr: false` imports, RSC -> Client ORM leak, TS strict and a11y checked. XSS sinks, open redirects and `NEXT_PUBLIC_*` secrets are raised here directly only when the +Sec scope is not running
 - [ ] Phase C: layering, RSC / Client split, custom hook / prop drilling / context discipline, settings, module boundaries, provider sandwich applied
 - [ ] Phase D: `complexity-review` + `react-overengineering-review` applied; React AI smells covered (pattern inflation, over-abstraction, redundant prop transforms, `useEffect` misapplication, memo overuse, `as any`, anonymous default-export components)
 - [ ] Phase E: naming, co-location, magic numbers, component length, conditional ladders, logging hygiene
 - [ ] Missing tests raised as a named finding (not buried)
 - [ ] Every Must cites system risk
 - [ ] Every finding has label + `file:line` + actionable React fix
-- [ ] Step 5: extra scopes ran in parallel with the pre-resolved diff/log handle plus framework detection
+- [ ] Step 5: extra scopes spawned after Phase A at the final depth, in parallel, with the pre-resolved diff, name-status list and log plus framework detection
 - [ ] Step 6: cross-phase duplicates collapsed (runs whether or not Step 5 ran); subagent findings merged into one intent-ordered Findings list with each lens's `Label` carried through unchanged; raw reports not appended; every non-finding section preserved under `## Scope Sections`; failed/missing scope noted as `Scope incomplete: <scope>`; Next Steps tagged `[Implement]` / `[Delegate]`
 - [ ] Depth honored: `standard` ran Phases A-E; `deep` additionally ran the Phase C and Phase D depth branches and spawned every extra scope at `deep`
 - [ ] Assessment set from the open-label set per the Output Format rule, not from overall impression
-- [ ] Step 6.5 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels applied; tally in Summary
-- [ ] Step 6.6 - on round 2+, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
-- [ ] Step 7: review report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation line printed
+- [ ] Step 6.5 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels and annotations applied; tally in Summary
+- [ ] Step 6.6 - on round 2+, review-prior-findings-reconcile ran with `head_sha`; reconciliation table inserted; Still open and Needs re-check rows carried into High-Impact Findings and Next Steps with mapped labels and `_(carried from round <N>)_`
+- [ ] Step 7: review report written via `review-report-writer` with full checkpoint fields (`branch` = `head_short_name`, mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation line printed
 
 ## Avoid
 

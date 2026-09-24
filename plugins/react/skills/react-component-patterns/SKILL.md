@@ -9,7 +9,7 @@ user-invocable: false
 
 # React Component Patterns
 
-> Load `Use skill: stack-detect` first to determine the project stack. For Next.js-specific routing, Server Actions, caching, and metadata defer to `react-nextjs-patterns`; for effect, timer, and subscription mechanics to `react-hooks-patterns`; this skill covers component shape and boundaries.
+> Load `Use skill: stack-detect` first to determine the project stack. For Next.js-specific routing, Server Actions, caching, and metadata defer to `react-nextjs-patterns`; for effect, timer, and subscription mechanics to `react-hooks-patterns`; for which state mechanism holds shared UI state to `react-state-patterns`; for client-triggered reads to `react-data-fetching`; this skill covers component shape and boundaries.
 
 ## When to Use
 
@@ -21,12 +21,12 @@ user-invocable: false
 ## Rules
 
 - Function components only. Error boundaries are the sole exception: render-phase errors still require a class, and `onCaughtError` on `createRoot`/`hydrateRoot` reports what a boundary caught rather than replacing it.
-- Server Components are the default in Next.js. Add `"use client"` only for hooks, event handlers, or browser APIs - and push it as deep in the tree as possible.
+- Server Components are the default in Next.js. Add `"use client"` only for hooks, event handlers, browser APIs, context providers, or class components (error boundaries) - and push it as deep in the tree as possible. A Client layout's `children` stay server-rendered; only what it imports becomes Client.
 - From a Server Component, pass plain data, `Date`/`Map`/`Set`, a Promise for the client to unwrap with `use`, or a Server Action (a `"use server"` function, which is a serializable reference and the normal way to wire mutations). Never pass an ordinary closure or a class instance. Prisma rows are plain objects and cross fine; what fails is a class-valued field on them (`Decimal`) or a true entity instance from TypeORM or Sequelize.
 - Compose with `children` and slots before adding more props. A prop that injects open-ended content or a whole region (header, footer, body) becomes a slot; a prop that selects a variant (`variant`, `size`), carries data, or sets a single fixed adornment (`icon`) stays a prop. New feature => new slot, not a new boolean prop.
 - One responsibility per component; split when state or props diverge.
-- Named exports for reusable components; default export only for route files (`page.tsx`, `layout.tsx`).
-- Props typed inline for <=2 fields; named `interface` once props grow or repeat across call sites.
+- Named exports for reusable components; default export only for route files (`page.tsx`, `layout.tsx`, or any module a route config loads as a route element).
+- Props typed inline for <=2 fields; a named type (`interface` or `type` alias) past two fields or once the shape repeats across call sites.
 - Prop-drilling beyond two levels is a smell - reach for composition, context, or a state library.
 
 ## Patterns
@@ -43,21 +43,22 @@ user-invocable: false
 ```tsx
 // Bad - "use client" forces the whole subtree client, ships JS for static content.
 "use client";
-export default function Page({ params }: { params: { id: string } }) {
+export default function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);             // client pages unwrap the Promise with use()
   const [user, setUser] = useState<User | null>(null);
-  useEffect(() => { fetchUser(params.id).then(setUser); }, [params.id]);
+  useEffect(() => { fetchUser(id).then(setUser); }, [id]);
   return user ? <Profile user={user} /> : <Spinner />;
 }
 
 // Good - Server fetches data; only the interactive leaf is client.
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;          // Next 15+: params is a Promise
+  const { id } = await params;          // Next 15+: a Promise (15 warns on sync access, 16 removes it)
   const user = await getUser(id);
   return <Profile user={user} />;       // Profile renders <EditButton/> as the "use client" leaf
 }
 ```
 
-Vite or other client-only stacks: skip this boundary entirely. Set `Component model: Client-only` in the output and use client-side fetching (TanStack Query).
+Vite or other client-only stacks: skip this boundary entirely. Set `Component model: Client-only` in the output and use client-side fetching (TanStack Query). Next.js Pages Router is also `Client-only` for boundary purposes but fetches in `getServerSideProps` / `getStaticProps`.
 
 ### Composition over configuration
 
@@ -75,15 +76,15 @@ Vite or other client-only stacks: skip this boundary entirely. Set `Component mo
 
 ### Compound components
 
-Bind parts via context; expose as static members (`Tabs.Tab`, `Tabs.Panel`). Use when sub-parts must share implicit state. Throw from the consumer hook when the context is null - that's how you signal "used outside parent".
+Bind parts via context; expose as static members (`Tabs.Tab`, `Tabs.Panel`). Use when sub-parts must share implicit state. Throw from the consumer hook when the context is null - that's how you signal "used outside parent". A compound is a Client Component, and a Server Component cannot dot into a client module (`<Tabs.Tab>` in a server page fails with "Cannot access Tabs.Tab on the server"): also export the parts by name (`TabsTab`, `TabsPanel`), or render the compound from a Client Component.
 
 ### Error boundaries
 
-One per feature region (page section, widget), not per component. Class form is still required for render-phase errors. In App Router the class boundary is a Client Component - add `"use client"` to its file (route-level `error.tsx` belongs to `react-nextjs-patterns`).
+One per feature region (page section, widget), not per component. Class form is still required for render-phase errors. In App Router the class boundary is a Client Component - add `"use client"` to its file. Route-level `error.tsx` mechanics (reset, digest) belong to `react-nextjs-patterns`, but an `error.tsx` missing `"use client"` is a boundary that does not compile and is a Finding here.
 
 ```tsx
 "use client";                                     // required: a class boundary is a Client Component
-class ErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { hasError: boolean }> {
+export class ErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
   static getDerivedStateFromError() { return { hasError: true }; }
   componentDidCatch(err: Error, info: ErrorInfo) { logToService(err, info.componentStack ?? ""); }
@@ -94,10 +95,10 @@ class ErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode
 ### Prop typing
 
 ```tsx
-// <=2 props or one-off: inline.
+// <=2 props: inline.
 function Badge({ label, color }: { label: string; color: "green" | "red" | "yellow" }) { ... }
 
-// >2 props, optional fields, or reused shape: named interface with readonly arrays.
+// >2 props or a reused shape: named type with readonly arrays.
 interface DataTableProps {
   data: readonly Row[];
   columns: readonly Column[];
@@ -124,12 +125,14 @@ function TextInput({ ref, ...props }: { ref?: Ref<HTMLInputElement> } & InputHTM
 
 ## Output Format
 
-When designing, emit this block for the proposed tree; a Findings block then flags a risk in the requested design (`Current` = the wiring the requirement naively implies). When reviewing, the consuming workflow owns the finding envelope; invoked standalone, emit this block with the Component Tree and Specifications recording what the code does today, and put the target shape in each finding's Fix; order Findings High first. Emit one tree per root that nothing in scope renders - two components in one import graph share a tree, two unconnected entry points get one each. An error boundary appears in the Component Tree as its own node, `(Client)`, whose responsibility names the region it guards; a missing or mis-scoped boundary is a Finding rather than a node. In review mode `Current` records what the code does and `Target` the shape it should take, so the Fix carries the change rather than restating the target.
+When designing, emit this block for the proposed tree; a Findings block then flags a risk in the requested design (`Current` = the wiring the requirement naively implies). When reviewing, the consuming workflow owns the finding envelope; invoked standalone, emit this block with the Component Tree and Specifications recording what the code does today; order Findings High first. Emit one tree per root that nothing in scope renders - two components in one import graph share a tree (a layout, its page and its `error.tsx` compose into one tree by file convention; a router layout rendering `<Outlet />` composes with its routed pages the same way when the route config is in scope), two unconnected entry points get one each. Every in-scope component gets one Specifications row, even when rendered from two roots (it then appears in each tree). A child outside the files in scope appears as a leaf marked `(not reviewed)` with no Specifications row; a component with no call site in scope is its own root marked `(no call sites in scope)`, and its unexercised API is not rated as a defect. An error boundary appears in the Component Tree as its own node, `(Client)`, whose responsibility names the region it guards; a missing boundary is a Finding, not a node; a mis-scoped one stays a node and also gets a Finding. In review mode `Current` records what the code does and `Target` the shape it should take, so the Fix carries the change rather than restating the target. Under `Client-only`, every tree node and Specifications Type is `Client`.
+
+`Stack`: App Router = an `app/` or `src/app/` directory with a root layout (`layout.{tsx,jsx,js}` at its top, or atop each route group) - beside `pages/` the tree is hybrid and the App Router rules apply to `app/`; Pages Router = `pages/` or `src/pages/` alone. `stack-detect` reports `React (Next.js)` for both. `Vite` = a `vite.config.*` with no `next` dependency (`stack-detect` reports `React (Vite/CRA/custom)`); `Other` when none of the three is visible. `Next.js Pages` takes `Component model: Client-only` (it server-renders but has no RSC boundary); `Other` does too unless the framework supports React Server Components (a `"use client"` directive in use is the sign), which takes `Server + Client`.
 
 ```
 ## Component Design
 
-**Stack:** {Next.js App Router | Next.js Pages | Vite | Other} - `stack-detect` reports a framework string, not a router; read `app/` vs `pages/` to pick, and write `Other` when neither is visible. `Next.js Pages` and `Other` both take `Component model: Client-only`: they server-render but have no RSC boundary, so the Server/Client rules do not apply and the rest of the skill does
+**Stack:** {Next.js App Router | Next.js Pages | Vite | Other}
 
 **Component model:** {Server + Client | Client-only}
 
@@ -155,7 +158,7 @@ When designing, emit this block for the proposed tree; a Findings block then fla
   Fix: {concrete correction; reference Pattern name}
 ```
 
-One Findings block per root cause (a god component's twelve props are one finding, not twelve); omit no field within a block. Severity: **High** = wrong or breaking behavior (non-serializable values crossing the Server/Client boundary, `"use client"` forcing a large static subtree client, compound context consumed without a null guard, a class error boundary missing `"use client"`, a feature region with no boundary above it); **Medium** = design debt that spreads (god components, prop drilling 3+, class components outside error boundaries, `forwardRef` in new React 19 code); **Low** = convention drift (default exports, inline types past the threshold, nested ternaries, polymorphic `as` generics on a component that always renders one tag).
+One Findings block per root cause (a god component's twelve props are one finding, not twelve); omit no field within a block. Severity: **High** = wrong or breaking behavior (non-serializable values crossing the Server/Client boundary, `"use client"` forcing a large static subtree client, compound context consumed without a null guard, a class error boundary or `error.tsx` missing `"use client"`, a feature region with no boundary above it); **Medium** = design debt that spreads (a mis-scoped boundary - one per component, or a single app-wide one - god components, prop drilling 3+, class components outside error boundaries, `forwardRef` in new React 19 code); **Low** = convention drift (default exports, inline types past the threshold, nested ternaries, polymorphic `as` generics on a component that always renders one tag).
 
 ## Avoid
 

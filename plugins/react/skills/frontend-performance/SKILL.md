@@ -33,13 +33,15 @@ user-invocable: false
 
 ### Core Web Vitals Targets
 
-| Metric | Measures                  | Good    | Poor    |
-| ------ | ------------------------- | ------- | ------- |
-| LCP    | Largest Contentful Paint  | < 2.5s  | > 4s    |
-| INP    | Interaction to Next Paint | < 200ms | > 500ms |
-| CLS    | Cumulative Layout Shift   | < 0.1   | > 0.25  |
+| Metric | Measures                  | Good     | Poor    |
+| ------ | ------------------------- | -------- | ------- |
+| LCP    | Largest Contentful Paint  | <= 2.5s  | > 4s    |
+| INP    | Interaction to Next Paint | <= 200ms | > 500ms |
+| CLS    | Cumulative Layout Shift   | <= 0.1   | > 0.25  |
 
-LCP is TTFB + resource load delay + load time + render delay, so check TTFB before optimizing images: a 2.8s TTFB caps LCP above target no matter how the hero image is served. Server-side causes need server-side fixes - parallelize the sequential awaits in the data path, cache what is stable, and stream so the shell paints before data resolves (Suspense boundaries in React/Next). Vue and Angular have no equivalent streaming primitive: Nuxt awaits async setup and sends a complete document, and Angular `@defer` is a client-side deferrable view that renders its placeholder during SSR - both defer client work rather than streaming HTML, so on those stacks the fix is caching and query parallelism. Optimize the resource half only once TTFB is under roughly 800ms.
+Between Good and Poor is `Needs Improvement` (the CrUX / PageSpeed band name).
+
+LCP is TTFB + resource load delay + load time + render delay, so check TTFB before optimizing images: a 2.8s TTFB caps LCP above target no matter how the hero image is served. Server-side causes need server-side fixes - parallelize the sequential awaits in the data path, collapse per-item queries (N+1) into one, cache what is stable, and stream so the shell paints before data resolves (Suspense boundaries in React/Next). Vue and Angular have no out-of-order streaming equivalent: Nuxt awaits async setup and sends a complete document (Vue's streaming renderer is in-order), and Angular `@defer` renders its placeholder during SSR - or, with incremental hydration (v19+, `hydrate` triggers), server-renders the content and defers only hydration. Neither streams the shell ahead of data, so on those stacks the fix is caching and query parallelism. Optimize the resource half only once TTFB is under roughly 800ms.
 
 ### Bundle Optimization
 
@@ -62,7 +64,7 @@ Bundle analysis: run an analyzer (webpack-bundle-analyzer, rollup-plugin-visuali
 **Third-party scripts usually outweigh your own** - analytics, chat, ads, tag managers - and an analyzer never shows them because they are not in your bundle. Audit them from the network panel, not the build:
 
 - Nothing third-party blocks parsing: `async`/`defer`, or the framework's loading strategy (`next/script` with `afterInteractive`/`lazyOnload`, Nuxt `useHead` with `defer`).
-- Replace heavy embedded widgets with a facade - a static preview that loads the real chat, map, or video player on click. This is usually the single largest INP win on a marketing site.
+- Replace heavy embedded widgets with a facade - a static preview that loads the real chat, map, or video player on click. This is usually the single largest cut in load-time main-thread work (TBT) on a marketing site, with INP improving as a consequence. On a page that eagerly boots such a widget, the missing facade is a defect (Issues Found), not a recommendation.
 - Audit what a tag manager actually ships; a container grows without any code change of yours.
 - Consider moving tags off the main thread (Partytown) when they cannot be removed.
 
@@ -107,8 +109,8 @@ Common causes:
 - Heavy event handlers without debouncing
 
 Fixes:
-- Yield to the browser with `scheduler.yield()` or `setTimeout(fn, 0)`; `requestIdleCallback` only queues work for idle time and cannot break up a task already running
-- Debounce search/resize (150-300ms); use `requestAnimationFrame` for scroll/resize
+- Yield to the browser with `scheduler.yield()` where it exists (`globalThis.scheduler?.yield` - no Safari support), falling back to `await new Promise(r => setTimeout(r, 0))`; `requestIdleCallback` only queues work for idle time and cannot break up a task already running
+- Debounce search input (150-300ms); throttle scroll and resize handlers to `requestAnimationFrame`
 - Batch DOM reads before writes
 - Move CPU-bound work to Web Workers
 
@@ -123,8 +125,8 @@ Memoize only when profiling shows a slow render. Memoizing simple components add
 const ExpensiveChart = memo(({ data }) => <D3Chart data={data} />)
 
 function Report({ data }) {
-  // Copy before sorting: Array.sort mutates in place and returns the same reference,
-  // which both mutates a prop during render and defeats the memo below.
+  // Copy before sorting: Array.sort mutates in place, which mutates a prop during render -
+  // every other consumer of `data` sees it reordered. (`data.toSorted(fn)` copies too, ES2023.)
   const sortedData = useMemo(() => [...data].sort(complexSortFn), [data])
   return <ExpensiveChart data={sortedData} />
 }
@@ -157,10 +159,10 @@ Lazy-load modals (on trigger), charts (on visible via IntersectionObserver), ric
 After `stack-detect`, apply patterns using ecosystem idioms:
 
 - **React**: `React.lazy` + Suspense; React Server Components; React Profiler; Next.js `Image`
-- **Vue**: `defineAsyncComponent`; Nuxt `useHead` for resource hints; Nuxt Image
+- **Vue**: route records with `component: () => import(...)` (Nuxt pages split automatically), `defineAsyncComponent` for non-route components; Nuxt `useHead` for resource hints; Nuxt Image
 - **Angular**: `loadComponent`/`loadChildren`; CLI budgets; `NgOptimizedImage`
 
-For unknown stacks, apply universal patterns and point the user to the framework's perf docs.
+For any framework not bound above - `unknown`, or a detected one such as Svelte or Solid - apply the universal patterns and point the user to that framework's perf docs.
 
 ---
 
@@ -168,33 +170,33 @@ For unknown stacks, apply universal patterns and point the user to the framework
 
 Consuming workflow skills depend on this structure.
 
-- Never invent numbers: when a value cannot be measured or estimated from the input (static diff, scoped component review), write `Unknown - not measured` and set Status to `Unknown`. When real measurements are supplied, use them and label the column value `(measured)`.
-- Add a `Not assessed:` line after the last issue naming anything the input never showed or that could not be verified from it - a file in scope that no route imports, a handler whose reachability the given files do not establish. Rate what you can see; a defect whose execution path is unconfirmed stays Medium and says so.
+- Never invent numbers: a value is `(estimated)` only when derived from supplied data (a lab proxy such as TBT for INP, a sibling route's RUM) - a lab run's own reading of the reviewed route is `(measured)`; from static review alone write `Unknown - not measured` and set Status to `Unknown`. Supplied measurements are written `{value} (measured)`; label each cell, since one table may mix all three. The bundle sizes follow the same rule.
+- Emit the `### Not assessed` section naming anything the input never showed or that could not be verified from it - a file in scope that no route imports, a handler whose reachability the given files do not establish. Rate what you can see; a defect whose execution path is unconfirmed is capped at Medium (a Low stays Low) and says so.
 - Issues Found = defects in the reviewed code (each with a fix). Recommendations = proactive improvements beyond fixing defects. Do not duplicate an item across both.
 - Emit `No Issues Found` only when `Issues Found` is empty; the two are mutually exclusive. A clean run still emits every header field, the vitals table, the bundle block and `Recommendations`; only the `Issues Found` blocks are omitted.
-- Order Issues Found by severity, highest first; within a band, file order.
-- Severity and Impact share one anchor: High = directly degrades a Core Web Vital on a primary route (LCP blocker, CLS source, long task on interaction path); Medium = bundle or render waste with no direct vitals breach; Low = polish.
-- In implement or design mode (planning or building, not reviewing), the vitals table holds targets with Status `Unknown`, Recommendations carries the plan, and Issues Found carries only residual risks knowingly accepted.
+- Order Issues Found by severity, highest first; within a band, file order (the order the input lists the files; ascending line within a file). `Location` may list several `file:line` entries (or several lines of one file), comma-separated, when one root cause spans them; lead with the file the fix changes, and sort the finding by that lead file.
+- Severity anchor: High = directly degrades a Core Web Vital on a primary route (LCP blocker, CLS source, long task on interaction path); Medium = bundle or render waste with no direct vitals breach (waste on a primary route's initial bundle is High only when the input shows it on the LCP or interaction path); Low = polish. Impact uses the same bands, with one addition: a change that unblocks or measures the High items (instrumentation when no metrics exist) is also `[Impact: High]`.
+- In implement or design mode (planning or building, not reviewing), the vitals table holds targets with Status `Unknown`, Recommendations carries the plan, and Issues Found carries residual risks knowingly accepted. When the build or design touches existing code, defects already in it are ordinary Issues Found entries marked `(pre-existing)` at their own severity; the residual-risk reading covers only the new work. `No Issues Found` is then emitted only when neither exists, stating the plan carries no residual risk.
 
 ```
 ## Frontend Performance Assessment
 
-**Stack:** {detected language / framework, or "unknown - universal patterns applied"}
+**Stack:** {Framework and Language as a display name (`Next.js 15.5 / TypeScript` for stack-detect's `React (Next.js)`) - the major.minor from the owning app's `package.json` (`^15.5.0` -> 15.5); with no `tsconfig.json`, the extensions of the files in scope decide JS vs TS, overriding stack-detect's Language; in a monorepo, the app owning the reviewed code; "unknown - universal patterns applied" when inconclusive}
 
-**Bundler:** {the bundler in use - Vite, webpack, Turbopack, Rollup; `unknown` when no build config was in scope. Named separately from `stack-detect`'s `Build tool`, which reports the package manager for JS/TS}
+**Bundler:** {the production build's bundler - Vite, webpack, Turbopack, Rollup - with the dev server's in parentheses when it differs (`webpack (dev: Turbopack)`); in a monorepo, the owning app's; `unknown` when no build config was in scope. Named separately from `stack-detect`'s `Build tool`, which reports the package manager for JS/TS}
 
 ### Core Web Vitals Estimate
 
-| Metric | Current ({estimated} or {measured}) | Target  | Status              |
-| ------ | ------------------- | ------- | ------------------- |
-| LCP    | {estimate}          | < 2.5s  | {Good \| Needs Work \| Poor \| Unknown} |
-| INP    | {estimate}          | < 200ms | {Good \| Needs Work \| Poor \| Unknown} |
-| CLS    | {estimate}          | < 0.1   | {Good \| Needs Work \| Poor \| Unknown} |
+| Metric | Current             | Target   | Status              |
+| ------ | ------------------- | -------- | ------------------- |
+| LCP    | {value} {(measured) \| (estimated)}, or `Unknown - not measured` | <= 2.5s  | {Good \| Needs Improvement \| Poor \| Unknown} |
+| INP    | {value} {(measured) \| (estimated)}, or `Unknown - not measured` | <= 200ms | {Good \| Needs Improvement \| Poor \| Unknown} |
+| CLS    | {value} {(measured) \| (estimated)}, or `Unknown - not measured` | <= 0.1   | {Good \| Needs Improvement \| Poor \| Unknown} |
 
 ### Bundle Analysis
 
-- Total bundle size (gzipped): {estimate}
-- Largest chunks: {list}
+- Total bundle size (gzipped): {value} {(measured) \| (estimated)}, or `Unknown - not measured`
+- Largest chunks: {list with sizes as above}, or `Unknown - not measured`
 - Third-party weight: {scripts loaded outside the bundle - analytics, chat, tag managers - with sizes when observed, `none observed` when the input shows no tags. An analyzer never sees these}
 - Code splitting: {Yes - route-level | Partial | Missing | Unknown - no routing entry in scope}
 
@@ -204,7 +206,7 @@ Consuming workflow skills depend on this structure.
 
 ### Issues Found
 
-- [Severity: High | Medium | Low] {description}
+- [Severity: High | Medium | Low] {description}{ (pre-existing)}
   - Location: {file}:{line}
   - Problem: {what is wrong}
   - Fix: {concrete correction for the detected stack}
@@ -212,6 +214,8 @@ Consuming workflow skills depend on this structure.
 ### Not assessed
 
 - {anything the input never showed or that could not be verified from it - a value needing a measurement, a file in scope that no route imports, a handler whose reachability the given files do not establish. Omit this section when nothing applies}
+
+Notes: {observations outside this skill's concern, each naming the owning concern; omit when none}
 
 ### No Issues Found
 
@@ -226,7 +230,7 @@ Consuming workflow skills depend on this structure.
 - Importing whole libraries for one function (kills tree-shaking)
 - Images without explicit dimensions
 - Synchronous main-thread work > 50ms
-- Inlining large data in HTML (blocks parser, hurts TTFB)
+- Inlining large data in HTML (a larger document delays FCP/LCP; serializing it before the first flush delays TTFB)
 - CSS `@import` (request chains; use bundler imports)
 - Lazy loading above-the-fold or LCP images
 - Ignoring font loading strategy (FOIT/FOUT)

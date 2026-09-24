@@ -23,18 +23,18 @@ user-invocable: false
 - Test user-visible behavior, not implementation details (internal state, method calls)
 - Prefer Testing Library queries that mirror user perception (role, label, text) over selectors or test IDs
 - Tests are independent: no shared mutable state, no order dependencies
-- Mock at the network boundary (MSW or HTTP interceptors), not at the module level for your own code
+- Mock at the network boundary (MSW or HTTP interceptors), not at the module level for your own code (API modules, stores, hooks - set a store's state instead)
 - Snapshots only for stable leaf components used as regression detection; never large trees or churning UI
 - E2E covers critical user journeys only; do not duplicate unit/integration coverage there
 
-Module-level mocking is acceptable only for third-party SDKs you cannot drive from the DOM - those rendering in an iframe (Stripe Elements, reCAPTCHA) or on a canvas (Google Maps, which renders into the page, not an iframe). Browser APIs without test equivalents (IntersectionObserver, ResizeObserver, geolocation) are globals, not modules: stub them on `globalThis`/`navigator` in setup, which module mocking cannot do.
+Module-level mocking is acceptable only for third-party SDKs you cannot drive from the DOM - those rendering in an iframe (Stripe Elements, reCAPTCHA) or loaded from an external script whose output has no semantic DOM (Google Maps). Browser APIs without test equivalents (IntersectionObserver, ResizeObserver, geolocation) are globals, not modules: stub them on `globalThis`/`navigator` in setup, which module mocking cannot do.
 
 ### Server-rendered components
 
 A component that runs only on the server (React Server Components, Nuxt server components) has no client lifecycle to render into and often no network boundary to intercept - it calls the database or filesystem directly. The client-side rules do not transfer:
 
 - Extract the data access and unit-test it directly against a test database or a fake repository; the component's own job is then shaped from that data.
-- Test the rendered result through the framework's server-render path or E2E, not Testing Library's `render()`.
+- Async server components cannot be rendered by Testing Library's `render()` - test their output through E2E. A synchronous one renders with `render()` like any component once any `server-only` import in its graph is mocked (it throws on import under jsdom).
 - MSW intercepts HTTP, so it applies only where the server component actually makes an HTTP call to another service.
 - The Client Components beneath it follow every rule above - the boundary between them is where normal component testing resumes.
 
@@ -120,7 +120,7 @@ expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument()
 
 Snapshots are appropriate for stable leaf components (icons, badges, formatted values) as regression detection after the component is finalized. They are harmful for large trees (any change anywhere breaks them), dynamic content (dates, IDs, random values), and components under active development.
 
-If a snapshot breaks, read the diff. If developers reflexively run `--update-snapshot`, the test is worthless.
+If a snapshot breaks, read the diff. If developers reflexively run `-u`, the test is worthless.
 
 ### E2E Strategy
 
@@ -132,6 +132,7 @@ Cover critical revenue/blocking paths only:
 | Core workflows | Create order, process payment, submit form      |
 | Navigation     | Landing to checkout, deep link resolution       |
 | Error recovery | Network failure during checkout, session expiry |
+| Internal / admin tools | Sign in, the most-used management flow, the permission boundary |
 
 Use Playwright with a page object pattern, run against a stable seeded environment, and skip visual details covered by component tests.
 
@@ -144,22 +145,23 @@ Use Playwright with a page object pattern, run against a stable seeded environme
 
 ### Third-Party SDK Integrations
 
-SDKs you cannot drive from your own DOM - those in an iframe (Stripe Elements, PayPal, reCAPTCHA) or on a canvas (Google Maps) - cannot be queried with Testing Library. Mock them at the module level and test your integration boundary:
+SDKs you cannot drive from your own DOM - those in an iframe (Stripe Elements, PayPal, reCAPTCHA) or loaded from an external script whose output has no semantic DOM (Google Maps) - cannot be queried with Testing Library. Mock them at the module level and test your integration boundary:
 
 ```
 // Hoist every spy the factory closes over - a hoisted factory cannot see module imports.
-const { createPaymentMethod, getElement, h } = vi.hoisted(() => {
-  const { createElement } = require("react")
-  return { createPaymentMethod: vi.fn(), getElement: vi.fn(), h: createElement }
-})
+const { createPaymentMethod, getElement } = vi.hoisted(() => ({ createPaymentMethod: vi.fn(), getElement: vi.fn() }))
 
-vi.mock("@stripe/react-stripe-js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@stripe/react-stripe-js")>()),
-  CardElement: (props: { onChange: (e: { complete: boolean }) => void }) =>
-    h("input", { "data-testid": "mock-card", onChange: () => props.onChange({ complete: true }) }),
-  useStripe: () => ({ createPaymentMethod }),
-  useElements: () => ({ getElement }),
-}))
+vi.mock("@stripe/react-stripe-js", async (importOriginal) => {
+  const { createElement: h } = await import("react") // a hoisted block cannot rely on require()
+  return {
+    ...(await importOriginal<typeof import("@stripe/react-stripe-js")>()),
+    // a checkbox: clicking a text input fires no change event, so onChange would never run
+    CardElement: (props: { onChange?: (e: { complete: boolean }) => void }) =>
+      h("input", { type: "checkbox", "data-testid": "mock-card", onChange: () => props.onChange?.({ complete: true }) }),
+    useStripe: () => ({ createPaymentMethod }),
+    useElements: () => ({ getElement }),
+  }
+})
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -168,6 +170,7 @@ beforeEach(() => {
 
 // Test YOUR code reacting to the SDK's success/failure paths. Drive the mock element first,
 // or a form gated on card completeness never enables its submit button.
+render(<CheckoutForm />)
 await userEvent.click(screen.getByTestId("mock-card"))
 await userEvent.click(screen.getByRole("button", { name: "Pay" }))
 expect(createPaymentMethod).toHaveBeenCalled()
@@ -200,20 +203,20 @@ After `stack-detect`, apply patterns using ecosystem idioms:
 - **Vue**: Vitest + Vue Test Utils (or Testing Library Vue); `@nuxt/test-utils` for Nuxt; MSW; Playwright
 - **Angular**: Vitest or Jest + Angular Testing Library; component harnesses for Material; `HttpTestingController`; Playwright
 
-For unknown stacks, apply universal patterns and point the user to the framework's testing docs.
+For any framework not bound above - `unknown`, or a detected one such as Svelte or Solid - apply the universal patterns and point the user to that framework's testing docs.
 
 ---
 
 ## Output Format
 
-Consuming workflow skills depend on this structure. Include exactly one of `Issues Found` / `No Issues Found`. A clean run emits every header field, the Test Strategy table, `Tests to Write` when any apply, and `No Issues Found`; only the `Issues Found` blocks are omitted. Order Issues Found by severity, highest first; within a band, file order. When the project defines no coverage norms, default targets to 80% for unit and component, key flows for integration, critical paths for e2e.
+Consuming workflow skills depend on this structure. Include exactly one of `Issues Found` / `No Issues Found`. A clean run emits every header field, the Test Strategy table, `Tests to Write` when any apply, and `No Issues Found`; only the `Issues Found` blocks are omitted. Order Issues Found by severity, highest first; within a band, file order (the order the input lists the files; ascending line within a file). When the project defines no coverage norms, default targets to 80% for unit and component, key flows for integration, critical paths for e2e.
 
-On a codebase far below those targets, a global number is a wish, not a plan: write the Coverage Target cell as a ratchet with the baseline in it (`80% on changed files, baseline 12%`), or `80% on changed files, baseline unmeasured` when no coverage report exists - never invent a baseline number. Order `Tests to Write` as an adoption sequence - E2E over the one or two revenue-critical journeys first (largest safety net per test), then component tests at the files that change most often, then backfill. Say which step the project is on rather than listing 400 components.
+When a coverage report shows the baseline below those targets, or no report exists, a global number is a wish, not a plan: write the Coverage Target cell as a ratchet with the baseline in it (`80% on changed files, baseline 12%`), or `80% on changed files, baseline unmeasured` when no coverage report exists - never invent a baseline number. Order `Tests to Write` as an adoption sequence - E2E over the one or two revenue-critical journeys first (largest safety net per test), then component tests at the files that change most often (with no history in the input, the files every route or request passes through), then backfill. The `Adoption step` slot says which step the project is on, rather than listing 400 components: the earliest step not yet done - no E2E over a revenue journey is `E2E safety net`, E2E present but hot files untested is `hot-file component tests`, both done or coverage at target is `backfill`.
 
 ```
 ## Frontend Testing Assessment
 
-**Stack:** {detected language / framework}
+**Stack:** {Framework and Language as a display name (`Next.js 15.5 / TypeScript` for stack-detect's `React (Next.js)`) - the major.minor from the owning app's `package.json` (`^15.5.0` -> 15.5); with no `tsconfig.json`, the extensions of the files in scope decide JS vs TS, overriding stack-detect's Language; in a monorepo, the app owning the reviewed code; "unknown - universal patterns applied" when inconclusive}
 
 **Test framework:** {detected or recommended test framework}
 
@@ -228,6 +231,8 @@ On a codebase far below those targets, a global number is a wish, not a plan: wr
 
 ### Tests to Write
 
+**Adoption step:** {E2E safety net | hot-file component tests | backfill}
+
 - {component/feature}: {test description} ({unit | component | integration | e2e})
 
 ### Issues Found
@@ -237,16 +242,18 @@ On a codebase far below those targets, a global number is a wish, not a plan: wr
   - Problem: {what is wrong}
   - Fix: {concrete correction}
 
-Notes: {defects in the code under test rather than the tests, each naming the concern that owns it; omit when none}
-
 ### No Issues Found
 
 {State explicitly if testing is adequate - do not omit this section silently}
+
+Not assessed: {input the review needed but never saw - a file referenced but not provided, a module whose behaviour decides a severity, a symptom whose trigger lies outside scope; never a guessed finding; omit when none}
+
+Notes: {defects in the code under test rather than the tests, each naming the concern that owns it; omit when none}
 ```
 
-`Issues Found` covers the test code in scope, including its harness and config (a missing setup import, an unreset handler, a raised retry count). A defect in the code under test goes in one trailing `Notes:` line naming the owning concern, not in `Issues Found`.
+`Issues Found` covers the test code in scope, including its harness and config (a missing setup import, an unreset handler, a raised retry count). A defect in the code under test goes in the trailing `Notes:` line naming the owning concern, not in `Issues Found`; the `Not assessed:` and `Notes:` lines follow whichever of the two sections was emitted.
 
-Severity calibration: High = false confidence (implementation-detail assertions, reflexively updated snapshots, own code mocked out at module level, a harness defect that stops tests exercising what they claim - handlers never installed, a missing setup import, a raised retry count masking a race); Medium = fragile or incomplete (brittle selectors, missing error/loading states, order dependence, fixed sleeps); Low = maintainability (inline literals over factories, naming, duplication). A large-tree snapshot rates Medium as fragile; it escalates to High when the history shows reflexive updating (a snapshot regenerated alongside unrelated changes, or a script that passes the update flag - `-u`, `--updateSnapshot` on Jest, `--update` on Vitest) - rate the evidence, not the trajectory.
+Severity calibration: High = false confidence (implementation-detail assertions, reflexively updated snapshots, own code mocked out at module level, a harness defect that stops tests exercising what they claim - handlers never installed, a missing setup import, a raised retry count masking a race); Medium = fragile or incomplete (brittle selectors, missing error/loading states, order dependence, fixed sleeps - High when the sleep is what makes a racing test pass); Low = maintainability (inline literals over factories, naming, duplication). A large-tree snapshot rates Medium as fragile; it escalates to High when the history shows reflexive updating (a snapshot regenerated alongside unrelated changes, or a script that passes the update flag - `-u`, `--updateSnapshot` on Jest, `--update` on Vitest) - rate the evidence, not the trajectory.
 
 ---
 
