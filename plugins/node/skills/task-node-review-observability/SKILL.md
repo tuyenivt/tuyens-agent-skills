@@ -13,289 +13,239 @@ user-invocable: true
 
 # Node.js Observability Review
 
-Stack-specific delegate of `task-code-review-observability` for Node.js. Names `pino` / `winston`, OpenTelemetry Node SDK + auto-instrumentations, `prom-client`, NestJS lifecycle hooks, BullMQ queue events, and error-tracker SDKs (`@sentry/node`, etc.) directly. Library / SDK level only; infra (Datadog dashboards, log forwarders, alert rules) is out of scope.
+Stack-specific delegate of `task-code-review-observability`. Names `pino` / `winston`, the OpenTelemetry Node SDK and its instrumentations, `prom-client`, NestJS lifecycle hooks, BullMQ events and telemetry, and error-tracker SDKs (`@sentry/node`, `@sentry/nestjs`) directly. Library / SDK level only; dashboards, forwarders, and alert rules are out of scope.
 
 ## When to Use
 
-- Reviewing a NestJS or Express PR for observability regressions or new instrumentation gaps
+- NestJS or Express PR review for observability regressions or new instrumentation gaps
 - Pre-release check for a new Node service or major feature
-- Post-incident review when Node diagnosis was slow or evidence missing
-- Adopting OpenTelemetry / pino / Prometheus / BullMQ instrumentation
+- Post-incident audit when diagnosis was slow or evidence missing (investigation mode, below)
 
-**Not for:** general Node review (`task-node-review`), known-bottleneck perf (`task-node-review-perf`), infra observability config.
+**Not for:** general review (`task-node-review`), known-bottleneck perf (`task-node-review-perf`), infrastructure observability config.
 
 ## Depth Levels
 
-| Depth      | When                                           | Runs                                        |
-| ---------- | ---------------------------------------------- | ------------------------------------------- |
-| `standard` | Default                                        | All steps, including probe correctness      |
-| `deep`     | Pre-release of critical service, post-incident | All steps + SLI/SLO targets                 |
+| Depth | When | Runs |
+| ----- | ---- | ---- |
+| `standard` | Default | Steps 1-12, including probe correctness |
+| `deep` | Pre-release of a critical service, post-incident, investigation mode | Steps 1-12 + SLI / SLO rows |
 
-Default: `standard`. Probe correctness (liveness vs readiness vs dependency-health separation) is diff-visible and runs at `standard` - `task-node-review-reliability` defers probe wiring here, so gating it behind `deep` would leave it uncovered by every lens.
+Probe correctness (liveness vs readiness vs dependency health) runs at every depth - `task-node-review-reliability` defers probe wiring here.
 
 ## Invocation
 
-| Invocation                                 | Meaning                                                              |
-| ------------------------------------------ | -------------------------------------------------------------------- |
-| `/task-node-review-observability`          | Current branch vs base; fails fast on trunk                          |
-| `/task-node-review-observability <branch>` | `<branch>` vs base (3-dot diff)                                      |
-| `/task-node-review-observability pr-<N>`   | PR head fetched into local `pr-<N>` branch (user runs fetch first)   |
+`/task-node-review-observability [<branch> | pr-<N>] [--base <branch>] [standard | deep]`
 
-Depth (`standard` | `deep`) and `--base <branch>` compose with any form: `/task-node-review-observability pr-4471 --base release/2026.05 deep`.
+Defaults to the current branch vs its base; fails fast on trunk. As the `+Obs` subagent of `task-node-review`, Step 3 is pre-satisfied and Step 12 takes its subagent branch.
 
-`task-node-review` spawns this workflow as its `+Obs` subagent. As a subagent the parent passes the precondition handle plus pre-read diff / commit log; Step 2 is skipped, Step 11's verification is skipped, and Step 12 takes its subagent branch.
+**Investigation mode** - decided before Step 3: the request is a post-incident or "diagnosis was slow" audit with no PR. A bare invocation on trunk is not an investigation - Step 3 runs and fails fast. Scope is the paths the request names plus the app's logging, tracing, metrics, and error-tracker setup wherever it lives (bootstrap, modules, filters, processors). Run Steps 4-11 against current code read via `git show HEAD:<path>`; every "diff" wording reads "in scope", and a surface absent from scope states N/A. The run is `deep`. No merge is blocked, so pre-existing gaps file at their full tier. No precondition check, no round gate, no writer: Step 11 verifies inline and the report body is the response. Summary `Target:` names the scope.
 
 ## Workflow
 
-### Step 1 - Load Behavioral Principles and Confirm Stack
+### Step 1 - Behavioral Principles
 
-Use skill: `behavioral-principles` first, before any other delegation. Then use skill: `stack-detect`; skip re-detection if a parent confirmed. If not Node, stop and direct user to `/task-code-review-observability`.
+Use skill: `behavioral-principles`. Accept the parent's confirmation when invoked as a subagent.
 
-Record `Framework: NestJS | Express | mixed`, `ORM: Prisma | TypeORM`. Subsequent steps branch on these signals.
+### Step 2 - Confirm Stack
 
-### Step 2 - Resolve the Diff Under Review
+Use skill: `stack-detect`; accept a pre-confirmed stack from a parent. Not Node -> stop and route to `/task-code-review-observability`. Record `Framework` (NestJS, Express, `mixed`, or another server framework - which takes the Express rows at its equivalent sites), `ORM` (Prisma, TypeORM, both, `other` / `none`), `Database` (the TypeORM / raw-driver instrumentation follows it), and the module format (`"type": "module"` or an `.mjs` entry, else CJS - Step 6's preload flag follows it).
 
-Use skill: `review-precondition-check`; forward `--base <branch>` when passed. On approval, read `git diff <base_ref>...<head_ref>` and `git log <base_ref>..<head_ref>` once; reuse for all later steps. Also capture `base_sha` / `head_sha` via `git rev-parse` on those refs - the writer runs no git of its own. Skip if running as subagent with pre-read artifacts. If the precondition check fails, surface its message verbatim and stop. No state-changing git from this workflow.
+### Step 3 - Resolve the Diff (standalone only)
 
-**Re-review gate (standalone only).** The handle's `prior_checkpoint` is keyed to `review-<branch>.md`, the general review's report - not this lens's. Check for `review-observability-<branch>.md` yourself, sanitizing `branch` the way the writer does (`/` and any character outside `[A-Za-z0-9_-]` becomes `-`). If it exists with valid frontmatter, its `head_sha` equals the current head, and the invocation adds no depth beyond it, print `No new commits on <branch> since prior observability review at <sha_short>. Prior report unchanged.` and stop without writing. Otherwise `round` = prior + 1, and pass its `head_sha` as `prior_head_sha`. No such file, or one whose frontmatter is missing or invalid -> `round: 1`, no `prior_head_sha`; that is the common path and it is not an error.
+Use skill: `review-precondition-check` with the invocation's target argument, any `--base`, and `report_type: review-observability`. A fail-fast surfaces verbatim and stops. Investigation mode is decided from the invocation before this step and never runs it, so a precondition failure never routes there.
 
-### Step 3 - Read the Instrumentation Surface
+**Round gate.** Capture `base_sha` / `head_sha` via `git rev-parse` on the handle's refs and decide the round before reading anything else: a valid `prior_checkpoint` whose `head_sha` and `base_sha` equal the captured ones and whose `depth` covers the resolved one (`deep` covers `standard`) -> print `No new commits on <head_short_name> since prior observability review at <sha_short>. Prior report unchanged.` (`<sha_short>` = first 7 chars of `head_sha`) and stop. Otherwise `round` = its `round` + 1 and `prior_head_sha` = its `head_sha`; no `prior_checkpoint`, or `legacy` (the Step 12 write overwrites the file) -> `round: 1`, no `prior_head_sha`.
 
-**Top-line output:** one verdict per surface (Logging / OTel SDK / prom-client / BullMQ / Error tracker / Probes) of `wired | partial | absent | n/a`. Absence is itself the finding; `n/a` is for a surface the service genuinely has no use for (no queue, so no BullMQ).
+Then read once: `git diff <base_ref>...<head_ref>`, `git diff --name-status <base_ref>...<head_ref>`, `git log --oneline <base_ref>..<head_ref>`. Every file outside the diff is read with `git show <head_ref>:<path>`.
 
-**Grouping rule.** When a whole surface is `absent`, produce **one finding for that surface**, listing missing pieces grouped by the file/symbol they should land in. Per-callsite findings only apply when the surface exists and is misused. Prevents 50-item dumps on greenfield reviews.
+### Step 4 - Read the Instrumentation Surface
 
-Rate an absent surface by what it costs *this* service: absent logging correlation or an absent error tracker on a service handling money or auth is High; an absent surface on a service that never had one and is not on a critical path is Medium. Do not default every absent surface to High - on a greenfield review that turns the whole report into merge blockers.
+Open the config so findings cite real lines - NestJS: the logger module (`nestjs-pino`, redaction), `main.ts` / `instrument.ts` / `tracing.ts`, the config schema (`OTEL_*`, log level, Sentry DSN), `package.json`; Express: the logger module, `tracing.ts`, `app.ts` / `index.ts` (middleware order, `/metrics`), `package.json`. Plus every changed file calling a logger, registering a metric, defining an interceptor, or touching trace context.
 
-Open the config files so findings cite real lines:
+**Surface verdicts:** one per surface - Logging, OTel SDK, Metrics, BullMQ, Error tracker, Probes - of `wired | partial | absent | n/a`. `n/a` is for a surface the service genuinely has no use for (no queue: BullMQ `n/a`). Use skill: `ops-observability` for the cross-cutting presence baseline; the Node rows below supersede it where they overlap.
 
-**NestJS:** `src/logger/logger.module.ts` (`nestjs-pino`, redaction), `src/main.ts` / `src/telemetry.ts` (`NodeSDK`, exporters, auto-instrumentations), `src/config/*.ts` / `.env` (`OTEL_*`, log level, Sentry DSN, Prom port), `package.json` (`@opentelemetry/sdk-node`, `auto-instrumentations-node`, `prom-client`, `nestjs-pino`, `@sentry/node`).
+**Grouping rule.** A wholly `absent` surface is **one finding** listing the missing pieces by the file or symbol they belong in; per-callsite findings only where a surface exists and is misused. Rate an absent or partial surface by what it costs this service: High when the service is on a critical path (money, auth, or a user-facing write), Medium otherwise.
 
-**Express:** `src/logger.ts` (pino/winston, redaction, request-id), `src/telemetry.ts` (`NodeSDK` init - MUST run before any other `require`/`import`), `src/server.ts` (middleware order: request-id → logger → OTel context → routes; `/metrics`), `package.json`.
+### Step 5 - Structured Logging
 
-Plus every changed file calling `Logger`/`logger.*`, registering a metric, defining an interceptor, or touching trace context.
+- [ ] **JSON output** in production (`pino`, or `winston.format.json()`); no raw text
+- [ ] **Correlation fields** on every line - trace ids (`trace_id` / `span_id` as `instrumentation-pino` / `-winston` write them, or renamed via `logKeys`), a request id, the principal and tenant, business ids. NestJS: `nestjs-pino` with `genReqId`; Express: `pino-http` fed by an `AsyncLocalStorage` request-id middleware. `trace_id` / `span_id` injection comes from `@opentelemetry/instrumentation-pino` / `-winston`
+- [ ] **Redaction in the logger** - `pino` `redact: ['req.headers.authorization', 'req.headers.cookie', '*.password', '*.token']`, or a winston format; class-transformer decorators do nothing for a logger
+- [ ] **No entity or request-body logging** - `logger.info(user)` or `{ body: req.body }` serializes every field, leaking PII and secrets; log ids and the fields needed
+- [ ] **Identity as structured keys** - `logger.info({ userId }, 'event')`, not `` `user=${userId}` `` (redaction cannot scrub free text)
+- [ ] **Levels** - `error` actionable, `warn` recoverable, `info` state transitions, `debug` verbose; `info` default in production
+- [ ] **No `console.log`** in production paths; no hot-loop logging without sampling
+- [ ] **Errors with cause chain** - `logger.error({ err }, 'msg')` (pino's `err` serializer keeps `cause`), not `err.message`
 
-### Step 4 - Structured Logging (pino / winston)
+### Step 6 - OpenTelemetry SDK
 
-- [ ] **JSON output** in prod: `pino` (default) or `winston.format.json()`. No raw text
-- [ ] **Correlation fields** every line: `traceId`, `spanId`, `requestId`, `userId`, `tenantId`, business IDs. NestJS: `nestjs-pino` `genReqId`. Express: `cls-rtracer` or an `AsyncLocalStorage`-based request-id middleware feeding `pino-http`
-- [ ] **OTel log correlation**: `@opentelemetry/instrumentation-pino` or `-winston` injects `trace_id` / `span_id`
-- [ ] **Redaction** of secrets: `pino` `redact: ['req.headers.authorization', 'req.headers.cookie', '*.password', '*.token']`; winston via custom format. Reinforced by `@Exclude()` / Zod schemas
-- [ ] **No entity logging**: `logger.log(user)` serializes every column, leaking PII and secrets the DTO layer excludes. Log the id plus the fields you need
-- [ ] **Identity fields as structured key-values**, not string interpolation: `logger.info({ userId }, 'event')` not `` `user=${userId}` ``. Redaction cannot scrub free-text reliably
-- [ ] **Log levels**: `error` actionable, `warn` recoverable, `info` state transitions, `debug` verbose. Default `info` in prod
-- [ ] **No `console.log`** in prod paths - skips redaction, structure, correlation
-- [ ] **No hot-loop logging** (large iterations, per-second jobs, high-TPS workers): sample or `debug`
-- [ ] **Error logging with cause chain**: `logger.error({ err }, 'msg')` (pino's `err` serializer captures `cause`), not `err.message`
+- [ ] **Initialized before any other import** - CJS: `node --require ./tracing.js` or the first import in `main.ts`; ESM: `node --import ./tracing.mjs` (with `register()` of the `@opentelemetry/instrumentation/hook.mjs` loader) - `--require` does not patch ESM. An import placed after the app module means nothing already loaded is patched
+- [ ] **`NodeSDK` configured** - `serviceName` / `resource`, `traceExporter` or `spanProcessors`, `metricReader` (`metricReaders` on current `sdk-node`), `sampler`, `instrumentations`; it builds the providers itself. `OTEL_SERVICE_NAME` / `OTEL_RESOURCE_ATTRIBUTES` per environment
+- [ ] **Sampling explicit** - `new ParentBasedSampler({ root: new TraceIdRatioBasedSampler(rate) })` with `rate` per environment
+- [ ] **Instrumentations cover the stack** - `@opentelemetry/auto-instrumentations-node` covers the framework (`instrumentation-nestjs-core`, `-express`), `http`, `undici`, Redis (`-ioredis`, `-redis`), `pg`, `mysql2`, and pino / winston correlation; it never includes `@prisma/instrumentation`, which is registered by hand (Prisma < 6.1 also needs `previewFeatures = ["tracing"]`). TypeORM traces through its driver's instrumentation (`pg` / `mysql2`). Raise **one** finding for whatever the configured set genuinely misses
+- [ ] **HTTP clients** - `instrumentation-http` covers `http` / `https` (and axios's default adapter); global `fetch`, `undici.request`, and axios `adapter: 'fetch'` need `instrumentation-undici`
+- [ ] **BullMQ** - BullMQ's built-in `telemetry` option (a 5.2x minor onward - check the pinned version) with `bullmq-otel` (`new Queue(name, { connection, telemetry: new BullMQOtel('<service>') })`, and the same on the `Worker`) links producer and job spans; older BullMQ uses a community instrumentation. No package named `@opentelemetry/instrumentation-bullmq` exists
+- [ ] **Custom spans** via `tracer.startActiveSpan(...)`, ended in `finally`; no double instrumentation of one call
+- [ ] **Resource attributes** - `service.name`, `service.version`, `deployment.environment.name`
 
-### Step 5 - OpenTelemetry SDK and Auto-Instrumentation
+### Step 7 - Metrics
 
-- [ ] **SDK initialized BEFORE any other `import` / `require`**: CJS loads `tracing.js` via `node --require ./tracing.js` or as the first import in `main.ts`; **ESM output needs `node --import ./tracing.mjs`** (`register()` plus the `@opentelemetry/instrumentation/hook.mjs` loader) - `--require` does not patch ESM imports. Late init means auto-instrumentation cannot patch already-loaded modules
-- [ ] **`NodeSDK` configured**: it constructs the providers itself, so pass `traceExporter` / `spanProcessors`, `metricReader`, `sampler`, `resource`, `instrumentations` - not a `TracerProvider` or `MeterProvider`. `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` per env
-- [ ] **Sampling explicit**: `new ParentBasedSampler({ root: new TraceIdRatioBasedSampler(rate) })` with `rate` per env; not default
-- [ ] **Auto-instrumentation**: `@opentelemetry/auto-instrumentations-node` or individual ones wired. When enabled it covers the framework, HTTP, Redis, pg, and Step 4's pino / winston log-correlation row - but **not** `@prisma/instrumentation`, which is never bundled and must be registered by hand. Verify coverage and raise **one** finding for whatever it genuinely misses, not one per row
-- [ ] **Framework**: NestJS `instrumentation-nestjs-core`; Express `instrumentation-express` + `-http`
-- [ ] **Database**: `@prisma/instrumentation` (Prisma) or `instrumentation-pg` (TypeORM)
-- [ ] **HTTP client**: `instrumentation-http` covers the `http` / `https` modules and the `node-fetch` package. Node 18+ global `fetch` is undici and bypasses them - it needs `instrumentation-undici`, as does `undici.request`
-- [ ] **BullMQ**: there is no `@opentelemetry/instrumentation-bullmq`. Use a community package (e.g. `@appsignal/opentelemetry-instrumentation-bullmq`) so job spans link back via traceparent through Redis, or accept the gap explicitly - never name a bare `instrumentation-bullmq` in a fix
-- [ ] **Redis / cache**: `instrumentation-ioredis`, or `@opentelemetry/instrumentation-redis` (which absorbed the deprecated `-redis-4` and covers redis v4/v5)
-- [ ] **Custom spans** via `tracer.startActiveSpan(...)`; no double-instrumentation of a single Prisma query
-- [ ] **Resource attributes**: `service.name`, `service.version`, `deployment.environment` from build / env
+- [ ] **Exposed** - `prom-client` with `/metrics` (NestJS `@willsoto/nestjs-prometheus`; Express `register.metrics()` route), or OTel metrics with a Prometheus exporter
+- [ ] **Runtime metrics** - `collectDefaultMetrics()` (prom-client: event-loop lag, heap, handles), or `instrumentation-runtime-node` on the OTel path
+- [ ] **HTTP server metrics** - a duration histogram labelled by method, route template, and status (`express-prom-bundle` with `includeMethod: true, includePath: true` and path normalization - its `http_request_duration_seconds` `_count` gives the rate - or an interceptor)
+- [ ] **Custom metrics** namespaced (`acme_refunds_total`), correct type and suffix (`_total`, `_seconds`, `_bytes`)
+- [ ] **Bounded label cardinality** - never `userId` / `orderId` / `requestId`; enums and route templates only
+- [ ] **Registered once at module scope** - `new Counter(...)` inside a handler throws a duplicate-registration error on the second call
+- [ ] **Multi-process** - Node `cluster`: `AggregatorRegistry` in the primary; PM2 cluster mode: a per-instance metrics port (`base + NODE_APP_INSTANCE`) scraped separately, or a PM2 metrics module
+- [ ] **Histogram buckets** match the SLO; finer buckets for sub-100 ms paths
 
-### Step 6 - Prometheus Metrics (prom-client)
+### Step 8 - BullMQ Observability
 
-- [ ] **`prom-client` installed** with `/metrics` exposed (NestJS: `@willsoto/nestjs-prometheus`; Express: `register.metrics()` route) or `OTEL_METRICS_EXPORTER=prometheus`
-- [ ] **Default Node metrics** scraped: `collectDefaultMetrics()` at startup (`process_*`, `nodejs_eventloop_lag_seconds`, `nodejs_active_handles_total`, heap)
-- [ ] **HTTP server metrics**: histogram via middleware (`express-prom-bundle` or NestJS interceptor) - `http_request_duration_seconds`, `http_requests_total` with route/method/status
-- [ ] **Custom metrics** under a namespace (`acme_orders_placed_total`); types correct (`Counter`/`Histogram`/`Gauge`/`Summary`); suffixes (`_total`/`_seconds`/`_bytes`)
-- [ ] **Label cardinality bounded**: never label by `userId`/`orderId`/`requestId`; only enums/categories
-- [ ] **No registration in hot path**: `new Counter(...)` at module level only; per-request causes duplicate-registration crashes
-- [ ] **Cluster mode**: `AggregatorRegistry` for PM2 / Node `cluster` deployments
-- [ ] **Histogram buckets** match SLO; add finer buckets for sub-100ms paths
-- [ ] **Route normalization**: label by route template (`/orders/:id`), not `req.url` with path params
+Use skill: `node-bullmq-patterns` when the diff touches a queue, worker, or scheduler.
 
-### Step 7 - BullMQ / Background Job Observability
+- [ ] **Trace propagation** - Step 6's BullMQ row (one finding, not two)
+- [ ] **Queue events** - `completed` / `failed` / `stalled` feed counters and duration histograms; `worker.on('error')` for worker-level errors
+- [ ] **Exhausted jobs reach the error tracker** - a worker has no exception filter. Capture on the job-failed event when `!job || err.name === 'UnrecoverableError' || job.attemptsMade >= (job.opts.attempts ?? 1)`, skipping errors that map to 4xx (Use skill: `node-exception-handling`) - `@OnWorkerEvent('failed')` under `@nestjs/bullmq`, `worker.on('failed', ...)` on a plain worker
+- [ ] **Per-job metrics** - latency histogram, retry / failure counters, a queue-depth gauge (`queue.getJobCounts()` polled)
+- [ ] **Logger context in the processor** - `jobId`, job name, and business ids bound for the job's duration (`AsyncLocalStorage` / a child logger)
+- [ ] **Scheduled jobs** - a missed run is alerted on a freshness gauge (time since last completion); `stalled` fires only for an active job whose lock stopped renewing, never for a run that never started
 
-_Defer in-depth queue patterns to `node-bullmq-patterns`._
+### Step 9 - Lifecycle and Async Context
 
-- [ ] **BullMQ trace propagation wired** via the community instrumentation named in Step 5 (this row and Step 5's are the same check - report it once)
-- [ ] **Queue events wired**: `completed`/`failed`/`stalled` → counters + duration histograms; `worker.on('error')` for worker-level crashes
-- [ ] **Exhausted jobs reach the error tracker**: a worker has no exception filter, so wiring only the filter leaves every exhausted job dark. Capture on the job-failed event, gated on `job.attemptsMade >= job.opts.attempts` (see `node-exception-handling`) - `@OnWorkerEvent('failed')` under `@nestjs/bullmq`, `worker.on('failed', (job, err) => ...)` on a standalone Express worker. Different event from `worker.on('error')` above, which is worker-level
-- [ ] **Per-job metrics**: latency histogram, retry / failure counters, queue-depth gauge (`queue.getJobCounts()` polled)
-- [ ] **Trace context across request → job boundary**: instrumentation handles this; flag manual wiring that breaks it
-- [ ] **Logger context inside processor**: `jobId`, `name`, sanitized `data` bound at start, cleared at end (CLS / `AsyncLocalStorage`)
-- [ ] **Outbound HTTP from jobs instrumented**: `axios` and the `http`/`https` modules via `instrumentation-http`; global `fetch` / `undici` via `instrumentation-undici` (Step 5's split applies here too)
-- [ ] **Repeatable / scheduled jobs**: each repeat emits a span, and a **missed** execution is alerted on a freshness gauge (time since last completion). `stalled` cannot detect it - that event fires only for an active job whose lock stopped renewing, and a job that never started is never active
+NestJS hook names below; on Express the same checks apply at the equivalent site (the `SIGTERM` handler, the bootstrap file). A row is N/A only when the construct is absent.
 
-### Step 8 - Lifecycle and Async Observability
+- [ ] **Bootstrap span** started in `main.ts` before `NestFactory.create()` and ended after `listen()` - a span opened in `OnApplicationBootstrap` measures nothing
+- [ ] **Shutdown flush** - `app.enableShutdownHooks()` in `main.ts` (and in a standalone worker context), without which no shutdown hook runs on `SIGTERM`; `OnApplicationShutdown` calls `await Sentry.close(2000)` and `await sdk.shutdown()` - it runs after `onModuleDestroy` has disconnected Prisma. `@nestjs/bullmq` closes `WorkerHost` workers itself; a plain worker calls `worker.close()`, then flushes, in the `SIGTERM` handler
+- [ ] **`AsyncLocalStorage` preserved** - context lost across an `EventEmitter` or pooled-connection callback without `context.bind`, or stashed in a module variable, flagged
+- [ ] **`worker_threads`** re-bind trace context from the message; propagation does not cross the thread boundary
 
-NestJS hook names are given below; on Express the same checks apply to the equivalent site - the `SIGTERM` handler for shutdown, `main`/`server.ts` for bootstrap. Mark a row N/A only when the construct itself is absent, not because the framework differs.
+### Step 10 - Error Tracking and Probes
 
-- [ ] **Bootstrap span**: started in `main.ts` **before** `NestFactory.create()` and ended after `listen()`. A span opened in `OnApplicationBootstrap` runs after every module has initialized and measures nothing
-- [ ] **Graceful shutdown**: `OnApplicationShutdown` closes Prisma, BullMQ workers, `sdk.shutdown()`; flushes telemetry. Absence drops in-flight spans/metrics
-- [ ] **`AsyncLocalStorage` preserved** through `setImmediate`/`setTimeout`/`Promise.then`; flag manual `context.with` that bypasses
-- [ ] **`worker_threads`**: re-bind trace context via worker message; auto-propagation does not cross the thread boundary
-- [ ] **Long-running streams / async generators**: span covers the full lifecycle
-- [ ] **Response-time interceptor** when per-route logged timings are wanted alongside OTel histograms
+The capture contract is `node-exception-handling`'s (Use skill: `node-exception-handling`); flag deviations - double capture, per-handler `try/catch` duplicating the global filter. Another tracker (Honeybadger, Rollbar): the capture-once, PII, and init-before-imports rows apply at its SDK's equivalent; the Sentry-only rows are N/A.
 
-### Step 9 - Error Tracking (Sentry / Honeybadger / Rollbar)
+- [ ] **Sentry initialized before imports** (`--import ./instrument.mjs`, the Step 6 ordering rule); DSN, release, and environment from config
+- [ ] **One capture path** - NestJS: `SentryModule.forRoot()` plus exactly one of `SentryGlobalFilter` (when the app has no catch-all filter) or the existing global `@Catch()` filter capturing (manually or via `@SentryExceptionCaptured()`), never both. Express: `Sentry.setupExpressErrorHandler(app)` or the terminal error middleware capturing, not both
+- [ ] **Default integrations** - `httpIntegration` and the `unhandledRejection` / `uncaughtException` handlers are on by default; the Express / Prisma / Postgres auto-instrumentations join only when `tracesSampleRate` or `tracesSampler` is set
+- [ ] **PII** - `sendDefaultPii: false`; `beforeSend` strips sensitive keys; identity set deliberately with `Sentry.setUser({ id })`, an opaque id
+- [ ] **One tracer provider** - Sentry v8+ registers its own OpenTelemetry provider on `init()`, and global registration is first-wins: the later SDK's spans go nowhere. Either Sentry owns tracing, or it runs with `skipOpenTelemetrySetup: true` wired into the app's `NodeSDK` (both on the same OpenTelemetry major)
+- [ ] **Sample rate explicit** - `tracesSampleRate` per environment, never `1.0` on a high-traffic service
+- [ ] **Liveness `/health`** - 200 while the process is responsive; no DB / Redis / third-party ping (a flaky dependency restarts every replica)
+- [ ] **Readiness `/ready`** - 200 only when this pod can serve (its DB pool, Redis, queue connection); no third-party ping (one upstream outage pulls every replica). NestJS `@nestjs/terminus`: `health.check([() => this.db.pingCheck('db', this.prisma)])`, Redis via a custom indicator or `MicroserviceHealthIndicator`
+- [ ] **Dependency health** on a separate endpoint (`/internal/deps`), never wired to readiness
+- [ ] At `deep`: every critical journey has an SLI (rate, success, p95) - a critical journey with none is High - and an SLO target documented beside the code (undocumented: Medium)
 
-Canonical rescue strategy and capture-once discipline: Use skill: `node-exception-handling`. This step flags deviations from that contract (double-capture, leaked ORM types, per-handler try/catch that duplicates the global filter).
+### Step 11 - Verify and Reconcile
 
-- [ ] **SDK initialized with framework integration**: on Sentry v8, `httpIntegration`, `expressIntegration`, `prismaIntegration`, and the `uncaughtException` / `unhandledRejection` handlers are **defaults** - an `init()` with no `integrations` key already has them, so its absence is not a finding. What NestJS does need explicitly is `@sentry/nestjs` with `SentryModule.forRoot()` and `SentryGlobalFilter`
-- [ ] **DSN in env / Vault**, not committed
-- [ ] **Release + environment tags** from build metadata
-- [ ] **PII scrubbing**: `sendDefaultPii: false`; `beforeSend` strips sensitive keys
-- [ ] **OTel correlation forwarded**: Sentry v8 is OTel-native and attaches `trace_id` automatically. User identity is **not** automatic under `sendDefaultPii: false` - set it deliberately via `Sentry.setUser({ id })`, an opaque id rather than an email
-- [ ] **No duplicate tracing setup**: Sentry v8 installs its own tracer provider on `init()`. `@opentelemetry/api` registration is **first-wins**: the second registrant is refused with a `diag.error` and its spans never reach the global provider, so whichever SDK initializes later is the one that goes dark - either Sentry owns tracing, or it runs with `skipOpenTelemetrySetup: true` wired into the existing provider. Sentry v8 also needs pre-import init (`--import ./instrument.mjs`), the same ordering rule as Step 5
-- [ ] **Sample rate explicit**: `tracesSampleRate` per env; never `1.0` in high-traffic prod
-- [ ] **`ignoreErrors`** lists handled exceptions (`BadRequestException`, validation) with comments
-- [ ] **Filter / middleware calls `Sentry.captureException(exc)`** before response transform, preserving stack
-- [ ] **`unhandledRejection` / `uncaughtException`** captured before exit
+**One construct, one finding.** Defects removed by one fix are one finding at the worst tier, naming the others in its Issue and numbering the fixes (a counter registered in a handler, labelled by `orderId`, missing `_total`); defects needing different fixes at one site stay separate. Step 4's grouping rule covers absent surfaces. **A defect this lens does not own is reported, never dropped:** one `- **out of lens:** file:line - <the defect, and the workflow that owns it>` line per defect, at the end of `## Findings`, for a defect outside this lens that would break the build, corrupt, lose, or expose data, or block legitimate traffic (anything else is left to `task-node-review`), untiered and uncounted.
 
-### Step 10 - Health Checks and SLIs
+Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the `Label` and `Annotation` columns, and fill `Findings verified:` in the atomic's Summary form. A finding spanning a pre-existing construct and new code cites the unchanged construct and names the new trigger in its Issue; the verify pass attributes it. Subagent runs skip verification - the parent verifies the merged set. Investigation mode skips it too: re-read each cited `file:line` at `HEAD`, drop what the code contradicts, mark what cannot be settled in-tree `_(unverified: <reason>)_`, and report `Findings verified: inline (no diff)`.
 
-Probe rows run at every depth. The SLI/SLO rows (marked `deep`) run only at `deep`.
-
-- [ ] _(deep)_ Critical journeys have an SLI (rate, success, p95)
-- [ ] **Liveness `/health`**: 200 if the process is responsive. No DB / Redis / external ping - a flaky dep would restart every replica
-- [ ] **Readiness `/ready`**: 200 only when this pod can serve - DB pool, Redis, BullMQ connection. No third-party ping - one upstream outage would pull every replica
-- [ ] **Dependency-health endpoint** (`/internal/deps`) for third-party reachability; observability signal only, NOT wired to readiness
-- [ ] NestJS: `@nestjs/terminus` `HealthCheckService.check([])` for liveness; `check([prisma, redis])` for readiness
-- [ ] Express: liveness returns `{ status: 'ok' }`; readiness checks own-pod deps
-- [ ] _(deep)_ SLO targets documented in code (decorator / README), not free-floating
-- [ ] Synthetic probes hit `/ready`, not just `/health`
-
-### Step 11 - Verify Findings
-
-**One construct, one finding.** A construct carrying several defects (a counter registered in a handler *and* labelled by `userId` *and* missing its `_total` suffix) publishes once at the worst impact, naming the others in its Issue line. Step 3's grouping rule covers absent surfaces; this covers misused ones.
-
-Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary.
-
-Its `Label` wins over the impact mapping: a High-Impact finding tagged `[Recommend]` because it is pre-existing and untouched is the correct output, not a contradiction. This matters most on a post-incident review of a mature surface, where most findings are pre-existing. Subagent runs skip this step - the parent verifies the merged set once.
+**Round 2+ (standalone, after verification).** Project the prior report at the handle's `report_path` into reconcile's parse shape: one `## High-Impact Findings` section, and per prior finding (every tier) a `### [<Label>] <file:line>` heading - the label from its bold `[Must]` / `[Recommend]` token (a prior report with none: the label its tier maps to), the `file:line` prefix of its Location, each Location annotation as its own group (`_(pre-existing; newly reachable via ...)_` split into `_(pre-existing)_ _(newly reachable via ...)_`), a prior `_(carried from round <N>)_` kept - followed by its Issue line as `Issue:`. Then Use skill: `review-prior-findings-reconcile` with that projection, the diff, the name-status, `head_sha`, and `git ls-tree -r --name-only <head_sha>` as `head_files`. Its table, note line, and tally render as `## Prior Round Reconciliation`. A row is re-derived when this round's findings hold one on the same construct with the same smell. A `Still open` or `Needs re-check` row this round re-derived publishes once, at this round's label; one it did not re-derive republishes its prior block verbatim in its prior tier - every field, the Location with all its annotation groups - at its prior label, with `_(carried from round <N>)_` after the label unless the block already carries one (`<N>` = the round it first appeared), outside the verify tally, plus a Next Steps entry suffixed `(open since round <N>)`. A prior label outside `[Must]` / `[Recommend]` stays verbatim in the table and maps before publication: `[Blocker]`, `[High]`, `[Critical]` -> `[Must]`; anything else -> `[Recommend]`; `[Praise]` is never carried.
 
 ### Step 12 - Write Report
 
-**Subagent mode:** if invoked by `task-node-review`, do not write a file - `review-report-writer` is invoked only by the workflow that owns the report. Return exactly four things, and this list supersedes any generic "return your Output Format" instruction in the parent's prompt:
+**Subagent mode** (invoked by `task-node-review`): return only `## Findings` with its tier sections and any `out of lens` lines. No Summary, Surface Map, Recommendations, Next Steps, or file; the parent owns the report. This supersedes any generic "return your Output Format" in the parent's prompt.
 
-1. The findings, each carrying its `[Must]` / `[Recommend]` label and its `file:line`
-2. `## Next Steps`, tagged and ordered, for the parent to re-sort into its own
-3. `## Recommendations`, with the Surface Map's verdicts folded in as bullets (the parent's Summary has no observability fields)
-4. Nothing else - omit the Summary block; the parent owns it
+**Investigation mode:** emit the report body as the response; no writer.
 
-Skip the rest of this step.
-
-Standalone: use skill: `review-report-writer` with `report_type: review-observability` and every field it marks required:
-
-- `report_body` (the assembled Markdown), `branch`, `base_ref`, `head_ref` - from the precondition handle
-- `base_sha` / `head_sha` captured in Step 2 via `git rev-parse`
-- `scope: +obs`, `depth` as invoked, `stack = node-typescript`, `mode: full`
-- `round` from Step 2's re-review gate, plus `prior_head_sha` when round > 1
-
-Write the assembled output to the report file and print the confirmation line.
+**Standalone:** Use skill: `review-report-writer` with `report_type: review-observability`, `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` as the handle emitted them, `base_sha` / `head_sha` from the round gate, `scope: +obs`, `depth` as resolved, `stack = node-typescript`, `mode: full`, `round` and `prior_head_sha` from the round gate, and `pr_url` when the request carried one, else `prior_checkpoint.pr_url` when present. Emit the body, then the writer's confirmation line.
 
 ## Output Format
 
-The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+Emit `report_body` as raw Markdown; the fence delimits the template for display only, and brace annotations in it are authoring notes, never emitted.
 
-**Impact rubric.** High = an incident would be undiagnosable or a signal is actively wrong (no correlation id anywhere, secrets or PII in logs, OTel init after imports so nothing is traced, a liveness probe that restarts replicas on a third-party outage). An absent surface is rated by Step 3's cost test, not automatically High. Medium = a signal exists but is degraded or costly (unbounded label cardinality, sampling left at default in high-traffic prod, missing DB or BullMQ instrumentation while the rest is wired, no cause chain on errors). Low = hardening with no diagnostic loss today (missing `service.version`, histogram buckets not matched to an SLO). Impact maps to label: High -> `[Must]`; Medium / Low -> `[Recommend]` - unless the verify pass returned a different `Label`, which wins.
+**Impact tiers.** **High** = an incident would be undiagnosable or a signal is actively wrong (secrets or PII in logs, OTel initialized after imports, exhausted jobs never captured where an error tracker exists, a liveness probe that restarts replicas on a third-party outage); an absent or partial surface is rated by Step 4's cost test. **Medium** = a signal exists but is degraded or costly (unbounded label cardinality, default sampling on high traffic, missing DB or BullMQ spans while the rest is wired, no cause chain). **Low** = hardening with no diagnostic loss today (missing `service.version`, buckets not matched to an SLO). Summary counts are by tier and include carried rows. `Overall` is `Adequate` when nothing is published (this round's or carried), `Greenfield` per its annotation, `Gaps Found` otherwise.
 
-**Envelope precedence.** `node-exception-handling` and `node-bullmq-patterns` define their own output blocks. Fold their content into the finding blocks below; do not append their envelopes as separate sections.
+**Labels.** High -> `[Must]`; Medium / Low -> `[Recommend]` - unless the verify pass returned a different `Label`, which wins: a finding sits in its tier's section while its label is the published one. No other label is written. **Location** is always a `file:line`: a config key anchors at the line that reads it, a construct absent from a whole new file at `<path>:1`, and a surface absent from the codebase at the bootstrap line it would load before (`NestFactory.create`, the Express `app` creation).
 
-Every finding carries exactly one label: `[Must]` or `[Recommend]`. No other label is written.
+**Envelope precedence.** `ops-observability`, `node-exception-handling`, and `node-bullmq-patterns` feed findings into this template under its tiers; their own blocks are not emitted.
 
 ```markdown
 ## Node.js Observability Review Summary
 
-- **Stack Detected:** Node.js <version> / TypeScript <version>
-- **Framework:** NestJS <version> | Express <version> | mixed
-- **ORM:** Prisma <version> | TypeORM <version>
-- **Target:** <base_ref>...<head_ref>
-- **Logging:** pino | winston | nestjs-pino | NestJS built-in Logger | console | absent - append `(JSON)` or `(text)`
-- **Metrics:** prom-client | OTel metrics (Prometheus exporter) | StatsD | absent
-- **Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (Jaeger / Zipkin) | OpenTelemetry (exporter not in scope) | absent
-- **BullMQ instrumentation:** wired | partial | absent | n/a
+- **Stack:** Node.js <version> / <TypeScript <version> | JavaScript> / <NestJS | Express | mixed | other> / <Prisma | TypeORM | Prisma + TypeORM | other | none>
+- **Target:** <base_ref>...<head_ref> | <the investigated scope at HEAD>
+- **Depth:** standard | deep
+- **Round:** <N>   {round 2+ only}
+- **Logging:** <pino | winston | nestjs-pino | NestJS Logger | console> (JSON | text) | absent   {`console` when stray `console.*` calls are the only logging}
+- **Metrics:** prom-client | OTel metrics | StatsD | absent
+- **Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (other exporter) | Sentry-owned | absent
 - **Error Tracker:** Sentry | Honeybadger | Rollbar | absent
-- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped (<F> false positive, <R> resolved by diff) _(omit the parenthetical when K is 0)_
-- **Overall:** Adequate | Gaps Found - [<N> High / <N> Medium / <N> Low] | Greenfield - [<N> High / <N> Medium / <N> Low]
+- **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)} | inline (no diff)
+- **Overall:** Adequate | Gaps Found - <n> High / <n> Medium / <n> Low | Greenfield - <n> High / <n> Medium / <n> Low   {Greenfield when 3 or more Surface Map rows are `absent`}
+- **Notes:** <the handle's notes, framework / ORM resolution, investigation scope decisions>   {omit when none}
 
 ## Surface Map
 
-| Surface                | Verdict                        | Evidence                                   |
-| ---------------------- | ------------------------------ | ------------------------------------------ |
-| Logging                | wired / partial / absent       | [file:line or "no logging config in repo"] |
-| OpenTelemetry SDK      | wired / partial / absent       | [...]                                      |
-| prom-client / metrics  | wired / partial / absent       | [...]                                      |
-| BullMQ instrumentation | wired / partial / absent / n/a | [...]                                      |
-| Error tracker          | wired / partial / absent       | [...]                                      |
-
-> Use **Greenfield** as `Overall:` when 3 or more of the five rows are `absent` - it means "most of the surface is unwired", and it still carries the impact counts. Use the `absent` vocabulary consistently (not `none` / `missing` / `not wired`). `wired` = present and configured; `partial` = present but incomplete or misconfigured; `absent` = not present at all.
+| Surface | Verdict | Evidence |
+| ------- | ------- | -------- |
+| Logging | wired \| partial \| absent \| n/a | <file:line, or `no logging config in repo`> |
+| OpenTelemetry SDK | wired \| partial \| absent \| n/a | ... |
+| Metrics | wired \| partial \| absent \| n/a | ... |
+| BullMQ | wired \| partial \| absent \| n/a | ... |
+| Error tracker | wired \| partial \| absent \| n/a | ... |
+| Probes | wired \| partial \| absent \| n/a | ... |
 
 ## Findings
 
 ### High Impact
 
-1. **[Must]** **Location:** [file:line or config key - add `_(pre-existing)_` or `(unverified: <reason>)` when the verify pass returned one]
+1. **[Must | Recommend]**{ _(carried from round <N>)_} **Location:** <file:line>{ <verify annotation groups>}
 
-   **Issue:** [name the Node idiom: missing pino redaction for `req.headers.authorization`, unbounded `userId` label, OTel SDK init after `app.module` import, no BullMQ trace propagation, etc.]
+   **Issue:** <the Node idiom: no `redact` for `req.headers.authorization`, `orderId` label, OTel init after the app import, exhausted jobs never captured>
 
-   **Impact:** [diagnosability / alertability / cost - what an on-call engineer cannot answer because of this]
+   **Impact:** <what an on-call engineer cannot answer because of this>
 
-   **Fix:** [specific Node / OTel / pino / prom-client change with code or config example. Several fixes on one construct become a numbered list here.]
+   **Fix:** <pino / OTel / prom-client / Sentry change with code; several fixes on one construct numbered>
 
 ### Medium Impact
 
-[Same numbered-block structure; numbering continues across tiers]
+<same block; numbering continues across tiers>
 
 ### Low Impact / Quick Wins
 
-[Same]
+<same>
 
-_Omit empty sections. Group by surface within a bucket when 3+ share one; otherwise list flat. Greenfield reviews collapse a whole surface into one finding per Step 3._
+- **out of lens:** <file:line - defect, owning workflow>   {only when one exists}
 
-## Recommendations
+{omit empty tiers; when every tier is empty, write `No observability issues found.`}
 
-[Structural improvements not tied to a single finding - e.g., "Preload `tracing.ts` via `--require` (CJS) or `--import` (ESM) in `scripts.start`", "Adopt a community BullMQ instrumentation", "Switch per-request `new Counter` to module-level constants"]
+## Prior Round Reconciliation   {round 2+ standalone only}
+
+<table, note line, and tally from `review-prior-findings-reconcile`>
+
+## Recommendations   {omit when none}
+
+- <structural improvement not tied to a finding - consolidate three logger factories into one module>
 
 ## Next Steps
 
-Prioritized action list. Each item `[Implement]` (localized fix) or `[Delegate]` (cross-cutting / ops). Carry each finding's label. Order by label first (Must > Recommend), then by impact within each (High > Medium > Low) - after a de-escalation pass most rows share one label and impact is what still separates them.
+1. **[Implement]** [Must] <file:line> - <one-line action>
+2. **[Delegate]** [Recommend] [scope: ops] - <one-line action>
 
-1. **[Implement]** [Must] file:line - [one-line action, e.g., "Bind `orderId` via `als.run({ orderId }, () => ...)` at `OrdersService.place` entry; clear in finally"]
-2. **[Delegate]** [Recommend] [scope: ops] - [one-line action, e.g., "Wire `/metrics` to org Prometheus scrape config"]
-3. **[Implement]** [Recommend] file:line - [one-line action]
-
-_Omit if no actionable findings._
+{one entry per finding, a carried one suffixed ` (open since round <N>)`; `[Implement]` for a local fix, `[Delegate]` for cross-cutting or ops work; ordered by label, carryovers first among equals, then tier; omit when nothing is actionable}
 ```
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded first; stack, framework, ORM recorded; diff and log read once, SHAs captured via `git rev-parse`, re-review gate applied (Steps 1-2)
-- [ ] Surface map produced with `wired | partial | absent` verdicts; absent surfaces collapsed to one finding each (Step 3)
-- [ ] Logging assessed: JSON, correlation, redaction, level discipline, no `console.log`, no entity logging, cause chain (Step 4)
-- [ ] OTel SDK reviewed: init BEFORE imports; framework / DB / HTTP / BullMQ / Redis instrumentations; explicit sampling; resource attributes (Step 5)
-- [ ] `prom-client` assessed: defaults + HTTP, namespaced customs, bounded labels, module-level registration, cluster aggregation, route normalization (Step 6)
-- [ ] BullMQ, lifecycle / async, error tracker assessed when in scope, including the exhausted-job capture site and the Sentry-vs-NodeSDK provider conflict (Steps 7-9)
-- [ ] Liveness / readiness / deps separation reviewed at every depth; SLI and SLO rows reviewed at `deep` (Step 10)
-- [ ] Step 11: `review-finding-verify` ran and its tally reached the Summary (or the subagent carve-out applied); its `Label` carried, overriding the impact mapping; one construct published one finding
-- [ ] Findings name a specific Node / OTel / pino / prom-client idiom, carry one label, and cite a package that exists; library-level scope respected
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend
-- [ ] Step 12: standalone: every required writer field assembled, report written, confirmation printed; subagent: labelled findings + Next Steps + Recommendations returned, no file written
+- [ ] Step 1: `behavioral-principles` loaded (subagent: loaded, or rules inlined in the spawning prompt)
+- [ ] Step 2: stack confirmed; `Framework`, `ORM`, `Database` recorded
+- [ ] Step 3: `review-precondition-check` ran with `report_type: review-observability`; round decided from the handle before the diff was read (or the stop line printed); subagent / investigation: step skipped
+- [ ] Step 4: surface read; one verdict per surface including Probes and `n/a`; absent surfaces grouped and rated by cost
+- [ ] Step 5: JSON, correlation, redaction, entity logging, levels, cause chain
+- [ ] Step 6: init order per module format, `NodeSDK`, sampler, instrumentation coverage, BullMQ `telemetry`, resource attributes
+- [ ] Step 7: exposure, runtime / HTTP metrics, cardinality, registration, multi-process, buckets
+- [ ] Step 8: queue events, exhausted-job capture condition, per-job metrics, processor context, scheduler freshness
+- [ ] Step 9: bootstrap span, shutdown flush, context propagation, `worker_threads`
+- [ ] Step 10: one capture path, one tracer provider, PII, sampling, probes; SLI / SLO at `deep`
+- [ ] Step 11: one construct filed once; verify ran with its tally (or the subagent / investigation carve-out); round 2+ projected and reconciled, unresolved rows carried
+- [ ] Step 12: standalone report written with every writer field; subagent: findings returned, no file; investigation: body emitted
 
 ## Avoid
 
-- Running `git fetch`, `git checkout`, or any state-changing git command
-- Generic gaps ("add metrics") instead of naming the idiom (`prom-client.Counter` `acme_orders_placed_total` at module level, bounded labels)
-- Generic advice when a Node SDK exists - say "enable `instrumentation-nestjs-core`", not "add HTTP tracing"
-- Reviewing infra (Datadog, Grafana, alert rules, log forwarders, on-call rotation)
-- Accepting high-cardinality labels (`userId`, `orderId`); require enum / category labels
-- Approving template-string logging (`` `order=${orderId}` ``) over structured `{ orderId }` form
-- Approving `console.log` / `console.error` as logging
-- Approving `new Counter(...)` inside a request handler - duplicate-registration crash after first request
-- Naming `@opentelemetry/instrumentation-bullmq` or a bare `instrumentation-bullmq` in a fix - no such package is published
-- Prescribing `--require` for an ESM build, or `instrumentation-http` as coverage for global `fetch` / undici
-- Approving `OTEL_TRACES_SAMPLER=always_on` in high-traffic prod
-- Approving OTel SDK init AFTER application imports - auto-instrumentation cannot patch loaded modules
-- Prescribing OTLP endpoint URL or Sentry DSN - say "sourced from env / Vault" and stop
-- One finding per missing checkbox when a whole surface is absent - collapse per Step 3
-- Recommending only `pino` when the team uses `winston` - both are acceptable with JSON + redaction + OTel correlation
+- State-changing git from this workflow
+- "Add metrics" instead of the idiom (`prom-client` `Counter` `acme_refunds_total` at module scope, bounded labels)
+- Reviewing dashboards, alert rules, forwarders, or on-call rotation
+- Accepting `userId` / `orderId` labels, template-string logging, or `console.log` as logging
+- Prescribing an OTLP endpoint URL or a Sentry DSN - "sourced from config" and stop
+- One finding per missing checkbox when a whole surface is absent

@@ -1,6 +1,6 @@
 ---
 name: task-node-test
-description: Node.js / NestJS / Express test plan and scaffolding with Jest, Supertest, TestingModule, Testcontainers, MSW, BullMQ testing.
+description: Plan, scaffold, and review Node.js / NestJS / Express tests - coverage gaps, flaky suites, Jest / Vitest, Supertest, Testcontainers, MSW, BullMQ.
 agent: node-test-engineer
 metadata:
   category: backend
@@ -13,17 +13,16 @@ user-invocable: true
 
 # Node.js Test
 
-Node.js test strategy and scaffolding. Deliverable slots: `Covered today`, `Contract testing`, pyramid percentages, plus the Node lanes below. Canonical wiring (TestingModule, Supertest, Testcontainers, MSW, BullMQ mocks) lives in `node-testing-patterns` - this workflow composes, does not restate.
+Node.js test strategy, coverage assessment, suite review, and scaffolding. Canonical wiring - TestingModule, Supertest, database isolation, MSW, BullMQ lanes - lives in `node-testing-patterns`; this workflow composes it, selects the deliverable, and decides what to test first.
 
 ## When to Use
 
-- New NestJS / Express service or module needs a test strategy
+- A new NestJS / Express service or module needs a test strategy
 - Coverage gaps across unit / integration / endpoint / job layers
-- Scaffolding tests for under-covered endpoints, repositories, or auth code
-- Reviewing an existing suite that is slow, flaky, or gives false confidence
-- Boundary tests (validation, authorization, edge cases) for existing happy-path tests
+- Scaffolding tests for under-covered endpoints, repositories, jobs, or clients
+- Reviewing a suite that is slow, flaky, or gives false confidence ("CI is green but production breaks")
 
-**Not for:** test failure debugging, code review (`task-node-review`).
+**Not for:** debugging one failing test, code review (`task-node-review`).
 
 ## Workflow
 
@@ -33,141 +32,138 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack and Detect Conventions
 
-Use skill: `stack-detect` to confirm Node.js / TypeScript. Accept pre-confirmed stack. If not Node, stop and name the detected stack so the user can invoke that stack's test workflow.
+Use skill: `stack-detect`; accept a pre-confirmed stack. A backend Node framework (NestJS, Express, or another Node server) in `Framework`, or in an `Additional` entry for the targeted package, proceeds; `unknown` proceeds on the target's own `package.json`; anything else stops and names the detected stack.
 
-Record all three - later steps and every emitted filename branch on them:
+Record - later steps and every emitted filename branch on them:
 
-- `Framework`: NestJS (`nest-cli.json` + `@nestjs/*`) vs Express
-- `ORM`: Prisma (`prisma/schema.prisma`) vs TypeORM (`data-source.ts`)
-- `Test conventions`: the runner config's own `testMatch` / `testRegex` / `roots`, plus the HTTP-stub library, deep-mock helper, and auth fixture already in use. Never assume `*.spec.ts` / `*.e2e-spec.ts`. A NestJS repo usually ships **two** configs - `jest` in `package.json` (`testRegex: ".*\\.spec\\.ts$"`, which does not match `.e2e-spec.ts`) and `test/jest-e2e.json` - so record which config runs which lane, and emit each file into one that will run it.
+- `Framework`, `ORM` (Prisma, TypeORM, or other / none - the project's own migrate command, no ORM atomic), `Database` (the Testcontainers module and engine semantics follow it), `Test framework` (Jest - the default for `unknown` - or Vitest; any other runner is named and its config read in Step 3), and `Build tool` (the runner command). Every runner- or engine-specific recipe below names its Jest / PostgreSQL form first and its Vitest / MySQL form after it.
+- **Test conventions:** the runner config's own `testMatch` / `testRegex` / `roots`, plus the HTTP-stub library, deep-mock helper, and auth fixture already in use. Never assume `*.spec.ts` / `*.e2e-spec.ts`. A NestJS repo usually ships two configs - `jest` in `package.json` (`testRegex: ".*\\.spec\\.ts$"`, which does not match `.e2e-spec.ts`) and `test/jest-e2e.json` - so record which config runs which lane, and emit each file into one that runs it
 
 ### Step 3 - Read Code and Existing Tests
 
-Ground output in real conventions. For each target, read the module top-to-bottom: public surface, DTOs, guards / middleware, transaction boundaries, external collaborators.
+For each target, read the module top to bottom: public surface, DTOs, guards / middleware, transaction boundaries, external collaborators.
 
-Glob with Step 2's own patterns. Read at least one endpoint test, one service / repository test, one BullMQ test (if applicable), and shared setup (`test/setup.ts`, runner config, `globalSetup`). Note mock strategy (`jest.mock` vs `overrideProvider`), HTTP stubbing (MSW vs `nock`), auth helpers, factories.
+Glob with Step 2's own patterns. Read at least one endpoint test, one service or repository test, one BullMQ test (when the project has queues), and the shared setup (`test/setup.ts`, runner config, `globalSetup`). Note the mock strategy (`jest.mock` vs `overrideProvider`), HTTP stubbing (MSW vs `nock`), auth helpers, and factories.
 
-For NestJS: read `app.module.ts` / `main.ts` for the global `ValidationPipe`, guards, interceptors endpoint tests must replicate, **and how each is registered** - `useGlobalPipes` in `main.ts` versus an `APP_PIPE` / `APP_GUARD` provider changes what a test must re-register or override.
+NestJS: read `main.ts` and `app.module.ts` for everything production registers - pipes, prefix, versioning, filters, interceptors, guards - and **how** each is registered (`main.ts` vs an `APP_PIPE` / `APP_GUARD` provider). `createNestApplication()` never runs `main.ts`, so endpoint tests share one `configureApp(app)` with it (`node-testing-patterns`). Express: read `app.ts` middleware order.
 
-For Express: read `app.ts` middleware order.
+**Convention vs rule.** Follow project convention for naming, layout, and library choice - a `nock` codebase stays on `nock`, a `jest-mock-extended` codebase stays on `mockDeep`. Override convention only where it defeats a correctness rule (SQLite standing in for the production engine, a disabled `ValidationPipe`, shared mutable fixtures, real network, literals where a shared factory exists), and record the override with its reason. Zero glob hits is a convention mismatch until the config is re-read; with genuinely no tests, propose conventions explicitly.
 
-**Convention vs rule.** Follow project convention for naming, layout, and library choice - a `nock` codebase stays on `nock`, a `jest-mock-extended` codebase stays on `mockDeep`. Override convention only where it defeats a correctness rule below (SQLite standing in for PostgreSQL, a disabled `ValidationPipe`, shared mutable fixtures, real network, literals where a shared factory already exists), and record the override with its reason. Zero glob hits means a convention mismatch, not an empty suite - re-read the config before concluding there are no tests. If there genuinely are none, propose conventions explicitly.
+### Step 4 - Test Pyramid
 
-### Step 4 - Node.js Test Pyramid
+| Layer | Tooling | Test here |
+| ----- | ------- | --------- |
+| Unit | The detected runner + `jest.fn()` / `vi.fn()` / the project's deep-mock helper | Service logic, mappers, validators, custom `canActivate` / pipe `transform`, pure helpers |
+| Integration | The runner + a real database of the detected engine + the real ORM | Non-trivial queries, constraints (unique / check / FK), invariants, migration smoke, enqueue-after-commit (a real transaction with a mocked `queue.add`) |
+| Endpoint | The runner + Supertest + the app built as production builds it, against the real database | Every endpoint: routing, validation, guards / middleware, response shape, pagination, filters |
+| Job | Handler lane: the processor invoked directly with a mock `Job`; broker lane: a real `Worker` on Testcontainers Redis | Handler: idempotency, error classification. Broker: retry / backoff exhaustion, stall redelivery, flow parent / child failure |
+| E2E | Endpoint tooling + a real broker | Critical journeys crossing HTTP and a queue (auth, checkout, a transactional flow) |
+| Contract | Pact / OpenAPI | API contract vs schema |
 
-| Layer       | Tooling                                          | Test here                                                   |
-| ----------- | ------------------------------------------------ | ----------------------------------------------------------- |
-| Unit        | Jest + `jest.fn()` / project's deep-mock helper  | Service logic, mappers, validators, custom `canActivate` / pipe `transform`, pure helpers |
-| Integration | Jest + Testcontainers PostgreSQL + real ORM      | Non-trivial repository queries, ORM constraints (unique / check / FK), DB invariants, migration smoke |
-| Endpoint    | Jest + Supertest + `TestingModule` / Express app, **against Testcontainers PostgreSQL** | Every endpoint: routing, validation, guards / middleware, response shape, pagination / filtering, custom filters |
-| Job         | Jest + BullMQ handler invoked directly           | Jobs with retry, idempotency, or external side effects; flows / chains; post-commit dispatch |
-| E2E         | Jest + Testcontainers + real BullMQ / Redis      | Critical journeys only (auth, checkout, transactional flow) |
-| Contract    | Pact / OpenAPI                                   | API contract vs schema                                      |
+`node-testing-patterns` files its Supertest-through-the-app material under "E2E"; that is this table's **Endpoint** layer. Classify an existing file by what it boots, never by its filename suffix.
 
-**Vocabulary.** `node-testing-patterns` files its Supertest-through-the-app material under the heading "E2E"; that material is this table's **Endpoint** layer and carries its real database. Reserve E2E here for flows that additionally cross a real broker. Classify an existing file by what it boots, never by its filename suffix.
+Balance is judged across the service; a controller-dense module is expected to be endpoint-heavy. Never add tests to hit a ratio. **Skip:** framework internals (routing, path matching, validator engines), DTOs with no logic, trivial delegation.
 
-Balance is measured across the service: many unit, some endpoint / integration, few E2E. A single controller-dense module where Step 5's matrix outnumbers its unit tests is expected - rebalance by adding unit coverage elsewhere, never by dropping mandated endpoint cases.
+### Step 5 - Apply Node Test Patterns
 
-**Skip:** framework internals (NestJS routing, Express path matching, validator engines), DTOs with no logic, trivial delegation (`service.get -> repo.get`).
+Use skill: `node-testing-patterns` for wiring and code shapes. Also Use skill: `node-prisma-patterns` or `node-typeorm-patterns` (per `ORM`) for the query semantics under assertion, `node-bullmq-patterns` when the target has a producer or processor (a job run from `setInterval` or a cron still gets the Job layer's idempotency cases), and `node-http-client-patterns`' MSW section for outbound-HTTP stubbing (the rest of that atomic, and `ops-resiliency` behind it, is not needed here). These atomics are consulted for semantics; their blocks are not emitted.
 
-### Step 5 - Apply Node.js Test Patterns
+- **Unit:** one test per outcome (success, validation failure, external failure, edge). No `INestApplication`, HTTP server, or database - a TestingModule with mocked providers is unit; a test that needs more is misclassified. TypeScript: typed mocks from the project's helper (`DeepMocked<T>`, `mockDeep` / `DeepMockProxy`), never `as any`.
+- **Endpoint:** one test per `(method, path, principal-state, outcome)`. Always the happy path. A 4xx validation case **when the route validates input** (a DTO, a Zod schema, a param pipe) - a bare `GET /:id` with no schema has none, and inventing one is a finding. 401 when the route is behind authentication; 403 when it carries a role or permission check; an IDOR case (another principal's resource returns 404 / 403) when it is owner- or tenant-scoped. A webhook substitutes its own gate - valid, invalid, missing, and replayed signature; an ungated route (health) gets its happy path only.
 
-Use skill: `node-testing-patterns` for wiring and code shapes. Also use skill: `node-prisma-patterns` or `node-typeorm-patterns` (per Step 2's `ORM`) for the query semantics under assertion, and `node-bullmq-patterns` when the target has a producer or processor.
-
-- **Unit**: one test per outcome (success / validation fail / external fail / edge). No app context or DB - if it needs `TestingModule`+DB, it is misclassified. Typed mocks from whichever helper the project already uses (`DeepMocked<T>` from `@golevelup/ts-jest`, or `mockDeep` / `DeepMockProxy` from `jest-mock-extended`); never `as any`.
-- **Endpoint**: one test per `(method, path, principal-state, outcome)`. Always the happy path. Add a 4xx-validation case **when the route validates input** (a DTO, a Zod schema, or a param pipe) - a bare `GET /:id` with no schema has no validation case, and inventing one is a finding, not coverage. Add 401 when the route is behind authn; add 403 when it carries a role or permission check; add an IDOR case (another principal's resource returns 404/403) when it is owner- or tenant-scoped. A route with no principal at all (webhook, health) substitutes its own gate - valid / invalid / replayed signature.
-
-  Build the app with the **same** global pipes / guards / middleware as production, registered the way production registers them. Keep authn real and mint a valid token from the app's own signing key or `JwtService`; a guard overridden to always-allow makes the 401 case assert nothing. When an override is genuinely needed, override the token the guard is registered under - `overrideGuard(JwtAuthGuard)` replaces a class-token guard and does **not** touch one registered globally as `{ provide: APP_GUARD, useClass: JwtAuthGuard }`. Express: keep `requireAuth` mounted and inject the principal through the project's auth fixture.
-- **Repository / ORM integration**: Testcontainers PostgreSQL only - never SQLite (JSONB, partial indexes, `ON CONFLICT`, arrays, `LATERAL` diverge). Provision with `prisma migrate deploy` (Prisma) or `dataSource.runMigrations()` (TypeORM; `synchronize: true` only when no migration carries hand-written SQL). Isolate on **both** axes, they compose rather than substitute: across workers, one schema per Jest worker (`JEST_WORKER_ID` in `search_path`) or one container per worker; within a worker, `TRUNCATE ... RESTART IDENTITY CASCADE` in `beforeEach`. Never per-test `BEGIN`/`ROLLBACK` - `PrismaClient` and a TypeORM `DataSource` both pool connections, so the rollback can land on a different connection than the writes. Assert SQL semantics and constraint errors (`P2002`; TypeORM `QueryFailedError.driverError.code === '23505'`).
-- **DTO / Schema**: validate via `validate(plainToInstance(...))` or `Schema.safeParse(...)` - faster than a full endpoint test. Cover unknown-key rejection (`whitelist:true` / `.strict()`), missing required, type mismatch.
-- **BullMQ**: two lanes, and the lane decides what is testable.
-  - *Handler lane (default)*: register the `@Processor` class as a plain provider, or import the handler function, and call it with a mock `Job`. Never import `BullModule` here - that is what opens the Redis socket. Producer side: assert `queue.add(...)`, mocked via `getQueueToken(name)` override on NestJS or a stub `{ add: jest.fn() }` injected at the module boundary on Express, which has no DI token. This lane covers idempotency (invoke twice, side effect once) and handler-thrown classification (`UnrecoverableError` vs retryable).
-  - *Broker lane (escalation)*: `attempts` / `backoff` exhaustion, `lockDuration` stall redelivery, and DLQ drain are broker machinery and cannot be observed in the handler lane. Test them against a real `Worker` on Testcontainers Redis, in their own file, with backoff delays overridden to CI-viable values (tens of milliseconds, not the production `delay`). Escalate only for these; everything else stays in the handler lane.
-  - Post-commit dispatched jobs: assert they fire after parent commit, not before.
-- **E2E**: full-stack flows only (auth end-to-end, transactional commit + BullMQ dispatch). Avoid for what endpoint tests cover.
+  Build the app through the shared `configureApp(app)`. Authentication is either real (a token minted from the app's own signing key or `JwtService`) or a stub that still rejects an anonymous request - never an always-allow guard. A global guard is overridable only when registered `{ provide: APP_GUARD, useExisting: JwtAuthGuard }` with `JwtAuthGuard` also a provider, then `.overrideProvider(JwtAuthGuard)`; `overrideGuard(JwtAuthGuard)` never reaches an `APP_GUARD` registered with `useClass`. Express: keep `requireAuth` mounted and inject the principal through the project's auth fixture.
+- **Integration:** a real database of the detected engine - Testcontainers, or a shared test instance with a run-scoped schema prefix where CI has no Docker - never SQLite for a PostgreSQL or MySQL app. One schema per worker - PostgreSQL: Prisma 5-6 `?schema=` on the test URL with `connection_limit` set; Prisma 7 the same per-worker URL for `migrate deploy` plus the adapter's `schema` and pool `max` for the client; TypeORM the `schema` option plus the worker's `search_path` on the connection (`extra: { options: '-c search_path=<schema>' }`) so raw SQL in migrations lands there too. MySQL: a per-worker database in the URL. Migrate each with the project's own command (`prisma migrate deploy`, `dataSource.runMigrations()`; never `synchronize` in a suite that claims migration coverage), and clear rows in `beforeEach` - PostgreSQL `TRUNCATE ... RESTART IDENTITY CASCADE`, MySQL `SET FOREIGN_KEY_CHECKS=0` then `TRUNCATE` - never the migrations table. Never per-test `BEGIN` / `ROLLBACK` through a pooled client - the rollback can land on another connection. Assert SQL semantics and constraint errors (`P2002`; TypeORM `QueryFailedError.driverError.code` `23505` on PostgreSQL, `ER_DUP_ENTRY` on MySQL).
+- **DTO / schema:** `validate(plainToInstance(Dto, input, pipeOpts.transformOptions), pipeOpts)` with the global `ValidationPipe`'s own options (a bare `validate()` runs none), or `Schema.safeParse(...)`. Cover unknown-key rejection (`forbidNonWhitelisted: true`, which needs `whitelist: true`; `whitelist` alone strips silently; Zod `.strict()` / `z.strictObject`), missing required, and type mismatch.
+- **BullMQ:** the handler lane is the default - register the processor as a plain provider (or import the handler) and call it with a mock `Job`; never import `BullModule` there, which opens the Redis socket. Producer side: assert `queue.add(...)` via a `getQueueToken(name)` override (NestJS) or an injected `{ add: jest.fn() }` (Express); enqueue-after-commit belongs to the integration lane. The broker lane is for broker machinery only, in its own file, on Testcontainers Redis, with backoff `delay` - and for stall tests `lockDuration` / `stalledInterval` - overridden to CI-viable values.
+- **E2E:** full-stack flows only; nothing an endpoint test covers.
 
 ### Step 6 - Test Data and Fixtures
 
-Factories over object literals (custom `createOrderFactory`, `@faker-js/faker`, `fishery`), shared from a single module. Rebuild in `beforeEach` - never mutate a module-level fixture. Class-validator: `plainToInstance(Dto, {...})`. 100-row `Array.from` setups belong at integration / load-test layer, not unit.
+Factories over object literals (a shared factory module, `@faker-js/faker`, `fishery`), rebuilt in `beforeEach` - never a mutated module-level fixture. 100-row setups belong to the integration or load layer, not unit.
 
 ### Step 7 - Prioritization
 
-Apply whenever the deliverable ranks work, and always when coverage is below ~50% or more than 5 gaps surfaced.
+Applies to every deliverable that ranks work (Coverage Assessment, Strategy Doc, Test Scaffolds).
 
-**P0 - Blockers.** Infrastructure that makes the tests below unwritable or untrustworthy (no Testcontainers where Postgres semantics are asserted, `forceExit: true` masking open handles, a disabled `ValidationPipe`, real network). Nothing beneath P0 is worth writing first.
+- **P0 - Blockers:** infrastructure that makes the tests below unwritable or untrustworthy - no real database where engine semantics are asserted, `forceExit: true` masking open handles, a disabled `ValidationPipe`, real network. A P0 item that is already a Step 8 / Step 9 finding is listed by its Suite Review locator only
+- **P1 - AuthN / AuthZ:** Step 5's auth cases per protected endpoint (401, 403 where a role check exists, IDOR where scoped); JWT issuer / audience / signature / expiry; custom guards and middleware; tenant scoping
+- **P2 - Data integrity:** non-trivial queries; write paths with rollback; idempotency of side-effect jobs
+- **P3 - Business-critical:** revenue paths, state-machine transitions, scheduled billing or notification jobs
+- **P4 - High-churn:** in-scope files with frequent recent commits (`git log --since="3 months ago" -- <scope paths>`) or bug-fix history; a history too short to rank (a single import commit) skips the band and says so
+- **P5 - Plumbing:** pass-through endpoints, simple CRUD
 
-1. **P1 - AuthN/Z**: 401 anonymous + 403 wrong-role per protected endpoint; JWT issuer / audience / signature / expiry; custom guards / middleware; tenant scoping.
-2. **P2 - Data integrity**: integration tests for non-trivial queries; write paths with rollback; BullMQ idempotency for side-effect jobs.
-3. **P3 - Business-critical**: revenue paths, state-machine transitions, scheduled billing / notification jobs.
-4. **P4 - High-churn**: files with frequent recent commits (`git log --since="3 months ago"`) or bug-fix history. No git history available: skip the band and say so rather than guessing.
-5. **P5 - Plumbing**: pass-through endpoints, simple CRUD.
+### Step 8 - Suite Health
 
-### Step 8 - Suite Health and Infrastructure Hygiene
+Runs whenever an existing suite is read; on a Test Scaffolds-only ask, only over the files the scaffolds touch. Each failing box is a finding, routed per the Output Format.
 
-Runs on every invocation that reads an existing suite. Each failing box is a finding; the Output Format's **Findings routing** rule says where it lands.
-
-- [ ] Testcontainers started once in `globalSetup`, not per spec file. (Reuse is a local-dev accelerator only, off on CI: `.withReuse()` plus either `TESTCONTAINERS_REUSE_ENABLE=true` in the environment or `testcontainers.reuse.enable=true` in `~/.testcontainers.properties`. It also conflicts with a `globalTeardown` that stops the container.)
-- [ ] Jest `testEnvironment: 'node'`; `forceExit: false` (forces investigation of unclosed handles)
-- [ ] Test profile only overrides what differs from prod - never silently disables `ValidationPipe` / guards / auth middleware
-- [ ] **Parallelism is a config decision, not a flag.** DB-backed tests isolated per worker so `--maxWorkers` still applies; where a lane must serialize (the BullMQ broker lane), give it its own Jest `project` with `maxWorkers: 1` rather than `--runInBand`, which serializes the entire run. For a suite dominated by app boots, count them - N full `AppModule` boots is usually the largest single term - and reduce by sharing a boot per file or by sharding across CI jobs.
-- [ ] Strict TypeScript in tests (`tsconfig.test.json` extends `tsconfig.json`); no `as any`
-- [ ] No real network: MSW `server.listen({ onUnhandledRequest: 'error' })` - the option belongs to `listen`, not `setupServer(...handlers)` - or `nock.disableNetConnect()` on a `nock` codebase
-- [ ] **Stub coverage verified, not assumed.** MSW and `nock` intercept Node `http` / `https`; native `fetch` (undici) and `undici.request` need an interceptor that targets it - MSW covers native `fetch`, `nock` only from v14. gRPC SDKs (`@google-cloud/*`) and HTTP/2 clients are not intercepted at all, and AWS SDK v3 is stubbed idiomatically with `aws-sdk-client-mock` rather than at the socket. Verify one stubbed test actually reaches the handler; silent passthrough leaks prod credentials.
-- [ ] `--detectOpenHandles` reviewed; coverage thresholds wired to CI
-- [ ] If `bun test`, mirror config in `bunfig.toml`; do not mix runners
+- [ ] Containers started once in `globalSetup`, not per spec file. Testcontainers for Node reuses a `.withReuse()` container by default; CI either omits `.withReuse()` or sets `TESTCONTAINERS_REUSE_ENABLE=false`, and reuse conflicts with a `globalTeardown` that stops the container
+- [ ] Jest: `testEnvironment: 'node'`, `forceExit` unset (it hides unclosed handles), `--detectOpenHandles` reviewed; Vitest: `environment: 'node'`, no `teardownTimeout` masking hung handles
+- [ ] `clearMocks: true`; `restoreMocks` only where implementations are set per test (Jest 29 resets `jest.fn()` implementations; Jest 30 restores `spyOn` mocks only)
+- [ ] The test setup overrides only what differs from production - never a silently disabled `ValidationPipe`, guard, or auth middleware
+- [ ] **Parallelism by isolation, not by flags** - database tests isolated per worker so the worker count applies, each worker's pool capped (`connection_limit`, or the adapter / DataSource pool `max`) so workers x pool fits `max_connections`. `maxWorkers` is global in Jest: a lane that must serialize (the broker lane) either isolates per worker (queue `prefix` suffixed with the runner's worker id, `JEST_WORKER_ID` / `VITEST_POOL_ID`) or runs as its own invocation - Jest 28+: the project carries `displayName: 'broker'`, the main script runs `jest --ignoreProjects broker`, the broker script `jest --selectProjects broker --runInBand`; Vitest: `--project broker --no-file-parallelism`. For a suite dominated by app boots, count them and share a boot per file or shard CI jobs
+- [ ] Strict TypeScript in tests (a test tsconfig extending the main one), type-checked in CI (`tsc --noEmit -p <test tsconfig>` or `vitest typecheck`) when the transformer strips types (`@swc/jest`, ts-jest `isolatedModules`, Vitest); no `as any`
+- [ ] No real network, loopback allowed for Supertest: MSW `server.listen({ onUnhandledRequest })` with a callback that bypasses `127.0.0.1` / `localhost` and errors otherwise, or `nock.disableNetConnect()` plus `nock.enableNetConnect(/^(127\.0\.0\.1|localhost)/)` on a `nock` codebase
+- [ ] **Stub coverage verified, not assumed** - MSW and `nock` intercept Node `http` / `https`; native `fetch` needs MSW or `nock` 14+; a direct `undici.request` needs undici's `MockAgent` via `setGlobalDispatcher`; gRPC-transport SDKs (most `@google-cloud/*` via google-gax) are not intercepted at the socket; AWS SDK v3 goes over `https` and is intercepted, with `aws-sdk-client-mock` the command-level alternative where the project uses it. One stubbed test is verified to reach its handler
+- [ ] Coverage thresholds wired to CI
+- [ ] Runs through the package-manager script (`bun run test` on Bun); plain `bun test` runs Bun's own runner, where TestingModule and `jest-mock-extended` setups break
 
 ### Step 9 - Review Existing Tests
 
-Skip when no suite exists. Otherwise judge every in-scope test file against Steps 4-8. Above ~50 files, sample: every file touching auth, money, or a migration, plus the three largest files per layer. State the sample and its size in the deliverable.
+Skip when no suite exists. Otherwise judge every in-scope test file against Steps 4-8 - the whole suite, or on a Test Scaffolds-only ask the files covering the requested targets; above ~50 files, sample every file touching auth, money, or a migration plus the three largest per layer, and state the sample and its size.
 
-Review-only checks, not covered above:
+- [ ] Test type matches subject (endpoint -> Supertest, repository -> real database, service -> unit); no `repository.save = jest.fn()` where a real database could assert
+- [ ] Layer classified by what the file boots
+- [ ] Assertions can fail: no mocked-away subject, no `toHaveBeenCalled()` standing in for an outcome, no request to a route the app does not expose (a missing global prefix in the test app)
+- [ ] A production module on a critical path with no test file at all is a finding, located at the production file - except a target this run scaffolds, whose scaffold is the remedy
+- [ ] Tests for code with a known defect assert the correct behavior (a route that hangs is asserted against its correct status, under a test timeout), and the defect is reported - never a test that pins the bug
 
-- [ ] Test type matches subject (endpoint -> Supertest, repository -> Testcontainers, service -> unit); no `repository.save = jest.fn()` where a real DB could assert
-- [ ] Layer classified by what the file boots, so no E2E remains that an endpoint test could cover
-- [ ] Assertions can actually fail: no mocked-away subject, no `expect(mock).toHaveBeenCalled()` standing in for an outcome
+When the ask reports a symptom ("production breaks on order creation"), trace each symptom to the tests that should have caught it and the production cause.
 
 ## Output Format
 
-**Which deliverable.** Each row is independent: produce every deliverable whose trigger the ask matches, once each, separated by `---`, in table order. An ask matching no row produces the Strategy Doc. A coverage percentage never selects a deliverable - it only gates Step 7.
+**Which deliverable.** Each row is independent: produce every deliverable whose trigger the ask matches, once each, separated by `---`, in table order. A reported production symptom the suite missed ("CI is green but production breaks") matches both Coverage Assessment and Suite Review. An ask matching no row produces the Strategy Doc. A coverage percentage never selects a deliverable.
 
-| The ask                                                             | Deliverable         |
-| ------------------------------------------------------------------- | ------------------- |
-| "what tests are missing", "coverage gaps", "review coverage"        | Coverage Assessment |
-| "review our tests", "audit the suite", "the suite is slow / flaky"  | Suite Review        |
-| "test strategy", "test plan"                                        | Strategy Doc        |
-| "write tests for X", "scaffold tests", "add tests"                  | Test Scaffolds      |
+| The ask | Deliverable |
+| ------- | ----------- |
+| "what tests are missing", "coverage gaps", "review coverage", a symptom the suite missed | Coverage Assessment |
+| "review our tests", "audit the suite", "slow / flaky suite", a symptom the suite missed | Suite Review |
+| "test strategy", "test plan" | Strategy Doc |
+| "write tests for X", "scaffold tests", "add tests" | Test Scaffolds |
 
-**Findings routing.** Every Step 8 and Step 9 finding lands in the Suite Review. If the ask selected no Suite Review and either step produced a finding, emit one anyway as an additional deliverable. The `Infrastructure` slots in the other three carry prerequisites for work not yet done, never findings about work already done.
+**Findings routing.** Every Step 8 and Step 9 finding lands in the Suite Review; if the ask did not select a Suite Review and a finding exists, emit one anyway. The `Infrastructure prerequisites` slots carry prerequisites for work not yet done, never findings about work already done.
 
-**Envelope precedence.** The atomics loaded in Step 5 emit their own blocks (`## Test Plan`, `## Prisma Schema Design`, `## BullMQ Design`). Fold their content into the slots below; do not emit those blocks as separate sections.
+**Envelope precedence.** `node-testing-patterns`' `## Test Plan` folds in: its Infrastructure table fills the Strategy Doc `Tooling` / `Database isolation` and the `Infrastructure prerequisites` slots; its layer tables fill the gap and scaffold slots. `## Prisma Schema Design`, `## TypeORM Design`, `## BullMQ Design`, and `node-http-client-patterns`' per-call-site blocks and Resiliency Assessment are never emitted.
+
+**Labels.** Every Suite Review finding carries exactly one label: `[Must]` when the test gives false confidence or cannot fail (a disabled `ValidationPipe`, SQLite for the production engine, a mocked-away subject, real network, a shared mutable fixture, a critical-path module with no test), `[Recommend]` otherwise; `[Must]` first. The locator is the test's `file:line`, the config key (`jest.config.js -> forceExit`), a glob plus count for a class-wide finding (`**/*.e2e-spec.ts` (210 files)), or the production file for a missing test (a glob plus count when several share the cause); the production cause the test misses goes in `Effect`.
+
+Brace annotations in the templates are authoring notes, never emitted.
 
 **Coverage Assessment:**
 
 ```markdown
 ## Node.js Test Coverage Assessment
 
-**Stack:** Node.js <version> / TypeScript <version>
+**Stack:** Node.js <engines>{ / TypeScript <version>} - <NestJS | Express | other> <version>, <Prisma | TypeORM | other | none> <version>, <database>
 
-**Framework:** NestJS <version> | Express <version>
+**Scope:** <the modules assessed, and how a named subset was drawn | whole service>
 
-**ORM:** Prisma <version> | TypeORM <version>
+**Test tooling detected:** <runner, HTTP stub, deep-mock helper, container library - each absent one named absent>
 
-**Test tooling detected:** <runner, HTTP stub, deep-mock helper, container lib - name each absent one as absent>
-
-**Covered today:** [1-2 lines - what the existing tests actually assert]
+**Covered today:** <1-2 lines - what the existing tests actually assert>
 
 **Coverage gaps:**
 
-- **Unit:** [services / validators / mappers without coverage]
-- **Endpoint:** [endpoints missing 401 / 403 / IDOR / validation paths]
-- **Integration:** [non-trivial queries without tests; SQLite for a Postgres app]
-- **Auth:** [endpoints without authorization tests; missing JWT flow tests]
-- **Job:** [BullMQ processors without tests; jobs without idempotency / retry]
-- **Contract:** [contracts without verification, or `not required - <reason>`]
+- **Unit:** <services / validators / mappers without coverage>
+- **Endpoint:** <endpoints missing validation, response-shape, or pagination cases>
+- **Integration:** <non-trivial queries without tests; a stand-in engine>
+- **Auth:** <401 / 403 / IDOR cases missing per endpoint; JWT flow and custom-guard gaps>
+- **Job:** <processors without tests; jobs without idempotency or retry cases>
+- **E2E:** <critical journeys uncovered | none>
+- **Contract:** <required | not required | undetermined> - <reason, or what to confirm>
 
-**Infrastructure prerequisites:** [what must exist before the gaps above can be closed - Testcontainers, factories module; or "none"]
+**Infrastructure prerequisites:** <what must exist before the gaps can close | none>
 
-**Priority order:** [Step 7 bands applied to the gaps above, P0 first]
+**Priority order:** <Step 7 bands applied to the gaps, P0 first>
 ```
 
 **Suite Review:**
@@ -175,48 +171,45 @@ Review-only checks, not covered above:
 ```markdown
 ## Node.js Suite Review
 
-- **Files in scope:** <n reviewed> of <n total> (<sampling rule, or "all">)
-- **Suite runtime:** <current> -> <target, with the lever and arithmetic that produce it; or "no target set">
-- **Verdict:** Sound | Unsound - <n> Must / <n> Recommend
+- **Files in scope:** <n reviewed> of <n total> (<sampling rule | all>)
+- **Symptom:** <as reported> -> <cause locators>   {one line per reported symptom - one finding may serve several; omit when none was reported}
+- **Ruling:** <question> -> <answer>   {one line per question the ask poses outright; omit when none}
+- **Suite runtime:** <current, from CI logs or as reported | unknown> -> <target, with the lever and arithmetic | no target set>
+- **Verdict:** Sound | Unsound - <n> Must / <n> Recommend   {Sound when no [Must]}
 
 ### [Must] <locator>
 
-- Issue: [the rule broken, in Node terms]
-- Effect: [what it costs: false confidence, flake, runtime]
-- Fix: [concrete change]
+- Issue: <the rule broken, in Node terms>
+- Effect: <what it costs: false confidence, flake, runtime - and the production cause it misses>
+- Fix: <concrete change>
 
 ### [Recommend] <locator>
 
-[same three fields]
+<same three fields>
 ```
-
-`<locator>` is `file:line` for a single-file finding, the config key for a config finding (`jest.config.js -> forceExit`), or a glob plus a count for a class-wide one (`**/*.e2e-spec.ts` (210 files)).
-
-Every finding carries exactly one label: `[Must]` when the test gives false confidence or cannot fail (disabled `ValidationPipe`, SQLite standing in for PostgreSQL, mocked-away subject, real network, shared mutable fixture), `[Recommend]` otherwise. `[Must]` first. No other label is written.
 
 **Strategy Doc:**
 
 ```markdown
 ## Node.js Test Strategy
 
-**Objective:** [what this achieves]
+**Objective:** <what this achieves>
 
-**Pyramid balance (target):** Unit {x}% / Endpoint + Integration {y}% / E2E {z}% - default 70/20/10 unless the risk profile justifies otherwise, and say why. Job and Contract tests count in the middle bucket.
+**Pyramid balance (target):** Unit <x>% / Endpoint + Integration <y>% / E2E <z>% - <why, when it departs from 70/20/10; Job and Contract count in the middle bucket>
 
-**Tooling:** [runner, Supertest, TestingModule or Express app, Testcontainers PostgreSQL, the project's HTTP stub, BullMQ handler lane plus a broker lane where Step 5 requires one]
+**Tooling:** <runner and command, Supertest, TestingModule or the Express app, the database module, the HTTP stub, BullMQ handler lane plus a broker lane where Step 5 requires one>
 
-**Database isolation:** Testcontainers + per-worker schema + `TRUNCATE` in `beforeEach`
+**Database isolation:** <Testcontainers | shared instance (run prefix)> + per-worker schema + <provisioning command> + TRUNCATE in beforeEach
 
-**Contract testing:** required / not required - required when the API is consumed by an independently deployed team, when a message schema has separate producer and consumer deploys, or when a shared client library imports it; a third-party client the team merely calls needs stubs, not a contract suite
+**Contract testing:** <required | not required | undetermined> - <reason: required when an independently deployed team consumes the API, a message schema has separate producer and consumer deploys, or a shared client library imports it>
 
-**Suite runtime:** <current> -> <target, with the lever> _(omit when no suite exists)_
+**Suite runtime:** <current, from CI logs or as reported | unknown> -> <target, with the lever>   {omit when no suite exists}
 
-**Flake sources:** [ordering dependence, shared rows, unclosed handles; or "none observed"]
+**Flake sources:** <ordering dependence, shared rows, unclosed handles | none observed>
 
 **Gaps to close (prioritized):**
 
-1. [P0 blockers first, then Step 7 bands]
-2. [...]
+1. <P0 blockers first, then Step 7 bands>
 ```
 
 **Test Scaffolds:**
@@ -226,45 +219,44 @@ Every finding carries exactly one label: `[Must]` when the test gives false conf
 
 | File | Layer | Cases | Priority |
 | ---- | ----- | ----- | -------- |
-| <path, in the project's own naming convention, under a config that runs it> | unit / endpoint / integration / job / e2e | <n> | P0-P5 |
+| <path in the project's naming, under a config that runs it> | unit / endpoint / integration / job / e2e / contract / setup | <n> | <P0-P5 - the file's highest band> |
 
-<the files, as fenced TypeScript blocks>
+<the files, as fenced blocks in the project's language; `setup` = globalSetup / teardown, factories, fixtures, runner config>
 
-**New dev dependencies:** [name@version, or "none"]
+**New dev dependencies:** <name@version | none>
 
-**Infrastructure prerequisites:** [globalSetup, factories module, a serialized Jest project for the broker lane, runner config edits; or "none"]
+**Infrastructure prerequisites:** <globalSetup, factories module, the broker-lane invocation, runner config edits | none>
 
-**Assumptions:** [what was inferred - auth fixture shape, seed data, error codes, status codes not verifiable from Steps 2-3]
+**Defects found in code under test:** <file:line - the defect each scaffold asserts against | none>
+
+**Assumptions:** <auth fixture shape, seed data, error codes, statuses not verifiable from Steps 2-3>
 ```
 
-Scaffolds use the project's naming and helpers from Step 2, factories over literals, typed mocks. Layer mandates apply to the layers the request actually covers: endpoint files carry Step 5's case matrix, repository files run on Testcontainers PostgreSQL, job files cover idempotency in the handler lane.
+Scaffolds use the project's naming and helpers, factories over literals, typed mocks. Layer mandates apply to the layers the request covers: endpoint files carry Step 5's case matrix, repository files run on the real engine, job files cover idempotency in the handler lane.
 
 ## Self-Check
 
 Mark a line N/A when the selected deliverable does not reach it (a Coverage Assessment emits no scaffolds; a greenfield run has no suite to review).
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: stack confirmed; Framework, ORM, and the project's own runner config, stub library, mock helper, and auth fixture recorded
-- [ ] Step 3: target module and existing tests read via the project's globs; global-provider registration style noted; convention overrides recorded with reasons
-- [ ] Steps 4-5: layers mapped to Node idioms; `node-testing-patterns` plus the matching ORM and BullMQ atomics consulted; endpoint matrix applied with its predicates, authn kept real, Testcontainers isolation on both axes, BullMQ handler lane vs broker escalation respected
+- [ ] Step 2: stack confirmed; Framework, ORM, Database, Test framework, Build tool, and the project's runner configs, stub library, mock helper, and auth fixture recorded
+- [ ] Step 3: targets and existing tests read via the project's globs; production app setup and registration style noted; convention overrides recorded with reasons
+- [ ] Steps 4-5: layers mapped; `node-testing-patterns` plus the ORM, BullMQ, and HTTP-client atomics consulted; endpoint matrix applied with its predicates; auth real or a rejecting stub; per-worker database isolation; handler lane vs broker lane respected
 - [ ] Step 6: factories shared, rebuilt per test
-- [ ] Step 7: bands applied whenever work is ranked, P0 first; unavailable bands stated, not guessed
-- [ ] Step 8: hygiene boxes run against the existing suite
-- [ ] Step 9: existing tests judged; sample and its size stated above ~50 files
-- [ ] Findings routing honored - Step 8/9 findings reached a Suite Review, emitted as an extra deliverable if the ask did not select one
-- [ ] Deliverable(s) selected by the Output Format table and every slot filled with project-specific content
+- [ ] Step 7: bands applied to every ranking deliverable, P0 first; a band that cannot be computed stated, not guessed
+- [ ] Step 8: hygiene boxes run against the suite (scaffold-only asks: the touched files)
+- [ ] Step 9: tests judged; missing critical-path test files and pinned bugs reported; symptoms traced; sample stated above ~50 files
+- [ ] Deliverables selected by the table; findings routed to a Suite Review; atomic blocks folded, never emitted; every slot filled with project-specific content
 
 ## Avoid
 
-- Scaffolding without first reading existing tests + setup - imports the wrong factory, duplicates the integration base fixture
-- Emitting a filename into a runner config that will not match it
-- Chasing a coverage number instead of prioritizing by risk - 100% lines with no auth tests misses the bigger threat
-- SQLite / in-memory DB for Postgres-feature apps (JSONB, partial indexes, `ON CONFLICT`, arrays)
-- Endpoint tests whose app differs from production's pipes, guards, or middleware registration
-- Mocking `ValidationPipe`, overriding `APP_PIPE`, or stubbing a guard to always-allow - the 401 and validation cases then assert nothing
-- `repository.save = jest.fn()` internal mocks where Testcontainers could assert real DB state
-- Importing `BullModule` in the handler lane, or reaching for the broker lane when the assertion is about handler logic
-- Inventing a validation case for a route that validates nothing
-- E2E for what an endpoint test could cover; `fetch(...)` against a real server where Supertest is deterministic
-- Testing framework internals (`@Body()` resolves, Express routers route)
-- `as any` to silence mock typing - use the project's typed-mock helper
+- Scaffolding before reading the existing tests and setup
+- A filename the runner config will not match
+- Chasing a coverage number instead of prioritizing by risk
+- SQLite or an in-memory stand-in for the production engine
+- An endpoint test app that differs from production's pipes, guards, prefix, or middleware
+- An always-allow guard, a mocked `ValidationPipe`, or an overridden `APP_PIPE`
+- `repository.save = jest.fn()` where a real database could assert
+- Importing `BullModule` in the handler lane, or the broker lane for handler logic
+- A validation case for a route that validates nothing
+- `as any` to silence mock typing

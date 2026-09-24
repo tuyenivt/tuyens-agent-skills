@@ -1,6 +1,6 @@
 ---
 name: task-node-implement
-description: End-to-end Node.js / TypeScript feature implementation for NestJS or Express: data model, services, controllers, DTOs, middleware, Jest tests.
+description: Implement end-to-end Node.js/TypeScript features for NestJS or Express - Prisma/TypeORM schema, services, controllers, DTOs, BullMQ, Jest tests.
 agent: node-engineer
 metadata:
   category: backend
@@ -9,143 +9,181 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
-
 # Implement Node.js Feature
 
 ## When to Use
 
-End-to-end Node.js/TypeScript feature work: migration + model + service + controller + DTOs + tests in one pass for NestJS or Express.
+End-to-end Node.js / TypeScript feature work in one pass - migration, model, service, controller or router, DTOs, jobs, tests - for NestJS or Express.
 
 Not for: single-file edits (edit directly), bugfixes, frontend.
 
 ## Rules
 
-- TypeScript strict; no `any`; explicit return types on public methods; all async operations awaited
-- DTOs for every request/response; never expose Prisma models or TypeORM entities
-- Constructor injection (NestJS `@Injectable()`; Express manual DI)
-- Validation on all inputs: NestJS `class-validator` + `ValidationPipe({ whitelist: true, transform: true })`; Express Zod
-- Multi-step writes use Prisma `$transaction` or TypeORM `DataSource.transaction`
-- **No network I/O inside a transaction** - no HTTP call, no `queue.add`, no mailer. Capture the scalars you need inside; dispatch after commit
-- Each step completes before the next; design approved before code
+- TypeScript projects: strict, no `any`, explicit return types on public methods (JavaScript: JSDoc types and Zod, per STEP 2); every promise awaited, or explicitly `void`-ed with a `.catch`
+- DTOs for every request and response; Prisma models and TypeORM entities never reach the wire
+- Constructor injection (NestJS providers; Express: dependencies passed in, not imported singletons)
+- Validation on every input: NestJS class-validator under the project's global `ValidationPipe` - on a new app `{ whitelist: true, forbidNonWhitelisted: true, transform: true }` (per `node-security-patterns`; overrides `node-nestjs-patterns`' bootstrap), never tightened on an existing app as a side effect of this feature; Express Zod, passing the parse result onward, never `req.body`
+- Multi-step writes in one `$transaction` / `dataSource.transaction`, bounded (lock, statement, and idle timeouts; Prisma `maxWait` + `timeout`)
+- **No network I/O inside a transaction** - no HTTP call, no `queue.add`, no mailer; capture the scalars inside, act after commit
+- Design approved before code (STEP 3 says when a run may proceed without a live approval)
 
 ## Workflow
 
-### STEP 1 - DETECT AND GATHER
+### STEP 1 - Behavioral Principles
 
-Use skill: `stack-detect`. Confirm Node.js/TypeScript and identify NestJS vs Express, Prisma vs TypeORM, package manager, test runner, layout.
+Use skill: `behavioral-principles`.
 
-Extract from the request first, then ask only for what is missing. Do not re-ask what the request already answers: feature description and primary use case; entities, fields, relationships, constraints; external integrations; background jobs or async events; authentication / authorization; status transitions; idempotency requirements; webhook endpoints (signature validation, raw body); for anything that reads or writes in bulk, the expected volume and output format.
+### STEP 2 - Detect and Gather
 
-**Ask, or assume and record - the split is by blast radius.** Ask when a wrong answer would be expensive to undo: entities and their relationships, who is authorized, whether money or an external side effect is involved, the legal status transitions. Assume when a wrong answer is a cheap edit and record it under `Assumptions`: page sizes, column names, timeout values, file formats. Never invent a field or a relationship.
+Use skill: `stack-detect`. Record Framework, ORM, Database, package manager, and test runner; read the Express major and the NestJS HTTP adapter (Express or Fastify - it decides the raw-body mechanism) from `package.json`, and the layout (feature modules vs layered folders) from `src/`.
 
-### STEP 2 - DESIGN (APPROVAL GATE)
+| Detected | Action |
+| -------- | ------ |
+| Not Node | Stop: name the detected stack; this workflow is Node-only |
+| JavaScript, no `tsconfig.json` | Proceed with JSDoc types and Zod at the edges; record it under Assumptions |
+| Framework `unknown` / other (Fastify, Koa) | Apply the patterns through that framework's own raw-body, error-handler, and async mechanisms; record it under Assumptions |
+| ORM other (Drizzle, Sequelize) | Generic transaction and query bindings; record it under Assumptions |
+| Database MySQL / SQLite | The idempotency claim is a plain `INSERT` in its own transaction catching 1062 / `SQLITE_CONSTRAINT` (never `INSERT IGNORE`); DDL per `node-migration-safety`'s engine column; STEP 4-5's PostgreSQL bindings do not apply |
+| Database unknown | Assume PostgreSQL (`node-migration-safety`); record it under Assumptions |
 
-Use skill: `node-nestjs-patterns` (NestJS) or `node-express-patterns` (Express) for API design. Use skill: `node-prisma-patterns` or `node-typeorm-patterns` for the data layer. Use skill: `backend-api-guidelines` for REST conventions.
+Extract from the request first; ask only for what is missing: the feature and its primary use case; entities, fields, relationships, constraints; external integrations; background jobs or events; who may do what; status transitions; idempotency needs; webhook endpoints; for bulk reads or writes, the volume and format.
 
-Three slots below are decided here and merely implemented later, so load their owners now rather than at STEP 4: `backend-transaction-patterns` then `node-transaction-patterns` for the boundary, `backend-idempotency` for the key, `node-bullmq-patterns` for dispatch. Where a loaded atomic's rule contradicts this workflow, this workflow wins - `node-prisma-patterns` ships a look-up-then-create idempotency example that STEP 4 forbids.
+**Ask, or assume and record - the split is by blast radius.** Ask when a wrong answer is expensive to undo: entities and relationships, who is authorized, money or an external side effect, legal status transitions. Assume when a wrong answer is a cheap edit, and record it under Assumptions: page sizes, column names, timeout values, file formats. Never invent a field or a relationship; a referenced model that does not exist is a question (create it, or reference by id). A high-blast-radius question with no answer is an Open Question.
 
-Present a file tree plus this block, then wait for approval:
+Check the Edge Cases list now and again before presenting the design.
+
+### STEP 3 - Design (Approval Gate)
+
+Load the owners of every decision the design settles - once, here:
+
+- Use skill: `node-nestjs-patterns` (NestJS) or `node-express-patterns` (Express), and `node-prisma-patterns` or `node-typeorm-patterns`
+- Use skill: `backend-api-guidelines` - endpoint conventions
+- Use skill: `node-security-patterns` - authorization, privilege fields, webhook signatures
+- Use skill: `backend-transaction-patterns`, then `node-transaction-patterns` - boundaries, bounds, dispatch
+- Use skill: `backend-idempotency` - keys and replay
+- Use skill: `node-exception-handling` - error hierarchy and translation
+- Use skill: `node-bullmq-patterns` - when there is a job or event
+- Use skill: `ops-resiliency`, then `node-http-client-patterns` - when there is an external integration
+- Use skill: `node-migration-safety` - when the design adds or changes a table
+- Use skill: `node-connection-pool-sizing` - when a worker or a new process is added
+
+Where two loaded atomics disagree, this workflow settles it (Rules, STEP 3, STEPS 5-6) and names the atomic it overrides. `node-prisma-patterns`' create-then-catch-`P2002`-after-rollback is a valid claim for a database-local effect - its `409 / 202` answer is overridden: a duplicate of a committed create replays the stored response, and a fingerprint mismatch is 422. STEP 5's rows-affected claim is required when the claim shares a transaction with statements that must run after it.
+
+**Envelope precedence.** The atomics loaded here emit their own blocks; fold their content into the design block and the Output Format slots, and emit none of their envelopes.
+
+Present a file tree plus the design block (every slot filled or `none`):
 
 ```markdown
-**Endpoints:** method, URI, status codes, request/response DTO
+**Endpoints:** {method, path, status codes, request / response DTO, pagination, idempotency - one line per route}
 
-**Schema:** tables, columns, indexes on FK + filter columns, status representation, unique index backing idempotency
+**Schema:** {tables, columns, indexes on FK and filter columns, status representation, the (scope, key) unique index backing idempotency}
 
-**Transaction boundaries:** what opens a transaction, what it writes, what runs before it opens, and what is deferred until after commit - the three are different designs and the distinction is the point
+**Authorization:** {who may call each route; object and tenant scoping in the query}
 
-**Error model:** NestJS exceptions or the custom AppError hierarchy
+**Transaction boundaries:** {per transaction: what it writes, what runs before it opens, what is deferred until after commit, its bounds}
 
-**Idempotency:** the key, where it is stored, the unique constraint enforcing it (or `N/A`)
+**Idempotency:** {per non-idempotent operation, one line each: key (required - 400 when absent), scope, store, unique constraint, request fingerprint (a hash of the body as received; 422 on mismatch), TTL, and the vendor key it derives | none}
 
-**Dispatch points:** which commit triggers which job, and post-commit vs outbox with the reason
+**Side effects:** {per effect: post-commit | outbox + relay | call-then-record; its guarantee; what a crash between commit and dispatch leaves; consumer idempotency (jobId + retention); the sweeper | none}
 
-**Webhooks:** raw body, signature validation, route placement relative to global auth (or `N/A`)
+**Outbound calls:** {per vendor call: deadline, retry owner, vendor idempotency key, breaker | none}
 
-**New dependencies / infrastructure:** packages and services this adds that the project does not have (or `none`)
+**Jobs:** {per queue: attempts + backoff, non-retryable errors, retention, concurrency vs the pool | none}
+
+**Error model:** {the hierarchy (the project's existing one when present - new code extends it - else `node-exception-handling`'s AppError), response body shape (RFC 9457 or the project's documented envelope - either overrides `node-exception-handling`'s `{ error, message }` body)}
+
+**Webhooks:** {raw body, signature scheme, freshness window, dedupe key (event / delivery id), ack status, route placement relative to global auth | none}
+
+**New dependencies / infrastructure:** {packages and services the project does not have | none}
+
+**Assumptions:** {each low-blast-radius answer guessed, and what changes if it is wrong | none}
+
+**Decisions:** {each choice the request did not dictate, with its reason | none}
+
+**Open Questions:** {each unanswered high-blast-radius question | none}
+
+**Existing defects:** {defects found in code this feature touches, each fixed here or deferred with its reason | none}
 ```
 
-**Envelope precedence.** Atomics loaded below emit their own Output Format blocks. Fold their content into the slots here and into the final Output Format; do not append their envelopes as separate sections. Where an atomic's block carries a choice no slot holds, it goes under `Decisions` - `Assumptions` is only for answers you guessed.
+**The gate.** With the user present, wait for approval; an approval that changes the design is re-presented. A design-only request stops after approval. With no user reachable (non-interactive run):
 
-Several atomics declare a prerequisite of their own: `node-transaction-patterns` requires `backend-transaction-patterns` first, and `node-http-client-patterns` requires `ops-resiliency` first. Load the stack-agnostic contract before the Node binding in both cases.
+- Any Open Question -> stop here, with `## Design` marked `(unapproved - open questions)`.
+- Otherwise proceed, `## Design` marked `(not reviewed - non-interactive run)`.
 
-### STEP 3 - DATA MODEL
+A run that stops here emits the design-only output: Files, Endpoints, and Migration describe the planned change; `## Code` is `none`; Tests list the planned tests under `Not written`; Validation says nothing ran.
+
+A dependency or service discovered after the gate (Redis for BullMQ, object storage, a resilience library) returns to this step; the gate rule applies again - a run that cannot re-present the design records the addition in Decisions and New Dependencies and says so. Never add a runtime dependency silently.
+
+### STEP 4 - Data Model
 
 Use skill: `node-migration-safety`.
 
-- **Prisma:** models in `schema.prisma` with `@relation`, `@@index`, `@unique`. Generate with `prisma migrate dev --create-only`, review the SQL, then apply. Never run bare `prisma migrate dev` or `migrate reset` against a database you did not create for this task - both can drop data on drift.
-- **TypeORM:** `@Entity` + `@Column` + `@Index` + relations; unique keys are `@Column({ unique: true })` or `@Index(..., { unique: true })` (`@unique` is Prisma-only). `typeorm migration:generate` diffs entity metadata; it cannot emit `CONCURRENTLY`, `NOT VALID` / `VALIDATE CONSTRAINT`, or backfills - use `migration:create` and hand-write those.
-- **Status columns:** a native enum only on a new column. Converting an existing `varchar` in place rewrites the table - keep `varchar` plus a `CHECK` constraint, or run the expand-then-contract path in `node-migration-safety`.
-- **Idempotency:** a unique index on the key column. That index is the dedup mechanism, not a convenience.
+- **Prisma:** models with `@relation`, `@@index`, `@@unique`. Generate the migration against a disposable local database (`prisma migrate dev --create-only`, or `prisma migrate diff ... --script`), review and hand-edit the SQL, and apply to any shared environment only with `prisma migrate deploy`. Never `migrate dev` (resets on drift) or `migrate reset` (always drops) against a shared database.
+- **TypeORM:** `@Entity`, `@Column`, `@Index`, relations; unique keys via `@Column({ unique: true })` or `@Index([...], { unique: true })`. `migration:generate` diffs metadata and cannot emit `CONCURRENTLY`, `NOT VALID` / `VALIDATE CONSTRAINT`, or backfills - use `migration:create` and hand-write those.
+- **Status columns:** a native enum on a new column or a new table. An existing `varchar` status column stays `varchar` with a hand-written `CHECK (...) NOT VALID`, then `VALIDATE CONSTRAINT` in a later migration - its own transaction, a separate Prisma migration directory (Prisma cannot express a CHECK - edit the generated SQL). Extend an existing enum per `node-migration-safety` (PostgreSQL).
+- **Idempotency:** a unique index on (scope, key) - tenant or user plus key; built `CONCURRENTLY` when added to an existing large table. That index is the dedup mechanism.
+- **Money:** new money columns follow the ORM atomic (Prisma `Decimal` / integer minor units, never `Float`; a TypeORM `decimal` reads back as `string`, typed so) even beside a legacy sibling column; the mismatch goes in Decisions.
 
-### STEP 4 - SERVICE LAYER
+### STEP 5 - Service Layer
 
-Use skill: `node-typescript-patterns`. Use skill: `node-transaction-patterns` for the boundary contract and `node-http-client-patterns` for any outbound call - both before writing this layer, not after. `@Injectable()` service (NestJS) or plain class (Express). Map entities to response DTOs before returning.
+Use skill: `node-typescript-patterns`. `@Injectable()` service (NestJS) or plain class (Express). Map models to response DTOs before returning.
 
-- **Status transitions:** validate against a `VALID_TRANSITIONS` map before persisting; throw on invalid.
-- **Idempotency:** Use skill: `backend-idempotency`. Claim the key with a conflict-tolerant insert and branch on rows-affected: raw `INSERT ... ON CONFLICT (key) DO NOTHING`, or Prisma `createMany({ data: [claim], skipDuplicates: true })`, which returns `{ count }`. Two Prisma caveats: it emits `ON CONFLICT DO NOTHING` with no conflict target, so it absorbs a violation of any unique constraint on that table - keep the claim table single-constraint - and it returns no rows, so the winner re-reads the claim with `findUnique` to get its id. A raw duplicate-key error (`P2002` / `23505`) aborts the enclosing PostgreSQL transaction, so "catch it and read the row" does not work inside the transaction that carries the business write. Never look-up-then-create: two concurrent retries both miss the lookup and both perform the side effect.
+- **Status transitions:** validate against a `VALID_TRANSITIONS` map, then write with the prior state as a guard - Prisma `updateMany({ where: { id, status: from }, data: { status: to } })` (`count`), TypeORM `createQueryBuilder().update(Order).set({ status: to }).where("id = :id AND status = :from", { id, from }).execute()` (`affected`); zero rows -> re-read by id within scope: absent -> 404, moved on -> 409 - or lock the row `FOR UPDATE` first. A map check followed by an unguarded write loses updates under concurrency.
+- **Idempotency claim** (per `backend-idempotency`): a conflict-tolerant insert, branching on rows affected - raw `INSERT ... ON CONFLICT (scope, key) DO NOTHING`, Prisma `createManyAndReturn({ data: [claim], skipDuplicates: true })` (5.14+; an empty array means lost - older versions use `createMany` and re-read), TypeORM `createQueryBuilder().insert().values(claim).orIgnore().execute()`, lost when `raw.length === 0` (PostgreSQL; these bindings are PostgreSQL's - STEP 2 gives MySQL / SQLite). Prisma's `skipDuplicates` names no conflict target and absorbs any unique violation, so keep the claim table single-constraint. A raw duplicate-key error (`P2002` / `23505`) aborts the enclosing PostgreSQL transaction, so catching it and reading the row only works after that transaction rolled back. Never look-up-then-create.
+- **Losing the claim:** a loser first compares the request fingerprint - a mismatch is 422 in any state. When the claim committed `processing` ahead of an external call, a loser answers `409` with `Retry-After` while the winner runs, and the recorded outcome once it settles (a key first answered 202 stays `processing` until the outcome settles, then replays the settled outcome); a sweeper resolves rows stuck `processing`, and belongs in the Side effects slot. When the claim commits with a database-local write, a loser's insert waited for the winner, so a count of 0 means settled: roll back and replay the stored outcome in a new transaction.
+- **Side effects:** post-commit dispatch (`queue.add` after the transaction resolves, ids only) when a lost dispatch is acceptable or self-healing; a transactional outbox when delivery must happen and nothing else would notice a loss (a contractual notification, provisioning); call-then-record when the call's result is written back (a charge and its reference): a pending row committed, the call outside any transaction with the vendor's idempotency key, the result recorded in a second transaction, and a sweeper for rows left pending. A definite vendor decline after a local write committed (credit reserved, balance held) takes a named compensating write in that second transaction, releasing what the first held.
+- **External calls** (per `node-http-client-patterns`): a total deadline, errors classified, behind an interface for tests. A timeout or 5xx after the request was sent is an unknown outcome: retry with the same vendor idempotency key within its lifetime; without one, or past it, reconcile with a lookup before any retry.
 
-  The claim row carries a status. Losing the race means the work is **in flight**, not done: return `409` or `202` while the winner is still processing, and return the recorded outcome once it is settled. A key with external side effects also needs a sweeper that resolves rows stuck in flight - without one the feature is incomplete, and the sweeper belongs in the design's `Dispatch points`.
-- **Background jobs / events:** Use skill: `node-bullmq-patterns`. Enqueue after the transaction commits; pass IDs only. Choose post-commit dispatch when a lost dispatch is self-healing (the caller retries, or a sweeper re-finds the row); choose a transactional outbox when the side effect must happen and nothing else would notice it was lost - billing, provisioning, the only notification a user gets.
-- **External API calls:** timeout-wrapped, errors classified, defined as an interface for testability. A timeout or 5xx after the request body was flushed is ambiguous, not failed - reconcile before retrying a charge.
-- **Missing infrastructure:** when the design needs a service the project does not have (Redis for BullMQ, object storage, a mail transport), it belongs in STEP 2's `New dependencies / infrastructure` slot. Discovering it here means the design was incomplete - return to STEP 2, add it, and re-confirm before writing code. Never silently add a runtime dependency.
+### STEP 6 - API Layer
 
-### STEP 5 - API LAYER
+NestJS, per `node-nestjs-patterns` (loaded at STEP 3): module, controller, guards, DTOs; `@HttpCode(204)` on DELETE; a status chosen per request (201 new, 202 pending, the stored status on replay) through `@Res({ passthrough: true }) res; res.status(n)`, since `@HttpCode` is static; paginated lists. Express, per `node-express-patterns`: router, handler, Zod middleware; on Express 4 every async handler wrapped (Express 5 forwards rejections natively).
 
-NestJS: Use skill: `node-nestjs-patterns`. Module + controller + guards + DTOs with `class-validator`. `@HttpCode(204)` on DELETE. Paginated list with query params.
-
-Express: Use skill: `node-express-patterns`. Router + controller + Zod middleware. Express 4: async handler wrapper on every route (Express 5 forwards rejections natively).
-
-Map domain errors to HTTP via the global exception filter (NestJS) / terminal error middleware (Express). Canonical contract: Use skill: `node-exception-handling` (AppError hierarchy, retryable flag, ORM error translation, Sentry capture-once, BullMQ retry propagation).
+Domain errors map to HTTP in one place - the global exception filter (NestJS) or the terminal error middleware (Express) - each row an error class in the Error model:
 
 | Domain Error | HTTP |
-|---|---|
-| Validation | 400 |
-| Unauthenticated (no / bad credentials) | 401 |
-| Authenticated but not permitted | 403 |
-| Not found | 404 |
-| Conflict | 409 |
-| Invalid transition | 422 |
-| Rate limited | 429 + `Retry-After` |
-| Upstream declined (card refused, quota) | 402 or 409 - a business outcome, not a 5xx |
-| External timeout / upstream down | 503 |
+| ------------ | ---- |
+| Validation, missing `Idempotency-Key` | 400 |
+| Unauthenticated | 401 |
+| Role or permission denied on the route | 403 |
+| Not found, or an object outside the caller's scope | 404 |
+| Conflict, key in flight | 409 (+ `Retry-After` when in flight) |
+| Invalid transition, key reused with a different body | 422 |
+| Rate limited (emitted by the rate-limit middleware) | 429 + `Retry-After` |
+| Upstream declined (card refused) | 402 or 409, as the Error model states - a business outcome, never a 5xx (overrides `node-exception-handling`'s 400 mapping; 402 is outside `backend-api-guidelines`' status set - name it) |
+| External timeout / upstream down / upstream rate limit | 503 (outside `backend-api-guidelines`' set - name it) |
 
-A creating POST returns 201. A POST that replays an idempotency key returns the original outcome with 200, not a second 201.
+A creating POST returns 201; accepted work whose outcome is still pending (a payout awaiting the vendor) returns 202 with the resource's status; an outcome settled synchronously (a vendor rejection before acceptance) answers with its settled status in the body of the 201. A replayed idempotency key returns the stored response - status and body as first sent (per `backend-idempotency`; this overrides `node-testing-patterns`' 200-on-replay example).
 
-**This table is for client-facing routes.** A webhook receiver answers the *sender*, not a user: return 2xx once the event is durably recorded, and handle unknown events, out-of-order arrivals, and already-applied transitions as 2xx no-ops. Reserve non-2xx for a failed signature (400) and for genuine "retry me" faults (5xx) - a 4xx on a business outcome makes the provider redeliver for days on an event that can never succeed.
+**Webhook receivers answer the sender, not a user.** A failed signature or stale timestamp is 401 (per `node-security-patterns`; this overrides the 400 in the framework atomics' examples). Already-applied and unknown-type events are 2xx no-ops. An event that is not applicable yet (out of order) is parked durably before the 2xx, or answered 5xx when the provider retries (Stripe, Slack) - a provider that does not retry (GitHub) is always parked; never dropped. Reserve other non-2xx answers for genuine "retry me" faults; a 4xx on a business outcome makes the provider redeliver for days. Placement: NestJS - `NestFactory.create(AppModule, { rawBody: true })` (Express or Fastify adapter), `req.rawBody`, `@Public()` to leave the global guard, `@HttpCode(200)`; Express - `express.raw()` on the route, mounted before `express.json()` and outside the auth mount.
 
-For outbound HTTP to third parties, `node-http-client-patterns` (loaded in STEP 4) owns the timeout / retry / wrapper contract.
+### STEP 7 - Tests
 
-For webhooks: Use skill: `node-security-patterns` for raw-body reading, signature comparison, and timestamp freshness. Register the route outside the global auth chain, before any JSON body parser.
+Use skill: `node-testing-patterns`. Unit (mocked collaborators), integration (repository or service against a real database), endpoint / E2E (Supertest through the app with production's pipes and guards). Cover the happy path, validation, not-found and out-of-scope, conflict, and edge cases. State machines: every valid and invalid transition, plus a concurrent transition. Webhooks: valid, invalid, missing, stale, and replayed signature; an out-of-order event. Idempotency: concurrent duplicates produce one side effect - with a processing-first claim the loser gets `409` while the winner runs and the stored response after; with a database-local claim the loser gets the replayed stored response; a changed body gets 422. A project convention the testing atomic rules out (SQLite standing in for PostgreSQL) is overridden in the new tests and recorded in Decisions. A test that cannot be written yet is listed under Tests `Not written`, with the reason.
 
-### STEP 6 - TESTS
+### STEP 8 - Validate
 
-Use skill: `node-testing-patterns`. Three lanes: unit (mocked deps), integration (service or repository against a real DB), E2E (Supertest through the app). Cover happy path, validation, not-found, conflict, edge cases. For state machines, test every valid + invalid transition. For webhooks, test valid / invalid / missing / replayed signature. For idempotency, test that concurrent duplicates produce one side effect and the same response.
-
-### STEP 7 - VALIDATE
-
-Run build + test + lint + typecheck via the project's own scripts and package manager detected in STEP 1 (`npm run` / `pnpm` / `yarn` / `bun`). Do not swap test runners - a Jest suite runs under Jest, not `bun test`. Fix failures before reporting done. When the working tree cannot run (design-only invocation, no installed dependencies), say so on the `Validation` line rather than claiming a pass.
+Run build, test, lint, and typecheck through the project's own scripts and package manager (`npm run` / `pnpm` / `yarn` / `bun run`); never swap runners - a Jest suite runs under Jest. Fix failures before reporting done. When the tree cannot run (design-only output, no installed dependencies, no database), say so on the `Validation` line.
 
 ## Edge Cases
 
-Check this list at STEP 2, before presenting the design - each entry changes the shape of what STEPS 3-6 produce.
+Checked at STEP 2 and before presenting the design:
 
-- **Vague input**: ask targeted questions in STEP 1; never guess fields or relationships
-- **No persistence**: skip STEP 3; service + controller only
-- **Existing entity**: read and extend rather than recreate; check existing DTOs / services
-- **Referenced entity missing**: ask whether to create it or use an ID reference
-- **Webhook-only**: skip CRUD; dedicated controller with raw body + signature validation
-- **Bulk write**: `createMany` / chunked `save` + size-limit validation
-- **Bulk read / export**: keyset pagination + streaming (`stream.pipeline`, async generators); never buffer an unbounded result set
+- **Vague input:** targeted questions in STEP 2; never guess fields or relationships
+- **No persistence:** skip STEP 4
+- **Existing entity:** read and extend, never recreate; reuse existing DTOs and services
+- **Referenced entity missing:** an Open Question - create it, or reference by id
+- **Webhook-only:** no CRUD; a dedicated receiver per STEP 6
+- **Bulk write:** Prisma `createMany` in ~1000-row chunks; TypeORM `insert([...])` for pure inserts (`save` only when upserting entities); a size limit on the input
+- **Bulk read / export:** keyset pagination and streaming (`stream.pipeline`, async generators); never buffer an unbounded result
 
 ## Output Format
 
-Slots marked `(or none)` take the literal `none` when they do not apply - a webhook-only or read-only feature leaves several empty, and that is the expected shape, not an omission.
+Every slot is filled or the literal `none`; a webhook-only or read-only feature leaves several `none`, and that is the expected shape. `## Code` is the deliverable - every file in `## Files`, in dependency order - and the sections around it describe it without restating it; its blocks use the file's language (`typescript`, `prisma`, `sql`). A webhook receiver lists its route in `## Endpoints` with `raw body` as the request. `## Endpoints` and `## New Dependencies / Infrastructure` record what was built; the Design block records what was planned.
 
 ```markdown
-## Design
+## Design   {no suffix when approved | ` (unapproved - open questions)` | ` (not reviewed - non-interactive run)`, per the STEP 3 gate}
 
-[the approved STEP 2 block, as approved]
+{the STEP 3 block as approved or presented, Assumptions / Decisions / Open Questions included}
 
 ## Files
 
@@ -154,68 +192,59 @@ Slots marked `(or none)` take the literal `none` when they do not apply - a webh
 
 ## Code
 
-[every file in the table above, each under its path as a bold label, as fenced TypeScript / SQL blocks in dependency order: schema and migration, DTOs, service, controller or router, module wiring, processors, tests. This is the deliverable; the sections around it describe it and must not restate it. `none` on a design-only invocation.]
+{every file in the table, each under its path as a bold label: schema and migration, DTOs, service, controller or router, module wiring, processors, tests | none}
 
 ## Endpoints
 
-| Method | Path | Request | Response | Status |
-| ------ | ---- | ------- | -------- | ------ |
-
-_(or `none` - a webhook receiver lists its route here with `raw body` as the request.)_
+| Method | Path | Request | Response | Status | Pagination | Idempotency |
+| ------ | ---- | ------- | -------- | ------ | ---------- | ----------- |
 
 ## Migration
 
-[file names + what they create: tables, indexes, enums, constraints; deploy ordering and the compatibility invariant each step preserves, when more than one] _(or `none`)_
+{file names and what each creates; deploy order and the compatibility invariant each step keeps; the runner (one place per release - a Job, a pre-deploy task) and command; the lock timeout each write migration sets; how to verify it; how to roll it back | none}
 
 ## Tests
 
 | Lane | Count | Covers |
 | ---- | ----- | ------ |
-| Unit | {n} | [outcomes] |
-| Integration | {n} | [persisted state, constraints] |
-| E2E | {n} | [journeys] |
+| Unit | {n} | {outcomes} |
+| Integration | {n} | {persisted state, constraints} |
+| E2E | {n} | {journeys} |
+
+**Infrastructure:** {database provisioning and isolation, runner config the tests need | none}
+
+**Not written:** {each test deferred, and why | none}
 
 ## New Dependencies / Infrastructure
 
-[packages and services this adds that the project did not have] _(or `none`)_
-
-## Decisions
-
-[each choice the request did not dictate, with its reason: outbox vs post-commit, varchar+CHECK vs enum, the API conventions the atomics settled. The test is what a wrong entry costs: a `Decision` you got wrong is rework, an `Assumption` you got wrong is a wrong feature. Approval at STEP 2 does not move an entry between them.]
-
-## Assumptions
-
-[each low-blast-radius answer assumed rather than confirmed, and what would change if it is wrong] _(or `none`)_
-
-## Open Questions
-
-[each high-blast-radius question STEP 1 forbids assuming that is still unanswered - authorization, money, external side effects, legal transitions - with the interim choice made to keep going and what it blocks] _(or `none`)_
+{packages and services added | none}
 
 ## Validation
 
-[build / test / lint / typecheck results, or why they could not run]
+{build / test / lint / typecheck results, or why they could not run}
 ```
+
+`Assumptions`, `Decisions`, and `Open Questions` live in the Design block only. The test for which one an entry belongs to is what a wrong entry costs: a wrong Assumption is a cheap edit, a wrong Decision is rework, an unanswered Open Question can make the feature unsafe. Approval does not move an entry between them.
 
 ## Self-Check
 
-Mark a line N/A when the feature does not reach it - a read-only export has no transaction, no idempotency key, and no state machine, and saying so beats ticking a box that was never exercised.
+Mark a line N/A when the feature does not reach it - a read-only export has no transaction, no idempotency key, and no state machine.
 
-- [ ] `behavioral-principles` loaded; stack detected (Step 1); high-blast-radius questions asked, low-blast-radius answers recorded as Assumptions
-- [ ] Edge Cases checked at Step 2; any that applies is reflected in the design
-- [ ] Design block presented and approved before any code (Step 2)
-- [ ] Migration safe for the column's current state; unique index backs any idempotency key (Step 3)
-- [ ] Transaction and HTTP-client contracts loaded before the service layer, each after its stack-agnostic prerequisite; no network I/O inside a transaction; idempotency claimed with a conflict-tolerant insert that distinguishes in-flight from settled, plus a sweeper where there are external side effects; jobs dispatched post-commit or via outbox with the choice stated (Step 4)
-- [ ] DTOs everywhere, no ORM entities on the wire; errors mapped through the table; webhook raw body + signature outside global auth (Step 5)
-- [ ] Tests cover all three lanes; state machines cover invalid transitions; idempotency covers concurrent duplicates (Step 6)
-- [ ] Validation run and reported honestly, including when it could not run (Step 7)
-- [ ] Every Output Format slot filled or explicitly `none`, including `## Code`; atomic envelopes folded in, not appended; `Decisions` and `Assumptions` kept distinct
+- [ ] STEP 1: `behavioral-principles` loaded
+- [ ] STEP 2: stack detected and the unknown-stack table applied; high-blast-radius questions asked, low-blast-radius answers recorded as Assumptions; Edge Cases checked
+- [ ] STEP 3: owning atomics loaded once; design block complete, Existing defects included; approval obtained, or the non-interactive gate rule applied (stop on any Open Question); design-only requests stop after approval
+- [ ] STEP 4: migration safe for the column's current state and engine; `CHECK ... NOT VALID` validated in a later migration; (scope, key) unique index backs any idempotency key
+- [ ] STEP 5: transitions written with a prior-state guard and a discriminating re-read; claim conflict-tolerant with fingerprint, in-flight, and settled handled; each side effect on the right mechanism with its sweeper; transactions bounded; no network I/O inside one
+- [ ] STEP 6: DTOs everywhere; errors mapped through the table (403 vs 404 split); replay returns the stored response; webhooks 401 on a bad signature, out-of-order events parked, placed outside global auth with the raw body
+- [ ] STEP 7: three lanes; invalid and concurrent transitions; webhook signature cases; concurrent duplicates; unwritten tests listed
+- [ ] STEP 8: validation run and reported honestly
+- [ ] Every Output Format slot filled or `none`; atomic blocks folded per Envelope precedence
 
 ## Avoid
 
-- Generating code before design approval
-- Exposing ORM entities; `any` in DTOs; missing `await`; unpaginated lists
-- Look-up-then-create as an idempotency strategy, or catching a raw duplicate-key error inside the transaction it just aborted
-- Returning 4xx from a webhook receiver for a business outcome - the provider redelivers for days
-- Skipping idempotency on payment / external-callback features
-- Consuming the body before signature validation on webhook endpoints
-- Running `prisma migrate dev` without `--create-only`, or `migrate reset`, against a shared database
+- Code before the STEP 3 gate is satisfied
+- Exposing ORM models; `any` in DTOs; a missing `await`; unpaginated lists
+- Look-up-then-create as an idempotency strategy, or catching a duplicate-key error inside the transaction it aborted
+- A status transition checked in memory and written without a guard
+- A 4xx from a webhook receiver for a business outcome, or a 2xx that drops an out-of-order event
+- `prisma migrate dev` or `migrate reset` against a shared database

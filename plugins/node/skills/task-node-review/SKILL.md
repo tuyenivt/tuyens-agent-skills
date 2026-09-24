@@ -1,6 +1,6 @@
 ---
 name: task-node-review
-description: Node.js/NestJS/Express code review - event-loop blocking, async pitfalls, ORM leaks, missing guards, validation; spawns perf/security/obs/reliability agents.
+description: Node.js/NestJS/Express PR review - event-loop blocking, async pitfalls, ORM leaks, guards, validation; spawns perf/security/obs/reliability lenses.
 agent: node-tech-lead
 metadata:
   category: backend
@@ -13,348 +13,275 @@ user-invocable: true
 
 # Node.js Code Review
 
-Staff-level Node.js / NestJS / Express code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability / reliability subagents in parallel for extra scopes. Runs standalone with full PR/branch resolution.
+Staff-level Node.js / NestJS / Express review umbrella: correctness, architecture, AI-generated-code quality, and maintainability, with perf / security / observability / reliability lenses spawned in parallel when scope warrants. Stack-specific delegate of `task-code-review`.
 
 ## When to Use
 
-- Pre-merge review on a NestJS or Express PR
-- Post-AI-generation quality gate
-- Architecture drift detection
-- Pre-merge risk assessment
+- Pre-merge review of a NestJS or Express PR; post-AI-generation quality gate; architecture-drift detection
 
-**Not for:**
-- Pre-implementation design (`task-node-implement`)
-- Single-error debug
-- New-system architecture (no existing code to review)
-- Single-scope reviews - delegate to `task-node-review-perf` / `-security` / `-observability` / `-reliability`
+**Not for:** pre-implementation design (`task-node-implement`), single-error debugging, new-system architecture, or a single-scope review - invoke `task-node-review-perf` / `-security` / `-observability` / `-reliability` directly.
 
-## Depth Levels
+## Depth and Scope
 
 | Depth | When | Runs |
 |-------|------|------|
-| `standard` | Default | Phases A-E |
-| `deep` | Architecture PRs, post-incident, Principal sign-off | A-E + historical pattern matching + cross-PR context |
+| `standard` | Default | Steps 1-10; Step 5 loads the atomics whose area the diff touches |
+| `deep` | Architecture PRs, post-incident, Principal sign-off, or auto-promoted | Step 5 consults every listed atomic and reads each touched file in full plus the code the diff calls into; Step 6 adds the anemic-domain check; lenses run at `deep` |
 
-**Auto-promote to `deep`:** After Phase A, if `Blast Radius` is Wide or Critical, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
-
-## Scope
+**Auto-promote to `deep`** after Step 4 when Blast Radius is Wide or Critical (Step 4 says which value to read). On round 2+ nothing is inherited; when the resolved depth falls below the checkpoint's, note `Depth narrowed vs round <prior.round> - re-run with deep to re-cover.`
 
 | Scope | What runs |
 |-------|-----------|
-| Core | Phases A-E (Node-flavored) |
-| + Perf | Core + `task-node-review-perf` subagent |
-| + Sec | Core + `task-node-review-security` subagent |
-| + Obs | Core + `task-node-review-observability` subagent |
-| + Rel | Core + `task-node-review-reliability` subagent |
-| Full | Core + all four subagents in parallel |
+| Core | Steps 1-10 |
+| +Perf / +Sec / +Obs / +Rel | Core + that lens (Step 9) |
+| Full | Core + all four lenses in parallel |
 
-Default: **Core with auto-escalation**. Pass `core-only` to suppress.
+Default: **Core with auto-escalation**; `core-only` suppresses it. Auto-escalation signals:
 
-**Auto-escalation signals (Node-tuned):**
-
-- **+Sec:** file uploads (`multer`, `FileInterceptor`, `@UploadedFile()`), auth strategy / guard changes (`AuthGuard('jwt')`, `JwtStrategy`, `requireAuth`), DTO / Zod schema changes, raw SQL via `$queryRawUnsafe` / `repository.query`, secrets in env / config, BullMQ consuming user input, `Object.assign(target, req.body)`
+- **+Sec:** file uploads (`multer`, `FileInterceptor`, `@UploadedFile()`), auth strategy / guard changes (`AuthGuard('jwt')`, `JwtStrategy`, `@Public()`, `requireAuth`), DTO / Zod schema changes, raw SQL (`$queryRawUnsafe`, `repository.query`), secrets in env / config, BullMQ consuming user input, `Object.assign(target, req.body)` or a spread of `req.body` / a DTO into a write
 - **+Perf:** new Prisma / TypeORM migration, new ORM query (`findMany` / `find` / `createQueryBuilder`), new `include` / `relations`, new pagination, new endpoints with payloads, loops calling DB or HTTP, new `lru-cache` / Redis read paths
-- **+Obs:** new service / module, new external client (`axios.create`, `undici` Pool), new BullMQ producer / processor, logging config change (`pino` / `winston`), new `prom-client`, new lifecycle hook (`OnModuleInit`, `OnApplicationBootstrap`)
-- **+Rel:** new outbound client with no timeout of any form (`fetch` without `AbortSignal.timeout`, `axios.create` without `timeout`, `undici` without `bodyTimeout`), new `opossum` / `cockatiel` / `p-retry` config, BullMQ processor without an idempotency check, unbounded `Promise.all` over a collection, missing `SIGTERM` / graceful-shutdown drain, dual write (`queue.add` / `stripe.charge` / `mailer.send` inside `$transaction`)
-- **2+ categories → Full**
+- **+Obs:** new service / module, new external client (`axios.create`, `undici` Agent), new BullMQ producer / processor, logging config change (`pino` / `winston`), new `prom-client` metric, new lifecycle hook (`OnModuleInit`, `OnApplicationBootstrap`)
+- **+Rel:** new outbound call with no total deadline (`fetch` / `undici.request` / axios without `signal: AbortSignal.timeout(ms)` - axios `timeout` and undici's timers are idle timers), new `opossum` / `cockatiel` / `p-retry` config, BullMQ processor without an idempotency guard, unbounded `Promise.all` over a collection, missing `SIGTERM` drain, `queue.add` / a payment-provider call / `mailer.send` inside `$transaction` / `dataSource.transaction`, a new `@Cron` / `setInterval` job
+- Two or more categories in the resolved union (user flags + firing signals) -> **Full**. The Summary `Scope:` line and the Step 10 writer mapping are single-valued, so a two- or three-lens union never renders as a list.
 
 ## Invocation
 
-| Form | Meaning |
-|------|---------|
-| `/task-node-review` | Current branch vs base; fails fast on trunk |
-| `/task-node-review <branch>` | `<branch>` vs base (3-dot diff) |
-| `/task-node-review pr-<N>` | PR head fetched into local branch `pr-<N>` (user runs the fetch) |
+`/task-node-review [<branch>|pr-<N>] [--base <branch>] [--req <path>] [+sec|+perf|+obs|+rel|full|core-only] [standard|deep]`
 
-Pass `--base <branch>` when the PR was opened against a non-trunk base. Scope and depth flags compose: `/task-node-review pr-50273 --base release/2026.05 +sec deep`.
-
-Pass `--req <path>` to name a requirement source (ticket export, PRD, spec) for Phase 0; without it, Phase 0 uses whatever requirement is already in context.
-
-**No checkout required.** The workflow reads via ref-qualified diffs; never modifies the working tree.
+Defaults to the current branch vs its base; fails fast on trunk. `pr-<N>` is a local branch the user fetched. `--req <path>` names a requirement source (ticket export, PRD, spec) for Step 3.7; without it, `review-change-intent`'s own source ladder decides. The workflow reads through ref-qualified git and never modifies the working tree.
 
 ## Workflow
 
 ### Step 1 - Behavioral Principles
 
-Use skill: `behavioral-principles`. Accept parent's confirmation if invoked as a subagent.
+Use skill: `behavioral-principles`. Accept the parent's confirmation when invoked as a subagent.
 
-### Step 2 - Confirm Stack and Detect Framework
+### Step 2 - Confirm Stack
 
-Use skill: `stack-detect`. Accept pre-detected stack from parent if applicable. If not Node, stop and recommend `/task-code-review`.
+Use skill: `stack-detect`. Accept a pre-detected stack from a parent. Not Node -> stop and recommend `/task-code-review`.
 
-Detect framework: NestJS (`nest-cli.json` + `@nestjs/*`) vs Express (`express` without NestJS). Detect ORM: Prisma vs TypeORM. Record `Framework` and `ORM` for branching in later phases.
+Record from evidence, and pass all of it to every lens:
+
+- `Framework`: NestJS (`nest-cli.json` or `@nestjs/core`), Express (`express` without `@nestjs/core`), or `mixed` (both, as separate apps) - on `mixed`, each step applies the idioms of the app a changed file belongs to.
+- `ORM`: Prisma (`@prisma/client` / `prisma/schema.prisma`; its major - Prisma 7 / `@prisma/adapter-*` pools through the adapter), TypeORM (`typeorm`; its driver, `pg` or `mysql2`), both, or `other` (Drizzle, Sequelize, Mongoose, raw `pg`) - an `other` ORM loads no ORM atomic; Step 5 applies the generic transaction and query checks and says so in Notes.
+- stack-detect's `Database`, and the module format (ESM `"type": "module"` or CJS).
 
 ### Step 3 - Resolve the Diff
 
-Use skill: `review-precondition-check`. Forward `--base` if passed. If it fails fast, surface verbatim and stop.
+Use skill: `review-precondition-check` with the invocation's target argument, any `--base`, and `report_type: review`. Surface a fail-fast verbatim and stop. The handle may carry a `prior_checkpoint` block (the file at its `report_path` exists with valid frontmatter) or the scalar `legacy`; Step 3.5 decides what it means.
 
-The handle may include a `prior_checkpoint` block (a prior `review-<branch>.md` exists). Decision logic is Step 3.5; for now, just hold onto it.
+From the handle, fix `branch` = its `head_short_name` (never `HEAD`, never remote-prefixed). It names the review target in the no-op message, the writer's `branch` field, and the report filename; `head_ref` passes through unchanged to the git commands and to the writer.
 
-Once approved, read once and reuse:
-
-- `git diff <base>...<head>`
-- `git diff --name-status <base>...<head>`
-- `git log --oneline <base>..<head>`
-
-**Skip entirely** when invoked as a subagent and the parent passed the handle plus pre-read artifacts.
-
-Also capture the current SHAs for the report's checkpoint frontmatter:
+Capture the SHAs first - the Step 3.5 gate needs only these:
 
 - `current_head_sha = git rev-parse <head_ref>`
 - `current_base_sha = git rev-parse <base_ref>`
 
-### Step 3.5 - Decide Round (re-review auto-detect)
+Then, once Step 3.5 has not stopped the run, read **once** (skip when a parent passed pre-read artifacts):
 
-**Every round analyzes the full `<base_ref>...<head_ref>` range read in Step 3.** Risk, blast radius, scope signals, depth promotion, and requirement fit are scored on the whole change on every round, so a small follow-up commit cannot under-score a large PR and a defect missed in round 1 stays reachable in round 2. Rounds differ only in that round 2+ reconciles against the prior report.
+- `git diff <base_ref>...<head_ref>`
+- `git diff --name-status <base_ref>...<head_ref>`
+- `git log <base_ref>..<head_ref>` (full messages - Step 3.7 reads criteria from commit bodies)
 
-Skip if the handle has no `prior_checkpoint` -> `round = 1`, no fetch, no reconciliation. Continue to Step 4.
+Every file read outside the diff uses `git show <head_ref>:<path>`, so a review of a branch you are not standing on reads that branch.
 
-If `prior_checkpoint: legacy` (file present, frontmatter missing/invalid) -> `round = 1`. Note in Summary: `Prior report lacks checkpoint metadata - treated as round 1.` Continue to Step 4.
+### Step 3.5 - Decide Round
 
-Otherwise (valid prior checkpoint present):
+**Every round analyzes the full `<base_ref>...<head_ref>` range.** Risk, blast radius, scope signals, depth promotion, and requirement fit are scored on the whole change every round; rounds differ only in that round 2+ reconciles against the prior report.
 
-**Step 3.5a - Auto-fetch the head branch.** Only when a valid prior checkpoint exists, refresh the local tracking ref so a script can re-run the same command without manually fetching:
+No `prior_checkpoint` -> `round = 1`, no fetch, no reconciliation. `prior_checkpoint: legacy` -> `round = 1`; note `Prior report lacks checkpoint metadata - treated as round 1.` (the Step 10 write overwrites the file).
 
-```bash
-upstream=$(git rev-parse --abbrev-ref --symbolic-full-name "<head_ref>@{u}" 2>/dev/null)
-```
+Otherwise:
 
-If `upstream` resolves to `<remote>/<branch>` form, split and run:
+The review runs on the ref the handle named, never on a fetched one; the workflow runs no state-changing git.
 
-```bash
-git fetch <remote> <branch>
-```
+**3.5a - Compare checkpoints.**
 
-This updates `refs/remotes/<remote>/<branch>`, not the local branch. When `head_ref` is a local branch name, re-resolve against the tracking ref (`<remote>/<branch>`) rather than the local one, and re-read the Step 3 diff and log if the SHA moved - otherwise later phases score a stale range while the checkpoint records the new SHA. No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, detached HEAD, no remote configured), skip the fetch silently. If `git fetch` fails (offline, auth, deleted remote branch), continue silently - this is a convenience, not a gate. After a successful fetch, re-resolve `current_head_sha = git rev-parse <head_ref>`.
+| Condition | Decision |
+| --------- | -------- |
+| `prior_checkpoint.head_sha == current_head_sha`, `prior_checkpoint.base_sha == current_base_sha`, and the checkpoint's `scope` / `depth` cover the invocation's (`full` covers every scope, any scope covers `core-only`, `deep` covers `standard`; map the invocation to the writer enum per Step 10 first; an invocation with no scope flag is never covered by a `core-only` checkpoint) | **No-op.** Print `No new commits on <branch> since prior review at <sha_short>. Prior report unchanged.` (`<sha_short>` = first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
+| Same head, but scope or depth not covered | `round = prior.round + 1`. Note `Same head as round <prior.round>; re-review for expanded <scope\|depth>.` |
+| `git merge-base --is-ancestor <prior_checkpoint.head_sha> <current_head_sha>` fails | `round = prior.round + 1`. Note `Prior checkpoint unreachable - history rewritten.` |
+| `prior_checkpoint.base_sha != current_base_sha` | `round = prior.round + 1`. Note `Base branch advanced since round <prior.round>.` |
+| `prior_checkpoint.base_ref != base_ref` | `round = prior.round + 1`. Note `Base ref changed since round <prior.round>.` |
+| None of the above | `round = prior.round + 1`. |
 
-**Step 3.5b - Compare checkpoints.**
+Apply the first matching row's decision and emit every matching row's note - except the no-op row, which prints its line and nothing else.
 
-| Condition                                                              | Decision                                                                                                                            |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `prior_checkpoint.head_sha == current_head_sha`, and the invocation adds no scope or depth beyond the prior checkpoint | **No-op.** Print `No new commits on <head_ref_short> since prior review at <sha_short>. Prior report unchanged.` (where `<head_ref_short>` is the short name of `head_ref` - the review target, not the user's current branch - and `<sha_short>` is the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
-| `prior_checkpoint.head_sha == current_head_sha`, but the invocation expands scope or depth beyond it | `round = prior.round + 1`. Note in Summary: `Same head as round <prior.round>; re-review for expanded <scope\|depth>.` |
-| `git merge-base --is-ancestor <prior_head_sha> <current_head_sha>` fails (prior SHA unreachable) | `round = prior.round + 1`. Note in Summary: `Prior checkpoint unreachable - history rewritten.`      |
-| `prior_checkpoint.base_sha != current_base_sha`                        | `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round>.`       |
-| `prior_checkpoint.base_ref != base_ref`                                | `round = prior.round + 1`. Note in Summary: `Base ref changed since round <prior.round>.`           |
-| None of the above                                                       | `round = prior.round + 1`.                                                                          |
+**3.5b - Scope on round 2+** resolves exactly as on round 1 (Step 4); nothing is inherited. Scopes newly added this round have no prior findings: note `Scope expanded round <N>: +<list>.` When the resolved scope falls below the checkpoint's, note `Scope narrowed vs round <prior.round>: <list> - re-run with <flags> to re-cover.`
 
-Rows after the first are not exclusive - a rewritten history, an advanced base, and a changed base ref can all hold. Evaluate the no-op row first; if it does not fire, `round = prior.round + 1` and emit the Summary note for **every** row that holds.
+### Step 3.7 - Change Intent
 
-**Step 3.5c - Scope expansion handling.**
+Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req <path>` file when passed, and the handle's `report_path` (as its `prior_report_path`) when round > 1.
 
-If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `core-only`, round 2 is `full`), the newly-added scopes have no prior findings to reconcile. Record in Summary: `Scope expanded round <N>: +<list>.`
+Its `## Change Brief` block goes into the report verbatim, its `Requirement Source` and `Requirement Fit` lines into Summary, and its `### Requirement Findings` items join the Step 9.3 set - that section and the `### No Requirement Findings` marker confirm the step ran and are never rendered. With no requirement source the Brief still renders, and the traceability block and both Summary lines are omitted. Runs before Step 4 - acceptance criteria decide what counts as a defect downstream - and the low-risk short-circuit never skips it.
 
-The reconciliation table (when emitted) only covers findings whose scope was active in the prior round.
+### Step 4 - Risk Snapshot and Scope
 
-### Step 4 - Evaluate Scope Auto-Escalation
+Use skills: `review-pr-risk`, `review-blast-radius`. State **Risk Level** and **Blast Radius** before any finding, each as the atomic's line value as emitted (a `(contract break: ...)` parenthetical or a two-state `<level> (unmitigated) -> <level> (with ...)` form stays whole). The promote and short-circuit tests read the unmitigated level unless the `Mitigation:` tag is `in-place:`. Only those two lines reach the report; the atomics' `Signals:`, `Action:`, dimension, and `Mitigation:` lines inform the review and are not emitted.
 
-Scan the file list and diff for the signals listed under **Scope**. Log each fire as `signal: <category> -> <file:line>`. Then:
+**Resolve scope:** union of user flags and signals firing on the Step 3 diff; `core-only` suppresses signal escalation. Log each fire as `<category> -> <file:line>`. The Summary `Scope:` line carries the resolved value plus one annotation:
 
-- Zero signals or `core-only` → stay Core
-- One signal category → add matching extra scope
-- 2+ categories → promote to Full
-- User passed an explicit scope → respect it; still log signals so the Summary documents why
+| Observed | Annotation |
+| -------- | ---------- |
+| No user flag, signals fired | `auto-escalated from Core; signals: <list>` |
+| User flag, further categories fired | `user-flagged; signals also firing: <list>` |
+| `core-only`, signals fired | `core-only; suppressed signals: <list>` |
+| Otherwise | none |
 
-**Scope precedence on round 2+:** user flag > firing signals. Signals are scored on the full range every round, so a scope that escalated in round 1 escalates again on its own - nothing is inherited from the prior checkpoint. When the resolved scope still falls below the checkpoint's (round 1 was user-flagged), note in Summary: `Scope narrowed vs round <prior.round>: <list> - re-run with <flags> to re-cover.`
+Every suppressed signal also emits a `[Delegate]` Next Step tagged `[+<Lens>]` naming the matching `/task-node-review-*` command.
 
-Surface the decision in Summary; if escalated, append `auto-escalated from Core; signals: <list>`.
+**Low-risk short-circuit:** Risk Level Low, no Blast Radius dimension other than User Scope above Narrow, and no architecture-relevant file touched (auth strategies / guards, middleware, API contracts, shared base classes, `app.module.ts` / `app.ts` / `main.ts`, migrations) -> skip Steps 6-8. Step 5 runs; Step 9 runs the resolved scope as usual, so the checkpoint's `scope` is what actually ran; Steps 9.3-10 run as usual. Note `Low-risk short-circuit: Steps 6-8 skipped`; when Risk Level alone blocked it, note `Short-circuit not taken: Risk Level <level> (<its signals>)`.
 
-### Phase 0 - Change Intent
+### Step 5 - Node Correctness and Safety
 
-Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req <path>` file when passed, and `prior_checkpoint.report_path` when round > 1.
+Atomics - `Use skill:` each one whose area the diff touches (at `deep`, also each one whose area the code the diff calls into touches):
 
-When a Phase 0 requirement finding and a later phase land on the same `file:line` for the same defect, publish once at the stronger label and cite the requirement in its Issue line. Its `## Change Brief` block goes into the report verbatim, its `Requirement Source` and `Requirement Fit` lines into Summary, and its findings join the assembled set verified in Step 6.6. With no requirement source the Brief still renders, and the traceability block and its two Summary lines are omitted. Runs before Phase A - acceptance criteria decide what counts as a defect downstream - and the low-risk short-circuit never skips it.
+- `node-typescript-patterns` - strictness not relaxed, `as any` / `as unknown as T` in non-test code
+- `node-prisma-patterns` (Prisma) or `node-typeorm-patterns` (TypeORM) - queries, `include` / `relations`, DTO mapping
+- `backend-transaction-patterns`, then `node-transaction-patterns` - any diff that opens a transaction, locks a row, or dispatches a side effect around a write
+- `node-bullmq-patterns` - producers, processors, queue options
+- `ops-resiliency`, then `node-http-client-patterns` - a new or changed outbound client
+- `node-exception-handling` - exception filters, error middleware, error classes, `catch` blocks
+- `node-nestjs-patterns` (NestJS) or `node-express-patterns` (Express) - modules, providers, guards, middleware order, bootstrap
+- `node-migration-safety` plus `ops-backward-compatibility` - any change under `prisma/migrations/` or the TypeORM migrations directory
+- `node-testing-patterns` - a diff that adds or changes tests, or leaves critical-path logic untested (what a meaningful assertion is)
 
-### Phase A - PR Risk Snapshot
+**API contract gate** - when the diff carries a contract-change signal (a removed / renamed / retyped response-DTO field, a changed HTTP status, a new **required** request field or tightened class-validator / Zod constraint, a new public route on a `/v1/`-versioned or externally consumed API, a controller returning a raw Prisma model or TypeORM entity, or an edit to a `@nestjs/swagger` / swagger-jsdoc / committed OpenAPI spec), use skills `backend-api-guidelines` and `ops-backward-compatibility`. Judge breakage from the consumer's view ("no external callers" needs a search; when consumption is unknown, a `/v1/`-versioned or spec-published surface is externally consumed); responses go through a DTO; errors follow RFC 9457 (`node-exception-handling`'s `{ error, message }` body is a `[Recommend]` unless the project documents it as its convention); collections paginated; the committed spec matches the code. Each finding names who breaks and how. This gate's table supersedes the atomic's tiers: `[Must]` = unversioned breaking change to an externally consumed contract, or a raw entity on an externally consumed / versioned surface; `[Recommend]` = internal breaking change with no coordinated-deploy note, inconsistent status / error envelope, unpaginated unbounded collection, spec or generated client out of sync; naming drift with no consumer impact is not written. A raw entity on an internal-only surface stays with the DTO-hygiene check below.
 
-- Use skill: `review-pr-risk` for cross-cutting risk signals
-- Use skill: `review-blast-radius` for failure propagation scope
+**Checks the atomics don't own:**
 
-Output risk level and blast radius before any findings.
+- **Test coverage (named finding).** Logic added without Jest coverage -> `[Recommend]`; `[Must]` on critical paths: authentication, authorization, money / billing, multi-table writes, state machines, data-mutating BullMQ processors, migrations changing column semantics. Test files are reviewed for coverage correctness only: production logic no test exercises (anchored to the untested production `file:line`), and a test whose assertions cannot fail or no longer match the code. Style, structure, duplication, and speed of test code are not findings.
+- **Floating promises.** An unawaited promise in a request or job path (`void doThing()` with no `.catch`, a missing `await` on a write) loses errors and ordering.
+- **Event-loop blocking in request and job paths.** `fs.readFileSync`, `crypto.pbkdf2Sync`, large `JSON.parse` / `JSON.stringify`, catastrophic regex - presence here; impact and offloading belong to +Perf.
+- **Validation wired.** NestJS: a global `ValidationPipe` (in `main.ts` or as an `APP_PIPE` provider) with `whitelist: true`; Express: every write route parses its body with a schema and passes the parse **result** onward, never `req.body`. A missing global pipe, missing `whitelist`, or `req.body` flowing into a write is `[Must]`; missing `forbidNonWhitelisted` / Zod `.strict()` (which reject rather than strip) is `[Recommend]`.
+- **Authorization and IDOR.** A guard or middleware proves identity, not object access. Per-owner / per-tenant endpoints scope at the query: `where: { id, tenantId: user.tenantId }`, not `findUnique({ where: { id } })` plus a later check.
+- **Response DTO hygiene.** Compare the DTO against the model: `passwordHash`, `mfaSecret`, `apiKey`, `webhookSecret`, `internalNotes`, `isAdmin` never reach the wire. Returning a Prisma model or TypeORM entity directly is `[Recommend]` regardless of today's fields; this label and the API gate's supersede any atomic's label for entity exposure.
+- **Idempotency on retry-prone POSTs.** `/payments`, `/orders`, `/refunds`, `/subscriptions` accept an `Idempotency-Key` and claim it atomically in the database (unique constraint and a conditional insert, with the stored response for replay), never look-up-then-create. Inbound webhooks dedupe on the provider's event id instead.
+- **Multi-replica race safety.** Counters, balances, and state transitions use `SELECT ... FOR UPDATE` inside the transaction (`tx.$queryRaw` in `$transaction(async (tx) => ...)`, TypeORM `setLock('pessimistic_write')`), a guarded conditional update (`WHERE status = <from>`), or a version column - never in-process state.
+- **New queried column.** A new Prisma field / TypeORM column used in `where` / `orderBy` / `groupBy` has an index in the same PR, or an explicit "indexed later" note.
+- **Error handling.** NestJS exception filters map validation / not-found / unauthorized / forbidden / unique-violation consistently; Express has one terminal 4-arg error middleware registered after the routers. Express 4: every async handler wrapped (an unwrapped rejection never reaches the error middleware); Express 5 forwards rejections natively and a wrapper is redundant. No `catch (e) { console.log(e) }` swallows.
+- **SSRF and edge middleware presence.** User-controlled values in outbound URLs; `helmet`, a CORS allowlist, and body limits when app construction changes - body-parser defaults every parser to `100kb`, so the finding is a raised `limit`, not a bare `express.json()`. Depth belongs to +Sec.
 
-**Low-risk short-circuit:** if Risk Level is Low, no Blast Radius dimension other than User Scope is above Narrow, **and** the change does not touch architecture-relevant files (auth strategies / guards, middleware, API contracts, shared base classes, `app.module.ts` / `app.ts`, migrations), skip Phases C-E. User Scope alone does not block the short-circuit - a copy change is seen by everyone and still carries no system risk, which is exactly the case this exists for.
+### Step 6 - Architecture Guardrails
 
-The streamlined report is Summary (with the Phase A snapshot), the Phase 0 outputs, High-Impact Findings, `## Prior Round Reconciliation` when round > 1, and Next Steps. `## Architecture Notes`, `## Maintainability Notes`, `## Key Takeaways`, and `## Scope Reports` are omitted. Record the short-circuit on the Summary's `Notes:` line, and skip Step 5 - a short-circuited review runs Core only regardless of what Step 4 escalated.
+Use skill: `architecture-guardrail`.
 
-### Step 4.5 - Re-evaluate Depth After Phase A
+- **Layering (NestJS):** controller -> service -> repository / ORM client. No business logic in controllers; no HTTP clients in repositories; DTO mapping at the service / controller boundary
+- **Layering (Express):** router -> handler or service -> repository. No business logic in route definitions
+- **Service discipline:** handlers over ~10 lines of orchestration extracted to a service; intention-revealing names; cross-entity orchestration in services, not in TypeORM `@AfterInsert` listeners or Prisma client extensions
+- **NestJS DI:** constructor injection; module imports declare dependencies; `forwardRef` only as a last resort
+- **Settings discipline:** typed `ConfigService` with a Joi / Zod schema (NestJS) or one validated, frozen config module (Express); no `process.env.X` scattered across files
+- **Feature-module layout;** cross-feature imports go through public module exports, not another feature's repository
+- **Multi-tenant isolation** at the data layer (a Prisma client extension, a TypeORM scoped repository or query helper - a subscriber stamps `tenantId` on writes only), not controllers alone
+- **Listener discipline:** `@AfterInsert` / `@BeforeUpdate` / Prisma extensions reserved for cross-cutting concerns (audit, soft-delete), never hidden control flow that enqueues jobs or sends mail
+- **Anemic domain (`deep` only):** business rules accumulating in services while models stay pure data - an Architecture Notes observation, never a finding
+- **Multi-service PRs:** contract compatibility (OpenAPI diff, Pact) and deployment order - Use skill: `ops-backward-compatibility`
 
-If Blast Radius is Wide / Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
+### Step 7 - AI-Generated Code Quality
 
-**Depth precedence on round 2+:** user flag > this round's auto-promotion; nothing is inherited. When the resolved depth falls below the checkpoint's (round 1 was user-flagged `deep`), note in Summary: `Depth narrowed vs round <prior.round> - re-run with deep to re-cover.`
+- Use skill: `complexity-review`
+- Use skill: `node-nestjs-overengineering-review` (NestJS) or `node-express-overengineering-review` (Express); `mixed` runs each on its own app's files, passing that app's framework as `Framework` over the stack-detect value. The necessity skill owns request-scope misuse, single-implementation interfaces, and `Result` wrappers - Step 6 does not re-raise them.
+- Redundant mapping layers (`Entity -> DomainObject -> ServiceDTO -> ResponseDto` when one would do)
+- Test verbosity (`beforeEach` over ~30 lines for one assertion; a full deep-equal where two field assertions would do) - a Maintainability Notes line, never a finding
+- Comment cruft (JSDoc restating a private helper's signature, generated TODOs)
 
-### Phase B - Node Correctness and Safety
+### Step 8 - Maintainability
 
-Apply atomic skills. Each owns the canonical patterns; this phase flags deviations and surfaces what they did not see:
+Use skill: `backend-coding-standards` when the diff introduces naming or structure patterns. Use skill: `ops-observability` for logging / metrics presence (depth belongs to +Obs).
 
-- Use skill: `node-typescript-patterns` - `strict: true` not relaxed, no floating promises, no `as any` in non-test code
-- Use skill: `node-prisma-patterns` (Prisma) or `node-typeorm-patterns` (TypeORM) - transactions, `include`/`relations`, post-commit dispatch
-- Use skill: `node-bullmq-patterns` if diff touches BullMQ jobs
-- Use skill: `node-migration-safety` if diff touches `prisma/migrations/` or `src/migrations/`. Also use skill: `ops-backward-compatibility` for client/in-flight impact
-- **API contract change** - when the diff carries a contract-change signal (a removed / renamed / retyped response-DTO field, a changed HTTP status, a new **required** request field or tightened class-validator / zod constraint, a new public route on a `/v1/`-versioned or externally consumed API, a controller returning a raw TypeORM / Prisma entity, or an edit to a `@nestjs/swagger` / swagger-jsdoc / committed OpenAPI spec), use skills `backend-api-guidelines` and `ops-backward-compatibility`. Judge breakage from the consumer's view ("no external callers" needs a search; when consumption is unknown, treat a `/v1/`-versioned or spec-published surface as externally consumed); responses go through a DTO, never a raw entity; errors follow RFC 9457; collections paginated; the committed OpenAPI / swagger spec matches the code. Each finding names who breaks and how (for a leaked entity: what it exposes and who couples to it). Severity maps to labels: High -> `[Must]` = unversioned breaking change to an externally consumed contract, or a raw entity on an externally consumed / versioned surface; Medium -> `[Recommend]` = internal breaking change with no coordinated-deploy note, inconsistent status / error envelope, unpaginated unbounded collection, committed spec or generated client out of sync with the code; Low = naming drift with no consumer impact - below the reporting bar, write nothing. A raw entity on an internal-only surface is not a gate finding - it stays with the **Response DTO field hygiene** check below at `[Recommend]`, one finding per `file:line` either way
+- **Naming:** services name their operation (`order-fulfillment.service.ts`, not `order-helper.service.ts`); DTOs name their role (`CreateOrderDto`, `OrderResponseDto`); no `Util` / `Manager` / `Helper` modules
+- **Magic numbers / strings** extracted to constants or config (`60_000` over `60000` mid-expression); URLs and credentials from config, never inline
+- **Function length:** over ~30 lines reviewed; over ~60 flagged unless it orchestrates clearly named steps
+- **Duplicated query logic:** the same `where` predicate in 3+ places extracted to a repository method or query helper
+- **Logging hygiene:** `console.log` in production paths, lines without correlation ids, wrong levels - `[Recommend]`
 
-**Additional Node-specific checks the atomics don't own:**
+### Step 9 - Delegate Extra Scopes in Parallel
 
-- **Test coverage finding (named, not buried).** PR adds logic without Jest coverage -> `[Recommend]`; escalate to `[Must]` when the change is critical path: auth (JWT / Passport / `AuthGuard`), authorization (guards / `requireAuth`), money / billing, multi-table writes, state machines, BullMQ mutators, migrations changing column semantics. Surface as a dedicated finding.
-
-**Test files are reviewed for correctness of coverage, not craft.** Two findings are in scope: production logic in the diff that no test exercises (anchor it to the untested production `file:line`), and a test whose assertions cannot fail or no longer match the code they claim to check. Everything else about test code - style, structure, duplication, naming, performance - is out of scope; a passing test with awkward setup is not a finding.
-- **Event-loop blocking in request paths.** `fs.readFileSync` / `crypto.pbkdf2Sync` / large `JSON.parse` / catastrophic regex flagged (presence/absence here; depth - impact heuristic, `worker_threads`, `AbortSignal` - belongs to perf subagent).
-- **Validation strict-mode wired.** NestJS `app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))` in `main.ts`; Express Zod schemas reject unknown keys (`.strict()`, or `z.strictObject()` on Zod 4). Absence is a critical correctness + security gap.
-- **Authorization + IDOR.** Authn (guard / middleware) proves identity, not object access. Per-owner / per-tenant endpoints must scope at the repository: `where: { id, userId: user.sub }`, `tenantId` injected by middleware/extension.
-- **Response DTO field hygiene.** Compare the DTO against entity columns. Flag `passwordHash` / `mfaSecret` / `recoveryCodes` / `apiKey` / `webhookSecret` / `internalNotes` / `auditLog` / `isAdmin` / `internalCreatedBy` on the wire. Returning a Prisma model or TypeORM entity directly is `[Recommend]` regardless of current fields - a new sensitive column silently leaks later.
-- **HTTP `Idempotency-Key` on retry-prone POSTs.** `/payments`, `/orders`, `/refunds`, `/subscriptions`, `/webhooks` accept an `Idempotency-Key` header and dedupe via DB unique constraint or Redis `SET NX EX`. Distinct from BullMQ `jobId` - the HTTP key protects the client→server boundary.
-- **Multi-replica race safety.** Counters / balances / state transitions use DB locking (`SELECT ... FOR UPDATE`, Prisma `$queryRaw`, TypeORM `setLock('pessimistic_write')`) or optimistic version field, not in-process state.
-- **HTTP client sharing.** `axios.create()` / `undici` Pool shared at module level. Per-request instantiation breaks connection reuse.
-- **SSRF + edge middleware presence.** User-controlled values in outbound URLs flagged here; `helmet`, CORS allowlist, body size limits confirmed when app construction changes - body-parser already defaults to `100kb`, so a bare `express.json()` is not a finding; a raised limit or an unbounded `raw`/`text` parser is. Depth in security subagent.
-- **New ORM column with predicate use.** Any new Prisma `@db.*` / TypeORM column referenced in `where` / `orderBy` / `groupBy` has an index migration in the same PR, or an explicit "indexed later" note.
-- **Error handling.** NestJS `@Catch` filters cover validation / not-found / unauthorized / forbidden / unique-constraint consistently; Express has a 4-arg global error middleware. No `catch (e) { console.log(e) }` swallows; Express async handlers wrapped via `asyncHandler` or covered by global error middleware.
-
-### Phase C - Node Architecture Guardrails
-
-Use skill: `architecture-guardrail` for layer violations and coupling.
-
-**Node-specific:**
-
-- **Layering (NestJS):** controller → service → repository → entity. No business logic in controllers; no `axios` / `fetch` in repositories; DTO mapping at the service / controller boundary
-- **Layering (Express):** route → controller (or service) → repository → entity. No business logic in route definitions
-- **Service-layer discipline:** route handlers > 10 lines of orchestration extracted to a service; intention-revealing names (`fulfillOrder` not `processOrderStep2`); cross-entity orchestration in services, not in TypeORM `@AfterInsert` listeners or Prisma middleware
-- **NestJS DI:** constructor injection; module imports declare dependencies explicitly; no `Reflect.getMetadata` outside platform code; `forwardRef` only as last resort - prefer extracting a shared module
-- **NestJS request-scoped providers:** `Scope.REQUEST` only when truly needed (per-request transaction, multi-tenant context); flagged on otherwise-stateless providers
-- **Settings discipline:** typed `ConfigService` with Joi / Zod schema (NestJS) or `dotenv` + a typed frozen config (Express); no `process.env.X` scattered across files
-- **Feature-module layout** (`src/orders/{controller,service,repository,dto}.ts`) preferred over layer-package; cross-feature imports go through public module exports, not direct repository imports
-- **Multi-tenant isolation** enforced at the repository layer (Prisma extension / TypeORM listener / QueryBuilder helper), not at controllers alone
-- **Listener / middleware discipline:** `@AfterInsert`, `@BeforeUpdate`, Prisma middleware reserved for genuinely cross-cutting concerns (audit, soft-delete, search-index) - not as hidden control flow dispatching emails / BullMQ jobs
-- **Anemic domain (deep depth only):** business rules accumulating in services while ORM models stay pure data - flag for refactor/extraction. Do not raise on a single PR's evidence alone
-
-**Multi-service PRs:**
-
-- API contract compatibility (OpenAPI diff, Pact)
-- Deployment order documented or independent
-- Use skill: `ops-backward-compatibility`
-
-### Phase D - AI-Generated Code Quality
-
-- Use skill: `complexity-review` for verbosity, over-engineering, simplification
-- Load **one** framework-specific necessity skill from Step 2's detection:
-  - **NestJS:** Use skill: `node-nestjs-overengineering-review`
-  - **Express:** Use skill: `node-express-overengineering-review`
-
-**Additional Node AI smells the atomics don't own:**
-
-- Redundant mapping layers (`Entity → DomainObject → ServiceDTO → ResponseDto` when one would do)
-- Test verbosity (`beforeEach` > 30 lines for one assertion; full deep-equal when a few field assertions would do)
-- Comment cruft (JSDoc on private helpers repeating the signature; auto-generated TODOs left in)
-- `as any` / `as unknown as T` proliferation in non-test code to silence a real type bug
-
-### Phase E - Maintainability and Clarity
-
-Use skill: `backend-coding-standards` for cross-language naming. Use skill: `ops-observability` for cross-cutting logging/metrics presence (depth belongs to `task-node-review-observability`).
-
-**Node-specific:**
-
-- **Naming:** services describe their operation (`orderFulfillment.service.ts` over `orderHelper.service.ts`); DTOs named after role (`CreateOrderDto`, `OrderResponseDto`); no `Util` / `Manager` / `Helper` modules
-- **Magic numbers / strings:** extracted to module-level constants or config; `60_000` over raw `60000` mid-expression
-- **Hardcoded URLs / credentials:** env / config, not inline
-- **Function length:** > 30 lines extracted; > 60 lines unless clearly orchestrating
-- **Duplicated query logic:** same `where` / `find` predicate in 3+ places extracted to a repository method or QueryBuilder helper
-- **Logging hygiene:** surface `console.log` in prod paths, lines without correlation IDs, wrong levels as `[Recommend]` (depth in observability subagent)
-
-### Step 5 - Delegate Extra Scopes in Parallel
-
-If scope is **Core only**, skip. For each extra scope, spawn one independent subagent **in parallel** with the main thread. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `node-tech-lead` spawn:
+Skip on Core. For each selected scope, spawn one subagent in parallel with the **declared `subagent_type`** - never infer the agent from the scope name:
 
 | Scope | Skill | Subagent (`subagent_type`) |
 |-------|-------|----------------------------|
-| + Perf | `task-node-review-perf` | `node-performance-engineer` |
-| + Sec | `task-node-review-security` | `node-security-engineer` |
-| + Obs | `task-node-review-observability` | `node-observability-engineer` |
-| + Rel | `task-node-review-reliability` | `node-reliability-engineer` |
+| +Perf | `task-node-review-perf` | `node-performance-engineer` |
+| +Sec | `task-node-review-security` | `node-security-engineer` |
+| +Obs | `task-node-review-observability` | `node-observability-engineer` |
+| +Rel | `task-node-review-reliability` | `node-reliability-engineer` |
 
-`Full` = 4 subagents.
+`Full` = four subagents. Each scope's skill is loaded with `Use skill:`; the table names it rather than repeating the directive per row.
 
-**Subagent prompt contract** - each must include:
+**Prompt contract** - each spawn carries: the statement that it runs as a subagent of `task-node-review` (every lens branches on it: no precondition check, no round gate, no verify, no reconcile, no report file); the handle's `base_ref`, `head_ref`, `head_short_name`, `current_base_sha`, `current_head_sha`, and the pre-read diff, `--name-status`, and log; the resolved depth; every Step 2 fact; authorization to read any path at `<head_ref>` via `git show` and to run read-only `git log -p` / `git show <base_ref>:<path>` on changed paths; and the instruction to return exactly what its own subagent clause names - never "its Output Format".
 
-- **The statement that it is running as a subagent of `task-node-review`.** Every lens branches on this to skip its precondition check, skip `review-finding-verify`, and not write a report file. Omit it and four competing report files land on disk.
-- The precondition handle plus `base_ref`, `head_ref`, `base_sha`, `head_sha`, and the pre-read diff, `--name-status`, and commit log (no re-running git)
-- The depth level, and the resolved scope
-- Pre-confirmed stack (Node / TypeScript) + framework (NestJS / Express / mixed) + ORM (Prisma / TypeORM)
-- Authorization to read unchanged files the diff touches, plus `package.json` - several lenses need the full manifest and the call sites a small diff reaches into
-- Instruction to return the payload its own **Subagent mode** clause enumerates. Do not instruct it to "return its Output Format" - each lens's subagent clause deliberately overrides that, and following it literally would return a Summary block this workflow discards.
+Every lens returns `## Findings` with its tier sections (each finding a numbered block carrying its label, Location, and the lens's fields) plus any `out of lens` lines; reliability ends it with a `Resilience Libraries:` line. Additionally: perf at `deep` returns `## Capacity Guidance` and `## Load Plan`; reliability at `deep` returns `## Failure-Mode and Blast-Radius Map`; security returns `## Not verifiable` when a control could not be read.
 
-**Failure isolation:** if a subagent fails or times out, continue with the rest. Note the missing scope in Summary.
+**Failure isolation:** a subagent that fails or times out is skipped; note `Scope incomplete: <scope>`, and the checkpoint's `scope` records only the lenses that returned (Step 10).
 
-### Step 6 - Synthesize (only if Step 5 ran)
+**No-spawn fallback:** when the environment cannot spawn subagents, run each selected lens inline and in sequence using its own skill, as a subagent run: its Steps 1-3 pre-satisfied, its verify, reconcile, and writer skipped; its checklist and atomic-load gates applied unchanged to the code already read (an atomic its gate selects is opened, not recalled). Each inline lens produces its own `## Findings` first; Step 9.3 then projects and merges them. Note `Scopes run inline`.
 
-Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
+### Step 9.3 - Assemble the Finding Set
 
-**Findings** fold into `## High-Impact Findings`:
+Runs once Step 9 has returned (on Core, over core findings alone). Verify, reconcile, and the report all read this set:
 
-- **Field mapping.** Each lens names its middle fields differently. Reliability's `Failure Mode` -> `Impact` and `Blast Radius` -> `System Risk`. Security's `Attack scenario` -> `Impact` and `Severity rationale` -> `System Risk`. Perf and observability return `Impact` only - derive `System Risk` from why the finding is systemic (shared pool, shared event loop, undiagnosable incident); if it is genuinely local, it is not a `[Must]`.
-- **Carry the lens's severity** into the finding's `Severity:` line. `[Must]` / `[Recommend]` is the merge key, but a Critical and a High both arriving as `[Must]` must stay distinguishable in the report.
-- **Deduplicate** cross-cutting findings into one entry whose `Scope:` line cites every scope that raised it.
-- **Strongest intent wins** when labels differ for the same finding: `Must` > `Recommend`.
-- **Preserve `file:line` citations**; **order by intent**, not by scope.
+1. **Project each lens's findings.** Tier by the severity word in the section heading: perf and security `Critical` / `High` / `Medium` / `Low`, observability and reliability `High` / `Medium` / `Low` (`Low Impact / Quick Wins` is Low). The label is the block's `[Must]` / `[Recommend]` token, kept as returned. Re-file each as this report's finding block: heading from the label and the `file:line` prefix of its Location, `Severity:` the tier, `Scope:` the lens, `Issue:` its Issue, `Impact:` its Impact (security: Attack scenario; reliability: Failure Mode, plus `(assumes: <Assumption>)` when it carried one), and `Fix:`. `System Risk:` on a lens `[Must]` states its reach - reliability's Blast Radius when it has one; otherwise written here from what the defect shares (a pool, the event loop, a tenant boundary, the diagnosis of an incident).
+2. **Merge.** Core (Steps 5-8), Step 3.7, and lens findings making the same claim about the same defect collapse to one entry: strongest label and highest Severity win, one `file:line`, and `Scope:` lists every source (Step 3.7 counts as Core). Distinct claims at one `file:line` stay separate. The merged entry takes the prose that states the mechanism most specifically; when sources disagree on a fact, Step 9.4's evidence settles it. A requirement finding and a defect finding on the same gap merge, the Issue line naming the criterion.
+3. **Non-finding lines.** A lens `out of lens` line is drafted here as a finding (label per Feedback Labels, Fix written here). `## Architecture Notes` carries each `architecture-guardrail` finding's `Drift:` line by `file:line` (or its `No Violations Found` sentence) and the Step 6 anemic-domain observation; `## Maintainability Notes` carries Step 7's unlabelled bullets (mapping layers, test verbosity, comment cruft); the labelled findings those atomics raise join the set in item 2. A lens's non-finding sections (Capacity Guidance, Load Plan, the Failure-Mode map, Not verifiable) render verbatim after Next Steps; reliability's `Resilience Libraries:` line goes into Summary Notes.
+4. **Next Steps.** One entry per published finding: `[Implement]` when the fix is local to the PR, `[Delegate]` with a `[scope: <owner>]` token when it leaves the PR; plus one `[Delegate]` `[Recommend]` `[scope: verify]` per security Not verifiable entry.
 
-**Everything else a lens returns** goes to `## Scope Reports`, verbatim under an `### +<scope>` heading: `## Recommendations`, observability's Surface Map, security's OWASP Triage and `Not verifiable from this diff`, reliability's `Resilience Libraries:`, and every deep-only section (reliability's `Failure-Mode and Blast-Radius Map`, perf's `Capacity Guidance` and `Load Plan`). These are not findings and the merge must not drop them.
+### Step 9.4 - Verify Findings
 
-**Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by intent. **Note missing scopes** in Summary as `Scope incomplete: <scope>`.
+Use skill: `review-finding-verify` with the Step 9.3 set, the diff already read, and `base_ref` / `head_ref` - one row per assembled entry, so the tally counts each defect once.
 
-### Step 6.6 - Verify Findings (second pass)
+Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the `Label` and `Annotation` columns. The annotation sits on the finding heading, each its own `_(...)_` group: the combined `_(pre-existing; newly reachable via ...)_` is written `_(pre-existing)_ _(newly reachable via ...)_`, because `review-prior-findings-reconcile` matches `_(pre-existing)_` exactly. Fill Summary's `Findings verified:` in the atomic's Summary form.
 
-Use skill: `review-finding-verify` with the assembled findings (including any merged back from subagents), the diff already read, and `base_ref` / `head_ref`.
-
-Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`.
-
-### Step 6.5 - Reconcile Prior Findings (round 2+ only)
+### Step 9.5 - Reconcile Prior Findings (round 2+ only)
 
 Skip on round 1. Otherwise use skill: `review-prior-findings-reconcile` with:
 
-- `prior_report`: the loaded body of `review-<branch>.md` (frontmatter excluded)
-- `diff`: the full-range diff from Step 3
-- `name_status`: the full-range `git diff --name-status <base_ref>...<head_ref>` from Step 3
+- `prior_report`: the body of the file at the handle's `report_path` (frontmatter excluded), read here
+- `diff` and `name_status`: the full-range reads from Step 3
+- `head_sha`: `current_head_sha`
+- `head_files`: `git ls-tree -r --name-only <current_head_sha>`
 
-The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
+Its table, note line, and tally render under `## Prior Round Reconciliation`.
 
-`Still open` and `Needs re-check` rows are unresolved: carry both into `## High-Impact Findings` at their prior label, suffixed `(open since round <prior.round>)`, and give each a matching `## Next Steps` entry ordered alongside this round's findings. They arrive already labelled and do not pass through Step 6.6, so exclude them from its tally. Do not emit a standalone "Carry-Over Open Items" section.
+`Still open` and `Needs re-check` rows are unresolved. A row this round re-derived publishes once, in `## High-Impact Findings` at this round's label (a label change noted in the row's Notes). A row is re-derived when this round's set holds a finding on the same construct with the same smell. A row this round did not re-derive republishes its prior block verbatim in `## High-Impact Findings` at its prior label - heading keeping the prior `file:line` and every annotation group, plus `_(carried from round <prior.round>)_` unless a carried group is already there - and skips Step 9.4, outside its tally. Both get a Next Steps entry suffixed `(open since round <N>)`, `<N>` the earliest round the finding appeared, ordered by label with carryovers first among equals. A prior label outside `[Must]` / `[Recommend]` stays verbatim in the table and maps before publication: `[Blocker]`, `[High]`, `[Critical]` -> `[Must]`; anything else -> `[Recommend]`; `[Praise]` rows are never carried. No standalone "Carry-Over" section - reconcile parses only `## High-Impact Findings`, so a row kept out of it is invisible to round 3.
 
-### Step 7 - Write Report
+### Step 10 - Write Report
 
-Use skill: `review-report-writer` with `report_type: review` and these checkpoint fields:
+**Assessment** follows the open-label set: `Request Changes` when any `[Must]` is open (this round's findings and carried rows alike); `Discuss` when none is, but a `[Recommend]` rests on an assumption only the author can settle; `Approve` otherwise. Order findings and Next Steps by label, not by scope. Key Takeaways are 2-4 bullets on what the set says about the change as a whole - a pattern, a systemic risk, a structural cause - never a restated finding.
 
-- `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
-- `mode: full` (the writer's only accepted value), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = node-typescript`
+Use skill: `review-report-writer` with `report_type: review` and:
 
-Write before ending; print the confirmation line.
+- `report_body` (the assembled report), `branch` (Step 3), `base_ref` and `head_ref` as the handle emitted them, `base_sha = current_base_sha`, `head_sha = current_head_sha`
+- `mode: full`, `round` (Step 3.5), `prior_head_sha = prior_checkpoint.head_sha` when round > 1, `pr_url` when the request carried a PR URL, else `prior_checkpoint.pr_url` when present
+- `scope` in the writer's enum (`Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full`) over the lenses that returned - a `Full` run that lost a lens writes the one to three that ran, space-joined in the order `+perf +sec +obs +rel`, and none -> `core-only`; `depth` as resolved; `stack = node-typescript`
+
+Emit the body, then the writer's confirmation line.
 
 ## Feedback Labels
 
-| Label        | Meaning                                                                  |
-| ------------ | ------------------------------------------------------------------------ |
-| [Must]       | Do not merge until this is fixed.                                        |
-| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
+Every finding carries exactly one label: `[Must]` (do not merge until fixed) or `[Recommend]` (fix, or push back with reasoning - never silently acked). A finding this workflow raises takes `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise; its `Severity:` is High for a `[Must]` that corrupts state, moves money wrongly, exposes data across tenants or users, or takes the service down (a write-blocking migration on a large table, a pool breached at deploy) - Critical when unauthenticated, already exploitable, or losing data - Medium for other `[Must]`s and `[Recommend]`s with user-visible effect, Low otherwise. Where `review-finding-verify` publishes a different `Label`, it governs - in Next Steps and Assessment too.
 
-No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]` or `[Recommend]`, don't write it down.
+**Envelope precedence.** The atomics loaded in Steps 5-8 emit their own blocks and severity scales. Fold their content into this report's finding blocks; emit none of their envelopes, target-state blocks, `Cleared:` or `Considered, not flagged` lines. Mapping: an atomic's High -> `[Must]`, Medium / Low -> `[Recommend]`, except a maintainability-only High (complexity, structure, naming) and an `ops-observability` presence gap (one that leaks no secret or PII) -> `[Recommend]`; an atomic's own `[Must]` / `[Recommend]` stands, except for entity exposure (Step 5); `ops-backward-compatibility` `Compatible: No` or `No (unverified)` on an externally consumed surface -> `[Must]` (the latter's Issue saying it is unverified); a necessity skill's `Out of scope:` item becomes a finding here when it names a defect.
 
 ## Output Format
 
-The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+Emit `report_body` as raw Markdown; the fence below delimits the template for display only. Brace annotations are authoring notes, never emitted. Omit empty sections, except `## High-Impact Findings`, which always renders (`No findings.` when empty) because the next round's reconcile reads it; omit Next Steps when nothing is actionable.
 
 ```markdown
 ## Summary
 
-- **Assessment:** Approve | Request Changes | Discuss _(any `[Must]` -> Request Changes; no `[Must]` -> Approve; Discuss only when the change is sound but a stated tradeoff needs an owner's call)_
-- **Risk Level:** Low | Medium | High | Critical
-- **Blast Radius:** Narrow | Moderate | Wide | Critical
-- **Stack Detected:** Node.js <version> / TypeScript <version>
-- **Framework:** NestJS <version> | Express <version> | mixed
-- **ORM:** Prisma <version> | TypeORM <version>
-- **Scope:** Core | Full | one or more of +Perf +Sec +Obs +Rel, space-joined in that order _(if auto-escalated, append: `auto-escalated from <prior scope>; signals: <category -> file:line list>`)_
-- **Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
-- **Round:** <N>                                _(include from round 2 onward)_
-- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped (<F> false positive, <R> resolved by diff) _(omit the parenthetical when K is 0)_
-- **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
+- **Assessment:** Approve | Request Changes | Discuss - <open [Must] count; on Discuss, the assumption to settle>
+- **Risk Level:** Low | Medium | High | Critical   {the atomic's line as emitted}
+- **Blast Radius:** Narrow | Moderate | Wide | Critical   {the atomic's line as emitted - parenthetical or two-state form included}
+- **Stack:** Node.js <version> / TypeScript <version> / <NestJS | Express | mixed> <version> / <Prisma | TypeORM | other> <version>   {versions from package.json; omit one it does not pin}
+- **Scope:** Core | +Perf | +Sec | +Obs | +Rel | Full   {plus the Step 4 annotation when one applies}
+- **Depth:** standard | deep   {append `auto-promoted from standard; Blast Radius: <level>` when promoted}
+- **Round:** <N>   {round 2+ only}
+- **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}
+- **Requirement Source:** <path or origin> (Specified | Self-attested)   {this line and the next together, or both omitted when Step 3.7 resolved no source}
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
-- **Notes:** <every `Note in Summary` string this run produced - round, scope, depth, and missing-scope notes - one per line; omit when there are none>
+- **Notes:**   {omit when none}
+  - <each note Steps 2-9 produced: round, scope, depth, short-circuit, inline or incomplete scopes, ORM `other`, the handle's own notes>
 
 ## Change Brief
 
@@ -362,117 +289,96 @@ The fence below delimits the template for display only - it is not part of the r
 
 **Delivered:** <the mechanism implemented and where>
 
-**Author decisions:** <each choice the request did not imply, with its consequence, excluding choices already raised as findings; `None observed` when nothing remains>
+**Author decisions:** <each choice the request did not imply, with its consequence, excluding choices raised as findings; `None observed` when nothing remains>
 
 **Watch points:** <what to confirm by hand before reading findings; `None` when there are none>
 
-## Requirement Traceability _(omit when Phase 0 resolved no source)_
+## Requirement Traceability   {omit when Step 3.7 resolved no source}
 
 | Criterion | Status | Implementation | Proof |
 | --------- | ------ | -------------- | ----- |
-| <id or quoted outcome> | Met \| Partial \| Unmet \| Deferred \| Untraceable | <file:line, or `-`> | <file:line or verification note, or `-`> |
+| <id or quoted outcome> | Met \| Partial \| Unmet \| Deferred \| Untraceable | <file:line, `file:line (pre-existing)`, or `-`> | <file:line or verification note, optionally `(pre-existing)`, or `-`> |
 
-## Prior Round Reconciliation _(round 2+ only; omit otherwise)_
+## Prior Round Reconciliation   {round 2+ only}
 
 | Round <N-1> Finding | file:line | Status | Notes |
 | ------------------- | --------- | ------ | ----- |
-| ...                 | ...       | ...    | ...   |
+| ... | ... | ... | ... |
+
+<the reconcile skill's note line, when it emitted one>
 
 Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
-### [Must] file:line
+### [Must] file:line   {+ annotation groups per Steps 9.4 and 9.5}
 
-- Severity: Critical | High | Medium | Low _(from the lens that raised it; Phase B findings state their own)_
-- Scope: Core | +Perf | +Sec | +Obs | +Rel _(every scope that raised it, when deduped across several)_
-- Issue: [name the Node idiom: blocking `crypto.pbkdf2Sync` in async handler, missing `@UseGuards`, ORM entity returned from controller, BullMQ `queue.add` inside transaction, `ValidationPipe` missing `whitelist: true`, `Object.assign(target, req.body)` prototype-pollution surface, etc.]
-- Impact: [user-visible or operational]
-- System Risk: [why this is system-level, not just a local bug]
-- Fix: [concrete Node change with code]
+Severity: Critical | High | Medium | Low
 
-### [Recommend] file:line
-- Issue: ...
-- Impact: ...
-- Fix: ...
+Scope: Core | +Perf | +Sec | +Obs | +Rel   {every source, comma-joined, when merged}
+
+Issue: <the Node idiom: `queue.add` inside `$transaction`, `@Public()` on a tenant-scoped read, raw entity returned from a controller, `ValidationPipe` without `whitelist`, `crypto.pbkdf2Sync` in a handler>
+
+Impact: <user-visible or operational consequence>
+
+System Risk: <why this is system-level, not local>   {`[Must]` defects only; a requirement finding names its criterion instead}
+
+Fix: <concrete Node change with code>
+
+### [Recommend] file:line   {+ annotation groups}
+
+Severity: ...
+
+Scope: ...
+
+Issue: ...
+
+Impact: ...
+
+Fix: ...
 
 ## Architecture Notes
 
-_Cross-cutting commentary. Do not restate individual findings; reference them by file:line._
-
-- Boundary impact:
-- Coupling change:
-- Drift detected:
+- Boundary impact / Coupling change / Drift detected   {reference findings by file:line; never restate them}
 
 ## Maintainability Notes
 
-_Same rule as Architecture Notes._
-
-- Over-engineering detected:
-- Simplification opportunities:
-
-## Scope Reports
-
-_One `### +<scope>` block per lens that ran, carrying what it returned outside its findings: `## Recommendations`, observability's Surface Map, security's OWASP Triage and `Not verifiable`, reliability's `Resilience Libraries:` and `Failure-Mode and Blast-Radius Map`, perf's `Capacity Guidance` and `Load Plan`. Verbatim; do not summarize. Omit the whole section on a Core-only review._
+- Over-engineering detected / Simplification opportunities
 
 ## Key Takeaways
 
-2-4 bullets on systemic impact and what to address before merge.
+- <2-4 bullets on systemic impact>
 
 ## Next Steps
 
-On round 2+, prior-round Still open items are folded in with (open since round <N>) suffix and ordered by intent alongside new findings. Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
+1. **[Implement]** [Must] file:line - <one-line action>
+2. **[Implement]** [Recommend] file:line - <action> (open since round 1)
+3. **[Delegate]** [Recommend] [+Sec] - run `/task-node-review-security` (suppressed signal: <signal>)
+4. **[Delegate]** [Recommend] [scope: platform] - <action for a fix leaving the PR>
 
-1. **[Implement]** [Must] file:line - [one-line action]
-2. **[Implement]** [Recommend] OldFile.ts:88 - N+1 in listAll (open since round 1)
-3. **[Delegate]** [Recommend] [scope: cross-service] - [one-line action]
-
-_Omit if no actionable findings._
+## <Lens section title>   {each non-finding section a lens returned, verbatim - Step 9.3}
 ```
-
-**Omit empty sections.** No Must heading if there are none.
-
-## Rules
-
-- Review whole-change system impact, not file-by-file
-- Lead with risk; line-level findings follow
-- Apply Node conventions, not generic backend conventions
-- Provide actionable feedback with TypeScript code examples
-- Default Core; auto-escalate; honor `core-only`
-- Delegate perf / security / observability / reliability depth to subagents
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded; stack, framework, ORM recorded (Steps 1-2)
-- [ ] `review-precondition-check` ran (or handle received); diff/log read once (Step 3); current_head_sha and current_base_sha captured
-- [ ] Step 3.5 - round decided (1 / prior + 1 / no-op); auto-fetch attempted only when prior checkpoint exists; the full `<base_ref>...<head_ref>` range analyzed regardless of round; no-op path exits without writing the report
-- [ ] Scope auto-escalation evaluated and recorded; depth auto-promoted on Wide/Critical blast radius (Step 4, 4.5)
-- [ ] Phase 0 - `review-change-intent` ran on the cumulative diff; Change Brief carried into the report; requirement lines in Summary, or all three requirement outputs omitted when no source resolved; its findings verified with the rest
-- [ ] Risk + blast radius stated before any finding (Phase A)
-- [ ] Phase B: atomic skills applied; test-coverage gap raised as a named finding when the PR adds untested logic (no gap is a valid outcome); event-loop, validation strict, authz / IDOR, response-DTO hygiene, Idempotency-Key, race safety, migration safety all checked; API contract checks ran when a route, controller, DTO, or OpenAPI spec changed
-- [ ] Phases C-E ran (C: layering, DI, settings, listener / middleware, multi-tenant; D: `complexity-review` + framework-matching necessity skill; E: naming, magic numbers, function length, logging hygiene) - or low-risk short-circuit invoked and noted in Summary
-- [ ] Every Must cites system risk; every finding has label + `file:line` + actionable Node fix
-- [ ] Extra scopes ran in parallel with a prompt that named subagent mode and passed the handle, SHAs, scope, and repo-read authorization; findings merged intent-ordered with Severity and Scope carried; everything a lens returned outside its findings landed in `## Scope Reports`; missing scope noted as `Scope incomplete: <scope>`
-- [ ] Step 6.6 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels applied; tally in Summary
-- [ ] Step 6.5 - on round 2+, review-prior-findings-reconcile ran; reconciliation table inserted; Still open rows folded into Next Steps with (open since round <N>) suffix
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered by intent
-- [ ] Report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation printed
+- [ ] Step 1: `behavioral-principles` loaded (subagent: loaded, or rules inlined in the spawning prompt)
+- [ ] Step 2: stack confirmed; `Framework` and `ORM` resolved, including `mixed` / `other`
+- [ ] Step 3: `review-precondition-check` ran with the argument, `--base`, and `report_type: review` (or handle received); `branch` = `head_short_name`; SHAs captured before the diff, name-status, and log were read once
+- [ ] Step 3.5: round decided from the handle before any read; no-op exits without writing
+- [ ] Step 3.7: `review-change-intent` ran; Change Brief rendered; requirement lines and traceability present together or omitted together; its findings joined the set
+- [ ] Step 4: Risk and Blast Radius stated as emitted; depth promoted on the right value; scope resolved with its annotation; a `[Delegate]` per suppressed signal; short-circuit noted when taken
+- [ ] Step 5: touched-area atomics loaded (every one at `deep`); API contract gate ran on a contract-change signal; the non-atomic checks applied
+- [ ] Steps 6-8: guardrails, AI-quality, and maintainability applied - or skipped by the short-circuit
+- [ ] Step 9: lenses spawned in parallel with the prompt contract (or run inline, noted); failed scopes noted
+- [ ] Step 9.3: lens findings projected; same-claim entries merged with every source in `Scope:`; `out of lens` lines drafted; non-finding lens sections kept
+- [ ] Step 9.4: `review-finding-verify` ran on the assembled set; Dropped excluded; `Label` and split `Annotation` groups applied; four-term tally in Summary
+- [ ] Step 9.5: round 2+ reconciled from `report_path` with `head_sha`; unresolved rows carried with `_(carried from round <N>)_` and a Next Step; legacy labels mapped
+- [ ] Step 10: Assessment from the open-label set; report written with every writer field; confirmation printed
+- [ ] Every `[Must]` states System Risk; every finding has a label, `file:line`, and a Node fix
 
 ## Avoid
 
-- State-changing git from this workflow (checkout/merge/pull/rebase). The one allowed exception is `git fetch <remote> <branch>` in Step 3.5a, and only when a valid prior checkpoint exists.
-- Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
-- Scoping round 2+ analysis to `<prior_head_sha>...<head_sha>` - risk, scope, depth, and requirement fit score the full `<base_ref>...<head_ref>` range on every round.
-- Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
-- Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
-- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.
-- Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
-- Reviewing without reading the full diff and commit log first
-- Generic backend conventions when a Node idiom exists ("extract to a service module", not "extract to a helper class")
-- Vague feedback ("this could be better")
+- State-changing git from this workflow
+- Generic backend advice where a Node idiom exists ("move the enqueue after `$transaction` resolves", not "decouple the side effect")
 - Blocking on personal preference
-- Running extra scopes when `core-only` was passed
-- Duplicating perf / security / observability / reliability depth here when the dedicated subagent owns them
-- Sequential extra scopes that could parallelize
-- Appending raw subagent reports instead of merging
-- Recommending sync `fs.readFileSync` / `crypto.pbkdf2Sync` in request paths, `eval` / `new Function` on untrusted input, or `Object.assign(target, req.body)` as acceptable patterns
+- Duplicating a lens's depth in core when that lens runs

@@ -13,294 +13,230 @@ user-invocable: true
 
 # Node.js Performance Review
 
-Node.js-aware performance review naming Prisma `include` / `select` / `findMany`, TypeORM relations / QueryBuilder, event-loop discipline, NestJS interceptor / pipe overhead, BullMQ task design, and Prisma / TypeORM migration safety. Findings have measured or estimated impact (latency, throughput, query count, event-loop lag) and concrete TypeScript strict-mode fixes.
+Node.js-aware performance review naming Prisma `include` / `select` / `findMany`, TypeORM relations / QueryBuilder, event-loop discipline, NestJS interceptor / pipe overhead, BullMQ throughput, and migration lock cost. Findings carry measured or estimated impact (latency, throughput, query count, event-loop lag) and concrete TypeScript fixes.
 
 ## When to Use
 
 - NestJS or Express PR / branch perf regression review
-- Slow endpoint / BullMQ job / scheduled cron investigation
-- Pre-merge perf pass on ORM queries, async boundaries, BullMQ dispatch, event-loop-blocking calls
-- Quarterly N+1 / pool-sizing / async-correctness sweep against APM data
+- Slow endpoint / BullMQ job / cron investigation, or a quarterly N+1 / pool / async sweep against APM data (whole-service sweep, below)
 
-**Not for:**
-- General Node review (`task-node-review`)
-- Security review (`task-node-review-security`)
-- Pre-implementation design (`task-node-implement`)
+**Not for:** general review (`task-node-review`), security (`task-node-review-security`), pre-implementation design (`task-node-implement`).
 
 ## Depth Levels
 
 | Depth | When | Runs |
 |-------|------|------|
-| `standard` | Default | All steps |
-| `deep` | Requested, handed down by a parent, profiler or APM data supplied, or any whole-service sweep | All + `Capacity Guidance` + `Load Plan` |
+| `standard` | Default | Steps 1-11 |
+| `deep` | Requested, handed down by a parent, profiler / APM data supplied, or any whole-service sweep | Steps 1-11 + `## Capacity Guidance` + `## Load Plan` |
 
 ## Invocation
 
-| Form | Meaning |
-|------|---------|
-| `/task-node-review-perf` | Current branch vs base; fails fast on trunk |
-| `/task-node-review-perf <branch>` | `<branch>` vs base (3-dot) |
-| `/task-node-review-perf pr-<N>` | PR head fetched into local branch `pr-<N>` |
+`/task-node-review-perf [<branch> | pr-<N>] [--base <branch>] [standard | deep] [sweep]`
 
-Depth (`standard` \| `deep`) and `--base <branch>` compose with any form: `/task-node-review-perf pr-50273 --base release/2026.05 deep`. When invoked as subagent, Step 2 is skipped and pre-read diff is reused.
+Defaults to the current branch vs its base; fails fast on trunk. As a subagent of `task-node-review`, Step 3 is pre-satisfied and Step 11 takes its subagent branch.
 
-**Whole-service sweep.** The quarterly / APM-driven sweep has no diff, so the trunk fail-fast would end it. Enter this path only when Step 2 fails fast on trunk **and** the invocation asked for a sweep or supplied profiler / APM data - a wrong-branch mistake is not a sweep, and there the fail-fast stands. On the sweep path:
+**Whole-service sweep** - decided before Step 3: the invocation says `sweep`, or asks for a sweep / investigation with no PR, or supplies profiler / APM data with no branch argument while the checked-out branch is trunk. A bare invocation on trunk is not a sweep - Step 3 runs and fails fast. On the sweep:
 
-- Scope is the service's own source root, or the path the invocation named. Every "changed" / "in diff" wording below reads as "in scope".
-- Findings cite current code at `HEAD`. Verification is inline (Step 10's carve-out), not `review-finding-verify`.
-- Writer fields come from the repo: `branch` = current branch short name, `base_ref` = `head_ref` = that same name, `base_sha` = `head_sha` = `git rev-parse HEAD`, `round` from the re-review gate as usual.
-- The Summary carries `Target:` naming the swept scope, and the run is `deep`.
-- Rank by the supplied evidence first: an endpoint named in the APM data outranks a checklist hit with no measurement behind it.
+- Scope is the service's source root, or the paths the request named; every "changed" / "in the diff" wording reads "in scope". Findings cite current code at the named branch, else `HEAD`, read via `git show <ref>:<path>`; `[Implement]` means a fix inside the swept scope.
+- The run is `deep`. Rank by the supplied evidence first: an endpoint named in the APM data outranks a checklist hit with no measurement behind it.
+- No precondition check, no round gate, no writer: Step 10 verifies inline and the report body is the response. Summary `Target:` names the swept scope.
 
 ## Workflow
 
-### Step 1 - Load Behavioral Principles and Confirm Stack
+### Step 1 - Behavioral Principles
 
-Use skill: `behavioral-principles` first, before any other delegation. Then use skill: `stack-detect`; accept a pre-confirmed stack from a parent. Then:
+Use skill: `behavioral-principles`. Accept the parent's confirmation when invoked as a subagent.
 
-- `nest-cli.json` / `@nestjs/*` in deps -> **NestJS**
-- `express` in deps without `@nestjs/*` -> **Express**
-- Both -> ask which surface this PR targets; do not guess
+### Step 2 - Confirm Stack
 
-Detect ORM from evidence, never from framework: `@prisma/client` in deps / `prisma/schema.prisma` -> **Prisma**; `typeorm` in deps / `data-source.ts` -> **TypeORM**; both -> ask which surface this PR touches. Record `Framework` and `ORM` for the Summary.
+Use skill: `stack-detect`; accept a pre-confirmed stack from a parent. Not Node -> stop and route to `/task-code-review-perf`. Record from evidence (a parent passes these):
 
-### Step 2 - Resolve the Diff
+- `Framework`: NestJS (`nest-cli.json` / `@nestjs/core`), Express, or `mixed` - apply each app's idioms to its own files
+- `ORM`: Prisma (`@prisma/client`; note the major - Prisma 7 / `@prisma/adapter-*` pools through the adapter), TypeORM (note the driver: `pg` or `mysql2`), both (each ORM's atomic on its own files), or `other` (no ORM atomic; generic query checks, noted)
 
-Use skill: `review-precondition-check`; forward `--base <branch>` when passed. Read diff and log once via `git diff <base>...<head>` and `git log <base>..<head>`; reuse. Also capture `base_sha` / `head_sha` via `git rev-parse` on the handle's refs - the writer runs no git of its own. Skip entirely as subagent with handle + pre-read.
+### Step 3 - Resolve the Diff (standalone only)
 
-If `review-precondition-check` fails fast, surface verbatim and stop - **except** a trunk fail-fast on a sweep invocation, which routes to the Whole-service sweep under Invocation instead of stopping.
+Use skill: `review-precondition-check` with the invocation's target argument, any `--base`, and `report_type: review-perf`. A fail-fast surfaces verbatim and stops. A sweep is decided from the invocation before this step and never runs it, so a precondition failure never routes there.
 
-**Re-review gate (standalone only).** The handle's `prior_checkpoint` is keyed to `review-<branch>.md`, the general review's report - not this lens's. Check for `review-perf-<branch>.md` yourself, sanitizing `branch` the way the writer does (`/` and any character outside `[A-Za-z0-9_-]` becomes `-`). If it exists with valid frontmatter, its `head_sha` equals the current head, the invocation adds no depth beyond it, and it is not a sweep checkpoint standing in front of a diff review, print `No new commits on <branch> since prior perf review at <sha_short>. Prior report unchanged.` and stop without writing. Otherwise `round` = prior + 1, and pass its `head_sha` as `prior_head_sha`. No such file, or one whose frontmatter is missing or invalid -> `round: 1`, no `prior_head_sha`; that is the common path and it is not an error.
+**Round gate.** Capture `base_sha` / `head_sha` via `git rev-parse` on the handle's refs and decide the round before reading anything else: a valid `prior_checkpoint` whose `head_sha` and `base_sha` equal the captured ones and whose `depth` covers the resolved one (`deep` covers `standard`) -> print `No new commits on <head_short_name> since prior perf review at <sha_short>. Prior report unchanged.` (`<sha_short>` = first 7 chars of `head_sha`) and stop - no review, no report. Otherwise `round` = its `round` + 1 and `prior_head_sha` = its `head_sha`; no `prior_checkpoint`, or `legacy` (the Step 11 write overwrites the file) -> `round: 1`, no `prior_head_sha`.
 
-### Step 3 - Read the Performance Surface
+Then read once: `git diff <base_ref>...<head_ref>`, `git diff --name-status <base_ref>...<head_ref>`, `git log --oneline <base_ref>..<head_ref>`. Every file outside the diff is read with `git show <head_ref>:<path>`.
 
-Cite real `file:line` per finding. Open:
+### Step 4 - Read the Performance Surface
 
-**Prisma:** every changed `schema.prisma` model (relations, `@@index`, `@db.*`), every changed repository / service (`findMany` / `findUnique` / `include` / `select` / `where` / `orderBy`), controllers (`@UseInterceptors`, response DTOs), `prisma.service.ts` / config for `connection_limit` / `log`, migrations under `prisma/migrations/`.
+Cite real `file:line`. Open:
 
-**TypeORM:** every changed entity (`@Entity`, `@OneToMany`, `@ManyToOne`, `@Index`, `eager`), repositories (`find` / `createQueryBuilder` / `relations`), Express routes / middleware (async error forwarding), DTOs (Zod / Joi / class-validator), `data-source.ts` for `poolSize` / `extra.max` / `synchronize`, migrations under `src/migrations/`.
+- **Prisma:** changed `schema.prisma` models (relations, `@@index`, `@db.*`), repositories / services (`findMany` / `include` / `select` / `where` / `orderBy`), controllers and response DTOs, migrations under `prisma/migrations/`, and the pool config - the `DATABASE_URL` in env / deploy manifests on Prisma 5-6, the adapter's `max` on Prisma 7
+- **TypeORM:** changed entities (`@OneToMany`, `@ManyToOne`, `@Index`, `eager`), repositories (`find` / `createQueryBuilder` / `relations`), the `DataSource` options (`extra.max` / `poolSize` / `synchronize`), migrations
+- **Both:** BullMQ producers, processors, queue options - every processor sharing a worker process, since the pool check sums them; outbound clients; interceptors and pipes
 
-**Both:** BullMQ producers, `@Processor` classes, queue config.
+A small diff that calls into unchanged code (a new endpoint on an existing N+1 repository) means reading the unchanged file - the regression lives there.
 
-If the diff is small but ripples into unchanged code (a new endpoint calling an existing N+1 repository), read the unchanged file - the regression lives there.
+### Step 5 - ORM Hotspots
 
-### Step 4 - ORM Hotspots (Prisma or TypeORM)
+Use skill: `node-prisma-patterns` (Prisma) or `node-typeorm-patterns` (TypeORM). Flag deviations:
 
-Canonical patterns: Use skill: `node-prisma-patterns` (Prisma) or `node-typeorm-patterns` (TypeORM). This step flags deviations - skip the irrelevant subsection on monoglot projects.
+- [ ] **N+1** - Prisma `include` / `select`; TypeORM `relations` or `leftJoinAndSelect` (never `eager: true` on a collection). Without the `relationJoins` preview Prisma runs one query per relation level; with it, `relationLoadStrategy: "join"` is the default (one query: `LATERAL` on PostgreSQL, correlated subqueries on MySQL). The win is a bounded query count over a per-row loop, not necessarily one query. `Promise.all(ids.map(id => findUnique(...)))` is batched by Prisma into one query and is not an N+1
+- [ ] **Collection join plus pagination** (TypeORM) - with `leftJoinAndSelect` on a collection, `limit` / `offset` page the joined rows (a page holds fewer roots than asked - `[Must]`), and `skip` / `take` wrap a `DISTINCT` id subquery that pages wrong under a joined-column sort; use a two-phase page (ids, then relations) or `relationLoadStrategy: "query"`
+- [ ] **Overfetch** - Prisma `select`; TypeORM `find({ select: { id: true, ... } })`; large `text` / `jsonb` / `bytea` columns never fetched by default in a list
+- [ ] **Unbounded reads** - list endpoints use `take` + keyset (cursor) pagination, not bare `findMany` / `find()`; an offset page over a large table is Medium
+- [ ] **Per-row writes** - batch with `createMany` (a per-row array) / `updateMany` (one `data` for every matched row) or TypeORM `insert([...])`. A per-row `upsert` with per-row values becomes one `$executeRaw` `INSERT ... ON CONFLICT DO UPDATE SET col = EXCLUDED.col` (PostgreSQL), or chunked `upsert` calls inside one `$transaction`. Reads collapse to one predicate (`where: { id: { in: ids } }`, TypeORM `In(ids)`), re-associated in memory. `Promise.all` over a per-row write loop (or non-`findUnique` reads) is not the fix: it still issues N queries, which queue on the pool (`P2024` after `pool_timeout`, or an indefinite wait on node-`pg`'s default `connectionTimeoutMillis: 0`)
+- [ ] **Existence checks** - `findFirst({ where, select: { id: true } })` / `repository.exists({ where })` over fetch-then-`length`
+- [ ] **Pool sizing** - Use skill: `node-connection-pool-sizing`: per-process pool x processes (API replicas + workers + surge during rolling deploys) against `max_connections` minus reserved and ops slots; summed worker `concurrency` per process (x fan-out) + 2 <= the per-process pool; a sandboxed processor checks each child. A measured holder count (an incident, a `pg_stat_activity` figure) beats the formula; say which was used. When replica count or `max_connections` is unreadable, compute the verdict on stated assumptions and suffix it `(assumed)`, per `node-connection-pool-sizing`, naming each assumed input in Notes. A pool finding files in Findings; `## Capacity Guidance` carries the arithmetic, not a second copy of the finding
+- [ ] **Prod-unsafe config** - TypeORM `synchronize: true` or `prisma db push` outside dev (Critical); Prisma `log: ['query']` / TypeORM `logging: true` in prod (High)
 
-- [ ] **N+1**: Prisma `include` / `select`; TypeORM `relations: [...]` or `leftJoinAndSelect` (avoid `eager: true` on collections - cartesian explosion). The fix is a bounded number of queries, not one: TypeORM's `leftJoinAndSelect` emits a single JOIN, but Prisma's default `relationLoadStrategy` is `query` - one statement per relation level, stitched in memory - so nested `include` is a few round trips, not one, and only `relationLoadStrategy: "join"` makes it a JOIN - which needs `previewFeatures = ["relationJoins"]` in the generator block before Prisma 6.7, and is Postgres/MySQL only. Either way the win is over a per-row loop, which is O(rows)
-- [ ] **Overfetch**: Prisma `select`; TypeORM `find({ select: [...] })` - defaults return all columns including large `text` / `bytea`
-- [ ] **Missing indexes** for `where` / `orderBy` / `groupBy` - flag any predicate / sort column without `@@index` (Prisma) / `@Index` (TypeORM) or migration
-- [ ] **Unbounded reads**: list endpoints use `take` + cursor pagination, not bare `findMany` / `find()`
-- [ ] **Per-row loops**: writes batch through Prisma `createMany` / `updateMany` or TypeORM `repository.insert([...])`. Prisma has no bulk upsert, so a per-row `upsert` loop becomes `createMany({ skipDuplicates: true })` plus a follow-up `updateMany`, or one `$executeRaw` `INSERT ... ON CONFLICT DO UPDATE`. Reads collapse into one predicate - Prisma `where: { id: { in: ids } }`, TypeORM `where: { id: In(ids) }` - then re-associate in memory. `Promise.all` over the same loop is the wrong fix: it opens N connections at once against a bounded pool
-- [ ] **Existence checks**: `findFirst({ where, select: { id: true } })` / `repository.exists({ where })` (`exist()` on TypeORM < 0.3.21) over fetch-then-`length`
-- [ ] **Connection pool sized**: Use skill: `node-connection-pool-sizing` for the math (API replicas + workers + rolling deploys vs Postgres `max_connections`, plus pooler tier). Flag deviations. When replica count or `max_connections` is unreadable, the sizing verdict is not computable - say so and still report the checks that are (worker `concurrency` vs pool is arithmetic you always have)
-- [ ] **Prod-unsafe config**: TypeORM `synchronize: true` (Critical); Prisma `log: ['query']` in prod (High)
+### Step 6 - Indexes and Migrations
 
-### Step 5 - Indexes and Migrations
+Use skill: `node-migration-safety` when the diff touches a migration.
 
-Use skill: `node-migration-safety` for changes in `prisma/migrations/` or `src/migrations/`.
+- [ ] Every column in `where` / `orderBy` / `groupBy` backed by an index; composite indexes match leftmost prefix; FK columns indexed (PostgreSQL does not auto-index them)
+- [ ] **`CREATE INDEX CONCURRENTLY`** on a large table, outside a transaction. Prisma: `--create-only`, a migration file holding that one statement (a multi-statement file runs as one implicit transaction), and the index mirrored in `schema.prisma` as `@@index(..., map: "<name>")` so the next `migrate dev` does not drop it. TypeORM: `public transaction = false` on that migration class and `migration:run -t each` - the DataSource-wide `migrationsTransactionMode: "none"` turns transactions off for every migration. A failed concurrent build leaves an INVALID index: check `indisvalid`, then drop and re-create (or `REINDEX INDEX CONCURRENTLY`)
+- [ ] **Lock timeouts** - inside a migration transaction, `SET LOCAL lock_timeout = '3s'` before DDL on a large table (`SET LOCAL` outside a transaction is a no-op); under `transaction = false`, a plain `SET lock_timeout` followed by `RESET lock_timeout` in the same migration. Leave the concurrent index build itself unbounded - a timeout makes it fail and leaves an INVALID index
+- [ ] **Lock cost named correctly** - a non-concurrent `CREATE INDEX` takes `SHARE` (blocks writes, reads continue); every `ADD COLUMN`, `SET NOT NULL`, and `ALTER TYPE` takes `ACCESS EXCLUSIVE` (blocks reads and writes) - brief for a nullable or constant-default add, which still queues every later query behind a long reader, and held for a full rewrite on a volatile default or a type change; `ADD CONSTRAINT ... FOREIGN KEY` takes `SHARE ROW EXCLUSIVE` on both tables and `VALIDATE CONSTRAINT` `SHARE UPDATE EXCLUSIVE`. State the impact: "a non-concurrent index on the 48M-row `Order` table blocks writes for the whole build". Row count not in the repo -> rate as if large and say so in Impact
+- [ ] Unique constraints at the DB level; partial indexes for selective boolean / enum filters
+- [ ] Expand-then-contract for hot-table DDL; backfills batched by primary-key range, in their own migration or job, never with DDL
+- [ ] **Enum changes** - a value added with `ALTER TYPE ... ADD VALUE` cannot be used in the transaction that added it (PG 12+; before 12 the statement cannot run in a transaction block). TypeORM's default `all` mode runs every pending migration in one transaction, so use `-t each` or ship the backfill in a later deploy
 
-- [ ] Every column in `where` / `orderBy` / `groupBy` backed by an index
-- [ ] Composite indexes match leftmost-prefix
-- [ ] FK columns indexed (PostgreSQL does not auto-index FKs)
-- [ ] Large-table indexes use `CREATE INDEX CONCURRENTLY`, which must run outside a transaction. Prisma: `--create-only` plus a migration file holding that single statement and nothing else (Postgres wraps a multi-statement script in one implicit transaction). TypeORM wraps migrations in a transaction by default, so `queryRunner.query(...)` alone still fails - the migration needs `migrationsTransactionMode: "none"`, isolated in its own deploy
-- [ ] `SET LOCAL lock_timeout = '3s'` **inside** the migration's transaction before DDL on large tables - standalone `SET` is a no-op outside a transaction and contaminates the pooled connection for every later borrower. Not applicable to a `CONCURRENTLY` migration, which takes no blocking lock
-- [ ] Unique constraints at the DB level, not just `@unique` on a non-managed column
-- [ ] Partial indexes for boolean/enum filters selecting a small subset
-- [ ] No DDL on hot tables in a single migration (expand-then-contract)
-- [ ] Backfill via keyset pagination (`WHERE id > $1 ORDER BY id LIMIT N`), never `WHERE col IS NULL LIMIT N`
-- [ ] Data migrations isolated from DDL migrations
-- [ ] Enum changes safe: PostgreSQL `ALTER TYPE ... ADD VALUE` cannot be used in the same transaction that adds it (pre-PG12: cannot run in a transaction at all). TypeORM wraps migrations in a transaction by default; Prisma adds none of its own, but Postgres wraps any multi-statement file in one
+When the diff *adds* an index, treat it as evidence the column is hot: check selectivity and shape, then safety. When it adds a queried column with no index, flag the missing index.
 
-**Reasoning rule.** When the diff _adds_ an index, treat that as evidence the column is hot - validate the index is needed (selectivity, shape), then assess safety. When the diff _adds a column_ also queried on, flag the missing index proactively.
+### Step 7 - Async Correctness and Event Loop
 
-**Migration impact template.** State the impact before approving DDL on a hot table: _"Building this index on a 50M-row table without `CONCURRENTLY` blocks writes for 5-30 min at this scale."_ Name the lock correctly: a non-concurrent `CREATE INDEX` takes `SHARE`, which blocks writes and lets reads through, while `ALTER TABLE` DDL takes `ACCESS EXCLUSIVE`, which blocks both. Do not tell a team its read path goes dark during an index build. If row count is unknown, ask, or note "row count not in diff - confirm before deploy."
+Use skill: `node-http-client-patterns` (after `ops-resiliency`) when the diff has an outbound call, and `node-transaction-patterns` (after `backend-transaction-patterns`) when it opens a transaction. Phrase blocking impact as tail-latency contagion across every request in flight on the process, not "this request is slow". A synchronous upstream call adds its latency to yours: your p99 is at least your own work plus the upstream's p99 on that path.
 
-### Step 6 - Async Correctness and Event Loop
+- [ ] **No blocking CPU / I/O on the loop** - `fs.readFileSync`, `crypto.pbkdf2Sync` / `scryptSync`, large `JSON.parse` of untrusted size -> a `piscina` worker pool or a BullMQ sandboxed processor; a catastrophic regex -> a linear-time pattern or `re2` plus an input length cap (offloading it still pins a thread per request). Sync at startup is fine. Worker paths count too: a blocked loop stops BullMQ lock renewal, the job is declared stalled, and it re-runs concurrently with the original. The async `crypto.pbkdf2` frees the loop but contends the 4-thread libuv pool shared with `fs`, `dns.lookup`, and `zlib` - size `UV_THREADPOOL_SIZE` or move the work off-thread
+- [ ] **Response serialization bounded** - `res.json()` / `JSON.stringify` on a large payload blocks the loop for the whole serialization, invisibly to query timings. Cap rows (pagination), stream exports (TypeORM `qb.stream()` on a dedicated `QueryRunner`; Prisma cursor-batched reads; NDJSON), or precompute
+- [ ] **No external I/O inside a transaction** - `fetch` / `axios` / `queue.add()` inside `$transaction` / `dataSource.transaction` holds a pooled connection for the upstream's tail
+- [ ] **Bounded concurrency** - independent I/O runs concurrently (`Promise.all` over a small, fixed set), and fan-out over a collection is bounded (`p-limit`, `bottleneck`, or a queue); per-row DB work is a set-based query, not concurrency
+- [ ] **A total deadline on every external call** - `AbortSignal.timeout(ms)` on `fetch` / `undici.request` / axios `signal`. `fetch` has only 300 s idle timers (`headersTimeout` / `bodyTimeout`) and no total deadline; `http.request` and axios default to none
+- [ ] **One keep-alive agent per upstream** - the pool lives in the agent (`undici.Agent`, `http.Agent({ keepAlive: true })`), created at module scope; `axios.create()` only merges config, so a per-request agent still defeats reuse
+- [ ] **NestJS request scope** - `Scope.REQUEST` only where needed (it re-instantiates the provider chain per request). An interceptor's `tap()` runs before the response is written, so heavy work there adds latency - defer it (`res.on('finish')`, a queue)
 
-**Impact heuristic.** A blocking call inside an async handler stalls _every request in flight on this Node process_. Phrase impact as "tail-latency contagion across in-flight requests," not "this request is slow." HTTP to a critical-path upstream inherits its tail: your p99 = max(your work, upstream p99); recommend `AbortSignal.timeout(500)` + fallback, or async via decision cache / circuit breaker.
+### Step 8 - Validation and Serialization
 
-Canonical contracts: Use skill: `node-http-client-patterns` (timeout, retry budget, BullMQ delegation, per-vendor wrapper) and `node-transaction-patterns` (no I/O inside open transactions, post-commit dispatch, outbox). Flag deviations.
+- [ ] **NestJS** - class-validator / class-transformer are reflective and cost CPU per request at high QPS; `ClassSerializerInterceptor` with `@Exclude` serializes the full object first - project at the query (`select`) instead. `ValidationPipe` security options belong to `task-node-review-security`
+- [ ] **Express** - Zod schemas defined once at module scope, not per request
+- [ ] **Body limits** - body-parser defaults every parser (`json`, `raw`, `text`, `urlencoded`) to `100kb`; the finding is a raised `limit`, or an upload path with no cap (`multer` without `limits`, a raw `req` pipe)
 
-- [ ] **No blocking I/O / CPU on the event loop**: `fs.readFileSync`, `crypto.pbkdf2Sync`, large `JSON.parse` of untrusted size, large regex on user input -> `worker_threads` (`piscina`) or a BullMQ sandboxed processor. Sync at startup is fine. This applies to **worker paths too**, not just request paths: a blocked loop stops BullMQ lock renewal, so the job is declared stalled and re-run concurrently with the original
-- [ ] **Response serialization bounded**: `res.json()` / `JSON.stringify` on a large payload blocks the loop for the whole serialization, and the cost is invisible in query timings. Cap the row count (pagination, `take`), stream (`QueryBuilder.stream()`, NDJSON, `JSONStream`) for exports, or precompute. When a profile shows time in `JSON.stringify`, the fix is a smaller payload, not a faster serializer
-- [ ] **No external I/O inside a transaction** (see `node-transaction-patterns`): `axios` / `fetch` / `queue.add()` inside `prisma.$transaction` / `dataSource.transaction` holds a pooled connection for the upstream's tail; capture inside, dispatch after commit
-- [ ] **Bounded concurrency**: `Promise.all` / `Promise.allSettled` over sequential `for...of await`; large fan-out bounded via `p-limit` / `bottleneck` / BullMQ
-- [ ] **`AbortSignal.timeout(...)` on every external call** (see `node-http-client-patterns`) - Node's default HTTP timeout is effectively infinite
-- [ ] **HTTP clients module-level**: shared `axios.create()` / `undici` Pool, not per-request (see `node-http-client-patterns`)
-- [ ] **NestJS request-scoped providers**: `Scope.REQUEST` only when needed (per-request transaction / multi-tenant); default-singleton otherwise. Move heavy interceptor / pipe logic post-response via `tap`
+### Step 9 - Caching and BullMQ
 
-### Step 7 - Validation / Serialization
+- [ ] **Caching** - `lru-cache` for in-process hot reads, Redis for shared ones; single-flight on expensive regeneration (a per-key `Map<string, Promise<T>>` deleted on settle, or `p-memoize` with an expiring cache); every cache has a TTL and a stated staleness budget. NestJS `CacheInterceptor` keys on the URL - per-user responses need an overridden `trackBy()` or no cache. `Cache-Control` / `ETag` on read-heavy GETs; `compression` for JSON over ~2 KB when no proxy compresses
+- [ ] **BullMQ** - Use skill: `node-bullmq-patterns`. Payloads carry ids, never ORM objects. `queue.add` after `$transaction` resolves (at-most-once) or via an outbox. `attempts` + `backoff: { type: 'exponential', delay }` in the queue's `defaultJobOptions`; `removeOnComplete` / `removeOnFail` ages bounded - and longer than any `jobId` dedup window, since dedup lasts only while the job is retained; permanent failures (validation, a vendor 4xx) throw `UnrecoverableError` rather than burn retries. Time-sensitive work on its own queue; `concurrency` sized to the downstream and the pool (Step 5), not to CPU count. A long non-blocking job renews its lock and is safe; a CPU-bound one needs a sandboxed processor or a raised `lockDuration`
 
-**NestJS:**
-- [ ] **`ValidationPipe` registered once globally**, not reconstructed per route - that repetition is the perf concern. Its `whitelist` / `forbidNonWhitelisted` settings are a security control owned by `task-node-review-security`; do not raise them from this lens
-- [ ] **`class-validator` / `class-transformer` overhead**: reflective, not free at high QPS; prefer Zod for hot paths. Flag expensive `@Transform` and `ClassSerializerInterceptor` use - project at the query layer (Prisma `select`, TypeORM `select`) over excluding at serialization
+- [ ] **Instrumentation presence** - a slow path this PR adds has some instrumentation (an OTel span or a `prom-client` histogram); absence is a Low with a `[Delegate]` - depth belongs to `task-node-review-observability`
 
-**Express:**
-- [ ] **Zod schemas reused** (top-level `const`, not per-request); `safeParse` integrates more cleanly with handler return paths than `parse`
-- [ ] **Body size limit**: body-parser already defaults to `100kb`, so a bare `express.json()` is not the finding - a raised `limit`, or an `express.raw()` / `express.text()` mounted without one, is
+### Step 10 - Verify and Reconcile
 
-### Step 8 - Caching and Response Performance
+Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the `Label` and `Annotation` columns, and fill `Findings verified:` in the atomic's Summary form. Subagent runs skip verification - the parent verifies the merged set. A sweep skips it too (no diff): re-read each cited construct at `HEAD`, drop what the code contradicts, mark what cannot be settled in-tree `_(unverified: <reason>)_`, and report `Findings verified: inline (no diff)`, appending `, <K> dropped` when any dropped.
 
-- [ ] **In-process**: `lru-cache` (eviction-aware) for hot reads; Redis (`ioredis`) for shared / multi-instance
-- [ ] **Stampede protection**: hot keys with expensive regen use single-flight (`p-memoize` / per-key `Map<string, Promise<T>>`); distributed via Redis `SET NX EX`
-- [ ] **Invalidation explicit** - document staleness budget; no never-expiring caches
-- [ ] **NestJS `CacheModule`**: TTL set; `cacheKey` includes principal for per-user variation
-- [ ] **HTTP caching** (`Cache-Control`, `ETag`) on read-heavy GETs
-- [ ] **Response compression** (`compression` for Express) for JSON > 2KB
-- [ ] **Per-request memoization**: `Symbol`-keyed property on `req` / NestJS `RequestContext` for cross-middleware values
-
-### Step 9 - BullMQ / Background Work
-
-Use skill: `node-bullmq-patterns`. Apply the review-scoped scan:
-
-- [ ] **Idempotent + ID payloads**: re-fetch state, return early if done; payload uses IDs / primitives, never ORM entities. `queue.add(name, data, { jobId: businessKey })` for server-side dedup
-- [ ] **`queue.add()` AFTER commit**: never inside `prisma.$transaction` / `dataSource.transaction` - worker may pick up before the row is visible. Use post-commit hook / `EventEmitter2`
-- [ ] **Retry + DLQ**: `attempts` + `backoff: { type: 'exponential' }`, `removeOnComplete` / `removeOnFail` (prevent Redis growth); failed jobs surfaced via observability
-- [ ] **Queue routing + Worker concurrency**: time-sensitive on dedicated queue; concurrency aligned to downstream capacity, not CPU count
-- [ ] **`lockDuration` survives the job**: a worker renews its lock on a timer, so a long *non-blocking* job is safe. What breaks renewal is a blocked event loop or a dropped Redis connection - then BullMQ declares the job stalled and re-runs it concurrently with the original. CPU-bound handlers need a sandboxed processor (separate process) or a raised `lockDuration`; long I/O-bound ones usually need neither
-- [ ] **Worker concurrency fits the pool**: `concurrency + 2 <= ` the per-process DB pool (`node-connection-pool-sizing`), summed across worker replicas against `max_connections`
-
-### Step 10 - Observability for Perf (delegation handoff)
-
-Depth on observability belongs to `task-node-review-observability`. Confirm only:
-
-- [ ] Slow paths from this PR have **some** instrumentation (OTel span or `prom-client` histogram); if not, raise as Low / Recommendation and delegate
-- [ ] Prisma `log: ['query']` / TypeORM `logging: true` not enabled in prod (only if in diff)
-
-Beyond presence/absence -> `task-node-review-observability` owns it.
-
-**One construct, one finding.** A construct carrying several defects (an unpaginated `findMany` that also overfetches) publishes once at the worst impact, naming the others in its Issue line.
-
-**Verify findings before writing.** Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying its `Label` column, and include its tally in the Summary.
-
-Its `Label` wins over the impact mapping: a `### High Impact` finding tagged `[Recommend]` because it is pre-existing and untouched is the correct output, not a contradiction.
-
-Two carve-outs. Subagent runs skip it - the parent verifies the merged set once. Whole-service sweeps skip it too: with no diff every finding attributes as `Pre-existing` and every `[Must]` would de-escalate. A sweep instead runs **claim confirmation only** - re-read each construct you cited, drop anything that is not really there or not really reachable, and skip attribution and de-escalation entirely - then reports `Findings verified: inline (no diff)`, appending `, <K> dropped` when confirmation dropped any.
-
-**Round 2+ (standalone).** When the re-review gate set `round > 1`, use skill: `review-prior-findings-reconcile` with the prior report body, the diff (or, on a sweep, the in-scope file list), and `git diff --name-status`. Insert its table under `## Prior Round Reconciliation` and fold `Still open` rows into Next Steps suffixed `(open since round <N>)`. A quarterly sweep re-keys the same report file every time, so without this the counter increments while last quarter's findings are silently re-reported as new.
+**Round 2+ (standalone, after verification).** Project the prior report at the handle's `report_path` into reconcile's parse shape: one `## High-Impact Findings` section, and per prior finding (every tier) a `### [<Label>] <file:line>` heading - the label from its bold `[Must]` / `[Recommend]` token (a prior report with none: the label its tier maps to), the `file:line` prefix of its Location, each Location annotation as its own group (`_(pre-existing; newly reachable via ...)_` split into `_(pre-existing)_ _(newly reachable via ...)_`), a prior `_(carried from round <N>)_` kept - followed by its Issue line as `Issue:`. Then Use skill: `review-prior-findings-reconcile` with that projection, the diff, the name-status, `head_sha`, and `git ls-tree -r --name-only <head_sha>` as `head_files`. Its table, note line, and tally render as `## Prior Round Reconciliation`. A row is re-derived when this round's findings hold one on the same construct with the same smell. A `Still open` or `Needs re-check` row this round re-derived publishes once, at this round's label; one it did not re-derive republishes its prior block verbatim in its prior tier - every field, the Location with all its annotation groups - at its prior label, with `_(carried from round <N>)_` after the label unless the block already carries one (`<N>` = the round it first appeared), outside the verify tally, plus a Next Steps entry suffixed `(open since round <N>)`. A prior label outside `[Must]` / `[Recommend]` stays verbatim in the table and maps before publication: `[Blocker]`, `[High]`, `[Critical]` -> `[Must]`; anything else -> `[Recommend]`; `[Praise]` is never carried.
 
 ### Step 11 - Write Report
 
-**Subagent mode:** if invoked by `task-node-review`, do not write a file - `review-report-writer` is invoked only by the workflow that owns the report. Return exactly four things, and this list supersedes any generic "return your Output Format" instruction in the parent's prompt:
+**Subagent mode** (invoked by `task-node-review`): return only `## Findings` with its tier sections and any `out of lens` lines, plus - at `deep` - `## Capacity Guidance` and `## Load Plan`. No Summary, Recommendations, Next Steps, or file; the parent owns the report. This supersedes any generic "return your Output Format" in the parent's prompt.
 
-1. The findings, each carrying its `[Must]` / `[Recommend]` label and its `file:line`
-2. `## Next Steps`, tagged and ordered, for the parent to re-sort into its own
-3. `## Recommendations` (the parent's Summary has no perf fields, so anything Summary-shaped that still matters goes here as a bullet)
-4. At `deep`, `## Capacity Guidance` and `## Load Plan`, which the parent preserves as their own sections
+**Sweep:** emit the report body as the response; no writer.
 
-Omit the Summary block - the parent owns it. Skip the rest of this step.
-
-Standalone: use skill: `review-report-writer` with `report_type: review-perf` and every field it marks required:
-
-- `report_body` (the assembled Markdown), `branch`, `base_ref`, `head_ref` - from the precondition handle, or from the repo on a sweep
-- `base_sha` / `head_sha` captured in Step 2 via `git rev-parse`
-- `scope: +perf`, `depth` as invoked, `stack = node-typescript`, `mode: full`
-- `round` from Step 2's re-review gate, plus `prior_head_sha` when round > 1
-
-Write before ending; print confirmation.
+**Standalone:** Use skill: `review-report-writer` with `report_type: review-perf`, `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` as the handle emitted them, `base_sha` / `head_sha` from the round gate, `scope: +perf`, `depth` as resolved, `stack = node-typescript`, `mode: full`, `round` and `prior_head_sha` from the round gate, and `pr_url` when the request carried one, else `prior_checkpoint.pr_url` when present. Emit the body, then the writer's confirmation line.
 
 ## Output Format
 
-The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+Emit `report_body` as raw Markdown; the fence delimits the template for display only, and brace annotations in it are authoring notes, never emitted.
 
-**Envelope precedence.** The atomics loaded in Steps 4-9 (`node-prisma-patterns`, `node-typeorm-patterns`, `node-connection-pool-sizing`, `node-migration-safety`, `node-http-client-patterns`, `node-transaction-patterns`, `node-bullmq-patterns`) each define their own assessment envelope and severity scale. Fold their content into the finding blocks below under this skill's impact scale; do not append their envelopes as separate sections. The one exception is the Pool Sizing Assessment, which has its own slot at `deep` under `## Capacity Guidance`.
+**Impact tiers.** **Critical** = data loss or a service-wide outage on deploy (`synchronize: true` outside dev, `prisma db push` against a shared database, a pool ceiling already breached at deploy peak, a write-blocking index build on a large hot table). **High** = a user-visible regression on a hot path. **Medium** = measurable cost off the hot path, or a ceiling that binds at the next growth step. **Low** = a quick win with no current impact. Rank by certainty times reach: a deterministic defect on one path and a probabilistic one on every path both reach High only when the user-visible effect does. An entity-level default (`eager: true`) that drives several endpoints files once, on the entity, naming the endpoints.
 
-Every finding carries exactly one label: `[Must]` or `[Recommend]`. No other label is written.
+**Labels.** Critical / High -> `[Must]`; Medium / Low -> `[Recommend]` - unless the verify pass returned a different `Label`, which wins: a finding sits in the section of its tier while its label is the published one, so a `[Recommend]` under High is correct. No other label is written.
+
+**One construct, one finding.** A construct carrying several defects (an unpaginated `findMany` that also overfetches) files once at the worst tier, naming the others in its Issue and numbering the fixes. **A defect this lens does not own is reported, never dropped:** one `- **out of lens:** file:line - <the defect, and the workflow that owns it>` line per defect, at the end of `## Findings`, for a defect outside this lens that would break the build, corrupt, lose, or expose data, or block legitimate traffic (anything else is left to `task-node-review`), untiered and uncounted; a parent drafts it as a finding.
+
+**Envelope precedence.** The atomics loaded in Steps 5-9 (`node-prisma-patterns`, `node-typeorm-patterns`, `node-connection-pool-sizing`, `node-migration-safety`, `node-http-client-patterns`, `node-transaction-patterns`, `node-bullmq-patterns`) feed findings into this template under its tiers; their own blocks are not emitted, except the Pool Sizing Assessment at `deep`, which fills `## Capacity Guidance`.
 
 ```markdown
 ## Node.js Performance Review Summary
 
-- **Stack Detected:** Node.js <version> / TypeScript <version>
-- **Framework:** NestJS <version> | Express <version> | mixed
-- **ORM:** Prisma <version> | TypeORM <version> | mixed
-- **Target:** <base_ref>...<head_ref>, or the swept scope at `HEAD` on a sweep
-- **Evidence:** <profiler / APM figures supplied, or "static review only">
-- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped (<F> false positive, <R> resolved by diff) _(omit the parenthetical when K is 0; sweeps: `inline (no diff)`)_
-- **Overall:** Clean | Issues Found - [<N> Critical / <N> High / <N> Medium / <N> Low]
+- **Stack:** Node.js <version> / TypeScript <version> / <NestJS | Express | mixed> / <Prisma | TypeORM | Prisma + TypeORM | other> <version>
+- **Target:** <base_ref>...<head_ref> | <the swept scope at HEAD>
+- **Depth:** standard | deep
+- **Round:** <N>   {round 2+ only}
+- **Evidence:** <profiler / APM figures supplied, or `static review only`>
+- **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)} | inline (no diff){, <K> dropped}
+- **Overall:** Clean | Issues Found - <n> Critical / <n> High / <n> Medium / <n> Low
+- **Notes:** <assumed inputs (`assumed: max_connections 100`), measured-vs-formula choices, ORM `other`, skipped steps, the handle's own notes>   {omit when none}
 
 ## Findings
 
 ### Critical
 
-_Data loss or a service-wide outage on deploy: TypeORM `synchronize: true` outside dev, `prisma db push` against a non-dev database, a pool ceiling already breached at deploy peak. High = a user-visible regression on a hot path. Medium = measurable cost off the hot path, or a ceiling that binds at the next growth step. Low = a quick win with no current impact._
+1. **[Must | Recommend]**{ _(carried from round <N>)_} **Location:** <file:line>{ <verify annotation groups>}
 
-1. **[Must]** **Location:** [file:line - add `_(pre-existing)_` or `(unverified: <reason>)` when the verify pass returned one]
+   **Issue:** <Node idiom: per-iteration `findMany` in `for...of`, missing index, `crypto.pbkdf2Sync` in a handler, `queue.add` inside `$transaction`, `eager: true` on a collection>
 
-   **Issue:** [Node idiom: N+1 via per-iteration `findMany` in `for...of`, missing index, `crypto.pbkdf2Sync` in a request path, BullMQ `queue.add` inside a transaction, TypeORM `eager: true` cartesian, etc.]
+   **Impact:** <estimated ("adds ~200 queries per request at 100 orders") or measured ("p95 800 ms -> 120 ms")>
 
-   **Impact:** [estimated: "N+1 in OrdersController.list adds ~200 queries per request at 100 orders" / measured: "p95 800ms -> 120ms after fix"]
-
-   **Fix:** [Node change with code: `include`, `relations`, `await`, BullMQ `jobId`, etc. Several fixes on one construct become a numbered list here.]
+   **Fix:** <Node change with code; several fixes on one construct numbered>
 
 ### High Impact
 
-[Same numbered-block structure; numbering continues across tiers]
+<same block; numbering continues across tiers>
 
 ### Medium Impact
 
-[Same]
+<same>
 
 ### Low Impact / Quick Wins
 
-[Same]
+<same>
 
-_Omit sections with no findings._
+- **out of lens:** <file:line - defect, owning workflow>   {only when one exists}
 
-## Recommendations
+{omit empty tiers; when every tier is empty, write `No performance issues found.`}
 
-[Structural improvements not tied to a finding - e.g., "Switch list endpoint to cursor pagination", "Add Redis cache for product catalog reads", "Move PDF generation to BullMQ"]
+## Prior Round Reconciliation   {round 2+ standalone only}
 
-## Capacity Guidance
+<table, note line, and tally from `review-prior-findings-reconcile`>
 
-_(`deep` only - omit at `standard`.)_
-`node-connection-pool-sizing`'s Pool Sizing Assessment, including its `Verdict:` row, plus the headroom the fixes above buy. State every assumed input inline.
+## Recommendations   {omit when none}
 
-## Load Plan
+- <structural improvement not tied to a finding>
 
-_(`deep` only - omit at `standard`.)_
-What to measure before and after, in order: the profile to capture (`node --cpu-prof`, `--heap-prof`, `perf_hooks.monitorEventLoopDelay()`, or an OTel trace), the baseline figure per target endpoint, the fix order gated on those figures, and the soak that confirms it. Name tools the project can actually run.
+## Capacity Guidance   {deep only}
+
+<`node-connection-pool-sizing`'s Pool Sizing Assessment - every block's `Verdict:` and the `Overall:` line - plus the headroom the fixes buy; every assumed input stated inline>
+
+## Load Plan   {deep only}
+
+<in order: the profile to capture (`node --cpu-prof`, `--heap-prof`, `perf_hooks.monitorEventLoopDelay()`, an OTel trace), the baseline per target endpoint, the fix order gated on those figures, and the soak that confirms it - tools the project can run>
 
 ## Next Steps
 
-Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
+1. **[Implement]** [Must] <file:line> - <one-line action>
+2. **[Delegate]** [Recommend] [scope: schema] - <one-line action>
 
-1. **[Implement]** [Must] file:line - [one-line action]
-2. **[Delegate]** [Recommend] [scope: schema] - [one-line action]
-
-_Omit if no actionable findings._
+{one entry per finding, a carried one suffixed ` (open since round <N>)`; `[Implement]` for a fix local to the PR, `[Delegate]` when it leaves it; ordered Must > Recommend, carryovers first among equals; omit when nothing is actionable}
 ```
-
-Impact maps to label: Critical / High -> `[Must]`; Medium / Low -> `[Recommend]` - unless the verify pass returned a different `Label`, which wins.
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded first; stack, framework, ORM recorded; diff/log read once and SHAs captured via `git rev-parse`; re-review gate applied; perf surface read directly (Steps 1-3)
-- [ ] ORM atomics consulted; N+1, overfetch, missing indexes, unbounded reads, per-row loops, existence checks, pool sizing, prod-unsafe config covered (Step 4)
-- [ ] Migration-safety atomic consulted on migration changes: `lock_timeout`, CONCURRENTLY, keyset backfill, expand-contract (Step 5)
-- [ ] Async audit: blocking I/O, `Promise.all` boundedness, `AbortSignal`, request-scoped providers, no I/O in transactions (Step 6)
-- [ ] Validation / serialization, caching, BullMQ assessed when diff touches them (Steps 7-9)
-- [ ] Observability presence/absence confirmed; depth delegated (Step 10)
-- [ ] `review-finding-verify` ran and its tally reached the Summary - or a documented carve-out applied (subagent, or sweep reporting `inline (no diff)`); its `Label` carried, overriding the impact mapping
-- [ ] Depth honored: `standard` ran all; `deep` and every sweep filled `Capacity Guidance` and `Load Plan`
-- [ ] Every finding states measured or estimated impact and carries one label; one construct publishes one finding; findings ordered by impact
-- [ ] Next Steps tagged `[Implement]` / `[Delegate]`, ordered Must > Recommend
-- [ ] Step 11: standalone: every required writer field assembled, report written, confirmation printed; subagent: labelled findings + Next Steps + Recommendations + deep sections returned, no file written
+- [ ] Step 1: `behavioral-principles` loaded (subagent: loaded, or rules inlined in the spawning prompt)
+- [ ] Step 2: stack confirmed; `Framework` and `ORM` (with Prisma major / TypeORM driver) recorded
+- [ ] Step 3: `review-precondition-check` ran with `report_type: review-perf`; round decided from the handle before the diff was read (or the stop line printed); subagent / sweep: step skipped
+- [ ] Step 4: perf surface read, including unchanged code the diff calls into
+- [ ] Step 5: ORM atomic consulted; N+1, collection-join paging, overfetch, unbounded reads, per-row writes, existence checks, pool sizing, prod-unsafe config checked
+- [ ] Step 6: migration atomic consulted on migration changes; index coverage, `CONCURRENTLY` recipe per ORM, lock timeouts, lock names, unique / partial indexes, expand-contract and backfills, enum values checked
+- [ ] Step 7: blocking work, serialization size, I/O in transactions, bounded concurrency, total deadlines, agent reuse, request scope checked
+- [ ] Step 8: validation / serialization and body limits assessed when touched
+- [ ] Step 9: caching, BullMQ, and instrumentation presence assessed when touched
+- [ ] Step 10: verify ran with its tally (or the subagent / sweep carve-out); round 2+ projected and reconciled, unresolved rows carried
+- [ ] Step 11: standalone report written with every writer field; subagent: findings (+ deep sections) returned, no file; sweep: body emitted
+- [ ] Every finding names its impact, one tier, one label; one construct files once; `deep` filled Capacity Guidance and Load Plan
 
 ## Avoid
 
-- `git fetch` / `git checkout` from this workflow - user runs these
-- Reporting issues without naming the Node idiom ("this is slow" vs "N+1 from per-iteration `findMany`")
-- Generic backend advice when a Node pattern applies (say "use `include`", not "use eager loading")
-- Suggesting `eager: true` on TypeORM collection relations to fix N+1 - forces eager on every query; use per-query `relations: [...]` or `leftJoinAndSelect`
-- Suggesting caching without invalidation strategy
-- Conflating perf with general or security review
-- Treating BullMQ retries as a substitute for idempotency
-- Recommending sync APIs (`fs.readFileSync`, `crypto.pbkdf2Sync`) on request paths
-- Swapping a sync hash for its async callback form and calling it fixed - `crypto.pbkdf2` lands on the 4-thread libuv pool shared with `fs` and `dns.lookup`; move the work off-process instead
-- Prescribing a bare `SET` for a migration timeout, or `queryRunner.query('CREATE INDEX CONCURRENTLY ...')` inside TypeORM's default migration transaction
-- Claiming a nested Prisma `include` is one query - the default load strategy is one query per relation level
-- Recommending `setTimeout(..., 0)` to "yield" - pushes work to the next macrotask but doesn't free the event loop; use `worker_threads` for CPU
-- Reporting "missing index" without confirming the column appears in `where` / `orderBy` / `groupBy`
-- Approving `synchronize: true` (TypeORM) or `prisma db push` for non-dev environments
+- State-changing git (`fetch`, `checkout`) from this workflow
+- "This is slow" without the Node idiom ("N+1 from per-iteration `findMany`")
+- `eager: true` on a TypeORM collection as an N+1 fix
+- Caching without an invalidation rule
+- Treating BullMQ retries as a substitute for an idempotent side effect
+- Swapping a sync hash for its callback form and calling it fixed - the work now contends the 4-thread libuv pool
+- `setTimeout(..., 0)` around an unchunked block - it defers the stall, it does not remove it
+- "Missing index" without confirming the column appears in `where` / `orderBy` / `groupBy`
+- Approving `synchronize: true` or `prisma db push` outside dev
