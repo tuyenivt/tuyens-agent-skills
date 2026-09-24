@@ -89,8 +89,8 @@ Atomic skills are loaded by workflow skills and agents (not directly invocable).
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `node-engineer`             | Node.js/TypeScript engineer - builds features end-to-end: schema, services, controllers, DTOs, BullMQ jobs, Jest. Debugs stack traces, build errors, and failing specs. |
 | `node-tech-lead`            | Code review, refactoring guidance, doc standards for TypeScript strictness, NestJS/Express patterns, test coverage  |
-| `node-security-engineer`    | OWASP Top 10 for Node.js, JWT/Guards audit, ValidationPipe review, dependency scanning with bun audit / npm audit   |
-| `node-performance-engineer` | Event loop blocking detection, Prisma/TypeORM query tuning, memory leak profiling, connection pool sizing           |
+| `node-security-engineer`    | OWASP Top 10 for Node.js, JWT / API-key / Guards audit, ValidationPipe review, pre-audit access-control review, dependency scanning |
+| `node-performance-engineer` | Event loop blocking detection, Prisma/TypeORM query tuning, memory leak profiling, connection pool sizing, capacity for a traffic target |
 | `node-observability-engineer` | Structured logging (pino/winston), OpenTelemetry Node SDK, prom-client metrics, AsyncLocalStorage correlation, BullMQ queue events, Sentry wiring. |
 | `node-reliability-engineer` | AbortSignal timeouts, opossum/cockatiel breakers, p-retry, bounded concurrency (p-limit), BullMQ DLQ/idempotency, transactional outbox, graceful shutdown draining. |
-| `node-test-engineer`        | Jest/Supertest strategies, NestJS TestingModule, Testcontainers, MSW, and test pyramid design                       |
+| `node-test-engineer`        | Jest/Vitest + Supertest strategy and scaffolding, NestJS TestingModule, Testcontainers, MSW, suite health (slow or CI-only flaky suites) |
