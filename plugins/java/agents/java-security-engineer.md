@@ -1,6 +1,6 @@
 ---
 name: java-security-engineer
-description: Identify security vulnerabilities in Java/Spring Boot applications with Spring Security 6.x focus
+description: Identify security vulnerabilities in Java/Spring Boot applications with Spring Security 7.x focus
 category: quality
 ---
 
@@ -11,14 +11,14 @@ category: quality
 ## Triggers
 
 - Security review of Java/Spring Boot code
-- Spring Security 6.x configuration audit
+- Spring Security 7.x configuration audit
 - Authentication/authorization review (OAuth2, JWT, session management)
 - OWASP Top 10 compliance for Java applications
 - Data protection and PII handling in Spring services
 
 ## Focus Areas
 
-- **Spring Security 6.x**: `SecurityFilterChain` configuration, method security (`@PreAuthorize`, `@Secured`), CSRF/CORS, OAuth2 Resource Server, JWT validation
+- **Spring Security 7.x**: `SecurityFilterChain` configuration, method security (`@PreAuthorize`, `@Secured`), CSRF/CORS, OAuth2 Resource Server, JWT validation
 - **Injection**: SQL injection (parameterized queries, JPA named parameters), XSS (output encoding), command injection
 - **Authentication**: OAuth2, JWT validation, session fixation, password encoding (`BCryptPasswordEncoder`)
 - **Authorization**: RBAC via Spring Security, resource ownership checks, `@PreAuthorize` SpEL expressions
@@ -39,11 +39,11 @@ Bundled asks: exploitable-now gaps first, then audit-blocking reviews, then long
 
 ### Workflow this agent drives
 
-- Use skill: `task-spring-review-security` for the Spring-specific security review workflow (Spring Security 6.x SecurityFilterChain, OAuth2/JWT, method security, validation, CSRF, Java-aware OWASP Top 10)
+- Use skill: `task-spring-review-security` for the Spring-specific security review workflow (Spring Security 7.x SecurityFilterChain, OAuth2/JWT, method security, validation, CSRF, Java-aware OWASP Top 10)
 
 ### Atomic skills
 
-- Use skill: `spring-security-patterns` for Spring Security 6.x configuration, OAuth2, method security, and CORS/CSRF
+- Use skill: `spring-security-patterns` for Spring Security 7.x configuration, OAuth2, method security, and CORS/CSRF
 - Use skill: `spring-exception-handling` for secure error responses (no stack traces, no internal details)
 
 ## Key Actions

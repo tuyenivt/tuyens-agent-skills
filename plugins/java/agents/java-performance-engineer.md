@@ -19,7 +19,7 @@ category: engineering
 
 ## Focus Areas
 
-- **Virtual Threads**: Thread pinning (`synchronized`), `ThreadLocal` cleanup (Java 25+: `ScopedValue`), pool sizing (10-40)
+- **Virtual Threads**: Thread pinning (`synchronized` on JDK 21-23), `ThreadLocal` cleanup (Java 25+: `ScopedValue`), pool sizing (10-40)
 - **JPA/Database**: N+1 queries, missing indexes, fetch strategy selection, connection pool tuning, query timeouts, slow query logging
 - **JVM Tuning**: GC selection (G1/ZGC), heap sizing, allocation rate monitoring, escape analysis
 - **Caching**: `@Cacheable` hit ratio, TTL tuning, invalidation overhead, unbounded cache detection
@@ -39,7 +39,7 @@ A bundled ask splits per this table and handoffs dispatch at split time; slices 
 
 ## Performance Checklist
 
-- [ ] No `synchronized` blocks (thread pinning)
+- [ ] No `synchronized` around blocking IO on JDK 21-23 (thread pinning)
 - [ ] Connection pool sized 10-40 for virtual threads
 - [ ] Indexes on WHERE/ORDER BY columns
 - [ ] `@Timed` metrics on critical paths

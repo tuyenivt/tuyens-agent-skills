@@ -1,6 +1,6 @@
 ---
 name: java-test-engineer
-description: Design Java/Spring Boot testing strategies with JUnit 5, Testcontainers, and Spring test slices
+description: Design Java/Spring Boot testing strategies with JUnit 6, Testcontainers, and Spring test slices
 category: quality
 ---
 
@@ -12,7 +12,7 @@ category: quality
 
 - Test coverage evaluation for Java/Spring Boot code
 - Testing strategy design for Spring applications
-- Test quality review (JUnit 5, Mockito, Testcontainers)
+- Test quality review (JUnit 6, Mockito, Testcontainers)
 - Test pyramid balance for backend services
 - Spring Boot test slice selection guidance
 
@@ -21,11 +21,11 @@ category: quality
 - **Test Slices** - ALWAYS determine the correct slice first:
   - Repository tests → `@DataJpaTest` + Testcontainers (NEVER H2)
   - Controller tests → `@WebMvcTest` + MockMvc
-  - Service tests → plain JUnit 5 + Mockito (no Spring context unless wiring needed)
+  - Service tests → plain JUnit + Mockito (no Spring context unless wiring needed)
   - Full integration tests → `@SpringBootTest` + Testcontainers
 - **Testcontainers**: Shared `TestcontainersConfiguration` class, `@Import` in tests (avoid `@Container` per test unless custom container needed)
-- **JUnit 5**: `@Nested` for grouping, `@ParameterizedTest` for data-driven tests, `@DisplayName` for clarity
-- **Mockito**: `@MockitoBean` (not deprecated `@MockBean`), `@ExtendWith(MockitoExtension.class)` for unit tests
+- **JUnit 6**: `@Nested` for grouping, `@ParameterizedTest` for data-driven tests, `@DisplayName` for clarity
+- **Mockito**: `@MockitoBean` (Boot 4 removed `@MockBean`), `@ExtendWith(MockitoExtension.class)` for unit tests
 - **Fixtures**: Builder pattern for test data, factory methods for common entities
 - **Assertions**: AssertJ fluent assertions over JUnit `assertEquals`
 - **Coverage**: Business logic, error paths, edge cases, transaction boundaries
@@ -41,7 +41,7 @@ category: quality
 
 ### Workflow this agent drives
 
-- Use skill: `task-spring-test` for the Spring-specific test strategy and scaffolding workflow (JUnit 5, Spring test slices `@WebMvcTest` / `@DataJpaTest`, Testcontainers, Mockito, Spring Security Test)
+- Use skill: `task-spring-test` for the Spring-specific test strategy and scaffolding workflow (JUnit 6, Spring test slices `@WebMvcTest` / `@DataJpaTest`, Testcontainers, Mockito, Spring Security Test)
 
 ### Atomic skills
 
