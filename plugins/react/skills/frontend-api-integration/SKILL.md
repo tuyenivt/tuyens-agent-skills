@@ -1,9 +1,9 @@
 ---
 name: frontend-api-integration
-description: Frontend data fetching: loading/error states, caching, optimistic updates, pagination, request deduplication. Adapts to detected stack.
+description: Next.js frontend data fetching: loading/error states, client caching, optimistic updates, pagination, request deduplication, retries.
 metadata:
   category: frontend
-  tags: [frontend, api, data-fetching, tanstack-query, swr, apollo, caching, multi-stack]
+  tags: [frontend, api, data-fetching, tanstack-query, swr, apollo, caching, nextjs]
 user-invocable: false
 ---
 
@@ -21,7 +21,7 @@ user-invocable: false
 ## Rules
 
 - Every data-fetching component handles loading, success, empty, and error states
-- Server state lives in a data-fetching library cache, not a UI state store
+- Server data is fetched in Server Components and changed through Server Actions; a client data-fetching library caches only data the client fetches interactively (polling, infinite scroll, search-as-you-type); server state never lives in a UI state store
 - Identical concurrent requests must deduplicate to one network call
 - Mutations invalidate or update affected caches; stale data after writes is a bug
 - Pagination: cursor/keyset for real-time or large datasets; offset only for small static data
@@ -35,10 +35,10 @@ user-invocable: false
 
 | Library        | Best For                                            |
 | -------------- | --------------------------------------------------- |
-| TanStack Query | REST/GraphQL, caching, background refetch (any FW)  |
-| SWR            | Simple REST, stale-while-revalidate                 |
+| Server Components + Server Actions | Page data and mutations; no client cache to keep in sync |
+| TanStack Query | Interactive client data: background refetch, infinite lists, polling |
+| SWR            | Simple client REST, stale-while-revalidate          |
 | Apollo Client  | GraphQL-first projects                              |
-| Framework SDK  | Nuxt `useFetch`/`useAsyncData`, Angular `HttpClient` with RxJS |
 
 ### Loading, Error, and Empty States
 
@@ -48,7 +48,8 @@ const [users, setUsers] = useState([])
 useEffect(() => { fetch("/api/users").then(r => r.json()).then(setUsers) }, [])
 return users.map(u => <UserCard key={u.id} user={u} />)
 
-// Good: all states handled
+// Good: interactive client data (search, polling) with all states handled. Server Component data gets
+// loading from loading.tsx / <Suspense>, errors from error.tsx, and an empty branch in the component.
 const { data, isPending, isFetching, error, refetch } = useQuery({ queryKey: ["users"], queryFn: fetchUsers })
 // v5: isPending means "no data yet" and stays true for a query that never runs
 // (enabled: false, offline): a bare isPending check leaves that case on a skeleton forever, and a bare
@@ -86,7 +87,7 @@ addTodo.mutate(newTodo)
 
 Use for low-latency, high-success actions (favorite, comment). Avoid for payments, multi-step validation, or where rollback would confuse.
 
-The snapshot-rollback-settle sequence is library-agnostic: with framework-native fetchers (e.g., Nuxt `useFetch`), replace `data.value` with a new value (Nuxt 4 returns a shallow ref, so in-place mutation does not re-render), restore the snapshot on error, and `refresh()` on settle.
+With a Server Action instead of a client cache, `useOptimistic` from `react` holds the prediction only while the action is pending, then falls back to the real state the action's `updateTag` / `revalidatePath` delivers, so a failed action reverts on its own - surface its error rather than leaving the user guessing.
 
 When the server computes the authoritative result rather than echoing yours - reordering a list, assigning a position, resolving a conflict - the response is the truth and must replace the prediction, not merge with it. Take the server's value on success rather than keeping the optimistic one, and let `onSettled` reconcile. Track in-flight mutations so a settling refetch does not overwrite a newer optimistic change the user has already made: while any mutation for that key is pending, apply the refetch result under the still-pending predictions. The same holds for any concurrent optimistic writes to one key, not only server-computed ones: give them a shared `mutationKey` and invalidate on settle only when `queryClient.isMutating({ mutationKey }) === 1`.
 
@@ -153,7 +154,7 @@ Data-fetching libraries deduplicate by query key; two fetch paths for one endpoi
 | 5xx     | Generic error with retry                     |
 | Network | Offline indicator with retry                 |
 
-Centralize in an HTTP interceptor or wrapper; allow component-level overrides.
+Client fetches: centralize in one fetch wrapper or interceptor; allow component-level overrides. Server Components and Server Actions fetch on the server, where no client interceptor sees the response: a 401 there calls `redirect()` to login (or `proxy.ts` redirects unauthenticated requests before render), and a Server Action re-checks auth itself.
 
 **Token refresh is single-flight.** Across tabs sharing a stored refresh token, the flight is shared through a Web Lock (`navigator.locks.request`) or a BroadcastChannel, not a module-level promise alone. When several requests get a 401 at once, they must await one shared refresh promise, not start one each - with rotating refresh tokens, concurrent refreshes invalidate each other and log the user out spuriously. Hold a module-level promise: the first 401 starts the refresh, the rest await it, then all retry once with the new token. A second 401 after a completed refresh is a real auth failure - go to the 401 row above rather than looping.
 
@@ -161,15 +162,10 @@ Centralize in an HTTP interceptor or wrapper; allow component-level overrides.
 
 Cancel in-flight requests on unmount, on new search input (debounce + cancel previous), or on route change. A query library only cancels what its fetcher cooperates with: TanStack Query hands the `queryFn` an `AbortSignal` that is aborted when the query loses its last observer (unmount or key change) or on `cancelQueries`, but nothing is cancelled unless the fetcher forwards that signal to `fetch`/axios. SWR does not abort at all. For manual `fetch`, always pass your own `AbortSignal`.
 
-## Stack-Specific Guidance
+## Next.js Bindings
 
-After `stack-detect`, apply patterns using ecosystem idioms:
-
-- **React**: TanStack Query or SWR; Apollo for GraphQL; Suspense + ErrorBoundary
-- **Vue**: TanStack Query Vue or Nuxt `useFetch`/`useAsyncData`; composable patterns
-- **Angular**: `HttpClient` with interceptors; RxJS for retry/caching; `toSignal` to bridge to signals
-
-For any framework not bound above - `unknown`, or a detected one such as Svelte or Solid - apply the universal patterns and point the user to that framework's data-fetching docs.
+- Server Components for page data; TanStack Query or SWR for interactive client data; Apollo for GraphQL
+- Loading: `loading.tsx` or `<Suspense>`. Errors: `error.tsx` (`{ error, retry }`), or `catchError` from `next/error` for a component-level boundary that lets `redirect()` / `notFound()` through
 
 ---
 
@@ -180,9 +176,9 @@ Consuming workflow skills depend on this structure.
 ```
 ## API Integration Assessment
 
-**Stack:** {Framework and Language as a display name (`Next.js 15.5 / TypeScript` for stack-detect's `React (Next.js)`) - the major.minor from the owning app's `package.json` (`^15.5.0` -> 15.5); with no `tsconfig.json`, the extensions of the files in scope decide JS vs TS, overriding stack-detect's Language; in a monorepo, the app owning the reviewed code; "unknown - universal patterns applied" when inconclusive}
+**Stack:** {Framework and Language as a display name (`Next.js 16.3 / TypeScript` for stack-detect's `React (Next.js)`) - the major.minor from the owning app's `package.json` (`^16.3.0` -> 16.3); with no `tsconfig.json`, the extensions of the files in scope decide JS vs TS, overriding stack-detect's Language; in a monorepo, the app owning the reviewed code; `unknown` for a part that is inconclusive}
 
-**Data-fetching library:** {what the code uses today - a library name, framework-native (`Nuxt useFetch/$fetch`, `Angular HttpClient`), `Mixed - <libs>`, `<lib> plus raw fetch/axios`, or `none - raw fetch/axios`. In implement or design mode, where nothing exists yet, name the library being prescribed}
+**Data-fetching library:** {what the code uses today - a library name, framework-native (`Server Components + Server Actions`), `Mixed - <libs>`, `<lib> plus raw fetch/axios`, or `none - raw fetch/axios`. In implement or design mode, where nothing exists yet, name the library being prescribed}
 
 ### Endpoints
 
@@ -220,7 +216,7 @@ The Endpoints table covers the integrations in scope - the change's touched endp
 
 ## Avoid
 
-- Raw `useEffect`/`onMounted` fetching without a data-fetching library
+- Raw `useEffect` fetching in a Client Component, where a Server Component or a data-fetching library belongs
 - Missing loading, error, or empty states (blank screens, silent failures)
 - Server data in UI state stores (manual cache invalidation, stale reads)
 - Offset pagination for real-time data (skipped/duplicated items)

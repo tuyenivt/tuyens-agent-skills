@@ -20,11 +20,11 @@ user-invocable: false
 ## Rules
 
 - Climb the ladder only when forced: useState -> useReducer -> Context -> Zustand/Jotai -> Redux Toolkit.
-- Server data lives in a server-cache library (TanStack Query, SWR, RTK Query). Never hand-copy it into Zustand, Redux slices, or Context.
+- Server data read at render is fetched in a Server Component and reaches Client Components as props or a Promise unwrapped with `use()`; interactive client data (refetch, poll, client mutation) lives in a server-cache library (TanStack Query, SWR, RTK Query). Never hand-copy either into Zustand, Redux slices, or Context.
 - Context carries low-frequency values (theme, auth identity, locale). Never form fields, mouse, or animation state.
 - One store per domain boundary. Cart, auth, and notifications are separate stores.
 - Derived values are selectors, not stored fields. State updates go through the library's setter; no direct mutation outside Immer-backed reducers.
-- State that should survive refresh, share, or back-button belongs in the URL, not memory.
+- State that should survive a refresh, a shared link, or (without `cacheComponents`) a Back navigation belongs in the URL, not memory. With `cacheComponents` on, `useState` also survives navigation, so state that must start fresh on each visit needs an explicit reset (Returning to a hidden route).
 
 ## Patterns
 
@@ -39,7 +39,8 @@ user-invocable: false
 | Jotai          | Many independent atoms read by different consumers   | Per-cell values in a large grid    |
 | Redux Toolkit  | Large team needing middleware, time-travel, sagas    | Complex workflows, audited apps    |
 | URL            | Shareable, bookmarkable, back-button-safe state      | Filters, sort, page, search query  |
-| TanStack Query | Server data (fetch, cache, revalidate)               | User profile, product list         |
+| Server Component | Server data read at render (props or a `use()` Promise) | Product page, dashboard stats   |
+| TanStack Query | Server data the client refetches, polls or mutates   | Live order status, infinite list   |
 
 Identity values (theme, auth, locale) work in either Context or a tiny Zustand store. Pick Context when the value is written once per session at the app shell; pick a store when it is toggled at runtime, persisted, or written from several places.
 
@@ -94,7 +95,7 @@ Add `persist` only when reload must preserve state; add `devtools` in developmen
 
 ```tsx
 import { atom, useAtom } from "jotai";
-import { atomFamily } from "jotai-family"; // the jotai/utils export is deprecated, slated for removal in Jotai 3
+import { atomFamily } from "jotai-family"; // Jotai 3 no longer exports atomFamily from jotai/utils
 
 // One atom per cell - editing a cell re-renders only that cell, not the grid.
 const cellAtom = atomFamily((id: string) => atom(""));
@@ -138,9 +139,13 @@ function useFilters() {
 }
 ```
 
-On a statically prerendered route, the component calling this sits under a `<Suspense>` boundary: `useSearchParams` makes the subtree up to the nearest boundary render on the client, and with no boundary the build fails. A dynamic route needs none.
+With `cacheComponents` set, the component calling this always sits under `<Suspense>` (search params are known only at request time; with no boundary the build fails). Without it, a statically prerendered route needs the boundary (`useSearchParams` makes the subtree up to it render on the client) and a dynamic route (`await connection()` in the Server Component) needs none. Alternative: pass the page's `searchParams` Promise to the Client Component and unwrap it with `use()` (it suspends, so it still sits under `<Suspense>`).
 
-Read filters directly from `searchParams` per render - that *is* the source of truth. Vite / React Router: same rule via `useSearchParams` from `react-router` (v7 consolidated the package; `react-router-dom` is a deprecated re-export) - read `params` per render, write with `setParams`.
+Read filters directly from `searchParams` per render - that *is* the source of truth.
+
+### Returning to a hidden route (Cache Components)
+
+With `cacheComponents: true`, Next hides the route you leave with `<Activity>` (up to 3 routes) instead of unmounting it, so component state survives back/forward and push navigations alike. State that should start fresh - a create form after submit, a stale success message, an open dropdown - resets, in order of preference, in the event handler that submits or navigates, through a `key` derived from data (a draft id), in a `useLayoutEffect` cleanup (it runs on hide), and only as a last resort through `key={useRouter().bfcacheId}` (new on push/replace, unchanged on back/forward). Preserved state shown where a fresh start was needed is `Stale-On-Return`.
 
 ### Redux Toolkit (when justified)
 
@@ -185,7 +190,7 @@ Secondary (scoped): {client-state library - the one domain it serves | none}
 ### Findings
 
 - Severity: {Critical | High | Medium | Low}
-  Issue: {Wrong-Mechanism | Server-State-In-Store | Context-Re-render | Mega-Store | Stored-Derived | Mutation | URL-Candidate | Over-Subscription | Hydration-Mismatch | Duplicate-Source}
+  Issue: {Wrong-Mechanism | Server-State-In-Store | Context-Re-render | Mega-Store | Stored-Derived | Mutation | URL-Candidate | Over-Subscription | Hydration-Mismatch | Duplicate-Source | Stale-On-Return}
   Location: {file/component or "design"}
   Fix: {one-line action}
 
@@ -194,13 +199,13 @@ Not assessed: {input the review needed but never saw - a file referenced but not
 
 Derived values are not slices - they never get a State Map row; a stored one is a `Stored-Derived` finding. Jotai atom families take a Stores row with Middleware `-`; Context providers and server-cache libraries do not get Stores rows, and a target with no store at all writes one row `none`. A migration map lists unchanged slices too, owner unchanged; a slice written but never read takes the row with Owner `{current} -> removed` and no finding. A context bundling unrelated values is `Context-Re-render` (the re-render is the defect); a store bundling domains is `Mega-Store`. Category `Identity` covers auth/theme/locale; feature-scoped shared values (grid atoms) are `Shared UI`. `Duplicate-Source`: the same state has two owners (URL copied into `useState`, one slice duplicated across stores); the Fix names the surviving owner. Server data mirrored into a store stays `Server-State-In-Store`.
 
-Severity: **Critical** = wrong data shown or updates lost (store mutation without a new reference, two sources of truth disagreeing); **High** = broad re-render or staleness (server data mirrored into a store, context re-rendering per keystroke, SSR hydration mismatch); **Medium** = structure debt (mega-store, stored derived, URL candidate, over-subscription); **Low** = convention drift (a `Wrong-Mechanism` that costs only idiom - Context where a tiny store would read better, with no re-render cost). An Issue value's row is set by the condition named; `Wrong-Mechanism` is Low when it costs only idiom, Medium otherwise, High when it is already producing staleness or a broad re-render. `Duplicate-Source` owners that still agree are High (a staleness risk); once they disagree - a stored derived value already out of step with its source included - Critical. A defect matching a named example takes that row's severity; where a named example and a general clause both fit, the named example wins; where two named examples fit, the higher row wins. The general clauses cover unnamed cases.
+Severity: **Critical** = wrong data shown or updates lost (store mutation without a new reference, two sources of truth disagreeing); **High** = broad re-render or staleness (server data mirrored into a store, context re-rendering per keystroke, SSR hydration mismatch); **Medium** = structure debt (mega-store, stored derived, URL candidate, over-subscription) and stale-on-return; **Low** = convention drift (a `Wrong-Mechanism` that costs only idiom - Context where a tiny store would read better, with no re-render cost). An Issue value's row is set by the condition named; `Wrong-Mechanism` is Low when it costs only idiom, Medium otherwise, High when it is already producing staleness or a broad re-render. `Duplicate-Source` owners that still agree are High (a staleness risk); once they disagree - a stored derived value already out of step with its source included - Critical. A defect matching a named example takes that row's severity; where a named example and a general clause both fit, the named example wins; where two named examples fit, the higher row wins. The general clauses cover unnamed cases.
 
 If stack-detect's Framework is not React and the project has no React sources, emit `Findings: none (no React detected)` and stop - a greenfield design on a React stack proceeds.
 
 ## Avoid
 
-- Server data hand-copied into Zustand/Redux slices/Context - use a server-cache library.
+- Server data hand-copied into Zustand/Redux slices/Context - pass it from a Server Component or use a server-cache library.
 - Context for inputs, mouse, scroll, drag, animation - re-renders every consumer.
 - One mega-store/mega-context coupling unrelated domains.
 - Storing derived values (totals, filtered lists) instead of computing in a selector.

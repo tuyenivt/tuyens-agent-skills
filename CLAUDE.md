@@ -17,7 +17,7 @@ plugins/
   ruby/          # Ruby 3.4+ / Ruby on Rails 7.2+
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
   go/            # Go 1.25+ / Gin / GORM+sqlx
-  react/         # React 19 / TypeScript - fullstack (Next.js App Router primary, Vite SPA secondary)
+  react/         # React 19 / Next.js 16 App Router / TypeScript - fullstack
 ```
 
 Each plugin folder has a `README.md`. Each skill lives in its own directory as `SKILL.md`. Agent files are plain Markdown in `plugins/<stack>/agents/`.

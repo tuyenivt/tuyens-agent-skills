@@ -48,7 +48,7 @@ it("calls onEdit with user id", async () => {
 ### Render with Providers
 
 ```tsx
-// Compose every provider the tree reads: query client, store, router (MemoryRouter / createMemoryRouter).
+// Compose every provider the tree reads: query client, store, theme, auth.
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(() => new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -59,6 +59,23 @@ export const renderWithProviders = (ui: ReactElement) => render(ui, { wrapper: P
 ```
 
 Reuse `renderWithProviders` for components that read a provider; plain `render` for those that read none. Hooks take the component itself: `renderHook(() => useUser("1"), { wrapper: Providers })` - a render helper returns a `RenderResult`, not JSX, and cannot be a `wrapper`.
+
+The router is not a provider: `useRouter` / `usePathname` / `useSearchParams` read Next's App Router context, which jsdom lacks. Stub `next/navigation` at module level and assert navigation on `router.push`:
+
+```tsx
+const { router } = vi.hoisted(() => ({  // a vi.mock factory cannot close over a plain const
+  router: { push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), back: vi.fn(), forward: vi.fn(), prefetch: vi.fn() },
+}));
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),  // keeps redirect / notFound real
+  useRouter: () => router,         // one object: the real router is stable, so a [router] effect must not re-run
+  usePathname: () => "/orders",
+  useSearchParams: () => new URLSearchParams("status=open"),
+  useParams: () => ({ id: "1" }),  // when the component reads params; the real one returns null outside the App Router
+}));
+// Vitest 5 clears spies before each test by default (`clearMocks: true`); add `beforeEach(() => vi.clearAllMocks())`
+// only on Vitest 4 / Jest or when the config sets `clearMocks: false` - the spies are module-scoped
+```
 
 ### MSW Setup
 
@@ -71,9 +88,11 @@ export const handlers = [
   ),
 ];
 
-// vitest config: test: { environment: "jsdom", globals: true, setupFiles: ["./vitest.setup.ts"] } -
-// without globals, import it/expect/vi from "vitest" and RTL's automatic cleanup stops running.
-// vitest.setup.ts
+// vitest.config.mts: defineConfig({ plugins: [tsconfigPaths(), react()],   // vite-tsconfig-paths, @vitejs/plugin-react
+//   test: { environment: "jsdom", globals: true, setupFiles: ["./vitest.setup.ts"] } })
+// tsconfigPaths resolves `@/` imports; without globals, import it/expect/vi and the hooks from "vitest" and RTL's automatic cleanup stops running.
+// vitest.setup.ts - the reference types the bare globals; `next build` type-checks test files (TS2304 without it)
+/// <reference types="vitest/globals" />
 import "@testing-library/jest-dom/vitest";   // without this every toBeInTheDocument() throws
 import { setupServer } from "msw/node";
 import { handlers } from "./test/mocks/handlers";
@@ -133,8 +152,9 @@ it("fetches user via query", async () => {
 ### Accessibility
 
 ```tsx
-// vitest.setup.ts: import "vitest-axe/extend-expect"; - vitest-axe 0.1.0 augments the pre-1.0 Vi namespace,
-// so on Vitest 1+ also declare: declare module "vitest" { interface Assertion<T = any> { toHaveNoViolations(): T } }
+// vitest.setup.ts: import * as matchers from "vitest-axe/matchers"; expect.extend(matchers);
+// ("vitest-axe/extend-expect" is an empty module in 0.1.0 and registers nothing), and type it - 0.1.0 augments the
+// pre-1.0 Vi namespace: declare module "vitest" { interface Assertion<T = any> { toHaveNoViolations(): T } }
 import { axe } from "vitest-axe";
 
 it("has no a11y violations", async () => {
@@ -147,22 +167,18 @@ Pair axe runs with role-based queries; a violation in axe and a missing role bot
 
 ### Server Components and Server Actions
 
-jsdom cannot render an async Server Component - don't `render(<RSC/>)`. Two paths:
+Vitest and Jest do not support async Server Components - never render one, and never await it and render the result. Test the data function beneath it (`react-server-testing`) and cover the rendered page in Playwright. A synchronous Server Component renders like any component once `server-only` is aliased to an empty module (the `react-server-testing` config alias).
 
 ```tsx
-// Async RSC: call it as a function, assert on the returned tree (mock the data boundary).
-const ui = await OrderSummary({ orderId: "1" });
-render(ui);
-expect(screen.getByText("Total: $42")).toBeInTheDocument();
-
-// Server Action: import and call directly with FormData; mock the DB/auth boundary.
+// Server Action: call directly with FormData; mock the DB/auth boundary and stub next/cache
+// (+ async next/headers) per react-server-testing - both throw outside a request.
 const fd = new FormData();
 fd.set("qty", "2");
 const result = await submitOrder({}, fd);
 expect(result).toEqual({ ok: true });
 ```
 
-Prefer covering the full RSC + action render/submit cycle in a Playwright E2E - the function-call approach tests logic, not the server render pipeline. A client component invoking a Server Action in jsdom has no network boundary for MSW to intercept: mock the action at its import (own-module mocks are sanctioned only at server boundaries - data, DB and auth in RSC and action tests, the action import here) or cover it in the E2E.
+Cover the full RSC + action render/submit cycle in a Playwright E2E - the direct call tests the action's logic, not the server render pipeline. A client component invoking a Server Action in jsdom has no network boundary for MSW to intercept: mock the action at its import (own-module mocks are sanctioned only at server boundaries - data, DB and auth in action tests, the action import here) or cover it in the E2E.
 
 ### Timer-driven behavior (debounce / throttle)
 
@@ -205,10 +221,15 @@ When reviewing a test suite, open with one line `Scope: <files reviewed>`, then 
 Scope: <files reviewed>
 
 Finding: <one-line summary>
+
 Category: {Queries | Assertions | Mocking | Coverage | Hooks | Isolation | Accessibility | E2E | Environment}
+
 Severity: {Critical | Major | Minor}
+
 Location: <path>:<line or range>, <path>:<line> for every site of a merged finding - any file read, listed in the brief or not
+
 Evidence: <code excerpt>
+
 Fix: <Pattern name, Rule, or Avoid bullet that governs; name the correction directly when none does> - <one-line correction>
 
 Tally: <N> findings (<C> Critical, <M> Major, <m> Minor)
@@ -216,12 +237,12 @@ Tally: <N> findings (<C> Critical, <M> Major, <m> Minor)
 Notes: <defects in the code under test rather than the tests - a placeholder-only input, an `alert()` error surface - each naming its concern; omit when none>
 ```
 
-`Environment` covers render-environment and harness defects: an async RSC rendered in jsdom, a missing provider wrapper, fake timers without `advanceTimers` wiring, a setup file missing an import the suite depends on, and a devDependency the recommended matcher or query needs but the manifest lacks. `Assertions` covers wrong-axis assertions - a CSS class, style value, or internal field standing in for observable behaviour. `Queries` also covers interaction-API drift (`fireEvent` where `user-event` belongs); snapshots fall under `Coverage`, including a CI script passing the update flag (`-u`); a fixed sleep standing in for an awaited outcome is `Assertions`. A component that is not role-queryable is tested through what exists (`getByPlaceholderText` for a placeholder-only input) and its defect goes in `Notes:`.
+`Environment` covers render-environment and harness defects: an async RSC rendered in jsdom, a missing provider wrapper or `next/navigation` stub, fake timers without `advanceTimers` wiring, a setup file missing an import the suite depends on, and a devDependency the recommended matcher or query needs but the manifest lacks. `Assertions` covers wrong-axis assertions - a CSS class, style value, or internal field standing in for observable behaviour. `Queries` also covers interaction-API drift (`fireEvent` where `user-event` belongs); snapshots fall under `Coverage`, including a CI script passing the update flag (`-u`); a fixed sleep standing in for an awaited outcome is `Assertions`. A component that is not role-queryable is tested through what exists (`getByPlaceholderText` for a placeholder-only input) and its defect goes in `Notes:`.
 
 Merge occurrences of one defect into one finding listing every location - identical means the same defect with the same fix, so three `getByTestId` calls merge while a test-id query and a CSS-selector query stay separate. Emit a finding even when another fix would subsume it, naming the subsuming change in Fix; when both a Pattern and a Rule cover it, cite the Pattern. Close with `Tally: <N> findings (<C> Critical, <M> Major, <m> Minor)` and the `Notes:` line when one applies; a clean review emits `Scope:` plus `No issues found.`, with `Notes:` after it when one applies.
 
 Severity rubric:
-- **Critical**: test does not exercise the intended behavior, or cannot pass/fail as written (e.g., a `vi.mock` factory closing over a top-level binding without `vi.hoisted`, or a per-test mock that needs `vi.doMock`; renders an async Server Component in jsdom; missing provider wrapper; a missing setup import that disables the matchers the test relies on; unhandled request under `onUnhandledRequest: "error"`; a CI script passing the snapshot update flag, so the snapshot can never fail).
+- **Critical**: test does not exercise the intended behavior, or cannot pass/fail as written (e.g., a `vi.mock` factory closing over a top-level binding without `vi.hoisted`, or a per-test mock that needs `vi.doMock`; renders an async Server Component in jsdom; missing provider wrapper or `next/navigation` stub; a missing setup import that disables the matchers the test relies on; unhandled request under `onUnhandledRequest: "error"`; a CI script passing the snapshot update flag, so the snapshot can never fail).
 - **Major**: false confidence risk - wrong-axis assertion (CSS class for behavior), `vi.mock` for HTTP modules instead of MSW, hook tested indirectly through a host, missing boundary coverage on a data path, order-coupled tests sharing mutable state (a setup without `server.resetHandlers()` or `onUnhandledRequest: "error"` included), a fixed sleep standing in for an awaited outcome.
 - **Minor**: readability / idiom drift - `getByTestId` over `getByRole`, `fireEvent` over `user-event`, `waitFor` wrapping a query that should be `findBy*`, large churn-prone snapshots.
 

@@ -1,14 +1,14 @@
 # Tuyen's Agent Skills - React
 
-Claude Code plugin for React 18+ (React 19 hooks) / TypeScript / Next.js 15 App Router fullstack (primary), Vite 5+ SPA (secondary) development.
+Claude Code plugin for Next.js 16 App Router / React 19 / TypeScript fullstack development. Non-Next React projects (Vite, CRA, React Router) are out of scope; core's generic review and onboarding workflows cover them; implement and test have no equivalent.
 
-Next.js App Router spans both sides of the wire, so this plugin covers the Next server surface (data layer, server testing, self-hosted operations) alongside the UI. On a Vite SPA the server skills report not-applicable and the rest applies unchanged.
+Next.js App Router spans both sides of the wire, so this plugin covers the Next server surface (data layer, server testing, self-hosted operations) alongside the UI. Workflows run on an older Next.js or React too, noting the project is below the floor and writing Next 16 output.
 
 ## Stack
 
-- React 18+ baseline; React 19 hooks (`use`, `useOptimistic`, `useActionState`, `useFormStatus`) used throughout
+- React 19 (19.2+; written against 19.3): `use`, `useOptimistic`, `useActionState`, `useFormStatus`, `useEffectEvent`, `Activity`
 - TypeScript (strict mode)
-- Next.js 15 App Router (primary), Vite 5+ + React Router 6+ (secondary)
+- Next.js 16 App Router (written against 16.3): Turbopack, Cache Components, `proxy.ts`, React Compiler; Node 22.22+ or 24.15+ (the test stack's floor; Next itself runs on 20.9+, which is EOL)
 - Prisma + PostgreSQL for the Next.js server surface (matching `node`, so the marketplace carries two ORMs, not three)
 - Stack-agnostic server contracts come from `core`: `backend-transaction-patterns`, `backend-connection-pooling`, `backend-db-migration`, `ops-resiliency`
 
@@ -18,7 +18,7 @@ Next.js App Router spans both sides of the wire, so this plugin covers the Next 
 - **React 19 Hooks**: use, useOptimistic, useActionState, useFormStatus
 - **Data Fetching**: TanStack Query (primary), Server Component async fetching, Suspense streaming
 - **State Management**: Zustand (primary), Redux Toolkit (enterprise), Jotai (atomic), proper state categorization
-- **Next.js App Router**: Layouts, loading/error states, parallel routes, intercepting routes, middleware, Server Actions, ISR, Metadata API
+- **Next.js App Router**: Layouts, loading/error states, parallel routes, intercepting routes, `proxy.ts`, Server Actions, Cache Components (`"use cache"`) and ISR, Metadata API
 - **Styling**: Tailwind CSS (primary), CSS Modules, cva + cn for component variants, shadcn/ui
 - **Testing**: Vitest + React Testing Library, MSW for API mocking, Playwright for e2e
 - **TypeScript-First**: Strict mode, proper prop typing, no `any` types
@@ -45,18 +45,16 @@ Atomic skills provide focused, reusable React patterns. These are hidden from th
 | -------------------------- | ---------------------------------------------------------------------------------------------- |
 | `react-component-patterns` | Component design: composition, compound components, Server/Client boundaries, error boundaries |
 | `react-hooks-patterns`     | Custom hooks, hook rules, useEffect discipline, React 19 hooks                                 |
-| `react-routing-patterns`   | React Router (Vite) / Next.js App Router: layouts, loading, error, parallel routes             |
-| `react-nextjs-patterns`    | Next.js App Router: Server Components, Server Actions, ISR, metadata                           |
+| `react-nextjs-patterns`    | Next.js App Router: Server Components, Server Actions, caching, routing (layouts, loading/error, parallel and intercepting routes), `proxy.ts`, metadata |
 | `react-state-patterns`     | State management: useState/useReducer, Zustand, Redux Toolkit, Jotai                           |
 | `react-data-fetching`      | TanStack Query, Server Component fetching, cache invalidation, optimistic updates              |
 | `react-styling-patterns`   | Tailwind CSS, CSS Modules, cva + cn, dark mode, design tokens                                  |
 | `react-testing-patterns`   | Vitest + React Testing Library, MSW, hook testing, Playwright e2e                              |
-| `react-legacy-integration` | Embed React into legacy apps: island adoption, React-in-Rails/Django/PHP, Module Federation, single-spa, hydration boundaries |
 | `react-overengineering-review` | Flag React overengineering: premature memo, single-consumer Context, store-for-two-slices, single-use hooks, generic-for-one-usage |
 | `react-server-data-layer`  | Prisma in Server Components and Server Actions: client singleton and hot-reload guard, `server-only` boundary, `src/server/` service layer, RSC N+1, request memoization vs data cache |
 | `react-server-testing`     | Database-backed integration tests, per-test isolation, Server Action and Route Handler tests, async Server Component testing boundary |
 | `react-selfhost-operations` | Self-hosted Next.js: standalone output, CI builds, build-time vs runtime env, ISR cache locality, CDN cookie bypass, image optimizer CPU cost |
-| `react-onboard-map`        | Build framework (Next App/Pages, Vite), routing, state management, data fetching, styling, component library, ORM and deployment target - injected into `task-onboard` |
+| `react-onboard-map`        | Next.js router (App/Pages), routing, state management, data fetching, styling, component library, ORM and deployment target - injected into `task-onboard` |
 | `frontend-state-management` | Framework-neutral state placement: local vs global, lifting, derived state, normalization - paired with `react-state-patterns`, which wins on conflict |
 | `frontend-api-integration` | Framework-neutral data fetching: loading/error states, caching, optimistic updates, pagination, request dedup - paired with `react-data-fetching` |
 | `frontend-testing-patterns` | Framework-neutral frontend testing: component, integration, e2e (Playwright/Cypress), MSW mocking, snapshot discipline - paired with `react-testing-patterns` |
@@ -104,3 +102,5 @@ The following workflows are provided by `core` (install separately):
 - `/task-code-review-security` - Security review
 - `/task-code-review-perf` - Performance review
 - `/task-code-review-reliability` - Reliability review
+- `/task-code-review-observability` - Observability review
+- `/task-onboard` - Codebase onboarding, with the React / Next.js map injected

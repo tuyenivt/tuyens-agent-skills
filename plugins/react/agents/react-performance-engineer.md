@@ -20,19 +20,19 @@ category: engineering
 ## Focus Areas
 
 - **Core Web Vitals**: LCP optimization (preload LCP image, reduce server response time, eliminate render-blocking resources), INP optimization (reduce main thread work, break up long tasks), CLS prevention (image dimensions, font loading, layout stability)
-- **Bundle Optimization**: Route-level code splitting, tree-shaking verification, dynamic imports for heavy libraries, bundle analyzer
+- **Bundle Optimization**: Route-level code splitting, tree-shaking verification, dynamic imports for heavy libraries, `next experimental-analyze` (Turbopack builds)
 - **Render Performance**: React Profiler analysis, unnecessary re-render identification, memoization where profiling proves benefit (not by default)
 - **Server Components**: Migrate Client Components to Server Components where hooks/interactivity aren't needed (reduces JS shipped to client)
-- **Image Optimization**: `next/image` usage, responsive sizing, format optimization (WebP/AVIF), `priority` (Next 15) / `preload` (Next 16) on the LCP image
+- **Image Optimization**: `next/image` usage, responsive sizing, format optimization (WebP/AVIF), `preload` for a single LCP candidate, or `loading="eager"` (optionally plus `fetchPriority="high"`), never `fetchPriority` alone or the deprecated `priority`
 - **Font Optimization**: `font-display: swap`, preloading critical fonts, subsetting
-- **Caching**: TanStack Query staleTime/gcTime tuning, Next.js ISR, HTTP cache headers
+- **Caching**: TanStack Query staleTime/gcTime tuning, Cache Components (`"use cache"` + `cacheLife`) or ISR, HTTP cache headers
 - **Streaming**: Suspense boundaries for progressive loading, avoiding waterfalls
 
 ## Key Skills
 
 ### Workflow this agent drives
 
-- Use skill: `task-react-review-perf` for the React-specific perf review workflow (Core Web Vitals (LCP, INP, CLS), bundle splitting via `next/dynamic` / `React.lazy`, RSC vs Client Component boundaries, RSC streaming via Suspense, TanStack Query cache keys / `staleTime` / `gcTime`, `useMemo` / `useCallback` discipline, hydration cost, `next/image` and `next/font`, ISR / `cache` / `revalidate` correctness)
+- Use skill: `task-react-review-perf` for the React-specific perf review workflow (Core Web Vitals (LCP, INP, CLS), bundle splitting via `next/dynamic` / `React.lazy`, RSC vs Client Component boundaries, RSC streaming via Suspense, TanStack Query cache keys / `staleTime` / `gcTime`, `useMemo` / `useCallback` discipline, hydration cost, `next/image` and `next/font`, `"use cache"` / ISR / `revalidate` correctness)
 
 ### Atomic skills
 

@@ -19,11 +19,11 @@ category: engineering
 
 ## Focus Areas
 
-- **Web Vitals / RUM**: current `web-vitals` (v5 removed FID) reporting LCP, INP, CLS, TTFB via `useReportWebVitals` (Next.js) or after `createRoot` (Vite); real transport (`navigator.sendBeacon` / `fetch` with `keepalive`) to a RUM/analytics endpoint, per-route correlation, sampling at the reporter not at collection
-- **Error Tracking + Boundaries**: Sentry browser SDK (`@sentry/nextjs` / `@sentry/react`) initialized in a dedicated config file, not a component body, with sample rates per environment; `app/global-error.tsx` + per-segment `error.tsx` (App Router) or root `<Sentry.ErrorBoundary>` + `errorElement` (Vite), each calling `Sentry.captureException` (Next.js does not auto-report); user-facing fallback with retry, not a blank screen
-- **Source Maps**: uploaded via the Sentry plugin so production stack traces are readable; `productionBrowserSourceMaps: false` (or equivalent) so maps are not served publicly
-- **Distributed Tracing**: OpenTelemetry web SDK (`WebTracerProvider`, `@opentelemetry/auto-instrumentations-web`, OTLP exporter) with `traceparent` propagated on outbound fetch to the own backend (`propagateTraceHeaderCorsUrls`, CORS allows `traceparent`); Next.js `instrumentation.ts` registering `@vercel/otel` or `NodeSDK` with `BatchSpanProcessor` and SIGTERM shutdown; Edge-runtime gap documented
-- **Structured Client Logging**: no `console.*` in production paths - route to `Sentry.captureMessage` / `captureException` or a structured RUM logger; no log calls in render bodies; sensitive fields scrubbed in `beforeSend` / `beforeBreadcrumb`
+- **Web Vitals / RUM**: current `web-vitals` (v5 removed FID) reporting LCP, INP, CLS, TTFB via `useReportWebVitals`; real transport (`navigator.sendBeacon` / `fetch` with `keepalive`) to a RUM/analytics endpoint, per-route correlation, sampling at the reporter not at collection
+- **Error Tracking + Boundaries**: `@sentry/nextjs` client init in `instrumentation-client.ts` (root or `src/`; `sentry.client.config.ts` never runs on a Turbopack build), server config imported from `register()`, `onRequestError = Sentry.captureRequestError`, sample rates per environment; `global-error.tsx`, per-segment `error.tsx` and `catchError` fallbacks each calling `Sentry.captureException` (Next.js does not auto-report); user-facing fallback with retry, not a blank screen
+- **Source Maps**: uploaded via the Sentry plugin so production stack traces are readable, never served publicly; on Turbopack the plugin enables client maps and deletes them after upload only while `productionBrowserSourceMaps` is unset - an explicit `true` without `deleteSourcemapsAfterUpload: true` serves them, an explicit `false` ships none, an explicit `deleteSourcemapsAfterUpload: false` keeps them
+- **Distributed Tracing**: OpenTelemetry web SDK (`WebTracerProvider`, `@opentelemetry/auto-instrumentations-web`, OTLP exporter) with `traceparent` propagated on outbound fetch to the own backend (`propagateTraceHeaderCorsUrls`, CORS allows `traceparent`); Next.js `instrumentation.ts` registering `@vercel/otel` or `NodeSDK` with `BatchSpanProcessor` and SIGTERM shutdown; a remaining `runtime = 'edge'` route is a finding (Edge is deprecated)
+- **Structured Client Logging**: no `console.*` in production paths - route to `Sentry.logger.*` or a structured logger, `captureException` for errors, never `captureMessage` for routine logs; no log calls in render bodies; sensitive fields scrubbed in `beforeSend` / `beforeBreadcrumb`. Sentry option checks key to the declared `@sentry/nextjs` major - v11: PII is governed by `dataCollection` (defaults collect user info, cookies, request/response headers and bodies, query params; only token-like values are filtered), so its absence or a broad setting on an app that handles PII is the finding, and logs send with no enable flag (filter with `beforeSendLog`); v10: an explicit `sendDefaultPii: true` is the finding, and logs need `enableLogs: true`
 - **Identity + Correlation**: `Sentry.setUser({ id })` after auth, `Sentry.setUser(null)` on logout, `email` only with consent; low-cardinality tags only (no `userId` as a tag); same `userId` / `sessionId` / `traceId` flows into RUM, Sentry, and OTel so a slow user cross-references to errors and traces
 - **Health and SLIs**: critical journeys carry an SLI (LCP < 2.5s, INP < 200ms, CLS < 0.1, or a custom RUM metric); SLOs documented in code; per-route error-rate alerting; per-route bundle-size budget enforced in CI
 
@@ -38,8 +38,8 @@ category: engineering
 Loaded only for a direct question in this agent's lane - one pattern or one setting, answered from the Focus Areas and the atomics below without reviewing code; anything that reviews code or produces findings goes through the workflow above, which composes its own skills.
 
 - Use skill: `react-component-patterns` for error-boundary placement and fallback design
-- Use skill: `react-nextjs-patterns` for `instrumentation.ts`, Server Component / Route Handler wiring, and `NEXT_PUBLIC_` env-var handling
-- Use skill: `react-data-fetching` for outbound fetch instrumentation and `traceparent` propagation
+- Use skill: `react-nextjs-patterns` for Server Component / Route Handler wiring
+- Use skill: `react-selfhost-operations` for build-time vs runtime env (`NEXT_PUBLIC_` inlining) and self-hosted server behavior
 - Use skill: `ops-observability` for liveness/readiness probe shapes and SLI/SLO definitions
 
 ## Principle

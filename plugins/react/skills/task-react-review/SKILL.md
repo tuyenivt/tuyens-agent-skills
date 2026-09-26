@@ -4,7 +4,7 @@ description: Review React / Next.js PR - RSC boundaries, hooks rules, useEffect 
 agent: react-tech-lead
 metadata:
   category: frontend
-  tags: [react, typescript, nextjs, vite, code-review, pull-request, staff-review, multi-scope, workflow]
+  tags: [react, typescript, nextjs, code-review, pull-request, staff-review, multi-scope, workflow]
   type: workflow
 user-invocable: true
 ---
@@ -13,11 +13,11 @@ user-invocable: true
 
 # React Code Review
 
-Staff-level React / Next.js / Vite code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability / reliability subagents in parallel for extra scopes. Runs standalone with full PR/branch resolution.
+Staff-level React / Next.js code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability / reliability subagents in parallel for extra scopes. Runs standalone with full PR/branch resolution.
 
 ## When to Use
 
-- Pre-merge review on a React / Next.js / Vite PR
+- Pre-merge review on a PR in a Next.js 16 App Router project
 - Post-AI-generation quality gate
 - Architecture drift detection
 - Pre-merge risk assessment
@@ -53,8 +53,8 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
 **Auto-escalation signals (React-tuned):**
 
-- **+Sec:** new Server Action / Route Handler / `pages/api/**` API route / `middleware.ts` (`proxy.ts` on 16), `dangerouslySetInnerHTML`, auth / session config, `NEXT_PUBLIC_*` additions, file upload / `<form action={...}>`, `redirect(...)` from user input, CSP / `next.config.headers()` change
-- **+Perf:** new route / page / layout, new `"use client"` component, new client dependency, new TanStack Query usage, `next/image` / `next/font` change, `next/dynamic` / `React.lazy`, ISR / `revalidate` change, long-list rendering
+- **+Sec:** new Server Action / Route Handler (a `pages/api/**` handler included) / `proxy.ts` (or `middleware.ts`, its deprecated name), `dangerouslySetInnerHTML`, auth / session config, `NEXT_PUBLIC_*` additions, file upload / `<form action={...}>`, `redirect(...)` from user input, CSP / `next.config.headers()` change
+- **+Perf:** new route / page / layout, new `"use client"` component, new client dependency, new TanStack Query usage, `next/image` / `next/font` change, `next/dynamic` / `React.lazy`, `"use cache"` / `cacheLife` / `cacheTag` or segment `revalidate` / `dynamic` change, `cacheComponents` / `reactCompiler` change in `next.config.*`, long-list rendering
 - **+Obs:** new or modified `instrumentation.ts` (its `onRequestError` export included), `instrumentation-client.ts`, `app/global-error.tsx`, `web-vitals` wiring / reporter, Sentry / RUM / OTel SDK init, new error boundary, new logging utility, analytics call
 - **+Rel:** new `fetch` / client call without an `AbortSignal.timeout`, TanStack Query `retry` / `retryDelay` config, new or removed `error.tsx` / `global-error.tsx` / error boundary, `useOptimistic` or mutation rollback path, offline / reconnect handling, `revalidatePath` / `revalidateTag` / `updateTag` / `refresh` invalidation change, `next/dynamic` / `React.lazy` chunk boundary
 - **2+ categories -> Full**, counted by independent constructs: one construct listed under two categories (a lone `next/dynamic`, a lone new `error.tsx`) adds only the first category it is listed under
@@ -81,9 +81,9 @@ Use skill: `behavioral-principles`. Accept parent's confirmation if invoked as a
 
 ### Step 2 - Confirm Stack and Detect Framework
 
-Use skill: `stack-detect`. Accept pre-detected stack from parent if applicable. If not React, stop and recommend `/task-code-review`. `stack-detect` keys the primary stack on the root manifest, so in a polyglot repo (a React app under `apps/<name>` beside a Rails root) React may appear only under `Additional`; that counts as React when the diff or request sits inside that package - confirm React against the package's own `package.json`, scope the run to it, and name the package in the Summary's `Notes`.
+Use skill: `stack-detect`. Accept pre-detected stack from parent if applicable. `stack-detect` keys the primary stack on the root manifest, so in a polyglot repo (a Next.js app under `apps/<name>` beside a Rails root) it may appear only under `Additional`; that counts when the diff or request sits inside that package - confirm against the package's own `package.json`, scope the run to it, and name the package in the Summary's `Notes`.
 
-Detect framework: Next.js (App Router / Pages Router) vs Vite + React Router. Record `Framework` and the React, TypeScript and `next` / `react-router` versions from the (package's) `package.json` - `stack-detect` emits no versions.
+With no `next` dependency, print `task-react-review covers Next.js App Router projects only; <project framework> is out of scope - use core's /task-code-review for a generic review.` and stop. Record the React, TypeScript and `next` versions from the (package's) `package.json` - `stack-detect` emits no versions - and `Framework` as `Next.js <version>`, suffixed ` (Pages Router)` when routes exist only under `pages/` or ` (App + Pages Router)` when both `app/` and `pages/` hold routes (detection only - review guidance stays App Router). When the declared `next` is below 16.3 or `react` below 19, put `<package> <declared> is below the plugin floor (Next.js 16.3, React 19); output targets Next.js 16.3 and React 19 - upgrade first.` in the Summary's `Notes` (`<package>` is `Next.js` or `React`; both below is one line, `Next.js 15.5 and React 18.3 are below the plugin floor ...`) and continue. `<declared>` is the version the lockfile resolves for `next` / `react`, else the lower bound of the `package.json` range (`^16.1.0` -> `16.1.0`). Record the full version, not the major.
 
 ### Step 3 - Resolve the Diff
 
@@ -127,7 +127,7 @@ No checkout, no merge. This updates `refs/remotes/<remote>/<branch>`, not the lo
 
 | Condition                                                              | Decision                                                                                                                            |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `prior_checkpoint.head_sha == current_head_sha` and `prior_checkpoint.base_ref == base_ref`, and the invocation adds no scope or depth beyond the prior checkpoint | **No-op.** Print `No new commits on <head_ref_short> since prior review at <sha_short>. Prior report unchanged.` (where `<head_ref_short>` is the short name of `head_ref` - the review target, not the user's current branch - and `<sha_short>` is the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
+| `prior_checkpoint.head_sha == current_head_sha` and `prior_checkpoint.base_sha == current_base_sha`, and the invocation adds no scope or depth beyond the prior checkpoint | **No-op.** Print `No new commits on <head_ref_short> since prior review at <sha_short>. Prior report unchanged.` (where `<head_ref_short>` is the short name of `head_ref` - the review target, not the user's current branch - and `<sha_short>` is the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
 | `prior_checkpoint.head_sha == current_head_sha`, but the invocation expands scope or depth beyond it | `round = prior.round + 1`. Note in Summary: `Same head as round <prior.round>; re-review for expanded <scope\|depth>.` |
 | `git merge-base --is-ancestor <prior_head_sha> <current_head_sha>` fails (prior SHA unreachable) | `round = prior.round + 1`. Note in Summary: `Prior checkpoint unreachable - history rewritten.`      |
 | `prior_checkpoint.base_sha != current_base_sha`                        | `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round>.`       |
@@ -170,7 +170,7 @@ Output risk level and blast radius before any findings.
 
 **Auto-promote depth:** `review-blast-radius` can return two values with a `Mitigation:` line (`Critical (unmitigated) -> Wide (with the flag off)`); gate on the mitigated value only when the `Mitigation:` line's leading tag is `in-place:`, otherwise on the unmitigated one, and record the gated value in Summary (`Blast Radius: <unmitigated> -> <mitigated> (gated on <value>)`). If Blast Radius is Wide / Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E (so the Phase C unchanged-module read, the Phase D repo grep and the `deep` lens spawns in Step 5 are in scope). On round 2+ nothing is inherited; when the resolved depth falls below the checkpoint's (round 1 was user-flagged `deep`), note in Summary: `Depth narrowed vs round <prior.round> - re-run with deep to re-cover.`
 
-**Low-risk short-circuit:** if depth is not `deep`, Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth config, `middleware.ts` / `proxy.ts`, route layouts, shared providers / contexts, `next.config.*`, `vite.config.*`, top-level `App.tsx` / `app/layout.tsx`), skip Phases C-D and produce a streamlined report: Summary, the Phase 0 outputs (Change Brief, traceability), High-Impact Findings (Phases 0, B, E and any extra scope that ran), `## Scope Sections` when an extra scope returned one, `## Prior Round Reconciliation` when round > 1, `## Key Takeaways`, and Next Steps - each omitted when empty, per the Output Format's Omit-empty-sections rule. Phase E still runs; its findings join High-Impact Findings rather than getting their own Notes section.
+**Low-risk short-circuit:** if depth is not `deep`, Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth config, `proxy.ts` / `middleware.ts`, route layouts, shared providers / contexts, `next.config.*`, `app/layout.tsx`), skip Phases C-D and produce a streamlined report: Summary, the Phase 0 outputs (Change Brief, traceability), High-Impact Findings (Phases 0, B, E and any extra scope that ran), `## Scope Sections` when an extra scope returned one, `## Prior Round Reconciliation` when round > 1, `## Key Takeaways`, and Next Steps - each omitted when empty, per the Output Format's Omit-empty-sections rule. Phase E still runs; its findings join High-Impact Findings rather than getting their own Notes section.
 
 ### Phase B - React Correctness and Safety
 
@@ -180,15 +180,14 @@ Apply atomic skills. Each owns canonical patterns; this phase flags deviations:
 - Use skill: `react-component-patterns` - `forwardRef` and ref-prop conventions, error boundary placement. `useRef` vs `useState` is a `react-hooks-patterns` rule, checked there; list `key` correctness is a local check below
 - Use skill: `react-state-patterns` - URL / server / client state categorization (filter / page / sort belong in search params), context re-render scope, no client-side caching of server state when TanStack Query / RSC owns it
 - Use skill: `react-data-fetching` - fetch in Server Components or via TanStack Query; flag `useEffect(() => fetch(...))` in Client Components when a Server Component parent could fetch
-- Use skill: `react-nextjs-patterns` (skip on Vite) - `"use client"` placement at the leaf (not layout root), Server Action `auth()` + Zod `safeParse` validation, `'use server'` file exports only actions, raw ORM rows to Client Components (`OrmRowToClient` here, `RawRowToClient` in `react-server-data-layer` - Step 6 collapses them). `middleware.ts` / `proxy.ts` `matcher` scoping is `react-routing-patterns`'
-- Use skill: `react-routing-patterns` if the diff touches `app/**/page.tsx`, `app/**/layout.tsx`, `middleware.ts` / `proxy.ts`, or router config - it owns `matcher` scoping
+- Use skill: `react-nextjs-patterns` - `"use client"` placement at the leaf (not layout root), Server Action `auth()` + Zod `safeParse` validation, `'use server'` file exports only actions, raw ORM rows to Client Components (`OrmRowToClient` here, `RawRowToClient` in `react-server-data-layer` - Step 6 collapses them); when the diff touches `app/**/page.tsx`, `layout.tsx`, `error.tsx`, `loading.tsx`, `route.ts`, a parallel-route slot, `proxy.ts`, `middleware.ts` or `next.config.*`, also its routing and config conventions and `proxy.ts` `matcher` scoping
 - Use skill: `react-server-data-layer` if the diff touches an ORM client, a schema file, `src/server/**`, or any Server Action / Route Handler that reads or writes persistent state - client singleton and hot-reload guard, server-only boundary, service-layer placement, RSC N+1, request memoization vs data cache, raw ORM rows crossing the client boundary
 - Use skill: `backend-transaction-patterns` if the diff opens a transaction or dispatches a side effect (queue, mail, outbound HTTP) alongside a write
 - Use skill: `react-selfhost-operations` if the diff touches `next.config.*`, `Dockerfile`, CDN or cache rules, `NEXT_PUBLIC_` environment wiring, or the shutdown handling in `instrumentation.ts` `register()`. Its telemetry wiring (`onRequestError`, OTel, Sentry) belongs to `task-react-review-observability`
 
 When a delegated atomic emits its own severity, map it to labels: `Critical` or `Blocker` or `High` -> `[Must]`, `Medium` -> `[Recommend]`, `Low` -> below the reporting bar except in Phase D, where the overengineering smells it names are `Low` and publish as `[Recommend]`. Every severity value any loaded atomic emits appears in that mapping - `react-hooks-patterns`, `react-state-patterns` and `react-data-fetching` all emit `Critical`. A maintainability-only High (`complexity-review`, and `react-overengineering-review` except `PropStateEffectSync`, which shows the user a stale value and follows the incorrect-behaviour rule) is `[Recommend]`: readability alone does not block a merge. A `react-overengineering-review` `Verdict: Question` publishes as `[Recommend]` whatever its severity. A finding this workflow raises directly, with no atomic severity, is `[Must]` when it risks incorrect behaviour, data loss or a security hole, `[Recommend]` otherwise.
 
-**API contract gate (mandatory when triggered).** When the diff touches an `app/**/route.ts` Route Handler or a `pages/api/**` API route, a published spec or generated client, or a response shape returned from one, Use skill: `backend-api-guidelines` and Use skill: `ops-backward-compatibility`. Both run - the first judges design, the second judges consumer breakage. Apply the same coverage and the same severity-to-label mapping as the core `task-code-review` Phase B gate: removed, renamed, or retyped fields, tightened constraints, new required request fields, and changed status codes or error shapes are breaking until proven otherwise; DTOs never return raw ORM rows; collections are paginated; RFC 9457 error shape.
+**API contract gate (mandatory when triggered).** When the diff touches an `app/**/route.ts` Route Handler or a `pages/api/**` handler, a published spec or generated client, or a response shape returned from one, Use skill: `backend-api-guidelines` and Use skill: `ops-backward-compatibility`. Both run - the first judges design, the second judges consumer breakage. Apply the same coverage and the same severity-to-label mapping as the core `task-code-review` Phase B gate: removed, renamed, or retyped fields, tightened constraints, new required request fields, and changed status codes or error shapes are breaking until proven otherwise; DTOs never return raw ORM rows; collections are paginated; RFC 9457 error shape.
 
 **Server Actions are excluded from this gate.** They carry no published API contract; their deploy-skew surface (build-specific action IDs seen by tabs still on the old build) is reliability's and self-hosting's concern, not this gate's. A monolith is still in scope when a Route Handler serves a consumer it cannot redeploy - a mobile client, an inbound webhook, or a public read surface. When consumption is unknown, treat a published or versioned surface (`/api/v1/`, OpenAPI-documented) as externally consumed. Server Action authorization and input validation belong to `task-react-review-security`, not here.
 
@@ -198,7 +197,7 @@ When a delegated atomic emits its own severity, map it to labels: `Critical` or 
 - **Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
 - **TypeScript strict**: no `strict: false`, no `props: any`, no `as any` outside test setup.
 - **List keys**: no `key={index}` on a list that reorders, filters, or loses rows optimistically; `[Recommend]`, `[Must]` when the list holds form state or per-row effects that remount.
-- **Build-breaking imports**: `dynamic(..., { ssr: false })` in an App Router Server Component (no `"use client"` boundary above it) fails `next build` - `[Must]`, even when it arrives as the fix for an earlier finding; Pages Router files and client-only modules are unaffected.
+- **Build breaks** - `[Must]`, even when one arrives as the fix for an earlier finding: `dynamic(..., { ssr: false })` in a Server Component (no `"use client"` boundary above it) and a parallel-route `@slot` with no `default.tsx` fail `next build`; synchronous `params` / `searchParams` / `cookies()` / `headers()` / `draftMode()` access (removed in 16) and one-argument `revalidateTag(tag)` (deprecated - pass a profile such as `'max'`, or `updateTag(tag)` in a Server Action) fail `next build`'s type check. A `middleware.ts` added or edited is `[Recommend]`: rename it to `proxy.ts` (codemod `middleware-to-proxy`) and delete any `config.runtime` - Proxy is Node-only and a `runtime` export throws.
 - **Accessibility**: labels associated, `aria-describedby` for errors, dialogs use `<dialog>` or full ARIA, images have `alt`. Explicit `width`/`height` is a CLS concern owned by `task-react-review-perf`.
 - **Security in Core**: `react-nextjs-patterns` covers Server Action authorization and validation, server-only imports and client leaks - cite those by name. XSS sinks, open redirects and `NEXT_PUBLIC_*` secrets have no Core atomic: when +Sec is not running, raise them directly at `[Must]`; when it is, defer depth to it.
 
@@ -211,14 +210,14 @@ Use skill: `architecture-guardrail` for layer violations and coupling.
 **React-specific:**
 
 - **Layering:** business logic lives in pages / containers / custom hooks, not inside leaf components (`<Card>`, `<Button>`). Flag fetch calls or business decisions in display components
-- **Server / Client split discipline (Next.js):** Client Component importing a server-only utility (`fs`, `node:crypto`, ORM client) is a bundle leak / build error; data fetching belongs in Server Components passing props down
+- **Server / Client split discipline:** Client Component importing a server-only utility (`fs`, `node:crypto`, ORM client) is a bundle leak / build error; data fetching belongs in Server Components passing props down
 - **Custom hook discipline:** a hook taking 8 params and returning 12 fields is a god hook - split or replace with context / state lib
 - **Prop drilling:** a prop threaded 4+ layers - hoist to context or state library; flag chains of pure pass-through props
 - **Context overuse:** context for state with a single consumer - flag as unnecessary indirection
 - **Routing discipline:** `app/**/page.tsx` routes are thin (delegate to feature components); flag route files with > 100 lines of orchestration
 - **Settings discipline:** typed config (`@/lib/config.ts` with Zod, or typed `next.config.ts`); flag `process.env.X` sprinkled across components; missing-at-startup should fail fast
 - **Module boundaries:** feature-folder layout (`src/features/orders/{components,hooks,api}.ts`) over layer-folder; cross-feature imports go through a defined public surface
-- **Provider sandwich:** > ~5 nested providers in `app/layout.tsx` / `App.tsx` - consolidate into a `<Providers>` wrapper
+- **Provider sandwich:** > ~5 nested providers in `app/layout.tsx` - consolidate into a `<Providers>` wrapper
 
 ### Phase D - AI-Generated Code Quality
 
@@ -274,7 +273,7 @@ Spawn these right after Phase A, once depth is final (an auto-promotion to `deep
 
 - The resolved review target (`base_ref`, `head_ref`) plus the pre-read diff, `--name-status` list and commit log (no re-running git)
 - The depth level
-- Pre-confirmed stack (React `<version>`) + detected framework (Next.js App Router / Pages Router / Vite + React Router) with version
+- The pre-confirmed stack and framework - `Next.js <version>` with its Step 2 router suffix, the React version, and the Step 2 below-floor line or `none` - so the lens skips its own detection, scope stop and floor check
 - Instruction to return findings in its own Output Format
 
 **Failure isolation:** if a subagent fails or times out, continue with the rest. Note the missing scope in Summary.
@@ -306,7 +305,7 @@ Runs before reconciliation so prior-round matching sees the corrected set; findi
 
 Skip on round 1. Otherwise Use skill: `review-prior-findings-reconcile` with the inputs below. Before accepting an `Addressed` row, read the code that replaced the smell: a fix that brings its own defect (a heavy import moved behind `dynamic(..., { ssr: false })` in a Server Component) keeps the row `Addressed` and files that defect as a new finding.
 
-- `prior_report`: read the handle's `report_path` now and pass its body (frontmatter excluded); its headings are already reconcile's shape (reconcile's `prior_report_path` input is this same path)
+- `prior_report`: the body of the file at the handle's `report_path` (frontmatter excluded), with a prior finding whose path is absent from `name_status` projected with `_(pre-existing)_`, so an `Unverified` finding in an untouched file is never closed as `Addressed` unread (`review-change-intent`'s `prior_report_path` in Phase 0 is this same path)
 - `diff`: the full-range diff from Step 3
 - `name_status`: the full-range `git diff --name-status <base_ref>...<head_ref>` from Step 3
 - `head_sha`: `current_head_sha`
@@ -321,7 +320,7 @@ Use skill: `review-report-writer` with `report_type: review`, `report_body` (the
 
 - `branch` = the handle's `head_short_name`, `base_ref`, `base_sha = current_base_sha`, `head_ref` (both refs as the handle emitted them), `head_sha = current_head_sha`
 - `mode: full` (the writer's only accepted value), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full`; two or three explicit extra scopes map to their tokens space-joined in `+perf +sec +obs +rel` order, and four are `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = typescript-nextjs` (Vite: `typescript-react`)
+- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full`; two or three explicit extra scopes map to their tokens space-joined in `+perf +sec +obs +rel` order, and four are `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = typescript-nextjs`
 
 Write before ending; print the confirmation line.
 
@@ -349,7 +348,7 @@ The fence below delimits the template for display only - it is not part of the r
 - **Risk Level:** Low | Medium | High | Critical
 - **Blast Radius:** Narrow | Moderate | Wide | Critical
 - **Stack Detected:** React <version> / TypeScript <version>
-- **Framework:** Next.js (App Router) <version> | Next.js (Pages Router) <version> | Vite + React Router <version>
+- **Framework:** Next.js <version>{ <Step 2 router suffix>}
 - **Scope:** Core | +Sec | +Perf | +Obs | +Rel | two or three of those | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <categories>`)_
 - **Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
 - **Assessment basis:** <the open-label set the Assessment line was read from: `<n> Must open, <n> Recommend open`>
@@ -357,7 +356,7 @@ The fence below delimits the template for display only - it is not part of the r
 - **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped (<F> false positive, <R> resolved by diff) _(the parenthetical only when K > 0)_
 - **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
-- **Notes:** <one line per round, scope or depth note the Workflow requires - `Prior report lacks checkpoint metadata`, `Same head as round <N>`, `Prior checkpoint unreachable`, `Base branch advanced`, `Base ref changed`, `Scope expanded round <N>`, `Scope narrowed vs round <N>`, `Depth narrowed vs round <N>`, `Scope incomplete: <scope>`, the package the run was scoped to, and the per-signal `signal: <category> -> <file:line>` log; omit the line when none apply>
+- **Notes:** <one line per floor, round, scope or depth note the Workflow requires - the Step 2 below-floor line, `Prior report lacks checkpoint metadata`, `Same head as round <N>`, `Prior checkpoint unreachable`, `Base branch advanced`, `Base ref changed`, `Scope expanded round <N>`, `Scope narrowed vs round <N>`, `Depth narrowed vs round <N>`, `Scope incomplete: <scope>`, the package the run was scoped to, and the per-signal `signal: <category> -> <file:line>` log; omit the line when none apply>
 
 ## Change Brief
 
@@ -404,7 +403,7 @@ _Cross-cutting commentary. Do not restate individual findings; reference them by
 - Boundary impact:
 - Coupling change:
 - Drift detected:
-- Server / Client data flow: _(Next.js)_ when 3+ findings cluster around ORM rows crossing the RSC -> Client boundary, name the systemic pattern here rather than producing N near-identical findings
+- Server / Client data flow: when 3+ findings cluster around ORM rows crossing the RSC -> Client boundary, name the systemic pattern here rather than producing N near-identical findings
 
 ## Maintainability Notes
 
@@ -446,25 +445,25 @@ _Omit if no actionable findings._
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded (or accepted from parent)
-- [ ] Step 2: stack confirmed as React (against the package's own manifest in a monorepo); framework and React version recorded
+- [ ] Step 2: Next.js confirmed (against the package's own manifest in a monorepo), or the out-of-scope line printed and the run stopped; React, TypeScript and `next` versions and `Framework` with its router suffix recorded; below-floor line in `Notes` when the declared `next` or `react` is below the floor
 - [ ] Step 3: `review-precondition-check` ran (or handle received); a fail-fast was surfaced verbatim and stopped the run; current_head_sha and current_base_sha captured and the round decided before the diff and commit log were read once and reused
 - [ ] Step 3.5 - round decided (1 / prior + 1 / no-op); auto-fetch attempted only when prior checkpoint exists; the full `<base_ref>...<head_ref>` range analyzed regardless of round; no-op path exits without writing the report
 - [ ] Step 4: scope auto-escalation evaluated; promotion (or `core-only` suppression) recorded with firing signals
 - [ ] Phase 0 - `review-change-intent` ran on the cumulative diff; Change Brief carried into the report; requirement lines in Summary, or all three requirement outputs omitted when no source resolved; its findings verified with the rest
 - [ ] Phase A: risk level and blast radius stated before any finding; depth auto-promoted to `deep` when Blast Radius is Wide/Critical; low-risk short-circuit applied when applicable
-- [ ] Phase B: atomic skills applied (`react-hooks-patterns`, `react-component-patterns`, `react-state-patterns`, `react-data-fetching`, plus `react-nextjs-patterns` / `react-routing-patterns` when relevant); atomic severities, maintainability Highs, `Question` verdicts and directly raised findings labelled per the mapping; the conditional delegations fired when their trigger appeared (`react-server-data-layer`, `backend-transaction-patterns`, `react-selfhost-operations`, and the API contract gate's `backend-api-guidelines` + `ops-backward-compatibility`); test coverage, list keys, build-breaking `ssr: false` imports, RSC -> Client ORM leak, TS strict and a11y checked. XSS sinks, open redirects and `NEXT_PUBLIC_*` secrets are raised here directly only when the +Sec scope is not running
+- [ ] Phase B: atomic skills applied (`react-hooks-patterns`, `react-component-patterns`, `react-state-patterns`, `react-data-fetching`, `react-nextjs-patterns` with its routing, config and `matcher` checks when routing, boundary, route-handler, proxy or `next.config.*` files changed); atomic severities, maintainability Highs, `Question` verdicts and directly raised findings labelled per the mapping; the conditional delegations fired when their trigger appeared (`react-server-data-layer`, `backend-transaction-patterns`, `react-selfhost-operations`, and the API contract gate's `backend-api-guidelines` + `ops-backward-compatibility`); test coverage, list keys, build breaks (`ssr: false` in a Server Component, missing `default.tsx`, sync request APIs, one-argument `revalidateTag`) and a `middleware.ts` added or edited, RSC -> Client ORM leak, TS strict and a11y checked. XSS sinks, open redirects and `NEXT_PUBLIC_*` secrets are raised here directly only when the +Sec scope is not running
 - [ ] Phase C: layering, RSC / Client split, custom hook / prop drilling / context discipline, settings, module boundaries, provider sandwich applied
 - [ ] Phase D: `complexity-review` + `react-overengineering-review` applied; React AI smells covered (pattern inflation, over-abstraction, redundant prop transforms, `useEffect` misapplication, memo overuse, `as any`, anonymous default-export components)
 - [ ] Phase E: naming, co-location, magic numbers, component length, conditional ladders, logging hygiene
 - [ ] Missing tests raised as a named finding (not buried)
 - [ ] Every Must cites system risk
 - [ ] Every finding has label + `file:line` + actionable React fix
-- [ ] Step 5: extra scopes spawned after Phase A at the final depth, in parallel, with the pre-resolved diff, name-status list and log plus framework detection
+- [ ] Step 5: extra scopes spawned after Phase A at the final depth, in parallel, with the pre-resolved diff, name-status list and log plus the confirmed framework (router suffix included), React version and below-floor line or `none`
 - [ ] Step 6: cross-phase duplicates collapsed (runs whether or not Step 5 ran); subagent findings merged into one intent-ordered Findings list with each lens's `Label` carried through unchanged; raw reports not appended; every non-finding section preserved under `## Scope Sections`; failed/missing scope noted as `Scope incomplete: <scope>`; Next Steps tagged `[Implement]` / `[Delegate]`
 - [ ] Depth honored: `standard` ran Phases A-E; `deep` additionally ran the Phase C and Phase D depth branches and spawned every extra scope at `deep`
 - [ ] Assessment set from the open-label set per the Output Format rule, not from overall impression
 - [ ] Step 6.5 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels and annotations applied; tally in Summary
-- [ ] Step 6.6 - on round 2+, review-prior-findings-reconcile ran with `head_sha`; reconciliation table inserted; Still open and Needs re-check rows carried into High-Impact Findings and Next Steps with mapped labels and `_(carried from round <N>)_`
+- [ ] Step 6.6 - on round 2+, review-prior-findings-reconcile ran with `head_sha` and the prior body, untouched-path findings projected with `_(pre-existing)_`; reconciliation table inserted; Still open and Needs re-check rows carried into High-Impact Findings and Next Steps with mapped labels and `_(carried from round <N>)_`
 - [ ] Step 7: review report written via `review-report-writer` with full checkpoint fields (`branch` = `head_short_name`, mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation line printed
 
 ## Avoid
@@ -472,7 +471,7 @@ _Omit if no actionable findings._
 - State-changing git from this workflow (checkout/merge/pull/rebase). The one allowed exception is `git fetch <remote> <branch>` in Step 3.5a, and only when a valid prior checkpoint exists.
 - Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
 - Scoping round 2+ analysis to `<prior_head_sha>...<head_sha>` - risk, scope, depth, and requirement fit score the full `<base_ref>...<head_ref>` range on every round.
-- Writing the report on the Step 3.5b no-op exit (same `head_sha` **and** no added scope or depth) - the file must stay byte-identical. An equal SHA with expanded scope or depth is a real round and does write.
+- Writing the report on the Step 3.5b no-op exit (same `head_sha` and `base_sha` **and** no added scope or depth) - the file must stay byte-identical. An equal SHA with expanded scope or depth is a real round and does write.
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
 - Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.
 - Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.

@@ -1,6 +1,6 @@
 ---
 name: react-overengineering-review
-description: "Flag React overengineering: premature memo/useCallback, trivial Context, Redux for 2 fields, single-use custom hooks, generic HoC/compound for one consumer."
+description: "Flag React overengineering: premature memo/useCallback, trivial Context, Redux for 2 fields, single-use hooks, generic HoC/compound for one consumer."
 metadata:
   category: frontend
   tags: [react, overengineering, complexity, memoization, context, redux, custom-hooks, anti-patterns]
@@ -9,7 +9,7 @@ user-invocable: false
 
 # React Overengineering Review
 
-> Load `Use skill: stack-detect` first to confirm the project is React and whether it is Next.js, whose installed `next` major selects the compiler config key below; the detection is context, not an output field. `stack-detect` has no field for this (it carries versions only when a `## Tech Stack` section declares them): read the compiler plugin, the `next` version and store libraries from `package.json` dependencies (the owning app's manifest in a monorepo) and the imports in the files in scope. For framework-neutral complexity heuristics defer to `complexity-review`; this skill owns React-specific overengineering.
+> Load `Use skill: stack-detect` first to confirm the project is React; the detection is context, not an output field. `stack-detect` carries no compiler or store-library field: read `reactCompiler` from `next.config.*`, and the compiler plugin and store libraries from `package.json` dependencies (the owning app's manifest in a monorepo) and the imports in the files in scope. For framework-neutral complexity heuristics defer to `complexity-review`; this skill owns React-specific overengineering.
 
 ## When to Use
 
@@ -23,7 +23,7 @@ The bar: an abstraction earns its keep when **at least two real consumers exist 
 ## Rules
 
 - One real consumer is not a reusable abstraction. Inline first; extract on the second use.
-- **Establish whether the React Compiler is on before judging memoization.** Look for `babel-plugin-react-compiler`, `reactCompiler: true` (Next 16) or `experimental.reactCompiler` (Next 15). Where it is on and compiling the file - `compilationMode: 'annotation'` compiles only functions marked `"use memo"`, and `"use no memo"` or a Rules-of-React violation bails a component out - new manual memoization is not needed, so flag it in code being written. Existing manual memoization is a different question: the compiler preserves it deliberately, React's own guidance is to leave it alone, and `useMemo`/`useCallback` remain the supported escape hatch for a value an effect depends on. Never file a bulk-delete finding.
+- **Establish whether the React Compiler is on before judging memoization.** It is on when `next.config` sets `reactCompiler: true` or `reactCompiler: { compilationMode: 'annotation' }`, transformed by `babel-plugin-react-compiler` or by `experimental.turbopackRustReactCompiler: true` (no Babel plugin); a leftover `experimental.reactCompiler` goes in `Notes:` as a key to move to top-level `reactCompiler`. Where it is on and compiling the file - `compilationMode: 'annotation'` compiles only functions marked `"use memo"`, and `"use no memo"` or a Rules-of-React violation bails a component out - new manual memoization is not needed, so flag it in code being written. Existing manual memoization is a different question: the compiler preserves it deliberately, React's own guidance is to leave it alone, and `useMemo`/`useCallback` remain the supported escape hatch for a value an effect depends on. Never file a bulk-delete finding.
 - Memoization added by hand requires a named reason: a memoized child whose identity drives renders, an expensive computation profiled, or a value in a downstream effect's dep array. "Just in case" is not a reason.
 - Context with one consumer is a prop chain in disguise. Pass the prop - unless that one consumer is a deep descendant the intermediate layers never read (see the Context bar).
 - A global store for fewer than three shared slices is overhead whatever the library - the bar in the Pattern below is library-neutral. The library only changes how much the overhead costs: Redux adds store wiring, a `<Provider>` and `useDispatch`/`useSelector` at every call site, while Zustand and Jotai are lighter (though in the App Router both still need a per-request store behind a client provider to be SSR-safe). Weigh that cost in the Fix, not in whether to flag.
@@ -161,9 +161,10 @@ Compound is correct for `<Dialog>`, `<Tabs>`, `<Menu>` - where consumers need to
 const Guarded = withAuth(ProtectedRoute);   // HoC takes a component, not an element
 <Guarded><RenderUser>{(u) => ...}</RenderUser></Guarded>
 
-// Good - one of these, picked deliberately; usually the hook.
-const user = useAuth();
-if (!user) return <Navigate to="/login" replace />;   // React Router; Next: redirect("/login")
+// Good - one of these, picked deliberately; for an auth gate, a check in the page Server Component
+// (it guards that page only; nested segments and Server Actions re-check through the DAL).
+const user = await getUser();
+if (!user) redirect("/login");
 ```
 
 ### Redundant Prop -> State -> Effect Sync
@@ -180,7 +181,7 @@ function Greeting({ name }: { name: string }) {
 function Greeting({ name }: { name: string }) { return <p>Hi {name}</p>; }
 ```
 
-`useEffect` to sync a prop into state is almost always wrong. Either compute during render or lift state to the parent.
+`useEffect` to sync a prop into state is almost always wrong. Either compute during render or lift state to the parent. `eslint-config-next` flags it through `react-hooks/set-state-in-effect`; a suppression of that rule belongs in the finding's Evidence.
 
 ### Speculative Configurability
 
@@ -209,7 +210,9 @@ Scope: <files reviewed>
   Fix: <one-line action; reference a Pattern by name>
 
 Cleared: <reviewed and justified - one line, no blocks; `none` when nothing was cleared>
+
 Tally: <N> findings, <Q> questions
+
 Notes: <off-scope defects noticed in passing, each naming the concern that owns it (hooks discipline, state architecture, accessibility) rather than a skill filename; omit when none>
 ```
 

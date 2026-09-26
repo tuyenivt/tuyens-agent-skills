@@ -21,20 +21,20 @@ user-invocable: false
 
 - Never `fetch` + `useState` in `useEffect`. Use a Server Component (data needed at render) or TanStack Query / SWR (interactive, user-specific, or revalidating client data).
 - Query keys are arrays containing every variable the query depends on. Same key = same cache entry; different inputs = different keys.
-- Every mutation invalidates or sets the affected queries. Untouched cache after a write is a bug.
+- Every mutation invalidates what it changed: a client-library mutation invalidates or sets the affected queries; a Server Action calls `updateTag` when its response shows the user's own write, `revalidateTag(tag, "max")` only where stale-while-revalidate is acceptable, or `revalidatePath` (Server Action + tag invalidation); `refresh()` only re-renders the client router and invalidates nothing. Untouched cache after a write is a bug.
 - Components handle `loading`, `error`, and `empty` (data arrived and holds no rows) explicitly. A query that is pending but not fetching (disabled, paused offline) renders the prerequisite's or an offline state. No blank-screen fallthroughs.
 - Fetch/transform logic lives in named module-scope functions; the thin `queryFn: () => fetchUser(id)` arrow at the call site is idiomatic. `Inline-Fn` flags fetch logic written inline in the options object, not the thin wrapper.
-- For Next.js App Router: fetch on the server, hydrate to TanStack Query via `HydrationBoundary` when the same data must stay interactive on the client.
+- Read on the server first: fetch in a Server Component and pass the data, or a Promise the Client Component unwraps with `use()`. Prefetch into TanStack Query with `HydrationBoundary` only when the same data must also refetch on the client.
 
 ## Fetching Strategy
 
 | Need                                                | Use                                          |
 | --------------------------------------------------- | -------------------------------------------- |
-| Render-time data, SEO, no client interactivity      | Server Component (`async`/`await`)           |
+| Render-time data, SEO, no client interactivity      | Server Component (`async`/`await`), data or a `use()` Promise passed down |
 | User-specific, mutates, polls, refetches            | TanStack Query in Client Component          |
 | Changes on the server while watched (webhook-driven status, live stock) | TanStack Query with `refetchInterval` that returns `false` at a terminal state, or a push channel (SSE / WebSocket) that invalidates the key |
 | Same data on server then interactive on client      | RSC prefetch + `HydrationBoundary`           |
-| Cacheable public data with ISR                      | Server Component + `revalidate` / tags (Next 16 with Cache Components: `"use cache"` + `cacheLife` / `cacheTag`) |
+| Cacheable public data                               | `cacheComponents` set in `next.config`: `"use cache"` + `cacheLife` / `cacheTag`; not set: `fetch` with `next: { revalidate, tags }`, or `unstable_cache(fn, keys, { tags, revalidate })` for non-fetch reads |
 | Project already standardised on SWR                 | SWR (URL-keyed, simpler API)                 |
 
 TanStack Query is the default client choice for what SWR lacks: `gcTime` control, built-in prefix matching of hierarchical keys (SWR needs a hand-written `mutate(key => ...)` matcher), the mutation lifecycle (`onMutate` / `cancelQueries`), and devtools. SWR covers dependent, infinite and optimistic fetching too and is fine where the team has chosen it.
@@ -45,9 +45,11 @@ Cache sizing: `staleTime` = how long serving stale data is acceptable (0 only wh
 
 ### Server Component + streamed child
 
+With `cacheComponents` set, an uncached read or `await params` (without `generateStaticParams`) outside `<Suspense>` fails the build as a blocking route: the page examples below then need a sibling `loading.tsx`, or the read moves into a child under `<Suspense>`.
+
 ```tsx
 // app/products/[id]/page.tsx
-export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProductPage({ params }: PageProps<"/products/[id]">) {
   const { id } = await params;
   const product = await db.product.findUnique({ where: { id } });
   if (!product) notFound();
@@ -61,6 +63,20 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   );
 }
 ```
+
+### Server Action + tag invalidation
+
+```tsx
+"use server";
+import { updateTag } from "next/cache";
+export async function createPost(formData: FormData) {
+  const user = await requireUser();                  // authorize inside every action
+  await db.post.create({ data: { authorId: user.id, title: String(formData.get("title")) } });
+  updateTag(`posts:${user.id}`);                     // reads carry this tag: cacheTag, fetch next.tags, or unstable_cache tags
+}
+```
+
+`updateTag` (read-your-writes) is Server Actions only; `revalidateTag(tag, "max")` serves stale while revalidating, a Route Handler or webhook expires with `revalidateTag(tag, { expire: 0 })`, and `refresh()` covers uncached data. One-argument `revalidateTag(tag)` is deprecated.
 
 ### TanStack Query client setup
 
@@ -218,7 +234,7 @@ Summary: <N> findings (<C> Critical, <H> High, <M> Medium, <L> Low)
 
 Client Library: {TanStack Query | SWR | Mixed | None}
 
-RSC Usage: {Server-First | Client-First | Mixed | None in scope | N/A (SPA)}
+RSC Usage: {Server-First | Client-First | Mixed | None in scope}
 
 Invalidation Coverage: <mutations with invalidation> / <total mutations>
 
@@ -227,11 +243,11 @@ Not assessed: <input never shown or unverifiable from it - a parent Server Compo
 Notes: <off-enum observations; omit when none>
 ```
 
-`Client-Setup`: QueryClient construction or provider defects (an unguarded module-scope client on a server runtime, missing provider). A server cache keyed without an input its function reads (`unstable_cache` key parts omitting the user) is `Query-Key`. A fetch dispatched into a UI store (a Redux thunk in an effect) is `Effect-Fetch`; the store holding server data belongs to state architecture and goes in `Notes:`. A prefetch/client key mismatch is `Hydration`, not `Query-Key`. `Mixed` Client Library = two libraries, or a library plus raw effect-fetches. A mutation counts as covered when it invalidates or sets the affected queries on success or settlement (`onSuccess`, `onSettled`, or after `mutateAsync`); an `onMutate` optimistic write alone does not count; with no mutation in scope, write `0 / 0`. One Finding per root cause: occurrences with the same Category and the same fix in one file merge into one Finding listing each location; different Categories never merge. An effect that triggers fetches without calling fetch (an observer calling `setSize`) is `Effect-Fetch` when it leaks or duplicates them; a raw call fetching what a hook in scope already caches is `Effect-Fetch` on the raw path, the Fix naming the hook. Non-finding observations (out-of-enum defects, confirmed-fine calls) go in a single trailing `Notes:` line.
+`Client-Setup`: QueryClient construction or provider defects (an unguarded module-scope client on a server runtime, missing provider). A server cache keyed without an input its function reads is `Query-Key`: `"use cache"` keys arguments and captured closure variables automatically, so the case there is a value read from module scope; without `cacheComponents`, `unstable_cache` key parts omitting the user. A fetch dispatched into a UI store (a Redux thunk in an effect) is `Effect-Fetch`; the store holding server data belongs to state architecture and goes in `Notes:`. A prefetch/client key mismatch is `Hydration`, not `Query-Key`. `Mixed` Client Library = two libraries, or a library plus raw effect-fetches. A mutation counts as covered when it invalidates or sets the affected queries on success or settlement (`onSuccess`, `onSettled`, or after `mutateAsync`); an `onMutate` optimistic write alone does not count; a Server Action counts when it calls `updateTag`, two-argument `revalidateTag` or `revalidatePath` for what it wrote (`refresh()` alone does not count), and one that calls none is an `Invalidation` finding; `revalidateTag(tag, "max")` counts only where stale-while-revalidate is acceptable - an action whose response shows its own write (it redirects to or returns a view of it) needs `updateTag`, otherwise it is an `Invalidation` finding at High (stale data after writes); with no mutation in scope, write `0 / 0`. One Finding per root cause: occurrences with the same Category and the same fix in one file merge into one Finding listing each location; different Categories never merge. An effect that triggers fetches without calling fetch (an observer calling `setSize`) is `Effect-Fetch` when it leaks or duplicates them; a raw call fetching what a hook in scope already caches is `Effect-Fetch` on the raw path, the Fix naming the hook. Non-finding observations (out-of-enum defects, confirmed-fine calls) go in a single trailing `Notes:` line.
 
 Severity guide:
 - **Critical**: data loss, wrong-user data, unbounded refetch loops; an unguarded module-scope `QueryClient` on a server runtime (cross-request leakage; a `"use client"` module still runs during SSR).
-- **High**: stale data after writes (missing `invalidateQueries`); a missing `QueryClientProvider` (throws at runtime); an effect-fetch that races, refetches unboundedly, leaks on unmount, or omits an input it reads from its deps (another entity's data stays after the id or the signed-in user changes) (a correctly guarded one is still `Effect-Fetch`, at Medium, since the Rule is absolute); a `queryFn`-read variable absent from the `queryKey` (cache collision, wrong data shown; Critical when the missing input is the user's identity, since another user's data is then served; Low when the value is a build-time constant); a prefetch/client key mismatch defeating hydration; race conditions from manual effects.
+- **High**: stale data after writes (missing `invalidateQueries`, or a Server Action with no tag/path invalidation); a missing `QueryClientProvider` (throws at runtime); an effect-fetch that races, refetches unboundedly, leaks on unmount, or omits an input it reads from its deps (another entity's data stays after the id or the signed-in user changes) (a correctly guarded one is still `Effect-Fetch`, at Medium, since the Rule is absolute); a `queryFn`-read variable absent from the `queryKey` (cache collision, wrong data shown; Critical when the missing input is the user's identity, since another user's data is then served; Low when the value is a build-time constant); a prefetch/client key mismatch defeating hydration; race conditions from manual effects.
 - **Medium**: missing empty/error UI (High when a failed load leaves the UI stuck, e.g. a spinner that never clears); missing optimistic rollback; client-fetching public data a Server Component should own (`RSC-Boundary`); truly cosmetic key instability (string-vs-array of same data).
 - **Low**: fetch logic written inline in the options object (`Inline-Fn`; the thin `queryFn: () => fetchUser(id)` wrapper is idiomatic and never a finding); default `staleTime: 0` where freshness isn't required and focus refetch is off.
 

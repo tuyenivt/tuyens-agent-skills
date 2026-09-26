@@ -26,7 +26,7 @@ category: quality
 - **Form Testing**: Validation errors, submission flow, disabled states, server error mapping
 - **Accessibility Testing**: axe assertions in component tests (`vitest-axe`, or `jest-axe` on Jest) and route scans in E2E
 - **E2E Testing**: Playwright for critical user journeys, page object pattern, deterministic test data
-- **Server Testing**: async Server Components, Server Actions and Route Handlers, real-database integration tests
+- **Server Testing**: the async Server Component boundary (data function + E2E), Server Actions and Route Handlers, real-database integration tests
 
 ## Key Skills
 

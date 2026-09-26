@@ -1,9 +1,9 @@
 ---
 name: frontend-testing-patterns
-description: Guide frontend testing: component, integration, e2e, MSW API mocking, snapshot discipline, coverage ratchets. Adapts to stack.
+description: Guide frontend testing: component, integration, e2e, MSW API mocking, snapshot discipline, coverage ratchets. React / Next.js.
 metadata:
   category: frontend
-  tags: [frontend, testing, playwright, e2e, msw, vitest, jest, multi-stack]
+  tags: [frontend, testing, playwright, e2e, msw, vitest, jest]
 user-invocable: false
 ---
 
@@ -31,10 +31,10 @@ Module-level mocking is acceptable only for third-party SDKs you cannot drive fr
 
 ### Server-rendered components
 
-A component that runs only on the server (React Server Components, Nuxt server components) has no client lifecycle to render into and often no network boundary to intercept - it calls the database or filesystem directly. The client-side rules do not transfer:
+A component that runs only on the server (React Server Components) has no client lifecycle to render into and often no network boundary to intercept - it calls the database or filesystem directly. The client-side rules do not transfer:
 
 - Extract the data access and unit-test it directly against a test database or a fake repository; the component's own job is then shaped from that data.
-- Async server components cannot be rendered by Testing Library's `render()` - test their output through E2E. A synchronous one renders with `render()` like any component once any `server-only` import in its graph is mocked (it throws on import under jsdom).
+- Async server components cannot be rendered by Testing Library's `render()` - test their output through E2E. A synchronous one renders with `render()` like any component once any `server-only` import in its graph is mocked (it throws when imported outside the react-server condition).
 - MSW intercepts HTTP, so it applies only where the server component actually makes an HTTP call to another service.
 - The Client Components beneath it follow every rule above - the boundary between them is where normal component testing resumes.
 
@@ -46,7 +46,7 @@ A component that runs only on the server (React Server Components, Nuxt server c
 
 | Level       | Tests                              | Tools                          | Count    |
 | ----------- | ---------------------------------- | ------------------------------ | -------- |
-| Unit        | Pure functions, hooks, utilities   | Vitest / Jest                  | Many     |
+| Unit        | Pure functions, hooks (`renderHook`), utilities | Vitest / Jest     | Many     |
 | Component   | Single component render + events   | Testing Library + Vitest/Jest  | Many     |
 | Integration | Multi-component flows with state   | Testing Library + MSW          | Moderate |
 | E2E         | Full user journeys in a browser    | Playwright (preferred)         | Few      |
@@ -54,10 +54,10 @@ A component that runs only on the server (React Server Components, Nuxt server c
 ### Test Behavior, Not Implementation
 
 ```
-// Bad: probes internal state - breaks on refactor even if UX is identical
-const wrapper = mount(UserCard)
-expect(wrapper.vm.isExpanded).toBe(false)
-wrapper.vm.toggleExpand()
+// Bad: probes markup internals - breaks on refactor even if UX is identical
+const { container } = render(<UserCard user={mockUser} />)
+fireEvent.click(container.querySelector(".toggle")!)
+expect(container.querySelector(".details")).toHaveClass("is-expanded")
 
 // Good: tests what the user sees and does
 render(<UserCard user={mockUser} />)
@@ -106,7 +106,7 @@ expect(await screen.findByText("Alice")).toBeInTheDocument()
 
 ### Loading and Error State Tests
 
-Every data-fetching component tests three states: loading, success, error.
+Every data-fetching component tests four states: loading, success, empty, error.
 
 ```
 // Error state - server.use is per-test; afterEach(resetHandlers) above undoes it
@@ -138,7 +138,7 @@ Use Playwright with a page object pattern, run against a stable seeded environme
 
 **E2E stability.** Flaky tests erode trust faster than missing tests:
 
-- Never use fixed sleeps (`waitForTimeout`, hard-coded delays) - they race network timing. Use auto-retrying assertions that wait for the UI state itself: `await expect(page.getByText("Order confirmed")).toBeVisible()`
+- Never use fixed sleeps (`waitForTimeout`, hard-coded delays) - they race network timing. Use auto-retrying assertions that wait for the UI state itself: `await expect(page.getByRole("heading", { name: "Order confirmed" })).toBeVisible()` - a role locator also skips the hidden routes `cacheComponents` keeps in the DOM; filter any other locator with `.filter({ visible: true })`
 - Wait on user-visible outcomes (spinner gone, data rendered), never on timers or network internals
 - Each test creates or seeds its own data; never reuse state left by a previous test
 - Do not raise retry counts to mask flakiness - retries hide real race conditions; fix the wait or the data setup instead
@@ -195,18 +195,6 @@ const expensive = createMockProduct({ price: 99999 })
 const outOfStock = createMockProduct({ inStock: false })
 ```
 
-## Stack-Specific Guidance
-
-After `stack-detect`, apply patterns using ecosystem idioms:
-
-- **React**: Vitest + React Testing Library; `renderHook` for hooks; MSW; Playwright
-- **Vue**: Vitest + Vue Test Utils (or Testing Library Vue); `@nuxt/test-utils` for Nuxt; MSW; Playwright
-- **Angular**: Vitest or Jest + Angular Testing Library; component harnesses for Material; `HttpTestingController`; Playwright
-
-For any framework not bound above - `unknown`, or a detected one such as Svelte or Solid - apply the universal patterns and point the user to that framework's testing docs.
-
----
-
 ## Output Format
 
 Consuming workflow skills depend on this structure. Include exactly one of `Issues Found` / `No Issues Found`. A clean run emits every header field, the Test Strategy table, `Tests to Write` when any apply, and `No Issues Found`; only the `Issues Found` blocks are omitted. Order Issues Found by severity, highest first; within a band, file order (the order the input lists the files; ascending line within a file). When the project defines no coverage norms, default targets to 80% for unit and component, key flows for integration, critical paths for e2e.
@@ -216,7 +204,7 @@ When a coverage report shows the baseline below those targets, or no report exis
 ```
 ## Frontend Testing Assessment
 
-**Stack:** {Framework and Language as a display name (`Next.js 15.5 / TypeScript` for stack-detect's `React (Next.js)`) - the major.minor from the owning app's `package.json` (`^15.5.0` -> 15.5); with no `tsconfig.json`, the extensions of the files in scope decide JS vs TS, overriding stack-detect's Language; in a monorepo, the app owning the reviewed code; "unknown - universal patterns applied" when inconclusive}
+**Stack:** {Framework and Language as a display name (`Next.js 16.3 / TypeScript` for stack-detect's `React (Next.js)`) - the major.minor from the owning app's `package.json` (`^16.3.0` -> 16.3); with no `tsconfig.json`, the extensions of the files in scope decide JS vs TS, overriding stack-detect's Language; in a monorepo, the app owning the reviewed code; `unknown` for a part that is inconclusive}
 
 **Test framework:** {detected or recommended test framework}
 

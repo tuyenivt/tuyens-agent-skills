@@ -18,14 +18,14 @@ user-invocable: false
 - Structuring persistence so a future non-web client can reuse it
 - Diagnosing repeated identical queries across a rendered page, or a client bundle that pulled in the ORM
 
-Version scope: the examples are Next.js 15 and Prisma 5-6. Prisma 7 constructs the client with a driver adapter (`new PrismaClient({ adapter: new PrismaPg({ connectionString }) })`) imported from the generator's output path, not `@prisma/client`. Next 16 with Cache Components tags an ORM read with `"use cache"` + `cacheTag()` instead of `unstable_cache`, and a Server Action expires its own write with `updateTag(tag)` (`revalidateTag(tag, "max")` elsewhere). The rules hold on both.
+Examples are Prisma 7. Caching forks on one observable: `cacheComponents: true` set in `next.config` (Cache Components, `"use cache"`) or not (the previous model, `unstable_cache`).
 
 ## Rules
 
 - The ORM client is a singleton created in one module that imports `server-only`. Never construct it per request, per component, or per action.
 - **In development, cache the client on `globalThis`.** Hot module replacement re-evaluates modules on every edit, and a plain module-scope client leaks a new connection pool each time until the database refuses connections. A process-restart watcher (`tsx watch`, nodemon) is exempt: each restart is a fresh process, the guard is inert there, and its absence is not a finding.
 - All database access lives under `src/server/<module>/`. Components, actions, and route handlers call those functions; none of them touch the ORM directly.
-- Every exported service function is callable without a request context. Read cookies and headers in the caller and pass the resolved identity as an argument, or the same function cannot be reused by a Route Handler later. The identity resolver itself (`requireAdmin`, `getSession`) is the caller-side exception: it exists to read the request. In a client-only app, the module holding the HTTP calls (an api module, a thunk) is the data-access layer.
+- Every exported service function is callable without a request context. Read cookies and headers in the caller and pass the resolved identity as an argument, or the same function cannot be reused by a Route Handler later. The identity resolver itself (`requireAdmin`, `getSession`) is the caller-side exception: it exists to read the request.
 - Never return an ORM row across the client boundary. Select the fields the client needs, or map to an explicit shape.
 - Fetch shared data once per request with request memoization, not once per component that needs it.
 - Distinguish the two caches by lifetime: request memoization deduplicates within one render, the data cache persists across requests and needs explicit invalidation.
@@ -37,11 +37,14 @@ Version scope: the examples are Next.js 15 and Prisma 5-6. Prisma 7 constructs t
 ```ts
 // src/server/db.ts
 import "server-only";
-import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client"; // the generator's `output` path
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-export const db = globalForPrisma.prisma ?? new PrismaClient(); // Prisma 7: pass { adapter }
+export const db =
+  globalForPrisma.prisma ??
+  new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
 ```
 
@@ -71,9 +74,9 @@ const deck = await getDeckBySlug(slug);
 ```
 
 ```ts
-// Route Handler added later calls the same function
-export async function GET(_: Request, { params }: { params: Promise<{ slug: string }> }) {
-  const deck = await getDeckBySlug((await params).slug);
+// app/api/decks/[slug]/route.ts - added later, calls the same function (a route.ts cannot sit beside page.tsx)
+export async function GET(_: Request, ctx: RouteContext<"/api/decks/[slug]">) {
+  const deck = await getDeckBySlug((await ctx.params).slug);
   return deck ? Response.json(deck) : new Response(null, { status: 404 });
 }
 ```
@@ -114,48 +117,54 @@ Request memoization does not save you here: the arguments differ per row, so eac
 
 ### Which Cache
 
-| Mechanism             | Lifetime         | Use for                                                | Invalidation             |
-| --------------------- | ------------------ | -------------------------------------------------------- | -------------------------- |
-| `cache()` from React  | One render pass  | Any lookup repeated within a render, per-user reads included | Automatic                |
-| Data cache with a tag | Across requests  | Content that changes on publish, not per request        | `revalidateTag` on write |
-| Neither               | None             | A read that runs once per request anyway                | n/a                      |
+| Mechanism                  | Lifetime                | Use for                                                      | Invalidation                   |
+| -------------------------- | ----------------------- | ------------------------------------------------------------ | ------------------------------ |
+| `cache()` from React       | One render pass         | Any lookup repeated within a render, per-user reads included | Automatic                      |
+| `"use cache"` + `cacheTag` (Cache Components) | Across requests, shared | Content that changes on publish, not per request | `updateTag` in a Server Action, `revalidateTag(tag, "max")` elsewhere |
+| `"use cache: private"` (Cache Components) | One request on the server; browser memory for the `cacheLife` `stale` time | A per-user read that needs cookies/headers inside the cached scope | n/a (pair it with `cacheLife`) |
+| `unstable_cache` + `tags` (without the flag) | Across requests, shared | Non-`fetch` content that changes on publish | `updateTag` in a Server Action, `revalidateTag(tag, "max")` elsewhere |
+| Neither                    | None                    | A read that runs once per request anyway                     | n/a                            |
 
-On 15, `fetch` is the only call the framework can tag for you, and only when you ask - `next: { tags: [...] }`, plus an opt-in to caching at all, since Next 15 leaves `fetch` uncached by default. An ORM query enters the tagged data cache through `unstable_cache`:
+With Cache Components an ORM query enters the shared tagged cache through `"use cache"`:
 
 ```ts
-import { unstable_cache } from "next/cache";
+import { cacheLife, cacheTag } from "next/cache";
 
-export const getPublishedDecks = unstable_cache(
-  () => db.deck.findMany({ where: { status: "published" }, select: { id: true, name: true } }),
-  ["published-decks"],
-  { tags: ["decks"] },
-);
+export async function getPublishedDecks() {
+  "use cache";
+  cacheTag("decks");
+  cacheLife("hours");
+  return db.deck.findMany({ where: { status: "published" }, select: { id: true, name: true } });
+}
 ```
 
-Wrapping a per-user query in the cross-request data cache can serve one user's data to another. The arguments you pass are part of the key, so a function taking `userId` caches per user correctly; the leak comes from identity the key never sees - a value read from module scope or closed over rather than passed in. `cookies()`/`headers()` inside a cached function throw at request time, which turns that mistake into an error rather than a leak - an auth helper that reads the cookie (Auth.js `auth()`) throws the same way. Report either outcome as `PerUserDataCached` at Blocker; the fix is identical. Wrapping a published-content query in request memoization only leaves every uncached request hitting the database. Both mistakes look like caching.
+Without Cache Components the same read goes through `unstable_cache(fn, ["published-decks"], { tags: ["decks"] })`, and `fetch` is the only call Next tags for you (`next: { tags }`, plus a caching opt-in, since `fetch` is uncached by default).
+
+A per-user read is cached correctly when the user id is part of the key - passed as an argument (under `"use cache"`, closed over too) - or under `"use cache: private"`; the defect is reading `cookies()` / `headers()` inside a cache scope, or caching a per-user result under a key that omits the user (module-scope state, a value `unstable_cache` closes over without listing it in `keyParts`). The omitted key serves one user's data to another; the request read throws instead (under `"use cache"` as `next-request-in-use-cache`, which can pass `next build` and fail at `next start`), and so does an auth helper that reads the session cookie. Report either outcome as `PerUserDataCached` at Blocker; the fix is identical: pass the identity in, or use `"use cache: private"`. Wrapping a published-content query in request memoization only leaves every uncached request hitting the database. Both mistakes look like caching.
 
 ### Writes From Server Actions
 
 ```ts
 "use server";
-import { revalidateTag } from "next/cache";
+import { updateTag } from "next/cache";
+import { z } from "zod";
 import { publishBatch } from "@/server/authoring/mutations";
 import { requireAdmin } from "@/server/identity/session";
 
 export async function publish(batchId: string) {
   const admin = await requireAdmin();                 // authorize before anything
-  const { deckIds } = await publishBatch(batchId, admin.id);
-  revalidateTag("decks");                             // the list cached above
-  for (const id of deckIds) revalidateTag(`deck:${id}`);
+  const { deckIds } = await publishBatch(z.cuid().parse(batchId), admin.id); // client input: validate first
+  updateTag("decks");                                 // the list cached above; the admin sees the write
+  for (const id of deckIds) updateTag(`deck:${id}`);
   return { ok: true };
 }
 ```
 
-The action authorizes, delegates to a service function, then invalidates. It contains no ORM call of its own. Revalidation happens after the write returns, never inside the transaction that performed it.
+The action authorizes, delegates to a service function, then invalidates - `updateTag` for read-your-writes, `revalidateTag(tag, "max")` when stale reads are acceptable, `refresh()` when no tag is involved but the client router must re-render (it revalidates nothing). It contains no ORM call of its own. Invalidation happens after the write returns, never inside the transaction that performed it.
 
 ## Output Format
 
-Emit one block per finding, ordered by severity. A finding is one defect with its own fix; when several Issue values describe the same root cause, emit one block carrying the most specific value at the highest applicable severity (the singleton-module trio `ClientNotSingleton`/`MissingHotReloadGuard`/`MissingServerOnly` is one root cause). Repeated call sites of one Issue with one fix pattern merge into one block listing each Location, even when each site is edited separately. Otherwise two defects are separable - and stay separate blocks, different Issue values on one line included - when fixing one leaves the other in place; the singleton trio merges because one fix (a single guarded `server-only` client module that every caller imports) clears all three. Open with `Scope: <files reviewed>` whenever this skill produces its own output - on the stack-neutral branch, `Scope: stack-neutral review (not App Router - Next-specific rules skipped) - <files reviewed>`; a consuming workflow that supplies its own scope line takes precedence, and synthesizes its own summary, so do not duplicate one for it. After the last finding come, in this order: any `Not assessed:` line (required-but-unseen infrastructure, not a guessed finding), any `Notes:` line (off-enum observations, e.g. an authorization gap -> `task-react-review-security`), for a reuse consult only, `Reuse readiness: {ready | not ready - <blocker>}` grounded in the service-layer and no-request-context rules (a sound service with no HTTP entry point yet is `ready`, the missing endpoint named in the justifying sentence), one verdict per surface when the consult names several (`order history: ready; cancel order: not ready - <blocker>`), one or two justifying sentences may follow, then `Tally: <N> findings (<B> Blocker, <H> High, <M> Medium, <L> Low)` last.
+Emit one block per finding, ordered by severity. A finding is one defect with its own fix; when several Issue values describe the same root cause, emit one block carrying the most specific value at the highest applicable severity (the singleton-module trio `ClientNotSingleton`/`MissingHotReloadGuard`/`MissingServerOnly` is one root cause). Repeated call sites of one Issue with one fix pattern merge into one block listing each Location, even when each site is edited separately. Otherwise two defects are separable - and stay separate blocks, different Issue values on one line included - when fixing one leaves the other in place; the singleton trio merges because one fix (a single guarded `server-only` client module that every caller imports) clears all three. Open with `Scope: <files reviewed>` whenever this skill produces its own output; a consuming workflow that supplies its own scope line takes precedence, and synthesizes its own summary, so do not duplicate one for it. After the last finding come, in this order: any `Not assessed:` line (required-but-unseen infrastructure, not a guessed finding), any `Notes:` line (off-enum observations, e.g. an authorization gap -> `task-react-review-security`), for a reuse consult only, `Reuse readiness: {ready | not ready - <blocker>}` grounded in the service-layer and no-request-context rules (a sound service with no HTTP entry point yet is `ready`, the missing endpoint named in the justifying sentence), one verdict per surface when the consult names several (`order history: ready; cancel order: not ready - <blocker>`), one or two justifying sentences may follow, then `Tally: <N> findings (<B> Blocker, <H> High, <M> Medium, <L> Low)` last.
 
 ```
 Scope: <files reviewed>
@@ -177,12 +186,10 @@ Tally: <N> findings (<B> Blocker, <H> High, <M> Medium, <L> Low)
 
 Severity:
 
-- **Blocker**: per-user data written to the cross-request data cache (`PerUserDataCached`); an ORM row containing secret fields returned across the client boundary (`RawRowToClient`); ORM client imported into a Client Component (`MissingServerOnly` with the client import observed).
-- **High**: ORM client constructed per file or without the hot-reload guard (`ClientNotSingleton` / `MissingHotReloadGuard`); database access outside `src/server/` (`OrmInComponent` in view code, `ActionBypassesService` in any HTTP-facing entry - action, route handler, controller; `OrmInComponent` also covers a shared non-entry module, such as a cache wrapper or helper, that queries the ORM outside `src/server/`); a Server Action mutating tag-cached content without a following revalidation (a write that touches no cached surface has nothing to revalidate); a whole row with no secret fields crossing the client boundary (`RawRowToClient` - with the model's fields unknown, name the Blocker escalation in the block).
+- **Blocker**: per-user data cached under a key that omits the user, or a request-time read inside a cache scope (`PerUserDataCached`); an ORM row containing secret fields returned across the client boundary (`RawRowToClient`); ORM client imported into a Client Component (`MissingServerOnly` with the client import observed).
+- **High**: ORM client constructed per file or without the hot-reload guard (`ClientNotSingleton` / `MissingHotReloadGuard`); database access outside `src/server/` (`OrmInComponent` in view code, `ActionBypassesService` in any HTTP-facing entry - action, route handler, controller; `OrmInComponent` also covers a shared non-entry module, such as a cache wrapper or helper, that queries the ORM outside `src/server/`); a Server Action mutating tag-cached content without a following `updateTag` / `revalidateTag` / `revalidatePath` (`MissingRevalidation`, which a `refresh()` alone does not clear; a write that touches no cached surface has nothing to revalidate, and a one-argument `revalidateTag(tag)` is `react-nextjs-patterns`' `DeprecatedApi`, named in `Notes:`); a whole row with no secret fields crossing the client boundary (`RawRowToClient` - with the model's fields unknown, name the Blocker escalation in the block).
 - **Medium**: RSC N+1; a service function reading cookies or headers directly; wrong or absent cache scope with no leak (`WrongCacheScope` covers a per-render lookup duplicated for want of `cache()`); a server module missing `import "server-only"` with no observed client import.
 - **Low**: an over-broad select whose rows never cross the client boundary (`OverbroadSelect`; a crossing makes it `RawRowToClient`).
-
-App Router = an `app/` or `src/app/` directory with a root layout (`layout.{tsx,jsx,js}` at its top, or atop each route group) - beside `pages/` the tree is hybrid and the App Router rules apply to `app/`; Pages Router = `pages/` or `src/pages/` alone. `stack-detect` reports `React (Next.js)` for both. If the project is not Next.js App Router, apply only the stack-neutral rules - singleton client (the hot-reload guard only under HMR dev), explicit field selection, no persistence logic in view code (HTTP handlers and controllers count as view code) - opening with the stack-neutral `Scope:` line above. The block shape, merge rules, closing lines, and Issue enum apply unchanged - `ActionBypassesService` names any HTTP-facing entry. Emit `No server data layer findings (not App Router).` only when those rules are clean; the `Scope:` opening and the `Not assessed:` / `Notes:` / `Reuse readiness:` / `Tally:` closing lines still apply to a clean run - only the finding blocks are omitted. Read the retained rules by their behaviour, not their ORM wording: with no database in the project, "no persistence logic in view code" covers any data-access call (HTTP client included) made directly from a component.
 
 ## Avoid
 

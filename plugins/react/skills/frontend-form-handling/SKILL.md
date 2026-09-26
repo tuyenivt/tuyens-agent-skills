@@ -1,9 +1,9 @@
 ---
 name: frontend-form-handling
-description: Apply frontend form patterns - validation, error display, multi-step forms, dirty tracking, submission handling. Adapts to detected stack.
+description: Apply Next.js form patterns - validation, error display, multi-step forms, dirty tracking, Server Action and client submission handling.
 metadata:
   category: frontend
-  tags: [frontend, forms, validation, multi-step, submission, dirty-tracking, multi-stack]
+  tags: [frontend, forms, validation, multi-step, submission, dirty-tracking, server-actions, nextjs]
 user-invocable: false
 ---
 
@@ -37,9 +37,8 @@ user-invocable: false
 
 | Library                | Best For                                         |
 | ---------------------- | ------------------------------------------------ |
-| React Hook Form + Zod  | React: performance, uncontrolled inputs, schema  |
-| VeeValidate + Zod      | Vue: Composition API, schema validation          |
-| Angular Reactive Forms | Angular: type-safe FormGroup/FormControl         |
+| React Hook Form + Zod  | Client-validated forms: uncontrolled inputs, schema resolver |
+| `useActionState` + Zod | Server Action forms that must work before hydration |
 | Native HTML            | Trivial forms (1-3 fields, no complex rules)     |
 
 Share a schema (Zod, Yup, Valibot) between client and server so validation rules don't drift.
@@ -83,9 +82,9 @@ Form-level (server errors):
 - Move focus to the summary on submission failure
 - Translate server field names to client names (snake_case to camelCase, nested paths); errors with no matching field stay in the summary
 
-```html
-<label for="email">Email</label>
-<input id="email" type="email" aria-invalid="true" aria-describedby="email-error" />
+```tsx
+<label htmlFor="email">Email</label>
+<input id="email" type="email" aria-invalid aria-describedby="email-error" />
 <p id="email-error" role="alert">Please enter a valid email address</p>
 ```
 
@@ -98,6 +97,8 @@ Form-level (server errors):
 5. Server error: map field errors back to inputs, show summary, re-enable button
 6. Network error: show retry option, preserve form data, re-enable button
 
+With `cacheComponents: true` in `next.config`, a route left by navigation is hidden with React `<Activity>`, not unmounted: inputs, submission results and status messages are still there when the user comes back. Where each visit must start fresh, reset in the submit handler before navigating, and clear a success/error message explicitly rather than relying on unmount.
+
 ```
 <button onClick={submit} disabled={isSubmitting} aria-busy={isSubmitting}>
   {isSubmitting ? "Submitting..." : "Submit"}
@@ -106,7 +107,7 @@ Form-level (server errors):
 
 ### Field Arrays and Cross-Field Rules
 
-Repeating groups (line items, contacts) use the library's array primitive - RHF `useFieldArray`, VeeValidate `FieldArray`, Angular `FormArray` - so each row keeps a stable key. Never index rows by array position for React keys: removing row 1 re-indexes everything below and the wrong inputs keep the wrong errors.
+Repeating groups (line items, contacts) use the library's array primitive (RHF `useFieldArray`) so each row keeps a stable key. Never index rows by array position for React keys: removing row 1 re-indexes everything below and the wrong inputs keep the wrong errors.
 
 A rule spanning fields (totals against a cap, end date after start date, "at least one contact") has no single owning input, so it needs a home that is neither the field slot nor the server-error summary: render it at the boundary it constrains - under the array for a total, under the pair for a date range - with `role="alert"`, and validate it at the schema level (Zod `.refine`, or `.superRefine()` / `.check()` for multi-issue cases) so client and server agree.
 
@@ -115,7 +116,7 @@ Server errors on array paths (`items[3].amount`) map back by index to that row's
 ### Multi-Step Forms
 
 - Single form-state object across steps (not per-step state)
-- "Next" validates only the current step's fields (e.g., RHF `trigger(["field"])`; Angular nested `FormGroup`; VeeValidate per-step schema)
+- "Next" validates only the current step's fields (e.g., RHF `trigger(["field"])`, or a per-step Zod schema)
 - "Back" preserves all data without re-validating
 - Review step lists entered data with per-section "Edit" links
 - For long forms: save draft to localStorage on step change; restore with a "Resume?" prompt; clear on success
@@ -133,7 +134,7 @@ Payment, identity, PCI data require extra care:
 Decide when the bytes move, because everything else follows from it:
 
 - **Upload on selection** (recommended for large or multiple files): each file uploads immediately to its own progress bar with cancel and remove; the form field then holds a returned file id, so a failed submit costs nothing and re-submitting does not re-upload. Orphaned uploads need a server-side sweep for files whose form was never submitted.
-- **Upload on submit** (fine for one file small enough that re-sending it after a failed submit costs little - a few MB): simpler, but submit now takes as long as the transfer, and any validation failure discards every byte the user just waited for.
+- **Upload on submit** (fine for one small file): simpler, but submit now takes as long as the transfer, and any validation failure discards every byte the user just waited for. A Server Action accepts a 1MB body by default (`experimental.serverActions.bodySizeLimit`); a larger file either raises that limit (and `experimental.proxyClientMaxBodySize` too when `proxy.ts` matches the page - proxy truncates any matched request body past it, 10MB by default) or goes out of band (a Route Handler outside the matcher, or a presigned URL straight to storage).
 
 Validate size and type client-side before the transfer starts - it is the one validation that saves the user real time - and again on the server, since the client check is a courtesy, not a control. Accept the `accept` attribute's limits as a hint only; browsers do not enforce it.
 
@@ -144,7 +145,7 @@ A form that must work before hydration (Server Actions, plain `<form action>`) c
 - Double submission is prevented server-side, by an idempotency key or a one-time form token; `useFormStatus`/`isSubmitting` disables the button once hydrated.
 - Validation is server-authoritative and re-rendered with the response; client validation only shortens the round trip.
 - Dirty-navigation warnings simply do not exist pre-hydration - that is acceptable, not a defect.
-- Files upload on submit whatever their size; upload on selection is a hydrated enhancement.
+- Files upload on submit, within the Server Action body limit; upload on selection is a hydrated enhancement.
 - Repeating rows cannot use a client field-array primitive before hydration: add rows with a submit button (`name="intent" value="add-row"`) handled by the same action, which returns the parsed rows and entered values so the re-render keeps them (no cookie or redirect), and let `useFieldArray` take over once hydrated. The action parses indexed names (`items.0.sku`) out of `FormData` into an array before the schema runs.
 
 Review such a form against the baseline first: it should submit, validate, and report errors with JS disabled. Findings that amount to "no client-side guard before hydration" are not defects.
@@ -162,8 +163,11 @@ useEffect(() => {
 // beforeunload needs sticky activation and never fires when the OS kills a backgrounded tab;
 // save the draft on visibilitychange to "hidden" (the last event reliably delivered) if it must survive that.
 
-// SPA route changes: use the router's guard (React Router blocker, Vue Router beforeRouteLeave,
-// Angular CanDeactivateFn - the recommended form; the class-based CanDeactivate interface still works)
+// Client navigation: the App Router has no route blocker. A <Link> the form renders can cancel:
+<Link href="/orders" onNavigate={(e) => { if (isDirty && !confirm("Discard changes?")) e.preventDefault() }}>Orders</Link>
+// Layout-nav links are caught only when every <Link> is a wrapper whose onNavigate reads a blocker context
+// the form sets; router.push and browser back/forward never are;
+// with cacheComponents the hidden route keeps the draft instead (Activity, up to 3 routes).
 ```
 
 ### Schema-Based Validation
@@ -178,19 +182,15 @@ const userSchema = z.object({
 // Client
 const form = useForm({ resolver: zodResolver(userSchema), mode: "onTouched" }) // validates on blur, then on every change once touched - the default "onSubmit" never validates on blur
 
-// Server
-const parsed = userSchema.safeParse(req.body)
+// Server Action
+const parsed = userSchema.safeParse(Object.fromEntries(formData))
 ```
 
-## Stack-Specific Guidance
+## Next.js Bindings
 
-After `stack-detect`, apply patterns using ecosystem idioms:
-
-- **React**: React Hook Form + Zod resolver; `useActionState` for Server Action forms (React 19+/Next.js)
-- **Vue**: VeeValidate + Zod, or FormKit for opinionated accessible forms
-- **Angular**: Typed Reactive Forms, custom validators, `CanDeactivateFn` for dirty tracking
-
-For any framework not bound above - `unknown`, or a detected one such as Svelte or Solid - apply the universal patterns and point the user to that framework's form docs.
+- React Hook Form + Zod resolver for client-validated forms
+- Server Action forms: `useActionState(action, initialState)` from `react` returns `[state, formAction, isPending]`; React resets uncontrolled fields after every form action, so an action returning field errors also returns the submitted values and inputs render `defaultValue={state.values.x}`; `useFormStatus` from `react-dom`, called in a child of the `<form>`, gives `pending`; `useOptimistic` from `react` shows the row before the action resolves
+- Authorize and validate inside every action - it is POST-reachable whether or not a form renders it
 
 ---
 
@@ -201,7 +201,7 @@ Consuming workflow skills depend on this structure.
 ```
 ## Form Handling Assessment
 
-**Stack:** {Framework and Language as a display name (`Next.js 15.5 / TypeScript` for stack-detect's `React (Next.js)`) - the major.minor from the owning app's `package.json` (`^15.5.0` -> 15.5); with no `tsconfig.json`, the extensions of the files in scope decide JS vs TS, overriding stack-detect's Language; in a monorepo, the app owning the reviewed code; "unknown - universal patterns applied" when inconclusive}
+**Stack:** {Framework and Language as a display name (`Next.js 16.3 / TypeScript` for stack-detect's `React (Next.js)`) - the major.minor from the owning app's `package.json` (`^16.3.0` -> 16.3); with no `tsconfig.json`, the extensions of the files in scope decide JS vs TS, overriding stack-detect's Language; in a monorepo, the app owning the reviewed code; `unknown` for a part that is inconclusive}
 
 **Form library:** {detected or recommended library}
 

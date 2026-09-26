@@ -9,7 +9,7 @@ user-invocable: false
 
 # React Hooks Patterns
 
-> Load `Use skill: stack-detect` first to determine the project stack. `stack-detect` has no field for this (it carries versions only when a `## Tech Stack` section declares them): read the React version (the `react` entry) from `package.json` dependencies (the owning app's manifest in a monorepo) and the imports in the files in scope. With the version unknown, treat 19.2-only APIs (`useEffectEvent`) as unavailable.
+> Load `Use skill: stack-detect` first to determine the project stack.
 
 ## When to Use
 
@@ -24,8 +24,8 @@ user-invocable: false
 - Custom hooks start with `use` and own exactly one concern.
 - `useEffect` synchronizes with external systems. It is not for derived state or event-driven state transitions, and not for data fetching (with no server-cache library, the AbortController form below is the minimum).
 - Every subscription, listener, timer, or connection started in an effect returns a cleanup. Every in-flight fetch is cancellable (`AbortController`); the one exception is a final flush on unmount, `pagehide`, or `visibilitychange` to hidden, sent with `fetch(..., { keepalive: true })` so it completes.
-- Dependency arrays are exhaustive. Never suppress `react-hooks/exhaustive-deps`; fix the closure instead (move value into deps, into a ref, or out of the effect). Omitting the array entirely is legal only for the ref-mirror effect that must run every render.
-- `useMemo`/`useCallback` require a measured reason: referential identity for a memoized child or for an effect dependency that must not re-fire, or a profiled expensive computation. Default is no memoization.
+- Dependency arrays are exhaustive. Never suppress `rules-of-hooks`, `exhaustive-deps` or an error-level compiler rule; fix the closure instead (list the value, move the non-reactive read into `useEffectEvent`, or move it out of the effect). `eslint-config-next` ships `eslint-plugin-react-hooks` 7, whose recommended set adds compiler-derived error rules (`set-state-in-effect`, `refs`, `purity`, `immutability`, `preserve-manual-memoization`) to `rules-of-hooks` and `exhaustive-deps`, plus the warn-level `incompatible-library` / `unsupported-syntax`, which mark code the compiler skips and have no closure fix; run it with the ESLint CLI (`next lint` is removed).
+- `useMemo`/`useCallback` require a measured reason: referential identity for a memoized child or for an effect dependency that must not re-fire, or a profiled expensive computation. Default is no memoization. With the React Compiler on (`reactCompiler` in `next.config`, or a leftover `experimental.reactCompiler`; in `compilationMode: 'annotation'` only `"use memo"` components), new manual memoization is unnecessary there; `react-overengineering-review` judges memoization on a compiler-on project.
 - `useRef` for values that must persist without triggering re-render; `useState` when a change must re-render.
 
 ## Patterns
@@ -38,7 +38,8 @@ useEffect(() => {
   fetch(`/api/users/${id}`).then(r => r.json()).then(setUser);
 }, [id]);
 
-// Good - server cache library handles key-scoped races, dedupe, errors; it aborts only if the fetcher takes the signal.
+// Good - read in a Server Component and pass the data (or a Promise the client unwraps with use()) as props.
+// Good - interactive client data: a query library handles key-scoped races, dedupe, errors; it aborts only if the fetcher takes the signal.
 const { data: user } = useQuery({ queryKey: ["user", id], queryFn: ({ signal }) => fetchUser(id, { signal }) });
 
 // Good - effect when you actually sync with an external system.
@@ -72,7 +73,7 @@ useEffect(() => { setTotal(items.reduce((s, i) => s + i.price, 0)); }, [items]);
 const total = items.reduce((s, i) => s + i.price, 0);
 ```
 
-### Stale closures: deps, ref, or functional update
+### Stale closures: deps, functional update, or `useEffectEvent`
 
 ```tsx
 // Bad - count captured once as 0; every tick sets 0 + 1, so it sticks at 1.
@@ -87,14 +88,13 @@ useEffect(() => {
   return () => clearInterval(id);
 }, []);
 
-// Good - ref for values the effect must read but should not re-subscribe on
+// Good - useEffectEvent for values the effect must read but should not re-subscribe on
 // (CallbackIdentityChurn: callback prop in deps tears down/re-subscribes every render).
-const onMessageRef = useRef(onMessage);
-useEffect(() => { onMessageRef.current = onMessage; });
+const onMsg = useEffectEvent((m: Message) => onMessage(m));
 useEffect(() => {
   const conn = createWebSocket(roomId);
   conn.connect();
-  conn.on("message", (m) => onMessageRef.current(m));
+  conn.on("message", (m) => onMsg(m));
   return () => conn.disconnect();
 }, [roomId]);
 ```
@@ -115,20 +115,23 @@ function useUserPosts(id: string) { return useQuery({ queryKey: ["user", id, "po
 ### Cleanup is mandatory for any external acquisition
 
 ```tsx
-const onCloseRef = useRef(onClose);
-useEffect(() => { onCloseRef.current = onClose; });
+const onEscape = useEffectEvent(() => onClose());
 useEffect(() => {
-  const handler = (e: KeyboardEvent) => e.key === "Escape" && onCloseRef.current();
+  const handler = (e: KeyboardEvent) => e.key === "Escape" && onEscape();
   document.addEventListener("keydown", handler);
   return () => document.removeEventListener("keydown", handler);
 }, []);
 ```
 
-The ref mirror keeps the callback prop out of the dep array; listing `onClose` there re-binds the listener every render, which is the `CallbackIdentityChurn` finding below. On React 19.2+ `useEffectEvent` replaces the mirror: declare the handler with it and call it from the effect, with no dep entry either way.
+`useEffectEvent` keeps the callback prop out of the dep array; listing `onClose` there re-binds the listener every render, which is the `CallbackIdentityChurn` finding below. Call an Effect Event only from inside an effect. A hand-rolled ref mirror (`ref.current = onClose` in an effect) is `LegacyHookUsage` in new code.
 
 Same shape for `setInterval`/`setTimeout`, subscriptions, observers, `AbortController`.
 
 Writes need ordering too: tag each save with an increasing sequence number and apply a response only if its number is still the latest, so an older save never overwrites a newer one - aborting the previous request is the other half.
+
+### Hidden routes (Cache Components)
+
+With `cacheComponents: true` in `next.config`, Next hides a route you leave with `<Activity mode="hidden">` instead of unmounting it (up to 3 routes): state and DOM survive, cleanups run on hide, and effects re-run on every re-show. An effect must therefore be safe to repeat: a mount-time analytics event or one-time setup guards first mount with a ref (refs survive hide/show), and `<video>` / `<audio>` keep playing under `display: none` until a `useLayoutEffect` cleanup pauses them. Without the flag navigation unmounts the route, but an `<Activity>` the code renders itself hides and re-shows the same way.
 
 ### React 19 hooks
 
@@ -138,7 +141,8 @@ Writes need ordering too: tag each save with an increasing sequence number and a
 | `useOptimistic` | Show a mutation result immediately; reconcile when the server confirms. Call its updater inside the submitting action/transition. |
 | `useActionState` | Form action with pending + returned state (replaces `useFormState`). |
 | `useFormStatus` | Read parent `<form>` pending state from a descendant - no prop drilling. |
-| `useEffectEvent` | React 19.2+. Wrap the non-reactive part of an effect (a callback prop, a latest-value read) so it never enters the dep array. Replaces the hand-rolled ref mirror; call it only from inside an effect. |
+| `useEffectEvent` | Wrap the non-reactive part of an effect (a callback prop, a latest-value read) so it never enters the dep array. Replaces the hand-rolled ref mirror; call it only from inside an effect. |
+| `<Activity mode>` | Hide UI while keeping its state; effects clean up when hidden and re-run when shown (see Hidden routes). |
 
 ```tsx
 function UserProfile({ userPromise }: { userPromise: Promise<User> }) {
@@ -156,11 +160,11 @@ const [state, formAction, isPending] = useActionState(submitAction, { error: nul
 
 ### Form hooks (boundary)
 
-Form schemas, validation, and submission flow are owned by `frontend-form-handling`. Here, only the React-19 wiring matters: bind a Server Action with `useActionState`; read pending state with `useFormStatus` from any `<form>` descendant; share the Zod schema between client and Server Action (one source of truth, parsed inside the action with `zod-form-data`).
+Form schemas, validation, and submission flow are owned by `frontend-form-handling`. Here, only the React-19 wiring matters: bind a Server Action with `useActionState`; read pending state with `useFormStatus` from any `<form>` descendant; share the Zod schema between client and Server Action (one source of truth, parsed inside the action as `frontend-form-handling` prescribes).
 
 ### Refs and Context (boundary)
 
-`useRef` keeps a mutable value that must not trigger re-render; `useState` triggers re-render. One hook-level trap: when an effect must re-run because the observed DOM node was replaced (a conditionally rendered subtree, a remounted row), store the node in state via a ref **callback** (`const [node, setNode] = useState<HTMLElement | null>(null)`, then `<div ref={setNode} />`) and list `node` as a dep. A `useRef` object mutation triggers no re-render, so the node swap alone schedules no re-run of an effect depending on `ref.current`, and the observer can stay attached to the old node. Deeper ref ergonomics (`forwardRef`, ref-prop conventions) and `"use client"` placement belong to `react-component-patterns`. Context value memoization, split-by-update-frequency, and "state lib vs context" choices belong to `react-state-patterns`. This skill flags only: hook called conditionally inside a custom hook, ref used where state is needed (or vice versa), an overbroad context a hook exposes.
+`useRef` keeps a mutable value that must not trigger re-render; `useState` triggers re-render. One hook-level trap: when an effect must re-run because the observed DOM node was replaced (a conditionally rendered subtree, a remounted row), store the node in state via a ref **callback** (`const [node, setNode] = useState<HTMLElement | null>(null)`, then `<div ref={setNode} />`) and list `node` as a dep. A `useRef` object mutation triggers no re-render, so the node swap alone schedules no re-run of an effect depending on `ref.current`, and the observer can stay attached to the old node. Deeper ref ergonomics (ref as a prop, polymorphic ref types) and `"use client"` placement belong to `react-component-patterns`. Context value memoization, split-by-update-frequency, and "state lib vs context" choices belong to `react-state-patterns`. This skill flags only: hook called conditionally inside a custom hook, ref used where state is needed (or vice versa), an overbroad context a hook exposes.
 
 ## Output Format
 
@@ -170,13 +174,13 @@ When reviewing, open with one line `Scope: <files or components reviewed>`, then
 Scope: <files or components reviewed>
 
 - Location: <file>:<line> (<hook or component>)
-  Issue: {RulesOfHooks | StaleClosure | MissingDeps | MissingCleanup | EffectForFetch | EffectForDerivedState | InfiniteLoop | ConflictingWriters | CallbackIdentityChurn | UnstableDepIdentity | UnnecessaryMemo | RefVsStateMisuse | KitchenSinkHook | ContextOverbroad | UncancelledRequest | LegacyHookUsage | StaleStateAcrossKeyChange}
+  Issue: {RulesOfHooks | StaleClosure | MissingDeps | MissingCleanup | EffectForFetch | EffectForDerivedState | InfiniteLoop | ConflictingWriters | CallbackIdentityChurn | UnstableDepIdentity | UnnecessaryMemo | RefVsStateMisuse | KitchenSinkHook | ContextOverbroad | UncancelledRequest | LegacyHookUsage | StaleStateAcrossKeyChange | ActivityReshow}
   Severity: {Critical | High | Medium | Low}
   Evidence: <quoted snippet or symbol>
   Fix: <one-line action; reference a Pattern by name>
 ```
 
-`ConflictingWriters`: same state mutated by two *independent* sources (e.g., incremented in a handler and overwritten by a derivation effect) - several writes within one effect's lifecycle are one source. Usually means the state is derivable and should be computed in render. `LegacyHookUsage`: pre-React-19 wiring a React 19 hook replaces (`useFormState`, manual pending flag, hand-rolled optimistic copy). `StaleStateAcrossKeyChange`: state keyed to an identity survives the identity switch (old room's messages after `roomId` changes), including state seeded from a prop and never resynced when that prop changes; fix by `key` remount or render-time previous-key reset. `UncancelledRequest` covers requests fired from event handlers too (a double-click racing two POSTs): guard with the pending state of a transition or apply only the latest response. `CallbackIdentityChurn`: a callback prop in a dep array tears down/re-subscribes the effect every render; use a ref mirror (on 19.2+, `useEffectEvent`). `UnstableDepIdentity`: a non-primitive dep (object/array literal, inline-built `config`/`options`) recreated every render re-fires the effect every render - hoist to a module constant, wrap in `useMemo`, or depend on its primitive fields. Use this for plain data; use `CallbackIdentityChurn` for functions.
+`ConflictingWriters`: same state mutated by two *independent* sources (e.g., incremented in a handler and overwritten by a derivation effect) - several writes within one effect's lifecycle are one source. Usually means the state is derivable and should be computed in render. `LegacyHookUsage`: hand-rolled wiring a React 19 API replaces (`useFormState`, manual pending flag, hand-rolled optimistic copy, a ref mirror feeding an effect). `StaleStateAcrossKeyChange`: state keyed to an identity survives the identity switch (old room's messages after `roomId` changes), including state seeded from a prop and never resynced when that prop changes; fix by `key` remount or render-time previous-key reset. `UncancelledRequest` covers requests fired from event handlers too (a double-click racing two POSTs): guard with the pending state of a transition or apply only the latest response. `CallbackIdentityChurn`: a callback prop in a dep array tears down/re-subscribes the effect every render; wrap the callback in `useEffectEvent`. `ActivityReshow`: under `cacheComponents` or inside an `<Activity>` the code renders, an effect that is wrong to repeat when a hidden route is shown again (a duplicate analytics event, a re-run one-time setup), or media still playing while hidden. `UnstableDepIdentity`: a non-primitive dep (object/array literal, inline-built `config`/`options`) recreated every render re-fires the effect every render - hoist to a module constant, wrap in `useMemo`, or depend on its primitive fields. Use this for plain data; use `CallbackIdentityChurn` for functions.
 
 Severity guide:
 - **Critical**: any `RulesOfHooks` violation (a hook other than `use` called conditionally, in a loop, in a nested function or after an early return; `use` in a nested function or try/catch); memory leak from missing cleanup on a long-lived component; an uncancelled request that can overwrite newer state (its input changes while it is in flight).

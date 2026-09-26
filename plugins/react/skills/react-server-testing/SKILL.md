@@ -9,7 +9,7 @@ user-invocable: false
 
 # Next.js Server Testing
 
-> Load `Use skill: stack-detect` first to determine the project stack. Component, hook, and browser testing are owned by `react-testing-patterns`. This skill owns tests that exercise server code or touch a database. Server surface means in-app server code - Server Actions, Route Handlers, `pages/api`, `src/server/`; a SPA calling another app's API over HTTP has none, and that API's tests belong to its own codebase. The truncation and container recipes below are PostgreSQL's; the `Engine` slot records which truncation variant applies (Isolation table), and on MySQL the Testcontainers module swaps to `@testcontainers/mysql` (SQLite needs none). A sibling app's API in the same monorepo with its own test framework counts as another app's.
+> Load `Use skill: stack-detect` first to determine the project stack. Component, hook, and browser testing are owned by `react-testing-patterns`. This skill owns tests that exercise server code or touch a database. Server surface means in-app server code - Server Actions, Route Handlers, `pages/api/**` routes, `src/server/`; an API the app only calls over HTTP (a sibling monorepo app with its own test framework included) is tested in its own codebase. The truncation and container recipes below are PostgreSQL's; the `Engine` slot records which truncation variant applies (Isolation table), and on MySQL the Testcontainers module swaps to `@testcontainers/mysql` (SQLite needs none).
 
 ## When to Use
 
@@ -22,9 +22,9 @@ user-invocable: false
 - Test service functions directly. They are plain async functions with no request context, which is what makes them the cheapest thing in the codebase to test.
 - **Use a real database, never a mocked ORM.** A mocked client asserts that you called it the way you expected, which is the one thing that was never in doubt. Constraints, cascades, transactions, and `null` handling are what break.
 - Every test starts from a known state and leaves none behind. Choose one isolation mechanism and apply it everywhere.
-- Mock at the network edge only: external HTTP, payment providers, mail - plus two sanctioned stubs: the session boundary (`requireUser`/`requireAdmin`, or the auth library's own entry such as Auth.js `auth()`) and Next framework modules with request-scoped side effects (`next/cache` revalidation and `next/headers`, which throw outside a request). Never mock other own modules to make a test pass.
+- Mock at the network edge only: external HTTP, payment providers, mail - plus two sanctioned stubs: the session boundary (`requireUser`/`requireAdmin`, or the auth library's own session entry) and Next framework modules with request-scoped side effects, which throw outside a request: `next/cache` (`revalidatePath`, `revalidateTag`, and the Server-Action-only `updateTag` and `refresh`; when `cacheComponents` is set in `next.config`, also `cacheLife` and `cacheTag` as no-ops, since Vitest does not compile `'use cache'` and they throw outside its scope) and `next/headers`. The `next/headers` stub is async like the real API (`cookies: vi.fn(async () => store)`) - a sync stub lets a missing `await` pass the test and fail in production. Assert `revalidateTag` with its two-argument `(tag, profile)` form. Never mock other own modules to make a test pass.
 - **Async Server Components are not unit-testable** with a component renderer. Test the data function underneath, and cover the rendered page with a browser test.
-- Route Handlers are tested by constructing a `Request` - a `NextRequest` from `next/server` when the handler uses `req.nextUrl` or `req.cookies` - and calling the exported method. No HTTP server is needed. A handler that reads `cookies()` or `headers()` from `next/headers` needs the session-boundary stub or a `next/headers` stub. Webhook handlers run real signature verification against a test-signed payload (e.g. Stripe's test header helper), never a mocked verifier, and get a replay test: the same event delivered twice, the second a no-op - which forces event-id dedupe in the handler.
+- Route Handlers are tested by constructing the request type the handler declares - a `NextRequest` from `next/server` when its first parameter is typed `NextRequest` (a plain `Request` fails `tsc` there), else a `Request` - and calling the exported method. No HTTP server is needed. A dynamic-segment handler also takes a context whose `params` is a Promise (typed with the global `RouteContext<'/api/reports/[id]'>`): pass `{ params: Promise.resolve({ id }) }`. A handler that reads `cookies()` or `headers()` from `next/headers` needs the session-boundary stub or a `next/headers` stub. Webhook handlers run real signature verification against a test-signed payload (e.g. Stripe's test header helper), never a mocked verifier, and get a replay test: the same event delivered twice, the second a no-op - which forces event-id dedupe in the handler.
 - A Server Action's authorization path is a required test case, not an optional one. Assert that an unauthorized caller is rejected before asserting that an authorized one succeeds.
 
 ## Patterns
@@ -43,8 +43,16 @@ Default to truncation. Transaction rollback is faster but silently cannot test t
 
 ```ts
 // vitest.server.config.ts - own node-env project beside the jsdom component config
-// environment: "node", globals: true (or import it/expect/vi from "vitest"), fileParallelism: false,
-// globalSetup: ["test/global-setup.ts"], setupFiles: ["test/setup.ts"]
+export default defineConfig({                 // from "vitest/config"
+  plugins: [tsconfigPaths()],                 // vite-tsconfig-paths: resolves the `@/` imports below
+  // server-only throws unless resolved under the react-server condition, which Vitest never sets;
+  // test/empty.ts is `export {};` (Jest's nextJest maps `^server-only$` to an empty mock already)
+  resolve: { alias: { "server-only": fileURLToPath(new URL("./test/empty.ts", import.meta.url)) } },
+  test: {
+    environment: "node", globals: true,       // typed per react-testing-patterns, or import it/expect/vi from "vitest"
+    fileParallelism: false, globalSetup: ["test/global-setup.ts"], setupFiles: ["test/setup.ts"],
+  },
+});
 
 // test/global-setup.ts - main process, before workers fork
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
@@ -68,7 +76,7 @@ beforeEach(async () => {
 });
 ```
 
-The container starts in `globalSetup` because that runs in the main process before workers fork: workers inherit `DATABASE_URL`, so the module-scope client singleton captures the container URI. Starting it in a per-file `beforeAll` both spins one container per file (the slow row of the isolation table) and, with a client that reads the URL at construction (a Prisma 7 driver adapter, postgres.js), loses the race with the singleton, which captures it at import time; the Prisma 6 default client resolves the URL lazily, so there it is only the slow option.
+The container starts in `globalSetup` because that runs in the main process before workers fork: workers inherit `DATABASE_URL`, so the module-scope client singleton captures the container URI. Starting it in a per-file `beforeAll` both spins one container per file (the slow row of the isolation table) and, with a client that reads the URL at construction (a Prisma 7 driver adapter, postgres.js), loses the race with the singleton, which captures it at import time.
 
 Running the real migrations rather than a schema sync means the test suite also verifies that the migrations produce the schema the code expects, which is otherwise only discovered in production.
 
@@ -117,13 +125,15 @@ The second assertion matters. A test that only checks the thrown error passes ev
 ### Testing a Route Handler
 
 ```ts
-import { POST } from "@/app/api/report/route";
+import { NextRequest } from "next/server";
+import { POST } from "@/app/api/reports/[id]/route";
 
 it("rejects an unsigned payload", async () => {
-  const res = await POST(new Request("http://test/api/report", {
+  const req = new NextRequest("http://test/api/reports/q1", {
     method: "POST",
-    body: JSON.stringify({ questionId: "q1", reason: "typo" }),
-  }));
+    body: JSON.stringify({ reason: "typo" }),
+  });
+  const res = await POST(req, { params: Promise.resolve({ id: "q1" }) });
   expect(res.status).toBe(400);
 });
 ```

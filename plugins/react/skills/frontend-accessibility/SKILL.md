@@ -3,7 +3,7 @@ name: frontend-accessibility
 description: Audit and build UI for WCAG 2.1 AA - semantic HTML, ARIA, keyboard nav, focus management, color contrast, live regions.
 metadata:
   category: frontend
-  tags: [frontend, accessibility, a11y, wcag, aria, keyboard, screen-reader, multi-stack]
+  tags: [frontend, accessibility, a11y, wcag, aria, keyboard, screen-reader, nextjs]
 user-invocable: false
 ---
 
@@ -36,11 +36,11 @@ Cite the WCAG criterion for every violation: in the `WCAG Criterion` column when
 
 ### Semantic HTML First
 
-```html
-<!-- Bad: not keyboard accessible, no role, no focus -->
-<div class="btn" onclick="submit()">Submit</div>
+```tsx
+{/* Bad: not keyboard accessible, no role, no focus */}
+<div className="btn" onClick={submit}>Submit</div>
 
-<!-- Good -->
+{/* Good */}
 <button type="submit">Submit</button>
 ```
 
@@ -90,7 +90,9 @@ destructive button first). Hand-rolled dialogs owe all four:
 3. Trap Tab/Shift+Tab within the dialog
 4. On close, restore focus to the saved element
 
-After dynamic changes: move focus to next item (deletion), main heading (SPA route change), or trigger (toast dismissed).
+After dynamic changes: move focus to next item (deletion) or trigger (toast dismissed).
+
+Client navigation (`next/link`, `router.push`) is announced by Next's built-in route announcer, which reads `document.title`, else the first `<h1>`, and announces only when that text changes - two routes sharing a title navigate with no announcement. Give every route a unique, descriptive title through the Metadata API (`metadata` / `generateMetadata`) (2.4.2); a shared or missing title is the defect, not a missing hand-rolled focus move.
 
 Provide a "Skip to main content" link as the first focusable element.
 
@@ -118,7 +120,7 @@ Provide a "Skip to main content" link as the first focusable element.
 
 ### Forms
 
-- Visible `<label>` associated via `for`/`id` or wrapping
+- Visible `<label>` associated via `htmlFor`/`id` or wrapping
 - Required: both visual indicator and `required`/`aria-required="true"`
 - Errors associated with input via `aria-describedby`; announce via `aria-live` or focus the error summary
 - Group related inputs with `<fieldset>` + `<legend>`
@@ -131,15 +133,11 @@ Provide a "Skip to main content" link as the first focusable element.
 - One live region per announcement stream; debounce rapid updates (a result count while typing) so only the settled value is announced
 - Infinite scroll: provide a "Load more" button alternative (2.1.1)
 
-## Stack-Specific Guidance
+## Next.js Bindings
 
-After `stack-detect`, apply patterns using ecosystem idioms. Common bindings:
-
-- **React**: `jsx-a11y` ESLint plugin, `useId()` for label pairing, Radix or Headless UI for accessible primitives (Radix ships no combobox - use Headless UI `Combobox` or React Aria for autocompletes)
-- **Vue**: `eslint-plugin-vuejs-accessibility`, Reka UI (formerly Radix Vue) or Headless UI Vue, `<Teleport>` for modals
-- **Angular**: Angular CDK `a11y` module (`FocusTrap`, `LiveAnnouncer`, `cdkTrapFocus`), Angular Material
-
-For any framework not bound above - `unknown`, or a detected one such as Svelte or Solid - apply the universal patterns and point the user to that framework's a11y docs.
+- Lint: `eslint-config-next` enables only 6 `jsx-a11y` rules, all at `warn` (`alt-text`, ARIA props and roles); add `eslint-plugin-jsx-a11y`'s `recommended` flat config for the interactive-element and label rules (`<div onClick>`, unlabeled inputs). `next lint` is removed and `next build` no longer lints, so the rules run only where something invokes `eslint` (a script, CI, the editor) against a flat `eslint.config.*`
+- `useId()` for label and description pairing
+- Radix or Headless UI for accessible primitives (Radix ships no combobox - use Headless UI `Combobox` or React Aria for autocompletes)
 
 ---
 
@@ -154,7 +152,7 @@ A row is one criterion failing one way: a dialog missing both its role and its f
 ```
 ## Accessibility Assessment
 
-**Stack:** {Framework and Language as a display name (`Next.js 15.5 / TypeScript` for stack-detect's `React (Next.js)`) - the major.minor from the owning app's `package.json` (`^15.5.0` -> 15.5); with no `tsconfig.json`, the extensions of the files in scope decide JS vs TS, overriding stack-detect's Language; in a monorepo, the app owning the reviewed code; "unknown - universal patterns applied" when inconclusive}
+**Stack:** {Framework and Language as a display name (`Next.js 16.3 / TypeScript` for stack-detect's `React (Next.js)`) - the major.minor from the owning app's `package.json` (`^16.3.0` -> 16.3); with no `tsconfig.json`, the extensions of the files in scope decide JS vs TS, overriding stack-detect's Language; in a monorepo, the app owning the reviewed code; `unknown` for a part that is inconclusive}
 
 **Standard:** WCAG 2.1 AA
 

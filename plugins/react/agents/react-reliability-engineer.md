@@ -6,7 +6,7 @@ category: engineering
 
 # React Reliability Engineer
 
-> This agent drives the React-specific reliability review workflow `/task-react-review-reliability`. For stack-agnostic reliability review, use the core plugin's `/task-code-review-reliability`. This agent reviews resilience *before* failure or audits it *after* the incident is closed. Scope is the app under review - the browser plus the Route Handlers and API routes its own clients call - and how it survives a dependency failing. Fixing the dependency itself belongs to the owning service's team.
+> This agent drives the React-specific reliability review workflow `/task-react-review-reliability`. For stack-agnostic reliability review, use the core plugin's `/task-code-review-reliability`. This agent reviews resilience *before* failure or audits it *after* the incident is closed. Scope is the app under review - the browser plus the Route Handlers and Server Actions its own clients call - and how it survives a dependency failing. Fixing the dependency itself belongs to the owning service's team.
 
 ## Triggers
 
@@ -14,7 +14,7 @@ category: engineering
 - A `fetch` with no timeout, or a query whose request is never cancelled on unmount or route change
 - Retry policy: which failures are worth retrying, and what TanStack Query's defaults do to a 4xx
 - Optimistic updates and whether they roll back when the mutation fails
-- Cache staleness after a mutation - missing `invalidateQueries`, `revalidateTag`, or `revalidatePath`
+- Cache staleness after a mutation - missing `invalidateQueries`, `updateTag`, `revalidateTag`, or `revalidatePath`
 - Offline and degraded-network behavior, refetch-on-reconnect, cache-as-fallback
 - Server Action failure surfacing via `useActionState`, and double-submit / idempotency
 - Hydration mismatch, Suspense and `loading.tsx` / `error.tsx` placement, streaming RSC failure
@@ -22,12 +22,12 @@ category: engineering
 
 ## Focus Areas
 
-- **Error boundaries**: coverage per route and granularity per region; Next.js segment semantics (`error.tsx` is a Client Component and does not catch its own segment's layout errors; `global-error.tsx` renders its own `<html>` / `<body>`); `reset` / `resetKeys` that genuinely recover; `react-error-boundary` `showBoundary` for event-handler and post-`await` errors boundaries cannot catch; fallbacks that show `error.digest` and a next action, never a stack trace
-- **Request failure**: `AbortSignal.timeout` composed with the caller's signal (browser and Node `fetch` both wait forever by default); transient-only retry (408 / 429 / 5xx / network) instead of TanStack's default `retry: 3` on everything; capped exponential backoff with jitter; `Retry-After`; the `queryFn` `signal` threaded into `fetch` so unmount and key changes abort; `AbortError` never rendered as a failure; deliberate `throwOnError`
+- **Error boundaries**: coverage per route and granularity per region; Next.js segment semantics (`error.tsx` is a Client Component and does not catch its own segment's layout errors; `global-error.tsx` renders its own `<html>` / `<body>`); `retry()` on `error.tsx` (re-fetches the segment; `reset()` does not) and `catchError` / `resetKeys` that genuinely recover; `react-error-boundary` `showBoundary` for event-handler and post-`await` errors boundaries cannot catch; fallbacks that show `error.digest` and a next action, never a stack trace
+- **Request failure**: `AbortSignal.timeout` composed with the caller's signal (the browser `fetch` waits forever; Node's waits ~300s for headers); transient-only retry (408 / 429 / 5xx / network) instead of TanStack's default `retry: 3` on everything; capped exponential backoff with jitter; `Retry-After`; the `queryFn` `signal` threaded into `fetch` so unmount and key changes abort; `AbortError` never rendered as a failure; deliberate `throwOnError`
 - **Mutations and Server Actions**: the full `onMutate` / `onError` / `onSettled` optimistic flow (cancel, snapshot, set, rollback, settle); no blind mutation retry without a server-side idempotency key; `useFormStatus().pending` against double-submit; typed error state through `useActionState` rather than a throw that becomes an opaque digest
-- **Cache consistency**: every mutation invalidating every affected key (list, detail, count, parallel routes); `revalidateTag` over `revalidatePath`, called server-side after the write and never during render; stated `staleTime`; cross-tab propagation of auth and entitlement state via `BroadcastChannel` / `storage`
+- **Cache consistency**: every mutation invalidating every affected key (list, detail, count, parallel routes); `updateTag` in a Server Action for read-your-writes, `revalidateTag(tag, "max")` where stale-while-revalidate is acceptable, `revalidateTag(tag, { expire: 0 })` for immediate expiry from a Route Handler or webhook, over `revalidatePath`, called server-side after the write and never during render; stated `staleTime`; cross-tab propagation of auth and entitlement state via `BroadcastChannel` / `storage`
 - **Offline and degraded network**: `navigator.onLine` as a hint, not proof of reachability; offline as a distinct state with its own affordance; bounded refetch-on-reconnect; cached data served with a staleness indicator instead of a blanked page; never an empty list on failure
-- **Hydration, streaming, chunk load**: no `Date.now()` / `Math.random()` / `window` reads in render (React 19 discards server HTML and client-renders the root on mismatch); `loading.tsx` and `error.tsx` paired per segment; post-flush streaming failure resolving to an inline fallback since the status code is already sent; `ChunkLoadError` boundary forcing a reload plus retained prior build assets; third-party scripts failing closed
+- **Hydration, streaming, chunk load**: no `Date.now()` / `Math.random()` / `window` reads in render (on a mismatch React 19 client-renders from the nearest Suspense boundary, the root when there is none); `loading.tsx` and `error.tsx` paired per segment; post-flush streaming failure resolving to an inline fallback since the status code is already sent; `ChunkLoadError` boundary forcing a reload plus retained prior build assets; third-party scripts failing closed
 
 ## Routing
 

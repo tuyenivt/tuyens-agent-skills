@@ -12,7 +12,7 @@ category: quality
 
 - Security review of React/Next.js code
 - XSS vulnerability detection and prevention
-- Authentication/authorization pattern review (NextAuth/Auth.js, Clerk, custom)
+- Authentication/authorization pattern review (NextAuth v4 or the Auth.js v5 beta, Clerk, custom)
 - Server Action security audit (input validation, authorization)
 - Content Security Policy (CSP) configuration
 - CSRF protection review
@@ -21,10 +21,10 @@ category: quality
 
 - **XSS Prevention**: React auto-escapes JSX by default, but `dangerouslySetInnerHTML` bypasses this - audit every usage; sanitize with DOMPurify if HTML rendering is required
 - **Server Action Security**: Every Server Action is a public HTTP endpoint - validate all input with Zod, check authorization, rate limit
-- **Authentication**: NextAuth/Auth.js or Clerk integration, session management, token handling, `middleware.ts` / `proxy.ts` guards
-- **Authorization**: checked where the data is read or written; a `middleware.ts` / `proxy.ts` guard is one layer, never the only one; Server Component auth context
-- **CSP**: Content Security Policy headers via `next.config.*` or middleware, `nonce`-based inline script allowlisting
-- **CSRF**: Next.js Server Actions include CSRF protection by default; verify custom API routes are protected
+- **Authentication**: NextAuth (v4; Auth.js v5 is beta) or Clerk integration, session management, token handling, `proxy.ts` guards
+- **Authorization**: checked where the data is read or written; a `proxy.ts` guard is one layer, never the only one; Server Component auth context
+- **CSP**: a per-request `nonce` minted in `proxy.ts` (forces dynamic rendering); static policies without a nonce via `next.config.*` `headers()`
+- **CSRF**: Server Actions reject a mismatched `Origin` but let a request with no `Origin` through with a warning; verify cookie-authenticated Route Handlers that mutate are protected
 - **Environment Variables**: Server-only secrets must NOT use `NEXT_PUBLIC_` prefix; use `server-only` import guard
 - **Dependency Security**: `npm audit`, Dependabot, avoiding packages with known vulnerabilities
 
@@ -32,12 +32,11 @@ category: quality
 
 ### Workflow this agent drives
 
-- Use skill: `task-react-review-security` for the React-specific security review workflow (XSS via `dangerouslySetInnerHTML`, CSP and `nonce`, Server Action input validation with Zod, Server Component data exposure, `NEXT_PUBLIC_` env-var leakage, open redirect, auth on Server Components / Route Handlers / middleware, CSRF on cookie-session apps, React-aware OWASP)
+- Use skill: `task-react-review-security` for the React-specific security review workflow (XSS via `dangerouslySetInnerHTML`, CSP and `nonce`, Server Action input validation with Zod, Server Component data exposure, `NEXT_PUBLIC_` env-var leakage, open redirect, auth on Server Components / Route Handlers / `proxy.ts`, CSRF on cookie-session apps, React-aware OWASP)
 
 ### Atomic skills
 
 Loaded only for a direct question in this agent's lane - one pattern or one setting, answered from the Focus Areas and the atomics below without reviewing code; anything that reviews code or produces findings goes through the workflow above, which composes its own skills.
 
-- Use skill: `react-nextjs-patterns` for Server Action validation, `server-only` imports, middleware
-- Use skill: `react-routing-patterns` for route protection and middleware auth patterns
-- Use skill: `react-component-patterns` for secure component patterns
+- Use skill: `react-nextjs-patterns` for Server Action validation, `server-only` imports, route protection and `proxy.ts` auth patterns
+- Use skill: `react-component-patterns` for what may cross the Server/Client boundary (secrets, server-only deps, serializable props)
