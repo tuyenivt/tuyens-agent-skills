@@ -16,7 +16,7 @@ Spring-aware staff-level review umbrella. Stack-specific delegate of `task-code-
 ## When to Use
 
 - Pre-merge Spring Boot PR review, post-AI-generation quality gate, architecture drift detection.
-- **Not for:** design (`task-spring-implement`), debugging, new-system architecture (`task-design-architecture`), single-scope reviews (delegate to `task-spring-review-{perf,security,observability,reliability}`).
+- **Not for:** design (`task-spring-implement`), debugging, new-system architecture, single-scope reviews (delegate to `task-spring-review-{perf,security,observability,reliability}`).
 
 ## Depth and Scope
 
@@ -67,55 +67,38 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect`. Accept pre-detected stack from a parent. If not Spring Boot, stop and tell the user to invoke `/task-code-review`.
+Use skill: `stack-detect`. Accept pre-detected stack from a parent. If not Spring Boot, stop and tell the user to invoke `/task-code-review`. Its `Database` value is the engine the Phase B migration rows read.
+
+Once Step 4 has not stopped the run, read the Spring Boot version from the build file at `git show <head_ref>:<path>`, never from the working tree (Gradle `org.springframework.boot` plugin or version catalog; Maven `spring-boot-starter-parent` or the imported `spring-boot-dependencies` BOM) and the Java version from `java.toolchain` / `<java.version>` / `maven.compiler.release`; `stack-detect` does not report either. Every construct a finding cites as present and every fix recommends must exist and bind on that version, composed-atomic fixes included. Below Boot 4.0, write the row's or the atomic's Boot 3 form; when neither has one, say `Boot 3 form not given` rather than emitting the Boot 4 one.
 
 ### Step 3 - Resolve the Diff
 
-Use skill: `review-precondition-check` (forward `--base`). Surface fail-fast messages verbatim and stop.
+Use skill: `review-precondition-check` with the target argument, any `--base`, and `report_type: review`. Surface fail-fast messages verbatim and stop. From the handle keep `branch` = its `head_short_name` (never `HEAD`, never remote-prefixed), its `report_path` (the checkpoint file Phase 0 and Step 9 read), and any `prior_checkpoint` block or `legacy` scalar for Step 4.
 
-The handle may include a `prior_checkpoint` block (a prior review report exists). Decision logic is Step 4; for now, just hold onto it.
-
-Once approved, read once and reuse (skip when a parent passed the handle plus artifacts):
+Capture `current_head_sha = git rev-parse <head_ref>` and `current_base_sha = git rev-parse <base_ref>` first - the Step 4 no-op gate needs only these. Once Step 4 has not stopped the run, read once and reuse (skip when a parent passed the handle plus artifacts):
 
 - `git diff <base_ref>...<head_ref>`
 - `git diff --name-status <base_ref>...<head_ref>`
-- `git ls-tree -r --name-only <head_ref>` (the head file list - Step 9 needs it to tell a deleted path from an untouched one)
 - `git log --oneline <base_ref>..<head_ref>`
-
-Also capture the SHAs for the report's checkpoint frontmatter: `current_head_sha = git rev-parse <head_ref>`, `current_base_sha = git rev-parse <base_ref>`.
 
 ### Step 4 - Decide Round (re-review auto-detect)
 
 **Every round analyzes the full `<base_ref>...<head_ref>` range read in Step 3.** Risk, blast radius, scope signals, depth promotion, and requirement fit are scored on the whole change on every round, so a small follow-up commit cannot under-score a large PR and a defect missed in round 1 stays reachable in round 2. Rounds differ only in that round 2+ reconciles against the prior report.
 
-No `prior_checkpoint` in the handle -> `round = 1`, no fetch, no reconciliation. Continue to Step 5.
-
-`prior_checkpoint: legacy` (file present, frontmatter missing/invalid) -> `round = 1`. Note: `Prior report lacks checkpoint metadata - treated as round 1.` Continue to Step 5.
-
-Otherwise (valid prior checkpoint present):
-
-**Step 4a - Auto-fetch the head branch.** Refresh the local tracking ref so a script can re-run the same command without manually fetching:
-
-```bash
-upstream=$(git rev-parse --abbrev-ref --symbolic-full-name "<head_ref>@{u}" 2>/dev/null)
-```
-
-If `upstream` resolves to `<remote>/<branch>` form, split and run `git fetch <remote> <branch>`. No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, detached HEAD, no remote configured), skip the fetch silently. If `git fetch` fails (offline, auth, deleted remote branch), continue silently - this is a convenience, not a gate. After a successful fetch, re-resolve `current_head_sha`.
-
-**Step 4b - Compare checkpoints.** Evaluate top to bottom and stop at the first row that matches.
+No `prior_checkpoint` -> `round = 1`. `prior_checkpoint: legacy` (file present, frontmatter missing/invalid) -> `round = 1`, noted `Prior report lacks checkpoint metadata - treated as round 1.` Otherwise evaluate top to bottom and stop at the first matching row. The SHAs come from local refs as they stand; nothing is fetched.
 
 | Condition                                                              | Decision                                                                                                                            |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `prior_checkpoint.head_sha == current_head_sha`, and the invocation adds no scope or depth beyond the prior checkpoint | **No-op.** Print `No new commits on <head_ref_short> since prior review at <sha_short>. Prior report unchanged.` (where `<head_ref_short>` is the short name of `head_ref` - the review target, not the user's current branch - and `<sha_short>` is the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
+| `current_head_sha` equals the valid prior checkpoint's `head_sha` (head only; matches the lenses), and the invocation adds no scope or depth beyond the checkpoint | **No-op.** Print `No new commits on <branch> since prior review at <sha_short>. Prior report unchanged.` (`<sha_short>` = the first 7 chars of `current_head_sha`) and stop before reading any surface. Do not call `review-report-writer`. |
 | `prior_checkpoint.head_sha == current_head_sha`, but the invocation expands scope or depth beyond it | `round = prior.round + 1`. Note: `Same head as round <prior.round>; re-review for expanded <scope\|depth>.` |
-| `git merge-base --is-ancestor <prior_head_sha> <current_head_sha>` fails (prior SHA unreachable) | `round = prior.round + 1`. Note: `Prior checkpoint unreachable - history rewritten.`      |
+| `git merge-base --is-ancestor <prior_checkpoint.head_sha> <current_head_sha>` fails (prior SHA unreachable) | `round = prior.round + 1`. Note: `Prior checkpoint unreachable - history rewritten.`      |
 | `prior_checkpoint.base_sha != current_base_sha`                        | `round = prior.round + 1`. Note: `Base branch advanced since round <prior.round>.`       |
 | `prior_checkpoint.base_ref != base_ref`                                | `round = prior.round + 1`. Note: `Base ref changed since round <prior.round>.`           |
 | None of the above                                                       | `round = prior.round + 1`.                                                                          |
 
 ### Step 5 - Evaluate Auto-Escalation
 
-Scan files and diff against the signal categories above. Record `signal: <category> -> <path>` per match **in the report's Summary Notes**; a whole-file signal (a new or modified migration) cites the path with no line number. Where a category fires many times on the same file, collapse those to one record for that file rather than dropping paths - the Scope line already carries the category list, so Notes exists to name the files.
+Scan files and diff against the signal categories above. Record `signal: <category> -> <path>` per match **in the report's Summary Notes**; a whole-file signal (a new or modified migration) cites the path with no line number. Many matches on one file collapse to one record for that file.
 
 Resolve scope (Core / +X / Full) and surface it in Summary:
 
@@ -127,7 +110,7 @@ Resolve scope (Core / +X / Full) and surface it in Summary:
 
 ### Phase 0 - Change Intent
 
-Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req` file contents when passed, and `prior_checkpoint.report_path` when round > 1.
+Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req` file contents when passed, and the handle's `report_path` (as `prior_report_path`) when round > 1.
 
 Its `## Change Brief` block goes into the report verbatim, its `Requirement Source` and `Requirement Fit` lines into Summary, and its findings join the assembled set verified in Step 8. It emits exactly one of `### Requirement Findings` / `### No Requirement Findings`; record which in Summary Notes as `Phase 0: <marker>` so a later round can confirm the phase ran. With no requirement source the Brief still renders, and the traceability block and its two Summary lines are omitted. Runs before Phase A - acceptance criteria decide what counts as a defect downstream - and the low-risk short-circuit never skips it.
 
@@ -136,13 +119,13 @@ Its `## Change Brief` block goes into the report verbatim, its `Requirement Sour
 - Use skill: `review-pr-risk`.
 - Use skill: `review-blast-radius`.
 - Output Risk and Blast Radius before findings.
-- **Resolve depth here.** Start from the invocation (`deep` if flagged, else `standard`); promote to `deep` when Blast Radius is `Wide` or `Critical`, and append `auto-promoted from standard; Blast Radius: <level>` to the Summary's Depth line.
+- **Resolve depth here.** Start from the invocation (`deep` if flagged, else `standard`); promote to `deep` when Blast Radius is `Wide` or `Critical`, and append `auto-promoted from standard; Blast Radius: <level>` to the Summary's Depth line. A two-state Blast Radius gates this and the short-circuit on its mitigated value only when the leading `Mitigation:` tag is `in-place:`, else on the unmitigated one.
 - **Then compare the resolved scope and depth against the prior checkpoint** (round 2+ only; both values exist only now):
   - Scope gained entries -> `Scope expanded round <N>: +<list>.` Newly-added scopes have no prior findings to reconcile.
   - Scope lost entries -> `Scope narrowed round <N>: -<list> - prior findings reconciled; no new <list> pass.` Prior findings from dropped scopes are still reconciled in Step 9; they get no fresh pass.
   - Resolved depth is `standard` where the checkpoint recorded `deep` -> `Depth narrowed vs round <prior.round> - re-run with deep to re-cover.`
 
-**Low-risk short-circuit:** Risk `Low` + Blast Radius `Narrow` + no architecture-relevant files touched (security config, filters, API contracts, shared base classes, aspects, `application*.yml`, migrations) -> skip Phases C-E, deliver the Phase 0 outputs (Change Brief, traceability, requirement findings) and Phase B findings only. Phase B's conditional migration and API-contract blocks are unreachable under this short-circuit by construction, since both of their trigger surfaces are on the architecture-relevant list.
+**Low-risk short-circuit:** Risk `Low` + Blast Radius `Narrow` + no architecture-relevant files touched (security config, filters, API contracts, shared base classes, aspects, `application*.yml`, migrations) -> skip Phases C-E, deliver the Phase 0 outputs (Change Brief, traceability, requirement findings) and Phase B findings only. Phase B's conditional migration and API-contract blocks are unreachable under this short-circuit by construction, since both of their trigger surfaces are on the architecture-relevant list. Record `Low-risk short-circuit: Phases C-E skipped` in Summary Notes.
 
 ### Step 6 - Delegate Extra Scopes in Parallel
 
@@ -157,31 +140,38 @@ Skip if Core only. Spawn now, before Phase B, so the subagents run in parallel w
 
 `Full` = 4 subagents.
 
-**Subagent prompt contract:** pass the resolved `base_ref`/`head_ref`, the already-read diff and commit log, depth level, pre-confirmed stack, the `round`, and - on round 2+ - the prior report's findings for that scope, so the subagent does not re-raise a finding this round will reconcile. Subagent skips `review-precondition-check`, re-reading the diff, and its own verify pass. It returns its `## Findings` (each carrying a label, a citation, and - on a `[Must]` - the `Impact` and `System Risk` lines this report format needs), its `## Next Steps`, one trailing coverage / not-applicable line, and at `deep` its named deep-only section. It returns no Summary block, no lens-specific section such as an OWASP sweep, and no `Recommendations`.
+**Subagent inputs** stand in for the precondition handle, so the lens runs no precondition check, round gate, diff read, verify, reconcile, or report write: `base_ref`, `head_ref`, `base_sha`, `head_sha`, the diff, the commit log, `depth`, the stack (Boot and Java versions, database engine), `round`, and on round 2+ `prior_head_sha` plus the prior findings for that scope - prior `## High-Impact Findings` entries whose `raised by` names it (an entry with no `raised by` goes to every lens). The lens applies `never re-raise a prior finding the parent passed unless its cited site changed since prior_head_sha`.
+
+**Subagent returns** its `## Findings` (severity-tier sections of numbered finding blocks), its `## Next Steps`, its one trailing `Coverage:` or `Not applicable:` line, and at `deep` its named deep-only section - no Summary, sweep section, or `Recommendations`. Step 7 projects the return.
+
+**No-spawn fallback:** When subagents cannot be spawned, run each resolved scope inline: read that lens's SKILL.md and run it in subagent mode (its trigger: spawned by `task-spring-review`, or run inline by it when it cannot spawn) against the artifacts already read, then merge its return as if spawned; record Scopes run inline: <list> in Notes. A scope is Scope incomplete only when it failed.
 
 **Failure isolation:** if a subagent fails or times out, continue. Record `Scope incomplete: <scope> review did not complete` under Summary Notes.
 
 ### Phase B - Spring Correctness and Safety
 
-Logical correctness, error handling, backward compatibility, transaction boundary correctness. Use atomic skills `spring-transaction`, `spring-jpa-performance`, `spring-async-processing`, `spring-exception-handling`, `spring-messaging-patterns` as relevant, as diagnostic checklists.
+Logical correctness, error handling, backward compatibility, transaction boundary correctness. Load each atomic as a diagnostic checklist when the diff touches its surface: Use skill: `spring-transaction` (transactions, repositories), Use skill: `spring-jpa-performance` (entities, queries), Use skill: `spring-async-processing` (`@Async`, `@Scheduled`, executors, events), Use skill: `spring-exception-handling` (advice, error responses), Use skill: `spring-messaging-patterns` (Kafka, Rabbit), Use skill: `spring-security-patterns` (filter chain, method security, JWT).
 
 **Spring idioms (cite the named smell in findings):**
 
-- [ ] **Transactions** - writes at service layer; no HTTP/broker/IO inside `@Transactional`; `readOnly = true` on reads; `rollbackFor` for checked exceptions; no `this.txMethod()` self-invocation.
+- [ ] **Transactions** - writes at service layer; no HTTP/broker/IO inside `@Transactional`; `readOnly = true` on reads; `rollbackFor` for checked exceptions unless `@EnableTransactionManagement(rollbackOn = RollbackOn.ALL_EXCEPTIONS)` (Framework 6.2 / Boot 3.4+) is set; no `this.txMethod()` self-invocation.
 - [ ] **JPA in API** - controllers never expose `@Entity` types; DTO/record/projection only.
 - [ ] **N+1** - `@EntityGraph`/`join fetch` wherever lazy associations are walked post-query (depth -> `task-spring-review-perf`).
 - [ ] **Bean Validation** - `@Valid` on every `@RequestBody`/`@RequestParam` DTO; no manual checks duplicating annotations.
 - [ ] **Authorization coverage** - every controller method covered by `SecurityFilterChain` matcher or `@PreAuthorize`; `permitAll` documented; `@PreAuthorize` present but `@EnableMethodSecurity` absent means the annotation never fires (depth -> `task-spring-review-security`).
+- [ ] **Authority mapping** - Every hasRole / hasAuthority check is only as real as the JWT converter feeding it: a top-level claim needs authorities-claim-name; a nested claim (Keycloak realm_access.roles) yields no authorities through setAuthoritiesClaimName - Boot 4.1 `authorities-claim-expressions`, else a custom converter; either property needs `authority-prefix: ROLE_` when the claim values are bare role names, or an empty prefix when they already carry `ROLE_` (the default prefix is `SCOPE_`). When the mapping yields nothing, every role gate denies everyone: say so, and never propose a role-based bypass.
 - [ ] **Error handling** - `@RestControllerAdvice` maps validation/not-found/access-denied; no blanket `catch (Exception)`; no `printStackTrace()`.
 - [ ] **Optional discipline** - `.orElseThrow`/`.map`; never `.get()` unguarded; never as a parameter.
 - [ ] **Idempotency** - monetary/notification side effects accept an idempotency key, and dedup is atomic rather than check-then-insert.
-- [ ] **Dual-write** - `save` + `kafkaTemplate.send` + `save` in `@Transactional` is a smell; use outbox or `AFTER_COMMIT`.
-- [ ] **VT pinning** - when `spring.threads.virtual.enabled=true` **and the project targets a JDK below 24**, `synchronized` on a shared instance pins the carrier; use `ReentrantLock`/`StampedLock`. JEP 491 removed that pinning in JDK 24 - on 24+ raise it only where the monitor is contended enough to block carriers.
-- [ ] **Race-prone updates** - counters/balances/state transitions use `@Lock(PESSIMISTIC_WRITE)`/`@Version`/`SELECT FOR UPDATE`.
+- [ ] **Race-prone updates** - a check-then-act on a status, counter, or balance needs `@Version`, `@Lock(PESSIMISTIC_WRITE)`, or a conditional `UPDATE ... WHERE status = ?`. A key does not serialize two concurrent requests, so the race is its own finding, never folded into Idempotency.
+- [ ] **Dual-write** - A publish or remote call that must happen when the row commits needs the transactional outbox. AFTER_COMMIT fits only best-effort side effects (a publish an acceptance criterion requires is not): it loses the send on a crash or a listener exception (swallowed in afterCompletion). A money call whose result must be saved is neither: PENDING row, the call outside any transaction, a completion transaction, and a reconciler.
+- [ ] **Executors** - Any user Executor bean - a ThreadPoolTaskScheduler included - backs off Boot's applicationTaskExecutor unless it is `@Bean(defaultCandidate = false)` (needs Boot 3.4+) or spring.task.execution.mode=force (needs Boot 3.5+). Once it is backed off, with two or more TaskExecutor beans (Boot's @EnableScheduling taskScheduler counts, so one user executor already makes two - check the base before attributing) and none named taskExecutor, unnamed @Async runs on a new SimpleAsyncTaskExecutor - unbounded, one thread per task. spring.task.execution.propagate-context (Boot 4.1) and TaskDecorator beans reach only Boot-built executors.
+- [ ] **VT pinning** - only when `spring.threads.virtual.enabled=true` and the JDK is 21-23 (an unknown JDK counts as below 24): `synchronized` held across blocking IO pins the carrier; use `ReentrantLock`/`StampedLock`. JEP 491 removed the pinning in JDK 24 - on 24+ never raise it.
+- [ ] **Inert on the declared version** - a `@Retryable` / `@ConcurrencyLimit` / Resilience4j annotation with none of its enablers; Boot 3 `spring.http.client.*` keys on Boot 4 (binds nothing - `spring.http.clients.*`); a Jackson 2 `ObjectMapper` on Boot 4 (Boot auto-configures the `tools.jackson` `JsonMapper`: a defined one configures nothing, and an injected `com.fasterxml.jackson.databind.ObjectMapper` has no bean without the deprecated `spring-boot-jackson2` module, so the context fails to start - `[Must]`); bare `flyway-core` / `liquibase-core` / `spring-kafka` on Boot 4 (no auto-configuration without the starter or module). The inert check searches for every enabler, not only the annotation: Framework 7 `@Retryable` / `@ConcurrencyLimit` are live with `@EnableResilientMethods` or a declared `RetryAnnotationBeanPostProcessor` / `ConcurrencyLimitBeanPostProcessor` bean; Spring Retry's `@Retryable` needs `@EnableRetry` plus the AOP starter (`spring-boot-starter-aop` on Boot 3, `spring-boot-starter-aspectj` on Boot 4); Resilience4j annotations need that same starter. A search that finds none of a construct's enablers settles it as inert. A finding whose impact or fix assumes the inert construct works is wrong. A fix that enables `@EnableResilientMethods` (or `@EnableRetry`) names every `@Retryable` it activates and is recommended only when each retried call is idempotent, excludes 4xx, and runs outside a transaction; otherwise the fix is to remove the annotation or make the call idempotent first.
 - [ ] **Singleton state** - no mutable fields; if required, `final` immutable, `ConcurrentHashMap`, `AtomicReference`, or lock-guarded.
 - [ ] **Bulk operations** - partial-failure path; `hibernate.jdbc.batch_size` set; retries idempotent.
 
-**Test coverage as a named finding** (not buried in Takeaways): logic changes without JUnit / slice / Testcontainers -> `[Recommend]`; escalate to `[Must]` for security, money, multi-table state machines, `@Async`/`@KafkaListener` mutations, or migrations changing column semantics. Anchor the finding to the untested production `file:line` and state the case to cover.
+**Test coverage as a named finding** (not buried in Takeaways): logic changes without JUnit / slice / Testcontainers -> `[Recommend]`; escalate to `[Must]` for security, money, multi-table state machines, `@Async`/`@KafkaListener` mutations, or migrations changing column semantics. Anchor the finding to the untested production `file:line` and state the case to cover. Use skill: `spring-test-integration` for the test a finding asks for and for test-dependency edits in the diff (Boot 4 manages Testcontainers 2: `org.testcontainers:testcontainers-postgresql` and `testcontainers-junit-jupiter`, class `org.testcontainers.postgresql.PostgreSQLContainer`; the 1.x `postgresql` / `junit-jupiter` artifacts are not published at 2.x, so a test dependency that cannot resolve is `[Must]`).
 
 **Test files are reviewed for coverage and honesty only.** For files that are themselves tests, the only findings to raise are a coverage gap - anchored to the untested production code, never to the test file - and a test weakened to pass (security disabled, an assertion or `@PreAuthorize` removed), which is anchored to the test. Do not review test code for style, structure, duplication, naming, or performance: a passing test with awkward setup or a duplicated stub is not a finding, and Phase D's verbosity checks do not apply to it.
 
@@ -190,8 +180,7 @@ Logical correctness, error handling, backward compatibility, transaction boundar
 - [ ] **An already-applied migration file was edited in place** - Flyway `validate-on-migrate` fails the deploy on the checksum mismatch, and where validation is off, deployed and freshly-built schemas silently diverge. Always `[Must]`; the fix is a new forward migration.
 - [ ] Column rename/drop via two-phase deploy (add -> backfill -> cut over -> remove).
 - [ ] New `NOT NULL` on existing columns via two-step (add nullable -> backfill -> set NOT NULL).
-- [ ] Large-table indexes use `CREATE INDEX CONCURRENTLY`, split outside a transaction.
-- [ ] FKs validated separately (`NOT VALID` then `VALIDATE`).
+- [ ] Large-table DDL in the engine's online form (Step 2's `Database`): PostgreSQL `CREATE INDEX CONCURRENTLY` outside a transaction and FKs `NOT VALID` then `VALIDATE`; MySQL `ALGORITHM=INSTANT` or `INPLACE, LOCK=NONE` per `spring-db-migration-safety`.
 - [ ] Long backfills isolated from DDL, not inline in Flyway/Liquibase.
 - [ ] Rollback path documented.
 
@@ -213,7 +202,7 @@ Use skill: `architecture-guardrail`.
 - [ ] **Configuration** - typed `@ConfigurationProperties` records over `@Value`; profiles separated; no hardcoded values.
 - [ ] **Module boundaries** - feature-package layout; cross-feature access via public service interfaces, not direct `OtherFeatureRepository` calls.
 - [ ] **Multi-tenant isolation** - tenant scoping at repository/`@Filter`/`@TenantId` layer. Derived queries like `findByIdAndUserId` are acceptable only when every read on that aggregate uses one - a single missing variant exposes other tenants' data.
-- [ ] **Read replica / routing** - `AbstractRoutingDataSource` reads declare target via `@Transactional(readOnly = true)` or explicit annotation; no surprise cross-DB joins.
+- [ ] **Read replica / routing** - `AbstractRoutingDataSource` reads declare target via `@Transactional(readOnly = true)` or explicit annotation, and `readOnly` reaches the router only behind a `LazyConnectionDataSourceProxy`; no surprise cross-DB joins.
 - [ ] **Aspect discipline** - `@Aspect` for genuinely cross-cutting concerns, not hidden control flow.
 
 **Multi-service PRs:** API contract compatibility verified (Spring Cloud Contract/Pact); deployment order documented or independent; use skill: `ops-backward-compatibility`.
@@ -242,11 +231,13 @@ Use skill: `backend-coding-standards`. Use skill: `ops-observability` for cross-
 
 ### Step 7 - Assemble Findings
 
-Runs on every review, Core included.
+Runs on every review, Core included. Verify, reconcile, and the report all read this set.
 
+- **Project each lens return.** Each numbered block becomes `### [Label] <file:line>`: the label from the block's own label line (`**[Must]**` in perf and obs, `**Label:** [Must]` in security and reliability) and the `file:line` prefix of its Location line; in subagent mode a lens returns no Location annotation of its own, so verify's Annotation is the only provenance. `Issue`, `Impact`, `System Risk`, and `Fix` carry over; security's `Attack scenario` and reliability's Location suffix `verify: <assumption>` fold into `Issue`, perf's `_(quick win)_` / `_(structural)_` tag into `Fix`; reliability's `Failure Mode` -> `Impact` and `Blast Radius` -> `System Risk`. The lens's trailing `Coverage:` / `Not applicable:` line becomes a Notes bullet; its Next Steps, `[Delegate]` items included, join the merge below.
+- **Tag the source.** Every finding's Issue line ends `raised by: <sources>` with tokens `core`, `+perf`, `+sec`, `+obs`, `+rel` (Phase 0 counts as `core`) - Step 6 routes round 2's prior findings by it.
 - **Order by severity, never by scope or phase.** `[Must]` before `[Recommend]`; within a label, by blast radius.
-- **Deduplicate across every source** - Phase 0 requirement findings, the Phase A-E phases, and subagent returns. Merge on the *claim*, not the citation: an unmet acceptance criterion that is also a Phase B defect is one entry, and a defect two scopes both flagged is one entry citing both. Two findings sharing a `file:line` but making different claims stay separate. **Strongest intent wins** when labels differ: `Must` > `Recommend`.
-- **Preserve citations.** `file:line` where the diff carries hunk headers; `file#member` where it does not, or the file path alone for a migration or config file - say once in Summary Notes when the precision degraded. A coarser citation never merges findings: several defects in one method stay several findings, because the key is the claim.
+- **Deduplicate across every source** - Phase 0 requirement findings, the Phase A-E phases, and subagent returns. Merge on the *claim*, not the citation: an unmet acceptance criterion that is also a Phase B defect is one entry, and a defect two scopes both flagged is one entry citing both. Two findings sharing a `file:line` but making different claims stay separate; requirement findings on different criteria stay separate unless one defect causes them all, then one entry whose Issue names each criterion. **Strongest intent wins** when labels differ: `Must` > `Recommend`.
+- **Preserve citations.** The heading is exactly `### [Label] <path>:<line>` followed only by `_(...)_` groups: one repo-relative `file:line` where the diff carries hunk headers; `file#member` where it does not, or the file path alone for a migration or config file - say once in Summary Notes when the precision degraded. A merged or multi-site claim cites its primary site and names the others in its Issue. A coarser citation never merges findings: several defects in one method stay several findings, because the key is the claim.
 - **Merge Next Steps**: combine, preserve `[Implement]`/`[Delegate]`, dedupe, re-sort.
 - **Hold deep-only subagent sections** (e.g. perf's `Capacity and Load-Test Plan`) verbatim for the report's Depth Appendix - they are not findings and must not be dropped or merged.
 - Never append a raw subagent report.
@@ -255,20 +246,19 @@ Runs on every review, Core included.
 
 Use skill: `review-finding-verify` with the assembled findings, the diff already read, and `base_ref` / `head_ref`.
 
-Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column and its inline provenance annotation on the finding heading. Carry its tally into Summary in its full form, including the dropped-reason split when any row was dropped.
+Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` and `Annotation` columns. Each annotation is its own `_(...)_` group after the heading's `file:line`: the combined `_(pre-existing; newly reachable via ...)_` is written `_(pre-existing)_ _(newly reachable via ...)_`, because `review-prior-findings-reconcile` matches `_(pre-existing)_` exactly and a merged group marks an untouched prior finding `Addressed`. The obs carve-out keys on verify's `Pre-existing` verdict plus `raised by: +obs` (missing-wire kinds only: an absent observation flag, probe property, or health indicator); such a finding keeps its drafted label. The tally fills the Summary's `Findings verified:` slot.
 
 ### Step 9 - Reconcile Prior Findings (round 2+ only)
 
 Skip on round 1. Otherwise use skill: `review-prior-findings-reconcile` with:
 
-- `prior_report`: the body at `prior_checkpoint.report_path` (frontmatter excluded)
+- `prior_report`: the body of the file at the handle's `report_path` (frontmatter excluded), any combined `_(pre-existing; newly reachable via ...)_` group split into `_(pre-existing)_ _(newly reachable via ...)_`; a prior finding whose path is absent from the name-status is projected with `_(pre-existing)_`, so an `Unverified` or one-hop finding in an untouched file is never closed as `Addressed` without being read
 - `diff`: the full-range diff from Step 3
 - `name_status`: the full-range `git diff --name-status` from Step 3
-- `head_files`: the head file list from Step 3 - without it the skill cannot distinguish a deleted path from an untouched one
+- `head_sha`: `current_head_sha`
+- `head_files`: `git ls-tree -r --name-only <current_head_sha>`, when `name_status` has a `D` entry; otherwise omit
 
-Pass only the prior findings whose scope ran in the prior round; a scope this round dropped is still reconciled, one this round added has nothing to reconcile.
-
-Insert the returned table under `## Prior Round Reconciliation`. **A `Still open` or `Needs re-check` row stays a live finding:** carry it into `## High-Impact Findings` with its original label so the next round can reconcile it again, and into `## Next Steps` with an `(open since round <N>)` suffix. If Step 7 already assembled the same `file:line` from this round's own pass, that is one entry, not two - the reconciliation table row and the finding describe the same defect. Do not emit a standalone "Carry-Over Open Items" section.
+Insert the returned table, note line, and tally under `## Prior Round Reconciliation`. **A `Still open` or `Needs re-check` row stays a live finding.** When this round re-derived the same defect it is one entry, at this round's label and current `file:line`, with no carried group. Otherwise a carried finding republishes its prior block with the prior Location annotation kept (it skips verify, so the annotation is not re-derived), `raised by` included, at its prior label and `file:line` in `## High-Impact Findings`, plus `_(carried from round <N>)_` as its own group; `<N>` is the round the finding was first raised, and a finding that already carries `_(carried from round <N>)_` keeps it (never a second group). A legacy prior label maps `[Blocker]` / `[High]` -> `[Must]`, anything else -> `[Recommend]`, and `[Praise]` is never carried. Either way it goes into `## Next Steps` with an `(open since round <N>)` suffix. Do not emit a standalone "Carry-Over Open Items" section.
 
 Reconciliation is location-scoped: it answers whether the cited smell is still at the cited line. When a defect moved rather than vanished (a secret relocated to another file, a method deleted and its logic re-homed), the prior row resolves on its own terms and the new location is a fresh finding this round - state the relocation in the row's Notes without asserting cause.
 
@@ -276,33 +266,36 @@ Reconciliation is location-scoped: it answers whether the cited smell is still a
 
 Use skill: `review-report-writer` with `report_type: review` and every field the writer requires:
 
-- `report_body`, `branch`, `base_ref`, `head_ref`, `base_sha = current_base_sha`, `head_sha = current_head_sha`
-- `mode: full`, `round` (Step 4), `prior_head_sha` (omit on round 1)
-- `scope` mapped to the writer's enum: `Core` -> `core-only`, otherwise the space-joined set of `+perf` `+sec` `+obs` `+rel` that resolved, or `full` when all four - the writer rejects unmapped values, and the Summary's display form (`+Sec +Perf`) is not the enum form
+- `report_body`, `branch` (Step 3's `head_short_name`), `base_ref`, `head_ref`, `base_sha = current_base_sha`, `head_sha = current_head_sha`
+- `mode: full`, `round` (Step 4), `prior_head_sha = prior_checkpoint.head_sha` (omit on round 1), `pr_url` when the request or the checkpoint carries one
+- `scope` mapped to the writer's enum: `Core` -> `core-only`, all four -> `full`, otherwise the resolved scopes space-joined in the order `+perf +sec +obs +rel` - the Summary's display form (`+Sec +Perf`) is not the enum form
 - `depth` (resolved in Phase A), `stack = java-spring-boot`
 
 ## Output Format
 
-The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence. Omit sections marked omittable when they have no content.
+The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence. `{...}` annotations are authoring notes: act on them, never emit them.
 
 ```markdown
 ## Summary
 
-- **Assessment:** Approve | Request Changes | Discuss _(any `[Must]` -> Request Changes; no `[Must]` but an unresolved assumption stated in a `[Recommend]` could block merge -> Discuss; otherwise Approve)_
+- **Assessment:** Approve | Request Changes | Discuss   {any `[Must]` -> Request Changes; no `[Must]` but an unresolved assumption stated in a `[Recommend]` could block merge -> Discuss; otherwise Approve}
 - **Risk Level:** Low | Medium | High | Critical
-- **Blast Radius:** Narrow | Moderate | Wide | Critical
-- **Stack Detected:** Java <version> / Spring Boot <version>
-- **Scope:** Core | one or more of +Sec +Perf +Obs +Rel | Full _(append the Step 5 annotation when one applies)_
-- **Depth:** standard | deep _(append `auto-promoted from standard; Blast Radius: <level>` when Phase A promoted it)_
-- **Round:** <N>                                _(from round 2 onward)_
-- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped (<F> false positive, <R> resolved by diff) _(drop the parenthetical when K is 0)_
-- **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
+- **Blast Radius:** Narrow | Moderate | Wide | Critical   {the atomic's overall line as emitted, two-state form included}
+- **Stack Detected:** Java <version> / Spring Boot <version>   {append `- below the floor (<Boot 3.x | Java < 21>)` when either is, and `- past OSS end` when the spring.io support table says so}
+- **Scope:** Core | one or more of +Sec +Perf +Obs +Rel | Full   {append the Step 5 annotation when one applies}
+- **Depth:** standard | deep   {append `auto-promoted from standard; Blast Radius: <level>` when Phase A promoted it}
+- **Round:** <N>   {round 2+ only}
+- **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}
+- **Requirement Source:** <path or origin> (Specified | Self-attested)   {this line and the next together, or both omitted when Phase 0 resolved no source}
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
-- **Notes:** _(omit when every entry below is empty; one bullet each)_
-  - `signals: <list>` from Step 5
+- **Notes:**   {omit when every entry below is empty; one bullet each}
+  - `signal: <category> -> <path>`, one bullet per Step 5 record
   - `Phase 0: <marker>`
-  - round decision, scope, and depth notes from Step 4 and Phase A
+  - round, scope, and depth notes from Step 4 and Phase A, and the handle's `notes`
+  - `Low-risk short-circuit: Phases C-E skipped`
+  - `Scopes run inline: <list>`
   - `Scope incomplete: <scope> review did not complete`
+  - `<scope>: <the lens's trailing Coverage: or Not applicable: line>`
   - deep-pass limitations, citation-precision caveats, and anything else the run could not establish
 
 [full Risk and Blast Radius blocks from Phase A's atomics]
@@ -317,38 +310,38 @@ The fence below delimits the template for display only - it is not part of the r
 
 **Watch points:** <what to confirm by hand before reading findings; `None` when there are none>
 
-## Requirement Traceability _(omit when Phase 0 resolved no source)_
+## Requirement Traceability   {omit when Phase 0 resolved no source; rows come from `review-change-intent` unchanged}
 
 | Criterion | Status | Implementation | Proof |
 | --------- | ------ | -------------- | ----- |
 | <id or quoted outcome> | Met \| Partial \| Unmet \| Deferred \| Untraceable | <file:line, or `-`> | <file:line, or `-`> |
 
-Rows come from `review-change-intent` unchanged - it owns the Status semantics and the anchor rules. Do not re-derive them here.
-
-## Prior Round Reconciliation _(round 2+ only)_
+## Prior Round Reconciliation   {round 2+ only}
 
 | Round <N-1> Finding | file:line | Status | Notes |
 | ------------------- | --------- | ------ | ----- |
 | ...                 | ...       | ...    | ...   |
 
+<reconcile's note line>   {only when it emitted one}
+
 Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## High-Impact Findings
 
-Every finding carries exactly one label, `[Must]` or `[Recommend]`, on its heading. No other label is written. The heading also carries the scopes that raised it when more than one did, any provenance annotation from Step 8, and the carry-over suffix on a reconciled open item.
-
-### [Must] file:line _(scopes: Core, Perf)_
-- Issue: [named Spring idiom: `@Transactional` self-invocation, fat controller, JPA entity in API, field `@Autowired`, missing `@PreAuthorize`, edited-in-place migration, dual-write, etc.]
+### [Must] file:line   {exactly one label, `[Must]` or `[Recommend]`; one citation per Step 7; then each Step 8 / Step 9 annotation as its own `_(...)_` group}
+- Issue: [named Spring idiom: `@Transactional` self-invocation, fat controller, JPA entity in API, field `@Autowired`, missing `@PreAuthorize`, edited-in-place migration, dual-write, etc.] raised by: <sources>
 - Impact: [user-visible or operational consequence]
 - System Risk: [why this is system-level, not just a local bug]
 - Fix: [concrete Spring change with code]
 
-### [Recommend] file:line _(pre-existing; newly reachable via ...)_ (open since round 1)
-- Issue:
+### [Recommend] file:line _(pre-existing)_ _(carried from round 1)_
+- Issue: [...] raised by: <sources>
 - Impact:
 - Fix:
 
-## Architecture Notes
+No findings survived verification.   {instead of the finding blocks, only when none is published}
+
+## Architecture Notes   {`None` in an empty slot; omit this section, and likewise Maintainability Notes, when every slot is `None`}
 - Boundary impact:
 - Coupling change:
 - Drift detected:
@@ -357,50 +350,47 @@ Every finding carries exactly one label, `[Must]` or `[Recommend]`, on its headi
 - Over-engineering detected:
 - Simplification opportunities:
 
-Write `None` in any slot with nothing to report; omit either section entirely only when every slot is `None`.
-
-## Key Takeaways _(omit when there are no findings)_
+## Key Takeaways   {omit when there are no findings}
 - 2-4 bullets summarizing systemic impact and what to address before merge.
 
-## Next Steps
-Prioritized, each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
+## Next Steps   {omit when no actionable findings; each tagged `[Implement]` or `[Delegate]`; Must before Recommend}
 
 1. **[Implement]** [Must] file:line - [one-line action]
 2. **[Implement]** [Recommend] OldFile.java:88 - N+1 in listAll (open since round 1)
 3. **[Delegate]** [Recommend] [scope: cross-service] - [one-line action]
 
-_Omit if no actionable findings._
+## Depth Appendix   {deep only}
 
-## Depth Appendix _(deep only; omit otherwise)_
+### <deep-only section title>   {each section a subagent returned, body unchanged: `Capacity and Load-Test Plan`, `Failure-Mode and Blast-Radius Map`; security and observability return none}
 
-Each deep-only section a subagent returned, its body unchanged, re-titled as an `###` heading (`### Capacity and Load-Test Plan`, `### Failure-Mode and Blast-Radius Map`). Not every lens has one - security and observability return none, and that is not a gap.
+### Repo History   {a churn match that explains a finding also goes into that finding's System Risk}
 
-Then `### Repo History`: the recurring fix/revert/hotfix churn the deep pass found on the touched files, or `Read; nothing recurring`, or `History too shallow to signal`. A churn match that explains a finding also goes into that finding's System Risk - the appendix records the pass, it does not replace the evidence.
+<recurring fix/revert/hotfix churn on the touched files, or `Read; nothing recurring`, or `History too shallow to signal`>
 ```
 
 ## Self-Check
 
 - [ ] Step 1 - behavioral principles loaded
-- [ ] Step 2 - stack confirmed (or accepted from parent)
-- [ ] Step 3 - `review-precondition-check` ran (or handle received); diff, name-status, head file list, and commit log read once; both SHAs captured
-- [ ] Step 4 - round decided (1 / prior + 1 / no-op); auto-fetch attempted only when a prior checkpoint exists; the full `<base_ref>...<head_ref>` range analyzed regardless of round; no-op path exits without writing the report
+- [ ] Step 2 - stack confirmed (or accepted from parent); Boot and Java versions read at `git show <head_ref>:<path>` after Step 4; every cited construct and fix binds on them
+- [ ] Step 3 - `review-precondition-check` ran with `report_type: review` (or handle received); `branch`, `report_path`, and both SHAs taken before any read; diff, name-status, and commit log read once after Step 4
+- [ ] Step 4 - round decided (1 / prior + 1 / no-op) with no fetch; no-op exits before any surface read and without writing the report; the full `<base_ref>...<head_ref>` range analyzed regardless of round
 - [ ] Step 5 - scope decision recorded with firing signals; user-pinned conflicts surfaced
 - [ ] Phase 0 - `review-change-intent` ran on the cumulative diff; Change Brief carried into the report; requirement lines in Summary, or all three requirement outputs omitted when no source resolved; its marker recorded; its findings assembled with the rest
-- [ ] Phase A - Risk and Blast Radius stated before findings; depth resolved and promoted on Wide/Critical; scope and depth compared against the prior checkpoint on round 2+
-- [ ] Step 6 - subagents spawned before Phase B and run in parallel, with round and prior-scope findings passed (when scope > Core); missing scopes noted
-- [ ] Phase B - Spring idioms applied (transactions, JPA-in-API, authz coverage, exception advice, VT pinning under its JDK predicate, dual-write); migration safety where applicable, including edited-in-place files; API contract checks ran when a route, controller, DTO, or springdoc spec changed; missing tests raised as a named finding anchored to production code
+- [ ] Phase A - Risk and Blast Radius stated before findings; depth resolved and promoted on Wide/Critical (two-state read per its Mitigation tag); scope and depth compared against the prior checkpoint on round 2+
+- [ ] Step 6 - subagents spawned before Phase B, in parallel, with the listed inputs (when scope > Core); inline runs noted as `Scopes run inline`; failed scopes noted
+- [ ] Phase B - Spring idioms applied (transactions, JPA-in-API, authz coverage and authority mapping, race as its own finding, dual-write to the outbox, executors, VT pinning on JDK 21-23 only, inert-on-version constructs); migration safety in the engine's form, including edited-in-place files; API contract checks ran when a route, controller, DTO, or springdoc spec changed; missing tests raised as a named finding anchored to production code
 - [ ] Phase C - layering, anemic domain, constructor injection, configuration, boundaries, multi-tenant (skipped under the Phase A low-risk short-circuit)
 - [ ] Phase D - `complexity-review` + `spring-overengineering-review` invoked; remaining AI smells covered (skipped under the short-circuit)
 - [ ] Phase E - maintainability applied (skipped under the short-circuit)
-- [ ] Step 7 - findings deduped across Phase 0, phases, and subagents; strongest label wins; severity-ordered; deep-only sections held for the appendix; no raw subagent report appended
-- [ ] Step 8 - `review-finding-verify` ran on all assembled findings; Dropped rows excluded; labels and provenance annotations applied; full tally in Summary
-- [ ] Step 9 - on round 2+, `review-prior-findings-reconcile` ran with all four inputs; table inserted; `Still open` rows live in both High-Impact Findings and Next Steps, deduped against this round's own findings
-- [ ] Step 10 - report written via `review-report-writer` with every required field; scope mapped to the writer's enum; confirmation printed
-- [ ] Every Must cites system risk; every finding has one label, a citation, and an actionable Spring fix
+- [ ] Step 7 - lens returns projected (Attack scenario, Failure Mode, Blast Radius mapped; trailing lines to Notes); every finding tagged `raised by`; deduped across Phase 0, phases, and subagents; strongest label wins; severity-ordered; deep-only sections held for the appendix; no raw subagent report appended
+- [ ] Step 8 - `review-finding-verify` ran on all assembled findings; Dropped rows excluded; labels applied and annotations split into separate groups; obs missing-wire labels kept; four-count tally in Summary
+- [ ] Step 9 - on round 2+, `review-prior-findings-reconcile` ran with `prior_report`, `diff`, `name_status`, `head_sha` (and `head_files` on a `D`); table inserted; unresolved rows live in High-Impact Findings (carried with `_(carried from round <N>)_` unless re-derived) and in Next Steps
+- [ ] Step 10 - report written via `review-report-writer` with every required field; `branch` is `head_short_name`; scope mapped to the writer's enum in writer order; confirmation printed
+- [ ] Every Must cites system risk; every finding has one label, one citation, a `raised by` tag, and an actionable Spring fix
 
 ## Avoid
 
-- State-changing git (`checkout`/`merge`/`pull`/`rebase`) from this workflow. The one allowed exception is `git fetch <remote> <branch>` in Step 4a, and only when a valid prior checkpoint exists - round 1 stays strictly read-only.
+- State-changing git (`fetch`/`checkout`/`merge`/`pull`/`rebase`) from this workflow - every round is read-only.
 - Scoping round 2+ analysis to `<prior_head_sha>...<head_sha>` - risk, scope, depth, and requirement fit score the full `<base_ref>...<head_ref>` range on every round.
 - Writing the report on no-op exit - the file must stay byte-identical.
 - Generic backend phrasing when a Spring idiom exists ("extract to a `@Service`", not "helper class").
@@ -408,4 +398,4 @@ Then `### Repo History`: the recurring fix/revert/hotfix churn the deep pass fou
 - Running perf/security/observability/reliability when the user passed `core-only`; sequential subagent runs when they could be parallel.
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
 - Asserting that a round-2 defect was caused by a round-1 fix - state both facts, let the reader connect them.
-- Approving `WebSecurityConfigurerAdapter`, field `@Autowired`, or `@Transactional` self-invocation.
+- Approving field `@Autowired`, `@Transactional` self-invocation, or on Boot 4 the DSL Security 7 removed (`and()`, `authorizeRequests`, `AntPathRequestMatcher`).

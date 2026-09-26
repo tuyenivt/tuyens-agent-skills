@@ -1,6 +1,6 @@
 ---
 name: spring-security-patterns
-description: "Spring Security 6 / Boot 3.5+: SecurityFilterChain, OAuth2/JWT resource server, method security, CORS, CSRF, security headers."
+description: "Spring Security 7 / Boot 4: SecurityFilterChain, OAuth2/JWT resource server, method security, CORS, CSRF, security headers."
 metadata:
   category: backend
   tags: [security, spring-security, oauth2, jwt, cors, csrf, authorization]
@@ -9,34 +9,35 @@ user-invocable: false
 
 # Spring Security Patterns
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first to determine the project stack. Written for Spring Boot 4 / Spring Security 7 (version from the Boot BOM or parent; `unknown` when neither is declared); lines that differ on Security 6 say so. The patterns are servlet (MVC); WebFlux uses `SecurityWebFilterChain` / `ServerHttpSecurity`, `@EnableReactiveMethodSecurity`, the `Server*` CSRF classes, and `@WebFluxTest` + `mockJwt()` - the `/error` dispatch rule is servlet-only.
 
 ## When to Use
 
-- Configuring auth for Spring Boot 3.5+ APIs
-- OAuth2 / JWT resource server, method-level security, CORS, CSRF, headers
+- Configuring auth for Spring Boot APIs and server-rendered/SPA apps
+- OAuth2 / JWT resource server (single or multi-tenant), method-level security, CORS, CSRF, headers, webhooks
+- Reviewing existing Spring Security configuration and its tests
 
 ## Rules
 
-- One `SecurityFilterChain` bean per `securityMatcher` path scope; order with `@Order`. Declaring any chain removes Boot's default, so a path matched by no `securityMatcher` runs with **no security filters at all**. The last chain (largest `@Order` value, evaluated last) must therefore be matcher-less and close with `anyRequest()`; add a `denyAll()` chain only when every other chain carries a `securityMatcher`. Permit `/error` there - Spring Security also filters the ERROR dispatch, so denying it replaces every real error response with a 403
-- A `CorsConfigurationSource` bean does nothing until a chain calls `.cors(...)`; a chain that omits it rejects preflight before CORS is ever evaluated
+- One `SecurityFilterChain` bean per `securityMatcher` path scope, ordered with `@Order`. Declaring any chain removes Boot's default, so a path matched by no chain runs with **no security filters at all**. The last chain (largest `@Order`) is matcher-less and closes with `anyRequest()`; permit `/error` there - the ERROR dispatch is filtered too, and denying it replaces every real error response with a 401/403
+- CORS: every browser-facing chain calls `.cors(withDefaults())` explicitly (automatic application depends on exactly one `UrlBasedCorsConfigurationSource` bean and is not worth relying on); without it preflight is rejected before CORS is evaluated. A same-origin SPA needs no CORS configuration at all. Never wildcard origins with credentials
 - STATELESS APIs: `csrf(AbstractHttpConfigurer::disable)` and `sessionCreationPolicy(STATELESS)` together
-- Stateful sessions: keep CSRF on. SPAs reading the token cookie use `CookieCsrfTokenRepository.withHttpOnlyFalse()` (see CSRF pattern); server-rendered forms keep the default session repository + hidden field
-- `@EnableMethodSecurity` on any `@Configuration`; method security uses `@PreAuthorize`/`@PostAuthorize` with SpEL
-- `hasRole("X")` matches authority `ROLE_X`. If JWT claims already carry `ROLE_*`, set `JwtGrantedAuthoritiesConverter` prefix to `""` to avoid `ROLE_ROLE_X`
-- CORS origins, JWT issuer URIs, allowed roles: externalize to properties; never wildcard `*` with credentials
-- Passwords: `BCryptPasswordEncoder` via `PasswordEncoder` bean; never store plaintext
+- Stateful sessions: keep CSRF on. SPAs reading the token cookie use `csrf.spa()` (Security 7; Security 6 form in the CSRF pattern); server-rendered forms keep the default session repository + hidden field
+- Method security needs `@EnableMethodSecurity` on a `@Configuration`; use `@PreAuthorize`/`@PostAuthorize` with SpEL. `@Secured` is off under it unless `securedEnabled = true` - existing `@Secured` methods are unenforced today; convert them to `@PreAuthorize`
+- `hasRole("X")` matches authority `ROLE_X`. The default `JwtGrantedAuthoritiesConverter` maps `scope`/`scp` with prefix `SCOPE_`; for role claims set the claim name and prefix (properties or converter setters); when values already carry `ROLE_`, set the prefix to `""`
+- Issuer URIs, audiences, CORS origins, allowed roles: externalize to properties
+- Passwords: a `DelegatingPasswordEncoder` (`PasswordEncoderFactories.createDelegatingPasswordEncoder()`, bcrypt default); never plaintext
 - JWTs to browsers: HttpOnly cookie or in-memory only - `localStorage` is XSS-exposed
-- Constructor injection only; Boot 3.5 auto-enables `@EnableWebSecurity` (omit unless customizing `WebSecurity`)
+- Boot applies `@EnableWebSecurity` itself; add it only when security auto-configuration is excluded
 
 ## Patterns
 
 ### Multi-chain SecurityFilterChain
 
-Separate chains per audience (public API, admin, actuator, webhooks). Each chain uses `securityMatcher` to claim a path scope; lower `@Order` wins.
+Separate chains per audience (public API, admin, actuator, webhooks). Lower `@Order` wins.
 
 ```java
-@Configuration @RequiredArgsConstructor
+@Configuration
 public class SecurityConfig {
 
     @Bean @Order(1)
@@ -46,31 +47,43 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/public/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/invoices/**").hasAuthority("SCOPE_invoices.read")
+                .requestMatchers("/api/invoices/**").hasAuthority("SCOPE_invoices.write")
                 .anyRequest().authenticated())
             .oauth2ResourceServer(o -> o.jwt(withDefaults()))
             .sessionManagement(s -> s.sessionCreationPolicy(STATELESS))
             .csrf(AbstractHttpConfigurer::disable)
-            .cors(withDefaults())
             .build();
     }
 
     @Bean @Order(2)
     SecurityFilterChain actuatorChain(HttpSecurity http) throws Exception {
         return http
-            .securityMatcher("/actuator/**")
+            .securityMatcher(EndpointRequest.toAnyEndpoint())
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                .requestMatchers(EndpointRequest.to(HealthEndpoint.class, InfoEndpoint.class)).permitAll()
                 .anyRequest().hasRole("OPS"))
-            .httpBasic(withDefaults())   // needs a UserDetailsService; on a pure JWT app use oauth2ResourceServer here too
+            .httpBasic(withDefaults())   // needs a UserDetailsService; on a pure JWT app use oauth2ResourceServer here
+            .build();
+    }
+
+    @Bean @Order(Ordered.LOWEST_PRECEDENCE)
+    SecurityFilterChain defaultChain(HttpSecurity http) throws Exception {   // matcher-less catch-all
+        return http
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/error").permitAll()
+                .anyRequest().denyAll())
             .build();
     }
 }
 ```
 
+Prometheus scraping: serve actuator on a separate `management.server.port` that is not exposed outside the cluster/VPC and permit `/actuator/prometheus` in the actuator chain; network placement is the control, so say so in `Cross-cutting`.
+
 Role hierarchy (ADMIN implies MANAGER implies USER):
 
 ```java
-@Bean RoleHierarchy roleHierarchy() {
+@Bean static RoleHierarchy roleHierarchy() {
     return RoleHierarchyImpl.withRolePrefix("ROLE_")
         .role("ADMIN").implies("MANAGER")
         .role("MANAGER").implies("USER").build();
@@ -79,69 +92,68 @@ Role hierarchy (ADMIN implies MANAGER implies USER):
 
 ### OAuth2 Resource Server (JWT)
 
-`application.yml`:
-
 ```yaml
-spring.security.oauth2.resourceserver.jwt.issuer-uri: https://auth.example.com/realms/app
+spring.security.oauth2.resourceserver.jwt:
+  issuer-uri: https://auth.example.com/realms/app
+  audiences: my-api                     # aud validation, no code
+  authorities-claim-name: roles         # top-level claim -> authorities
+  authority-prefix: ROLE_
 ```
 
-Customize when you need audience validation or non-standard role claims:
+Properties cover top-level claims and audience; Boot 4.1 also maps a nested claim - `authorities-claim-expressions: "[realm_access][roles].![toUpperCase()]"` with `authority-prefix: ROLE_` (SpEL over the claims map; exclusive with `authorities-claim-name`; a missing claim yields no authorities). Security 7 validates the JWT `typ` header by default: `JWT` or absent passes, anything else is 401 - an IdP issuing RFC 9068 `at+jwt` tokens needs `JwtValidators.createAtJwtValidator()`. A custom `JwtDecoder` bean makes Boot's decoder auto-configuration back off (including the `audiences` property), and a `JwtAuthenticationConverter` bean makes it ignore `authorities-claim-name` / `authority-prefix` - use the properties or the bean, never both, and inject bean values from properties.
+
+Nested claims (Keycloak `realm_access.roles`) are not resolvable by `JwtGrantedAuthoritiesConverter` - it silently yields zero authorities and every `hasRole` fails. One prefix applies to every claim it maps, so roles *and* scopes need a custom converter (as does a nested claim on Boot 4.0 / 3.x). Make it a named class so tests can feed it:
 
 ```java
-@Bean
-JwtDecoder jwtDecoder(@Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri) {
-    var decoder = (NimbusJwtDecoder) JwtDecoders.fromIssuerLocation(issuerUri);
-    var audience = new JwtClaimValidator<List<String>>("aud", aud -> aud != null && aud.contains("my-api"));
-    decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-        JwtValidators.createDefaultWithIssuer(issuerUri), audience));
-    return decoder;
+public class KeycloakRealmRoleConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
+    private final JwtGrantedAuthoritiesConverter scopes = new JwtGrantedAuthoritiesConverter();   // scope/scp -> SCOPE_*
+
+    @Override
+    public Collection<GrantedAuthority> convert(Jwt jwt) {
+        var realm = jwt.getClaimAsMap("realm_access");
+        var roles = realm == null ? List.<String>of() : (List<String>) realm.getOrDefault("roles", List.of());
+        var out = new ArrayList<GrantedAuthority>(scopes.convert(jwt));
+        // realm roles are lowercase and unprefixed; hasRole("ADMIN") matches ROLE_ADMIN exactly
+        roles.forEach(r -> out.add(new SimpleGrantedAuthority("ROLE_" + r.toUpperCase(Locale.ROOT))));
+        return out;
+    }
 }
 
 @Bean
 JwtAuthenticationConverter jwtAuthenticationConverter() {
-    var granted = new JwtGrantedAuthoritiesConverter();
-    granted.setAuthoritiesClaimName("roles");   // top-level claims only (e.g. "roles", "scope")
-    granted.setAuthorityPrefix("ROLE_");        // "" if claim already has ROLE_
     var c = new JwtAuthenticationConverter();
-    c.setJwtGrantedAuthoritiesConverter(granted);
-    return c;
+    c.setJwtGrantedAuthoritiesConverter(new KeycloakRealmRoleConverter());
+    return c;   // picked up by .jwt(withDefaults())
 }
 ```
 
-Both beans are picked up by `.jwt(withDefaults())` automatically - no explicit DSL wiring. For top-level claims, the properties `spring.security.oauth2.resourceserver.jwt.authorities-claim-name` / `.authority-prefix` achieve the converter's effect with no code; nested claims still need the custom converter below.
+`JwtGrantedAuthoritiesConverter` accepts `scp`/`scope` as a space-delimited string (Entra) or an array (Okta).
 
-Nested claims (Keycloak's `realm_access.roles`) are NOT resolvable by `JwtGrantedAuthoritiesConverter` - it silently yields zero authorities and every `hasRole` fails. It also reads exactly one claim with one prefix, so mapping roles *and* permissions needs a custom converter too:
+### Multi-tenant (issuer allowlist)
 
-```java
-c.setJwtGrantedAuthoritiesConverter(jwt -> {
-    var realm = (Map<String, Object>) jwt.getClaims().getOrDefault("realm_access", Map.of());
-    return ((List<String>) realm.getOrDefault("roles", List.of())).stream()
-        // Keycloak realm roles are lowercase and unprefixed; hasRole("ADMIN") matches the
-        // authority ROLE_ADMIN exactly, so "ROLE_" + "admin" would never match.
-        .<GrantedAuthority>map(r -> new SimpleGrantedAuthority("ROLE_" + r.toUpperCase(Locale.ROOT)))
-        .toList();   // explicit <GrantedAuthority> - List<SimpleGrantedAuthority> does not compile here
-});
-```
-
-Multi-tenant: dispatch by `iss` claim. Bind the issuer list with `@ConfigurationProperties` (`@Value` cannot bind a YAML sequence), check it against the allowlist **before** building a decoder so an unknown `iss` never triggers an outbound discovery call to an attacker-supplied host, and build lazily so startup does not depend on every tenant's IdP being reachable:
+Stock option: `JwtIssuerAuthenticationManagerResolver.fromTrustedIssuers(Predicate<String>)`, wired with `.oauth2ResourceServer(o -> o.authenticationManagerResolver(resolver))`. It checks the allowlist before any discovery call, builds per-issuer managers lazily and caches them; a predicate backed by a refreshable source (DB table, config server) adds tenants without a restart. It applies no audience validator and ignores the app's `JwtAuthenticationConverter` bean - when you need either, build per-issuer providers yourself:
 
 ```java
 @Bean
-JwtDecoder multiTenant(TenantProperties props) {   // record TenantProperties(List<String> issuers, String audience)
-    Set<String> allowed = Set.copyOf(props.issuers());
-    Map<String, JwtDecoder> decoders = new ConcurrentHashMap<>();
-    return token -> {
-        String iss;
-        try { iss = JWTParser.parse(token).getJWTClaimsSet().getIssuer(); }
-        catch (ParseException e) { throw new BadJwtException("Malformed token", e); }
-        if (iss == null || !allowed.contains(iss)) throw new BadJwtException("Untrusted issuer: " + iss);
-        // decoderFor = the single-tenant JwtDecoder above, parameterised by issuer
-        return decoders.computeIfAbsent(iss, i -> decoderFor(i, props.audience())).decode(token);
-    };
+AuthenticationManagerResolver<HttpServletRequest> tenantResolver(TenantRegistry tenants, JwtAuthenticationConverter converter) {
+    Map<String, AuthenticationManager> managers = new ConcurrentHashMap<>();
+    return new JwtIssuerAuthenticationManagerResolver(issuer -> {
+        if (!tenants.isTrusted(issuer)) return null;   // untrusted -> 401, no outbound discovery call
+        return managers.computeIfAbsent(issuer, i -> {
+            NimbusJwtDecoder decoder = JwtDecoders.fromIssuerLocation(i);
+            decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(i),
+                new JwtClaimValidator<List<String>>("aud", aud -> aud != null && aud.contains(tenants.audience()))));
+            var provider = new JwtAuthenticationProvider(decoder);
+            provider.setJwtAuthenticationConverter(converter);
+            return provider::authenticate;
+        });
+    });
 }
+// TenantRegistry: an issuer allowlist read live from a store; a removed issuer stops matching on the next call.
 ```
 
-`iss` must match byte-for-byte, trailing slash included. A discovery failure for a reachable-but-down tenant must surface as 5xx, not 401 - a valid token is not an invalid one.
+`iss` must match byte-for-byte, trailing slash included. A discovery failure for a trusted-but-down IdP must surface as 5xx, not 401 - a valid token is not an invalid one (test: a registry entry pointing at an unreachable issuer returns 5xx). A registry backed by a DB table, or `@RefreshScope` configuration (Spring Cloud), adds tenants without a restart; removals must take effect on the next request. Keep IdP role values' case as issued and write `hasRole` checks to match (normalise only when an IdP is known to lowercase, as Keycloak realm roles are). Per-IdP claim shapes (Entra `roles`, Okta `groups`) are one converter that reads whichever claim is present.
 
 ### Method security
 
@@ -151,50 +163,52 @@ class MethodSecurityConfig {}
 
 @Service
 class OrderService {
-    @PreAuthorize("hasRole('ADMIN') or #userId == authentication.name")
-    List<OrderDTO> findByUser(String userId) { ... }
+    @PreAuthorize("hasRole('ADMIN') or #userId == authentication.name")   // #param names need -parameters: set by the
+    List<OrderDTO> findByUser(String userId) { ... }                       // Boot Gradle plugin and spring-boot-starter-parent; a BOM-only Maven build adds it (or use @P)
 
     @PostAuthorize("returnObject.ownerId() == authentication.name or hasRole('ADMIN')")
     OrderDTO findById(Long id) { ... }
 }
 ```
 
-One-off conditional checks can call a bean directly in SpEL - no evaluator wiring needed:
+Domain-scoped checks call a bean in SpEL; the principal carries the scope (a custom `UserDetails` with `storeId`, or a JWT claim), and the method takes the scoped ID as a parameter (add it when missing) or checks the loaded entity in `@PostAuthorize`. A resource ID taken from the path with no ownership check is an IDOR - `[Must]`. A URL rule and a `@PreAuthorize` on the same route both apply (AND) - check they agree:
 
 ```java
-@PreAuthorize("#req.amount() <= 1000 or @storeAuthz.isManagerOf(authentication, #req.storeId())")
+@PreAuthorize("hasAuthority('HEAD_OFFICE') or (#req.amount() <= 500 and @storeAuthz.isManagerOf(authentication, #req.storeId()))")
 Refund issue(RefundRequest req) { ... }
 ```
 
-When the same domain-object check recurs across services, centralize it as `hasPermission(...)` backed by a `PermissionEvaluator`. SS6 wires it through a custom expression handler (the old `GlobalMethodSecurityConfiguration` override is gone):
+When the same domain-object check recurs, centralize it as `hasPermission(...)` via a `PermissionEvaluator`:
 
 ```java
 @Bean
-static MethodSecurityExpressionHandler expressionHandler(PermissionEvaluator evaluator) {
+static MethodSecurityExpressionHandler expressionHandler(PermissionEvaluator evaluator, RoleHierarchy roleHierarchy) {
     var handler = new DefaultMethodSecurityExpressionHandler();
-    handler.setPermissionEvaluator(evaluator);  // @PreAuthorize("hasPermission(#id, 'Order', 'read')")
+    handler.setPermissionEvaluator(evaluator);     // @PreAuthorize("hasPermission(#id, 'Order', 'read')")
+    handler.setRoleHierarchy(roleHierarchy);       // a custom handler replaces the auto-wired one - keep the hierarchy
     return handler;
 }
 ```
 
-A custom handler replaces the auto-wired one: if a `RoleHierarchy` bean exists, also call `handler.setRoleHierarchy(roleHierarchy)` - otherwise the hierarchy silently stops applying to method security.
-
-### Password encoding
+### Passwords, including legacy plaintext rows
 
 ```java
-@Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
-// signup:  user.setPassword(passwordEncoder.encode(raw));
-// login:   passwordEncoder.matches(raw, user.getPassword());
+@Bean PasswordEncoder passwordEncoder() {
+    var encoder = (DelegatingPasswordEncoder) PasswordEncoderFactories.createDelegatingPasswordEncoder();
+    encoder.setDefaultPasswordEncoderForMatches(NoOpPasswordEncoder.getInstance());   // legacy rows have no {id} prefix
+    return encoder;
+}
 ```
+
+Implement `UserDetailsPasswordService` so each legacy user is re-hashed with bcrypt on their next successful login; for users who never log in, run a one-off job that hashes the plaintext (prefix `{bcrypt}`), then remove the `NoOp` default.
 
 ### CORS
 
 ```java
 @Bean
-CorsConfigurationSource corsConfigurationSource(
-        @Value("${app.cors.allowed-origins}") List<String> origins) {
+UrlBasedCorsConfigurationSource corsConfigurationSource(CorsProperties props) {   // @ConfigurationProperties("app.cors")
     var config = new CorsConfiguration();
-    config.setAllowedOrigins(origins);                                          // never "*" with credentials
+    config.setAllowedOrigins(props.allowedOrigins());                         // never "*" with credentials
     config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
     config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-XSRF-TOKEN"));
     config.setAllowCredentials(true);
@@ -205,39 +219,36 @@ CorsConfigurationSource corsConfigurationSource(
 }
 ```
 
+`@Value` cannot bind a YAML sequence - bind lists through `@ConfigurationProperties` (or use a comma-separated string with `@Value`).
+
 ### CSRF
 
 ```java
-// STATELESS API (JWT in Authorization header)
+// STATELESS API (JWT in the Authorization header)
 http.csrf(AbstractHttpConfigurer::disable)
     .sessionManagement(s -> s.sessionCreationPolicy(STATELESS));
 
-// Stateful SPA: cookie token, SPA echoes via X-XSRF-TOKEN header.
-// SS6 defers/BREACH-encodes the token by default, which breaks SPAs that read the raw
-// cookie value - pair the repository with a request handler that resolves it eagerly.
-var requestHandler = new CsrfTokenRequestAttributeHandler();
-requestHandler.setCsrfRequestAttributeName(null);          // opt out of deferred lookup
-http.csrf(csrf -> csrf
-    .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-    .csrfTokenRequestHandler(requestHandler));
+// Stateful SPA: JS-readable cookie token (CookieCsrfTokenRepository.withHttpOnlyFalse()), echoed in X-XSRF-TOKEN.
+// spa() keeps BREACH (XOR) protection for rendered tokens, accepts the raw cookie value from the header,
+// and loads the token on every request so the cookie is written on the first GET. Security 7.0+; on
+// Security 6 hand-write the same CsrfTokenRequestHandler (plain + XOR delegates, header decides).
+http.csrf(csrf -> csrf.spa());
 ```
 
 ### Security headers
 
-Apply in every chain that serves browsers (typically all non-webhook chains):
+Every chain already writes `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, cache-control, and HSTS (1 year, includeSubDomains, on HTTPS requests only). Browser-facing chains add a CSP:
 
 ```java
-http.headers(h -> h
-    .contentSecurityPolicy(csp ->
-        csp.policyDirectives("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"))
-    .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
-    .contentTypeOptions(withDefaults())
-    .frameOptions(f -> f.deny()));
+http.headers(h -> h.contentSecurityPolicy(csp ->
+    csp.policyDirectives("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'")));
 ```
+
+Behind a TLS-terminating proxy, set `server.forward-headers-strategy` so requests are recognized as secure and HSTS is written.
 
 ### Webhook endpoints
 
-External webhooks (Stripe, GitHub) authenticate via HMAC signature, not JWT. Put them in a dedicated chain with `permitAll`, then verify the signature in a filter or the controller - Spring Security doesn't know about provider-specific signing schemes. Take the body as `@RequestBody String`, never a DTO: the HMAC covers the exact bytes sent, and a parse/re-serialize round trip changes them. An unverifiable payload is 400, not 5xx - a 5xx makes the provider retry it.
+External webhooks authenticate by signature, not JWT: a dedicated chain with `permitAll`, verification in the controller or a filter. Verify per the provider's scheme - raw-body HMAC (Stripe, GitHub) takes the body as `@RequestBody byte[]` (a `String` is charset-decoded and a DTO re-serialized, both changing the signed bytes); field-signature schemes (Adyen notifications sign selected fields, carried in the payload) verify over the parsed fields exactly as the provider documents. Compare in constant time (`MessageDigest.isEqual`). An unverifiable payload is 400 (not a server fault); providers that retry non-2xx will retry it, which is harmless because it keeps failing - alert on verification failures (a rotated secret fails genuine events too). Adyen's Java library ships `HMACValidator` for its notification signatures - use the provider's validator where one exists.
 
 ```java
 @Bean @Order(0)
@@ -252,56 +263,76 @@ SecurityFilterChain webhookChain(HttpSecurity http) throws Exception {
 
 ### Tests
 
-`@WebMvcTest` does not pick up custom `SecurityFilterChain` `@Configuration` classes - without `@Import` the tests run against Boot's default security and pass for the wrong reason. Stub `JwtDecoder` so an imported config's `fromIssuerLocation` doesn't fetch the issuer at context startup:
+`@WebMvcTest` does not load custom `SecurityFilterChain` or `@EnableMethodSecurity` configuration - without `@Import` the tests run against Boot's default security and pass for the wrong reason. On Boot 4 the slice gets Spring Security's auto-configuration only from `spring-boot-starter-security-test`. Stub `JwtDecoder` so the imported chain has a decoder bean regardless of test properties and no request reaches the IdP, and mock the controller's collaborators:
 
 ```java
 @WebMvcTest(OrderController.class)
 @Import({SecurityConfig.class, MethodSecurityConfig.class})
 class OrderControllerSecurityTest {
     @Autowired MockMvc mockMvc;
+    @MockitoBean OrderService orderService;
     @MockitoBean JwtDecoder jwtDecoder;
 
     @Test void unauthenticated_returns_401() throws Exception {
         mockMvc.perform(get("/api/orders")).andExpect(status().isUnauthorized());
     }
 
-    @Test void jwt_with_role_passes() throws Exception {
-        mockMvc.perform(get("/api/orders")
-                // Feed the REAL converter, not a literal authority, or a broken claim mapping
-                // still passes: .authorities(literal) bypasses the converter entirely.
+    @Test void realm_role_maps_to_authority() throws Exception {
+        mockMvc.perform(get("/api/admin/orders")
+                // Feed the REAL converter, not literal authorities - .authorities(literal) would
+                // pass even when the claim mapping is broken
                 .with(jwt().jwt(j -> j.subject("user-123")
-                        .claim("realm_access", Map.of("roles", List.of("user"))))
+                        .claim("realm_access", Map.of("roles", List.of("admin"))))
                     .authorities(new KeycloakRealmRoleConverter())))
             .andExpect(status().isOk());
     }
 }
 ```
 
-`@MockitoBean` on a service replaces the Spring proxy, so its `@PreAuthorize` does not run - assert method-security rules against the real bean in a `@SpringBootTest`, not through a mocked collaborator. Migrating `@Secured` is not optional either: under `@EnableMethodSecurity` it is off unless `securedEnabled = true`, so existing `@Secured` methods are unenforced today - convert them to `@PreAuthorize` rather than switching enforcement on for code that has never been checked.
+`@MockitoBean` on a service replaces the Spring proxy, so its `@PreAuthorize` does not run - assert method-security rules against the real bean in a `@SpringBootTest`.
 
 ## Output Format
 
-One block per `SecurityFilterChain`, including the matcher-less catch-all; list its endpoints inside, and map each method-security rule into the block of the chain that serves it. Reviews put findings in prose before the blocks and state whether the blocks describe as-is or target state.
+In every mode, emit the `**Stack:**` line once, then one block per `SecurityFilterChain`, in order, listing its endpoints and mapping each method-security rule into the block of the chain that serves it, then the `Cross-cutting:` block. A request to fix existing configuration is a review: findings, then the target state. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when it allows an auth bypass or IDOR, exposes data or endpoints, weakens credential storage or a signature check (a non-constant-time compare included), or breaks an auth flow, `[Recommend]` otherwise - then the blocks of the target state. A missing matcher-less catch-all is itself a finding. Vulnerabilities outside Spring Security's surface seen in passing (SQL injection, SSRF) get one `Out of scope: {issue} at {file:line}` line each.
+
+```
+**Stack:** Spring Security {version | unknown} on {MVC | WebFlux}
+```
 
 ```
 Chain: {securityMatcher pattern | no securityMatcher - catch-all} (order {n})
-CSRF: {enabled | disabled - reason}
+
+Auth: {JWT | httpBasic | form | signature - <scheme> | none}
+
+CSRF: {enabled - <repository/handler> | disabled - reason}
+
 Session: {STATELESS | IF_REQUIRED}
-CORS Origins: {list | N/A}
-JWT Issuer: {URI | URI list for multi-tenant | N/A} {+ required aud}
-Headers: {CSP, HSTS, nosniff, frame-options | none - not browser-facing}
+
+CORS Origins: {list | N/A - same-origin | N/A - not browser-facing}
+
+JWT Issuer: {URI | allowlist - <source>}{ + aud <value>} {only when Auth is JWT}
+
+Headers: {defaults | CSP + defaults | disabled - reason}
+
 Endpoints:
-- {path pattern}: {permitAll | authenticated | denyAll | hasRole(X) | hasAuthority(X)}
-- {Class.method}: @PreAuthorize({expr})
+- {path pattern}: {permitAll | authenticated | denyAll | hasRole(X) | hasAuthority(X) | hasAnyRole(X,...) | hasAnyAuthority(X,...) | access(<manager>)}
+- {Class.method}: {@PreAuthorize | @PostAuthorize | @Secured}({expr})
 ```
 
-Close with a `Cross-cutting:` list for what is not chain-scoped - password encoder, method-security enablement, authority-claim mapping.
+```
+Cross-cutting:
+- Method security: {@EnableMethodSecurity present | missing}; @Secured {enabled | unenforced | none}
+- Password encoder: {encoder + legacy-row migration | N/A}
+- Authority mapping: {claim -> authority rule | N/A}
+- Tenant allowlist: {source + refresh | N/A}
+- Outside Spring: {controls enforced by network or infrastructure | none}
+```
 
 ## Avoid
 
-- `WebSecurityConfigurerAdapter`, `antMatchers()`, `@EnableGlobalMethodSecurity` (removed/deprecated in Spring Security 6)
-- `@Secured` - prefer `@PreAuthorize` (SpEL, richer expressions)
+- `WebSecurityConfigurerAdapter`, `antMatchers()` (removed in Spring Security 6), `and()`, `authorizeRequests()`, `AntPathRequestMatcher` / `MvcRequestMatcher` (removed in 7), `@EnableGlobalMethodSecurity` (deprecated)
 - Disabling CSRF on stateful (session-based) apps
-- JWT in `localStorage` - XSS-exposed
-- Wildcard CORS origins (`*`) with `allowCredentials(true)` - rejected by browsers, insecure regardless
-- Hardcoded secrets, issuer URIs, allowed origins
+- JWT in `localStorage`
+- Wildcard CORS origins with credentials
+- Hardcoded secrets, issuer URIs, audiences, allowed origins
+- Testing roles with literal `.authorities(...)` instead of the production converter
