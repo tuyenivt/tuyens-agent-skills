@@ -18,6 +18,7 @@ plugins/
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
   go/            # Go 1.25+ / Gin / GORM+sqlx
   react/         # React 19 / Next.js 16 App Router / TypeScript - fullstack
+  unity/         # Unity 6.3 LTS 2D games / C# - engine-free rules core, URP 2D, UI Toolkit
   domain-kb/     # Unlisted (see below) - domain knowledge base for taking over an existing system: sync, explain, ask
 ```
 
