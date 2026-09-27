@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `java`, `python`, `ruby`, `node`, `go`, `react`, and `unity`.
+Single marketplace repository for Claude Code plugins: `architecture`, `java`, `python`, `ruby`, `node`, `go`, `react`, `unity`, and `flutter`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -67,6 +67,13 @@ claude plugin install react@tuyens-agent-skills --scope project
 ```bash
 claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install unity@tuyens-agent-skills --scope project
+```
+
+**Flutter / Dart app project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install flutter@tuyens-agent-skills --scope project
 ```
 
 **Architecture, delivery, and incident-response project:**
@@ -175,9 +182,16 @@ Unity 2D (plugin: unity)
   performance review                   -> /task-unity-review-perf
   security review                      -> /task-unity-review-security
   test strategy / scaffolds            -> /task-unity-test
+
+Flutter / Dart (plugin: flutter)
+  implement a new feature              -> /task-flutter-implement
+  staff-level code review              -> /task-flutter-review
+  performance review                   -> /task-flutter-review-perf
+  security review                      -> /task-flutter-review-security
+  test strategy / scaffolds            -> /task-flutter-test
 ```
 
-> API contract and compatibility review runs inside the general review (`/task-code-review` and each stack umbrella), gated on changes to routes, controllers, DTOs, serializers, or a published spec. In `react`, Server Action and Route Handler input validation is covered by `/task-react-review-security`. Accessibility is handled during `/task-<stack>-implement` and checked at baseline depth inside the stack umbrella review. `unity` ships perf and security lenses only; its observability and reliability reviews fall back to the generic `/task-code-review-*` lens.
+> API contract and compatibility review runs inside the general review (`/task-code-review` and each stack umbrella), gated on changes to routes, controllers, DTOs, serializers, or a published spec. In `react`, Server Action and Route Handler input validation is covered by `/task-react-review-security`. Accessibility is handled during `/task-<stack>-implement` and checked at baseline depth inside the stack umbrella review. `unity` and `flutter` ship perf and security lenses only; their observability and reliability reviews fall back to the generic `/task-code-review-*` lens.
 
 **Common decision points:**
 
@@ -202,6 +216,7 @@ Unity 2D (plugin: unity)
 | [go](plugins/go)                     | Go 1.25+ / Gin                                                                                                                                                                      |
 | [react](plugins/react)               | React 19 / Next.js 16 App Router / TypeScript fullstack. Server Components, Server Actions, Cache Components, Prisma data layer, self-hosted operations, TanStack Query, Zustand, Tailwind |
 | [unity](plugins/unity)               | Unity 6.3 LTS 2D games (casual and puzzle). Engine-free rules core, URP 2D, UI Toolkit, Input System, Addressables; mobile primary, desktop secondary, WebGL tertiary |
+| [flutter](plugins/flutter)           | Flutter / Dart 3 client apps. Riverpod, go_router, Dio, Drift, freezed; mobile primary, desktop secondary, web tertiary |
 
 ## Notes
 
