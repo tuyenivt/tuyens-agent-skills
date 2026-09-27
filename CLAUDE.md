@@ -18,9 +18,10 @@ plugins/
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
   go/            # Go 1.25+ / Gin / GORM+sqlx
   react/         # React 19 / Next.js 16 App Router / TypeScript - fullstack
+  domain-kb/     # Unlisted (see below) - domain knowledge base for taking over an existing system: sync, explain, ask
 ```
 
-Each plugin folder has a `README.md`. Each skill lives in its own directory as `SKILL.md`. Agent files are plain Markdown in `plugins/<stack>/agents/`.
+Each plugin folder has a `README.md`, except `plugins/domain-kb`, which is unlisted: no `README.md`, no row in the root `README.md`, no usage guide anywhere; its `plugin.json` and `marketplace.json` entries carry one generic line. Never add any of these. Each skill lives in its own directory as `SKILL.md`. Agent files are plain Markdown in `plugins/<stack>/agents/`.
 
 `core` is required by all other plugins.
 
@@ -220,4 +221,4 @@ Only `name` and `description` are required; include the others when they meaning
 After any change to plugin content (skills, agents, structure, conventions) - **excluding changes that only touch `CLAUDE.md` or `README.md`**:
 
 1. **`CLAUDE.md`** - update if structure, conventions, naming, design principles, or workflow guidance changed.
-2. **Root `README.md` and affected plugin `README.md`** - reflect added/removed/renamed skills or agents.
+2. **Root `README.md` and affected plugin `README.md`** - reflect added/removed/renamed skills or agents. `plugins/domain-kb` is exempt: it is unlisted and has neither.

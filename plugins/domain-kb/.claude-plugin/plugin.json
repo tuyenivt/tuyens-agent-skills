@@ -1,0 +1,9 @@
+{
+  "name": "domain-kb",
+  "version": "1.170.0",
+  "description": "Domain knowledge tooling for multi-service systems.",
+  "author": {
+    "name": "Tuyen"
+  },
+  "license": "MIT"
+}
