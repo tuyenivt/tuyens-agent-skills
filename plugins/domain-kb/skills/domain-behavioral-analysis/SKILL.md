@@ -21,7 +21,7 @@ Reads each repository's history, read-only, and turns it into the evidence table
 
 | Input         | Required | Notes                                                                                                                       |
 | ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Repos         | yes      | `repos/<repo>/` directories, each a git checkout                                                                            |
+| Repos         | yes      | `repos/<repo>/` directories, each a git checkout, each with its `Scope` cell from `AGENTS.md` `## Repos` (`all` when absent)   |
 | Window        | no       | Days; default `window` in `_index/sync-state.json`, else 30; anchored at the wall-clock date of the run                     |
 | Reverse index | no       | `_index/file-to-flow.json`; a file it does not map, or every file when it is absent, reads `unmapped` in `Flows`              |
 | Cards         | no       | The `**Monitors:**` line of every flow card, split on `;`, each entry read up to its ` - `; absent, `Monitor` reads `unknown - cards not supplied` |
@@ -29,6 +29,7 @@ Reads each repository's history, read-only, and turns it into the evidence table
 ## Rules
 
 - **Paths are root-relative** before any lookup: every path git prints is prefixed with `repos/<repo>/`.
+- **Scope is applied before every git command**, as pathspecs: an `include=<regex>` scope becomes `':(glob)...'` or literal path pathspecs covering the files the regex matches (`git ls-files` filtered by the regex, passed as the pathspec list); `all` adds none. Percentiles, coupling, and modules are computed over in-scope files only, and the scope is printed next to the exclusions.
 - **Exclusions are fixed, apply at any depth, and are printed:** `vendor/`, `node_modules/`, `dist/`, `build/`, `generated/`, `*.lock`, `*.min.*`, `*.snap`, `*.generated.*`, `*.sum`, `db/schema.rb`. Merge commits are skipped. Every command below carries the same exclusions.
 - **Hotspot score = commits times lines.** Commits is the count over the whole history touching the file; lines is the current line count. Row every file whose `Register` is `yes`, plus the rest of the top ten per repo by score, grouped by repo and sorted by score descending, ties by path; `Register` is `yes` when the file's commits and lines are both at or above the repo's 90th percentile (nearest rank, over tracked files with at least one commit, after exclusions).
 - **Temporal coupling** is a pair of currently tracked files changed in the same commit at least 5 times, over the whole history, where the shared count is at least 30 percent (raw, before rounding) of the commits of the lower-churn file, which is written as File B. A pair whose basenames differ only by a `test`, `spec`, or `_test` affix is excluded. `Flows` is the union of both files' flows.
@@ -40,13 +41,13 @@ Reads each repository's history, read-only, and turns it into the evidence table
 
 ### Commands
 
-Run each inside the repo (`cd repos/<repo>`); `EXCL` is the exclusion list as any-depth pathspecs (`':(exclude)**/vendor/**'`, `':(exclude)**/*.lock'` and so on).
+Run each inside the repo (`cd repos/<repo>`); `EXCL` is the exclusion list as any-depth pathspecs (`':(exclude)**/vendor/**'`, `':(exclude)**/*.lock'` and so on); `SCOPE` is `.` for `all`, else the in-scope paths as pathspecs.
 
 ```
-git log --no-merges --format=%H --name-only -- . EXCL                                  # churn, coupling
-git log --no-merges --since="<window> days ago" --format=%h%x09%cs%x09%an --name-only -- . EXCL   # window
-git shortlog -sn --no-merges HEAD -- <module> EXCL                                     # knowledge map
-git ls-files -z -- . EXCL | while IFS= read -r -d '' f; do printf '%s\t%s\n' "$(wc -l < "$f")" "$f"; done   # lines, one file per line
+git log --no-merges --format=%H --name-only -- SCOPE EXCL                                  # churn, coupling
+git log --no-merges --since="<window> days ago" --format=%h%x09%cs%x09%an --name-only -- SCOPE EXCL   # window
+git shortlog -sn --no-merges HEAD -- <module> EXCL                                         # knowledge map
+git ls-files -z -- SCOPE EXCL | while IFS= read -r -d '' f; do printf '%s\t%s\n' "$(wc -l < "$f")" "$f"; done   # lines, one file per line
 ```
 
 `--since` and `%cs` both use the committer date, so a commit is inside or outside the window consistently.
@@ -65,13 +66,14 @@ Good - churn and size both high, the score ranked, the register flag set by perc
 
 ### Register rows
 
-This skill is the only source of `hotspot`, `single point of knowledge`, and `coupling` rows in `debt/register.md`; cards never carry them. The consuming workflow turns every `Register: yes` hotspot, every `Single point: yes` author row, and every coupling pair into a register row: `Location` is `file:1`, the module, or `A with B`; `Signal` is the class with its numbers; `Trade-off made` is `none recorded`; `Cost today` is the observable consequence (change concentrates here; one person holds it; a change to A drags B); `Fix` is the structural change that would spread it; `Detection` is the monitor or review gate that would catch the next change there, `none` when there is none; `Flows` is the row's flows.
+This skill is the only source of `hotspot`, `single point of knowledge`, and `coupling` rows in `debt/register.md`; cards never carry them. The consuming workflow turns every `Register: yes` hotspot, every `Single point: yes` author row, and every coupling pair into a register row: `Location` is `file:1`, the module, or `A with B`; `Signal` is the class with its numbers; `Severity` is `high` when the row's flows include one whose `ranked_by` is `moves money`, else `medium`; `Category` is `architecture`; `Trade-off made` is `none recorded`; `Cost today` is the observable consequence (change concentrates here; one person holds it; a change to A drags B); `Fix` is the structural change that would spread it; `Detection` is the monitor or review gate that would catch the next change there, `none` when there is none; `Doc` is left `none` for the Link pass; `Flows` is the row's flows.
 
 ## Output Format
 
 ```
 - **Repos:** {repo, repo}
 - **Window:** {n} days, ending {date}
+- **Scope:** {repo: all | include=<regex> ({n} files in, {n} out)}, ...
 - **Excluded:** {the fixed list}
 - **Unmapped changes in window:** {n} commits over {n} files
 - **Thresholds:** coupling 5 shared commits and 30 percent; knowledge concentration 80 percent; register at the 90th percentile of commits and lines
@@ -105,3 +107,4 @@ This skill is the only source of `hotspot`, `single point of knowledge`, and `co
 - Reporting a coupling pair below either threshold, or a test with its subject
 - Naming a team or role for an author the history only names by commits
 - Estimating a number git can compute
+- Computing a percentile over files the repo's scope excludes

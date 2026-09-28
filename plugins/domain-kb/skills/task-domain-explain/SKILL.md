@@ -34,19 +34,19 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Locate the knowledge base
 
-Use skill: `domain-kb-layout` for the file shapes. The root is the working directory. When `_index/sync-state.json` is absent or records no `sha`, emit `no knowledge base here - run task-domain-sync init` and stop; when it records `in_progress`, emit `sync interrupted at {pass} - run task-domain-sync {command} to finish` and stop. Read `ATLAS.md` for the counts line, the flows, and the reading order, `_index/sync-state.json` for the repos, SHAs, and window, and the frontmatter `aliases` of every card and `capability.md`.
+Use skill: `domain-kb-layout` for the file shapes. The root is the working directory. When `_index/sync-state.json` is absent or records no `sha`, emit `no knowledge base here - run task-domain-sync init` (adding `; hand-written docs exist - task-domain-ask reads them` when any hand-written folder holds a Markdown file) and stop; when it records `in_progress`, emit `sync interrupted at {pass} - run task-domain-sync {command} to finish` and stop. Read `ATLAS.md` for the counts line, the flows, the reading order, and `### Untraced`, `_index/sync-state.json` for the repos, SHAs, window, and `hand_written` counts, `_index/last-sync.md` for its `Start with` and `Flows` lines, `index.md` `## Hand-written` for the per-folder counts when `hand_written` is absent, and the frontmatter `aliases` of every card and `capability.md`.
 
 ### Step 3 - Atlas view (no target, or `stale`)
 
-Render the Output Format's atlas block: Synced and Repos from `sync-state.json`, Flows from the ATLAS counts line, the learning path and every capability with its flows in reading order from `ATLAS.md`. With `stale`, list only the flows whose Status is `stale` and the `## Unmapped changes` rows, so the reader sees what the next `update` will touch; orphaned flows are listed under their own heading, since `rebuild` is what removes them. Stop after the block.
+Render the Output Format's atlas block: Synced and Repos from `sync-state.json`, Flows from the ATLAS counts line, the learning path and every capability with its flows in reading order from `ATLAS.md`, the untraced triggers, the hand-written counts, and the last sync's two lines. With `stale`, list only the flows whose Status is `stale` and the `## Unmapped changes` rows, so the reader sees what the next `update` will touch; orphaned flows are listed under their own heading, since `rebuild` is what removes them. Stop after the block.
 
 ### Step 4 - Resolve the target
 
-A `<capability>/<flow>` id resolves directly when its card exists. Otherwise apply `domain-flow-explain`'s resolution rule: capability ids and aliases first, then flow ids and aliases across every capability, then `R-<n>` against `rules/ledger.md`. A single match continues; an ambiguous name emits the candidates and stops; a name matching nothing emits `no such flow, capability, or rule: <name>` with the three nearest ids from ATLAS and stops.
+A `<capability>/<flow>` id resolves directly when its card exists. Otherwise apply `domain-flow-explain`'s resolution rule: capability ids and aliases first, then flow ids and aliases across every capability, then `R-<n>` against `ledger/rules.md`. A single match continues; an ambiguous name emits the candidates and stops; a name matching nothing emits `no such flow, capability, or rule: <name>` with the three nearest ids from ATLAS and stops.
 
 ### Step 5 - Render the lesson
 
-Use skill: `domain-flow-explain` with the resolved target and the KB root; emit its lesson unchanged, preceded by the `resolved:` line when the target was a bare name. A stale card's lesson carries its `stale since` status and its `## Changed since` rows under Read next, as the atomic renders them; the closing line names `task-domain-sync update` as the way to refresh it.
+Use skill: `domain-flow-explain` with the resolved target and the KB root; emit its lesson unchanged, preceded by the `resolved:` line when the target was a bare name. A stale card's lesson carries `stale since` in its Status line and its `## Changed since` rows under Read next, as the atomic renders them; the closing line names `task-domain-sync update` as the way to refresh it.
 
 ## Output Format
 
@@ -57,7 +57,7 @@ Atlas view:
 
 - **Synced:** {date} ({n} days window)
 - **Repos:** {repo@sha, ...}
-- **Flows:** {n} ({n} stale, {n} orphaned)
+- **Flows:** {n} ({n} stale, {n} orphaned, {n} missing)
 
 ### Read in this order
 
@@ -68,6 +68,20 @@ Atlas view:
 
 | # | Flow | Trigger | Status | Read before |
 | - | ---- | ------- | ------ | ----------- |
+
+### Untraced                                          {only when ATLAS ### Untraced has rows}
+
+| Capability | Trigger |
+| ---------- | ------- |
+
+### Hand-written
+
+{n} rules, {n} specs, {n} incidents, {n} context, {n} debt, {n} adr, {n} consumers, {n} patterns
+
+### Last sync
+
+- **Start with:** {the line from `_index/last-sync.md` | unavailable - no last-sync.md}
+- **Flows:** {the line from `_index/last-sync.md` | unavailable - no last-sync.md}
 
 ### Orphaned                                          {only with `stale`, when any flow is orphaned}
 
@@ -89,8 +103,8 @@ Lesson: `resolved: <id>` when the target was a bare name, then the `domain-flow-
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: layout loaded; knowledge base located by a recorded `sha` and no `in_progress`; absence or interruption reported and nothing else emitted
-- [ ] Step 3: Synced and Repos from `sync-state.json`, counts, flows and order from `ATLAS.md`; `stale` filter applied with orphans under their own heading; stopped after the block
+- [ ] Step 2: layout loaded; knowledge base located by a recorded `sha` and no `in_progress`; absence or interruption reported, with the hand-written hint when docs exist, and nothing else emitted; `last-sync.md` and hand-written counts read
+- [ ] Step 3: Synced and Repos from `sync-state.json`, counts, flows, order and untraced from `ATLAS.md`, hand-written counts and the two last-sync lines rendered; `stale` filter applied with orphans under their own heading; stopped after the block
 - [ ] Step 4: target resolved by the atomic's rule; ambiguity and no-match stopped with candidates
 - [ ] Step 5: lesson emitted verbatim from `domain-flow-explain`, with the `resolved:` line and the refresh line when they apply; nothing written
 
