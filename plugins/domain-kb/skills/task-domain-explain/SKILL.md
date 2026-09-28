@@ -34,11 +34,11 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Locate the knowledge base
 
-Use skill: `domain-kb-layout` for the file shapes. The root is the working directory. When `_index/sync-state.json` is absent or records no `sha`, emit `no knowledge base here - run task-domain-sync init` (adding `; hand-written docs exist - task-domain-ask reads them` when any hand-written folder holds a Markdown file) and stop; when it records `in_progress`, emit `sync interrupted at {pass} - run task-domain-sync {command} to finish` and stop. Read `ATLAS.md` for the counts line, the flows, the reading order, and `### Untraced`, `_index/sync-state.json` for the repos, SHAs, window, and `hand_written` counts, `_index/last-sync.md` for its `Start with` and `Flows` lines, `index.md` `## Hand-written` for the per-folder counts when `hand_written` is absent, and the frontmatter `aliases` of every card and `capability.md`.
+Use skill: `domain-kb-layout` for the file shapes. The root is the working directory. When `_index/sync-state.json` is absent or records no `sha`, emit `no knowledge base here - run task-domain-sync init` (adding `; curated docs exist - task-domain-ask reads them` when any curated folder holds a Markdown file) and stop; when it records `in_progress`, emit `sync interrupted at {pass} - run task-domain-sync {command} to finish` and stop. Read `ATLAS.md` for the counts line, the flows, the reading order, and `### Untraced`, `_index/sync-state.json` for the repos, SHAs, window, and `curated` counts, `_index/last-sync.md` for its `Start with` and `Flows` lines, `index.md` `## Curated` for the per-folder counts when `curated` is absent, and the frontmatter `aliases` of every card and `capability.md`.
 
 ### Step 3 - Atlas view (no target, or `stale`)
 
-Render the Output Format's atlas block: Synced and Repos from `sync-state.json`, Flows from the ATLAS counts line, the learning path and every capability with its flows in reading order from `ATLAS.md`, the untraced triggers, the hand-written counts, and the last sync's two lines. With `stale`, list only the flows whose Status is `stale` and the `## Unmapped changes` rows, so the reader sees what the next `update` will touch; orphaned flows are listed under their own heading, since `rebuild` is what removes them. Stop after the block.
+Render the Output Format's atlas block: Synced and Repos from `sync-state.json`, Flows from the ATLAS counts line, the learning path and every capability with its flows in reading order from `ATLAS.md`, the untraced triggers, the curated counts, and the last sync's two lines. With `stale`, list only the flows whose Status is `stale` and the `## Unmapped changes` rows, so the reader sees what the next `update` will touch; orphaned flows are listed under their own heading, since `rebuild` is what removes them. Stop after the block.
 
 ### Step 4 - Resolve the target
 
@@ -74,7 +74,7 @@ Atlas view:
 | Capability | Trigger |
 | ---------- | ------- |
 
-### Hand-written
+### Curated
 
 {n} rules, {n} specs, {n} incidents, {n} context, {n} debt, {n} adr, {n} consumers, {n} patterns
 
@@ -103,8 +103,8 @@ Lesson: `resolved: <id>` when the target was a bare name, then the `domain-flow-
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: layout loaded; knowledge base located by a recorded `sha` and no `in_progress`; absence or interruption reported, with the hand-written hint when docs exist, and nothing else emitted; `last-sync.md` and hand-written counts read
-- [ ] Step 3: Synced and Repos from `sync-state.json`, counts, flows, order and untraced from `ATLAS.md`, hand-written counts and the two last-sync lines rendered; `stale` filter applied with orphans under their own heading; stopped after the block
+- [ ] Step 2: layout loaded; knowledge base located by a recorded `sha` and no `in_progress`; absence or interruption reported, with the curated hint when docs exist, and nothing else emitted; `last-sync.md` and curated counts read
+- [ ] Step 3: Synced and Repos from `sync-state.json`, counts, flows, order and untraced from `ATLAS.md`, curated counts and the two last-sync lines rendered; `stale` filter applied with orphans under their own heading; stopped after the block
 - [ ] Step 4: target resolved by the atomic's rule; ambiguity and no-match stopped with candidates
 - [ ] Step 5: lesson emitted verbatim from `domain-flow-explain`, with the `resolved:` line and the refresh line when they apply; nothing written
 

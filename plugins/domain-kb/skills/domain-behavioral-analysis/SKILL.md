@@ -21,7 +21,7 @@ Reads each repository's history, read-only, and turns it into the evidence table
 
 | Input         | Required | Notes                                                                                                                       |
 | ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Repos         | yes      | `repos/<repo>/` directories, each a git checkout, each with its `Scope` cell from `AGENTS.md` `## Repos` (`all` when absent)   |
+| Repos         | yes      | `repos/<repo>/` directories, each a git checkout, each with its `Scope` cell from `CLAUDE.md` `## Repos` (`all` when absent)   |
 | Window        | no       | Days; default `window` in `_index/sync-state.json`, else 30; anchored at the wall-clock date of the run                     |
 | Reverse index | no       | `_index/file-to-flow.json`; a file it does not map, or every file when it is absent, reads `unmapped` in `Flows`              |
 | Cards         | no       | The `**Monitors:**` line of every flow card, split on `;`, each entry read up to its ` - `; absent, `Monitor` reads `unknown - cards not supplied` |

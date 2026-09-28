@@ -1,6 +1,6 @@
 ---
 name: domain-kb-layout
-description: Define the domain knowledge-base layout: generated and hand-written layers, write modes, ids, frontmatter, templates, ATLAS, index, sync state.
+description: Define the domain knowledge-base layout: generated and curated layers, write modes, ids, frontmatter, templates, ATLAS, index, sync state.
 metadata:
   category: domain
   tags: [domain, knowledge-base, layout, flow-card, templates, contract]
@@ -9,28 +9,28 @@ user-invocable: false
 
 # Domain Knowledge-Base Layout
 
-The single source of truth for where every artifact of a domain knowledge base lives, what shape it has, and who may rewrite it. `task-domain-sync` writes the generated layer and seeds the hand-written one; `domain-kb-ingest` writes the hand-written layer; `task-domain-explain`, `task-domain-ask`, and `task-domain-solve` read both.
+The single source of truth for where every artifact of a domain knowledge base lives, what shape it has, and who may rewrite it. `task-domain-sync` writes the generated layer and seeds the curated one; `domain-kb-ingest` writes the curated layer; `task-domain-explain`, `task-domain-ask`, and `task-domain-solve` read both.
 
 ## When to Use
 
 - `task-domain-sync` creating (`init`), refreshing (`update`), regenerating (`rebuild`), or importing into (`import`) the knowledge base
-- `domain-kb-ingest` placing a fact or document into the hand-written layer
-- `task-domain-explain`, `task-domain-ask`, and `task-domain-solve` locating a card, the atlas, the ledger, a hand-written doc, or the reverse index
+- `domain-kb-ingest` placing a fact or document into the curated layer
+- `task-domain-explain`, `task-domain-ask`, and `task-domain-solve` locating a card, the atlas, the ledger, a curated doc, or the reverse index
 - Invoked standalone: verify an existing knowledge base against this contract, write nothing, and emit the Output Format block
 
 ## Rules
 
-- **Root is the project the plugin runs in.** The knowledge base lives at the project root; service repositories live under `repos/<repo>/` (submodules or plain clones). The repo set is the directories under `repos/`. Nothing under `repos/` is counted or verified, and nothing there is written except by the sync Fetch step: remote-tracking refs, the guarded checkout bump, and the gitlink `git add repos/<repo>` in the root; never a commit. A knowledge base is synced when `_index/sync-state.json` records a `sha` for at least one repo; `init` refuses on a synced root and names `rebuild`, and runs on a root whose hand-written layer is already populated, touching none of it.
-- **Two layers share the root.** The generated layer is every path the table below marks `regenerate`, `mark`, or `index`; its Markdown files carry frontmatter `generated: domain-sync` and end with `## Notes`. The hand-written layer is every path marked `seed` plus every Markdown file outside `repos/` that carries no `generated` key; it is written only by `domain-kb-ingest` or a person, never regenerated, never adopted, never deleted, and sync may only read it and link to it. A file without `generated: domain-sync` sitting at a generated path (`index.md`, `AGENTS.md`, `ledger/rules.md`) stops the sync preflight with `generated path occupied by a hand-written file - move it (context/ is the usual home) or delete it`; it is never overwritten and never carried into `## Notes`.
+- **Root is the project the plugin runs in.** The knowledge base lives at the project root; service repositories live under `repos/<repo>/` (submodules or plain clones). The repo set is the directories under `repos/`. Nothing under `repos/` is counted or verified, and nothing there is written except by the sync Fetch step: remote-tracking refs, the guarded checkout bump, and the gitlink `git add repos/<repo>` in the root; never a commit. A knowledge base is synced when `_index/sync-state.json` records a `sha` for at least one repo; `init` refuses on a synced root and names `rebuild`, and runs on a root whose curated layer is already populated, touching none of it.
+- **Two layers share the root.** The generated layer is every path the table below marks `regenerate`, `mark`, or `index`; its Markdown files carry frontmatter `generated: domain-sync` and end with `## Notes`. The curated layer is every path marked `seed` plus every Markdown file outside `repos/` that carries no `generated` key; curated means a person vouches for the fact, whatever its source (a paste, an imported document, or a commit the Distil pass distilled), so the layer is written only by `domain-kb-ingest` or a person, never regenerated, never adopted, never deleted, and sync may only read it and link to it. The two layers are split by who may rewrite a file, not by where a fact came from; readers see them merged through `index.md`, the `Doc` columns, the cards' `doc:` entries, and the lessons. A file without `generated: domain-sync` sitting at a generated path (`index.md`, `CLAUDE.md`, `ledger/rules.md`) stops the sync preflight with `generated path occupied by a curated file - move it (context/ is the usual home) or delete it`; it is never overwritten and never carried into `## Notes`.
 - **Every path has its write modes** (table below). `regenerate` rewrites the whole file and carries the protected parts; `mark` edits these fields in place and nothing else: frontmatter `freshness` on any generated file, a card's `## Changed since`, `priority`, `ranked_by`, the `Id` numbers that replace `R-new` and `D-new`, a Rules row's `Doc`, `Rationale`, `Confidence` (when the chain strengthens them) and `Quirk` (from every chain walk), a `flow to trace:` Related entry replaced by `<capability>/<flow>` once that card exists, `doc:` and `consumer:` Related entries, Contract `Callers`, the corroboration fields (Runtime lines, `Exercised in traces` cells, `verified_by_trace`, a `(from observability tool)` monitor line, `deploy` rows in Recent changes, a `trace differs` Debt row), and a line appended to a generated file's `## Notes`; a capability's Flows `Priority` and `Status` cells; ledger, register, and contract `Doc` cells and playbook `Past incidents` cells; and ATLAS Status cells, counts line, `## Untraced`, `## Unmapped changes`, and `## Citation drift` rows. `index` rewrites a file whole with no frontmatter. `seed` creates the path with its template (or `.gitkeep` for a folder) only when absent and never touches it again. `never` touches nothing.
-- **Carried on regenerate:** the `## Notes` section, which is always the last section and runs to end of file; in `AGENTS.md`, the `## Observability`, `## Audience`, `## Capabilities`, `## Solve`, and `## Precedence` sections and the `Branch` and `Scope` cells of `## Repos`; `## Unmapped changes` and `## Citation drift` in `ATLAS.md`; the frontmatter `aliases` list (union of old and new), `priority`, and every `R-n` or `D-n` id whose row persists. Every regenerated file ends with `## Notes`, emitted empty when there is nothing to carry.
-- **Two status vocabularies.** A generated file's frontmatter carries `freshness: current | stale | orphaned`, which says whether it matches the code. A hand-written file's frontmatter carries `status: draft | active | deprecated`, which says whether people still vouch for it; a `deprecated` doc names its replacement in `superseded_by`. Neither key appears on the other layer, and verification checks each by layer.
+- **Carried on regenerate:** the `## Notes` section, which is always the last section and runs to end of file; in `CLAUDE.md`, the `## Observability`, `## Audience`, `## Capabilities`, `## Solve`, and `## Precedence` sections and the `Branch` and `Scope` cells of `## Repos`; `## Unmapped changes` and `## Citation drift` in `ATLAS.md`; the frontmatter `aliases` list (union of old and new), `priority`, and every `R-n` or `D-n` id whose row persists. Every regenerated file ends with `## Notes`, emitted empty when there is nothing to carry.
+- **Two status vocabularies.** A generated file's frontmatter carries `freshness: current | stale | orphaned`, which says whether it matches the code. A curated file's frontmatter carries `status: draft | active | deprecated`, which says whether people still vouch for it; a `deprecated` doc names its replacement in `superseded_by`. Neither key appears on the other layer, and verification checks each by layer.
 - **Orphans.** A generated file whose source vanished (a flow whose trigger surface the Discover pass no longer finds, a caller no longer seen, a repo directory removed) gets `freshness: orphaned`, its body frozen and its reverse-index entries removed; `update` leaves it alone, `rebuild` deletes it only when its `## Notes` is empty. `orphaned` outranks `stale`.
 - **Ids are stable.** An id is kebab-case, assigned at creation, never renamed by sync; `caller-` is prefixed to a caller contract's file and id when the name collides with a repo or capability. A flow is re-identified by its Trigger `Surface`, then by the majority of its reverse-index files (ties keep the older card); a changed business name becomes an alias. A rule or debt row keeps its id while its enforcement site (file plus rule text) persists, then by rule text alone; new ids take the next number after the highest in use. Flows are unique within a capability and referenced everywhere as `<capability>/<flow>`.
 - **Surfaces match whole.** Wherever a surface is compared (`Used by flows`, `Related`, `flow to trace:` resolution), the whole surface string is one token, method and host tag included, with any parenthetical note stripped; a surface never matches as a substring of a longer path, and `/`, `ANY /`, or any single-segment surface matches only a hop or trigger written exactly so.
 - **Empty is explicit.** A slot with no value reads `none - <evidence>`, `unknown - not discoverable from the repos`, or `unavailable - <reason>`; a slot whose enum lists `none` reads `none`. A table with no rows keeps its header and one row whose first cell reads `none - <evidence>` and whose other cells are empty; a list section with no items reads `- none - <evidence>`. A conditional section (`## Contract`) exists only when its condition holds and is never drift when absent.
-- **Nothing invented.** Monitors, dashboards, job names, hostnames and channels are cited from a file path or config key, or from the observability tool's own list marked `(from observability tool)`, or written `unknown - not discoverable from the repos`. A hand-written doc is evidence when it states the fact; it is cited by path.
-- **Languages.** `AGENTS.md` `## Audience` `Language:` is a list of ISO 639-1 codes; the first is the output language of every generated file and every answer, and every listed code is a search language for hand-written docs, `Also called` aliases, and pasted input. When the list has a second code, the `**Story:**` line of each flow card carries a second sentence in it, and `task-domain-ask` answers stakeholder-shaped inputs in it as well as English. Nothing else is translated; a third code adds search coverage only.
+- **Nothing invented.** Monitors, dashboards, job names, hostnames and channels are cited from a file path or config key, or from the observability tool's own list marked `(from observability tool)`, or written `unknown - not discoverable from the repos`. A curated doc is evidence when it states the fact; it is cited by path.
+- **Languages.** `CLAUDE.md` `## Audience` `Language:` is a list of ISO 639-1 codes; the first is the output language of every generated file and every answer, and every listed code is a search language for curated docs, `Also called` aliases, and pasted input. When the list has a second code, the `**Story:**` line of each flow card carries a second sentence in it, and `task-domain-ask` answers stakeholder-shaped inputs in it as well as English. Nothing else is translated; a third code adds search coverage only.
 - **Never commit.** Files are written to the working tree; the user versions them.
 
 ## Patterns
@@ -38,10 +38,10 @@ The single source of truth for where every artifact of a domain knowledge base l
 ### Layout and write modes
 
 ```
-AGENTS.md                      regenerate         how agents use this KB; Repos, Observability, Audience, Capabilities, Solve, Precedence
-index.md                       regenerate         agent entry: Need table, generated files, hand-written docs, retrieval hints
+CLAUDE.md                      regenerate         how agents use this KB; Repos, Observability, Audience, Capabilities, Solve, Precedence
+index.md                       regenerate         agent entry: Need table, generated files, curated docs, retrieval hints
 ATLAS.md                       regenerate, mark   human entry: learning path, capabilities, untraced, stale marks, unmapped changes, citation drift
-README.md                      seed               folder purposes and the hand-written frontmatter, for people
+README.md                      seed               folder purposes and the curated frontmatter, for people
 .gitignore                     seed               tmp/, .DS_Store, .claude/settings.local.json
 overview/domain-model.md       regenerate         actors, core entities, value flow, external systems
 overview/state-machines.md     regenerate         lifecycle entities: transition graph and the guard on each edge
@@ -59,16 +59,16 @@ debt/detection-gaps.md         regenerate         flows with no signal or captur
 debt/recent-risk.md            regenerate         flows with 3 or more commits in the window
 surfaces/<repo>.md             regenerate         surface inventory per repo, each trigger row with its capability and Used by flows
 _index/file-to-flow.json       index              source file -> flow ids, rebuilt from the `files` list of every non-orphaned card
-_index/sync-state.json         index              repo -> synced SHA, branch, scope, stack, database, surface count; window; fetch; hand_written; in_progress
+_index/sync-state.json         index              repo -> synced SHA, branch, scope, stack, database, surface count; window; fetch; curated; in_progress
 _index/last-sync.md            index              the Output Format block of the last sync command, verbatim
 _templates/<name>.md           seed               the nine templates below; ingest copies from here
-rules/ specs/services/ specs/data-flow/ incidents/ context/ tech-debt/ adr/ consumers/ patterns/   seed   hand-written; .gitkeep when empty
+rules/ specs/services/ specs/data-flow/ incidents/ context/ tech-debt/ adr/ consumers/ patterns/   seed   curated; .gitkeep when empty
 repos/<repo>/                  never              the service repositories (Fetch step excepted, per Rules)
 ```
 
-`debt/` (generated: what the traces and history evidence) and `tech-debt/` (hand-written: what people recorded, with severity and recommendation) are distinct folders by design; the register's `Doc` column joins them. `patterns/` holds the conventions agents follow when they implement or review in these repos; the plugin seeds it and never writes it.
+`debt/` (generated: what the traces and history evidence) and `tech-debt/` (curated: what people recorded, with severity and recommendation) are distinct folders by design; the register's `Doc` column joins them. `patterns/` holds the conventions agents follow when they implement or review in these repos; the plugin seeds it and never writes it.
 
-### Hand-written layer
+### Curated layer
 
 | Folder              | Holds                                                                                  | Template          |
 | ------------------- | -------------------------------------------------------------------------------------- | ----------------- |
@@ -82,7 +82,7 @@ repos/<repo>/                  never              the service repositories (Fetc
 | `patterns/`         | One reusable convention per file                                                        | `pattern.md`      |
 | `context/`          | Background, history, and rationale packs; never the source of truth for a rule          | `context-pack.md` |
 
-Frontmatter on every hand-written file:
+Frontmatter on every curated file:
 
 ```yaml
 ---
@@ -98,7 +98,7 @@ severity: high                 # incidents only
 ---
 ```
 
-`README.md` is seeded with the folder table above, the frontmatter block, and one line each naming `task-domain-sync import` as the way to add a fact or a document and `task-domain-ask` as the way to query. `.gitignore` is seeded with `tmp/`, `.DS_Store`, and `.claude/settings.local.json`. A `.gitkeep` is removed from a hand-written folder as soon as it holds a Markdown file.
+`README.md` is seeded with one sentence defining the two layers (generated: rewritten from code by sync; curated: vouched for by a person, written only through ingest), the folder table above, the frontmatter block, and one line each naming `task-domain-sync import` as the way to add a fact or a document and `task-domain-ask` as the way to query. `.gitignore` is seeded with `tmp/`, `.DS_Store`, and `.claude/settings.local.json`. A `.gitkeep` is removed from a curated folder as soon as it holds a Markdown file.
 
 ### Templates
 
@@ -118,17 +118,17 @@ Scaffold writes these nine files to `_templates/`, each starting with the frontm
 
 Every command runs these passes in order. A command sets `in_progress` in `sync-state.json` to `{command}:{pass}` for the pass it is running and the Record pass clears it; a run started while `in_progress` is set resumes that command at that pass instead of starting over.
 
-1. **Scaffold** (`init`, `rebuild`): root files with empty tables, `overview/` stubs, every `seed` path that is absent (`README.md`, `.gitignore`, `_templates/`, the hand-written folders with `.gitkeep`), `sync-state.json` with every repo's stack note, database, branch and scope, `window`, and `sha` unset on `init` (kept on `rebuild`). `update` and `import` skip this pass; `import` seeds only `_templates/` when absent.
+1. **Scaffold** (`init`, `rebuild`): root files with empty tables, `overview/` stubs, every `seed` path that is absent (`README.md`, `.gitignore`, `_templates/`, the curated folders with `.gitkeep`), `sync-state.json` with every repo's stack note, database, branch and scope, `window`, and `sha` unset on `init` (kept on `rebuild`). `update` and `import` skip this pass; `import` seeds only `_templates/` when absent.
 2. **Fetch** (`init`, `update`, `rebuild`; skipped by `--no-fetch`): fetch each repo's tracked branch and apply the guarded bump the sync skill defines; the tip the run records is the checkout `HEAD` after this pass.
 3. **Mark** (`update` only): the Stale marking recipe. The recorded `sha` is not advanced here.
-4. **Discover**: `domain-surface-discovery` runs over every repo on every command with the repo's scope and writes `surfaces/<repo>.md` where rows changed, carrying `Used by flows` for rows that persist, and proposes the capability set (`AGENTS.md` `## Capabilities` first, then one capability per business area the handler modules name; auth, API docs, admin console, staff management, and maintenance-status triggers are `infrastructure`, never a capability), each trigger assigned to one. A discovered surface that an ATLAS `## Unmapped changes` file registers removes that row. A card whose trigger surface is no longer discovered is marked `orphaned`.
+4. **Discover**: `domain-surface-discovery` runs over every repo on every command with the repo's scope and writes `surfaces/<repo>.md` where rows changed, carrying `Used by flows` for rows that persist, and proposes the capability set (`CLAUDE.md` `## Capabilities` first, then one capability per business area the handler modules name; auth, API docs, admin console, staff management, and maintenance-status triggers are `infrastructure`, never a capability), each trigger assigned to one. A discovered surface that an ATLAS `## Unmapped changes` file registers removes that row. A card whose trigger surface is no longer discovered is marked `orphaned`.
 5. **Trace**: one flow card per discovered trigger (`init`, `rebuild`), or per stale or missing card in priority order (`update`), bounded by `--capabilities` and `--max-flows`; a trigger left without a card is `missing` and sits in ATLAS `### Untraced`. Rule and debt rows are written as `R-new` and `D-new`; `file-to-flow.json` is rebuilt from the `files` list of every non-orphaned card.
-6. **Distil** (`update` only): commit-window changes become cited candidate facts routed through `domain-kb-ingest` into the hand-written layer.
+6. **Distil** (`update` only): commit-window changes become cited candidate facts routed through `domain-kb-ingest` into the curated layer.
 7. **Rank**: `priority` and `ranked_by` on every card (a `mark`) by the tiers below.
 8. **Analyse**: `ledger/` (rules, unknown-rationale, chains via `domain-rationale-chain`), `playbook/`, `contracts/` (callers of each surface, from the cards' hop lists and Contract sections), `debt/` (`Location` from each card's Debt row, `Fix` and `Detection` written here as the change and the signal that would close it); then `surfaces/` regenerated with `Used by flows`, and in the cards (a `mark`) `R-new` / `D-new` replaced by numbers, `flow to trace:` entries replaced by `<capability>/<flow>` where the card now exists (exact surface match), and Contract `Callers` filled from `contracts/`.
-9. **Link**: the generated layer is pointed at the hand-written docs that name its surfaces, rules, locations, and callers: ledger rows and `Doc` cells from `rules/`, register `Doc` from `tech-debt/`, contract `Doc` from `consumers/`, playbook `Past incidents` from `incidents/`, card `## Related` `doc:` and `consumer:` entries. Hand-written files are read, never written.
-10. **Verify citations** (read-only): every `repos/<repo>/<path>:<line>` in the hand-written layer is checked against the recorded tip and written to ATLAS `## Citation drift`; no doc is edited.
-11. **Finalise**: `capability.md` for every capability with at least one card, `overview/`, and the root files regenerate with the final tables; `index.md` `## Hand-written` is rebuilt from every hand-written doc's frontmatter; a `.gitkeep` in a hand-written folder holding a Markdown file is removed.
+9. **Link**: the generated layer is pointed at the curated docs that name its surfaces, rules, locations, and callers: ledger rows and `Doc` cells from `rules/`, register `Doc` from `tech-debt/`, contract `Doc` from `consumers/`, playbook `Past incidents` from `incidents/`, card `## Related` `doc:` and `consumer:` entries. Curated files are read, never written.
+10. **Verify citations** (read-only): every `repos/<repo>/<path>:<line>` in the curated layer is checked against the recorded tip and written to ATLAS `## Citation drift`; no doc is edited.
+11. **Finalise**: `capability.md` for every capability with at least one card, `overview/`, and the root files regenerate with the final tables; `index.md` `## Curated` is rebuilt from every curated doc's frontmatter; a `.gitkeep` in a curated folder holding a Markdown file is removed.
 12. **Record**: `sync-state.json` rewritten whole and `_index/last-sync.md` written with the Output Format block.
 
 **Rank tiers.** Tier `moves money`: a flow whose State changes or Side effects charge, capture, refund, pay out, deposit, or issue an invoice. Tier `grants access`: a flow that grants access or changes a limit. Then `most changed` (commits in the window over the card's `files`), then `most incidents` (incidents naming the flow), then `unranked` in trigger order. Inside a tier: in-degree first (how many other cards name the flow under `Read before` or `Related`), then incidents naming it, then commits. The ATLAS learning path names the tier for every capability.
@@ -144,9 +144,9 @@ Every command runs these passes in order. A command sets `in_progress` in `sync-
 | caller contract             | file name without `.md`                                                | as named                     |
 | ledger, playbook, debt, surfaces | file name without `.md`; surfaces as `surface-<repo>`             | as named                     |
 | rule row, debt row          | `R-<n>`, `D-<n>`                                                       | column `Id`                  |
-| hand-written doc            | its root-relative path                                                 | none; `title` names it       |
+| curated doc            | its root-relative path                                                 | none; `title` names it       |
 
-The examples in this file group the refund flow under `payments`, a grouping a project sets through `## Capabilities`; the discovery rule alone would name it by its handler module. Every `Flows` column, every reverse-index value, every ATLAS row, and every flow entry under `Related` that has a card uses `<capability>/<flow>` (a hand-off with no card yet reads `flow to trace: <kind>: <surface>`); ATLAS links it to `capabilities/<capability>/flows/<flow>.md`. A hand-written doc is referenced by root-relative path everywhere (`rules/refund-window.md`, `tech-debt/orders.md#high-retry-loop`). Every `file:line` is root-relative under `repos/` (`repos/orders/app/services/refund_service.rb:18`); line numbers refresh only when the file is regenerated. A trigger cell reads `<kind>: <surface>`. A `Surface` slot ends with `- file:line`.
+The examples in this file group the refund flow under `payments`, a grouping a project sets through `## Capabilities`; the discovery rule alone would name it by its handler module. Every `Flows` column, every reverse-index value, every ATLAS row, and every flow entry under `Related` that has a card uses `<capability>/<flow>` (a hand-off with no card yet reads `flow to trace: <kind>: <surface>`); ATLAS links it to `capabilities/<capability>/flows/<flow>.md`. A curated doc is referenced by root-relative path everywhere (`rules/refund-window.md`, `tech-debt/orders.md#high-retry-loop`). Every `file:line` is root-relative under `repos/` (`repos/orders/app/services/refund_service.rb:18`); line numbers refresh only when the file is regenerated. A trigger cell reads `<kind>: <surface>`. A `Surface` slot ends with `- file:line`.
 
 ### Generated-file frontmatter
 
@@ -165,7 +165,7 @@ aliases: []                    # business names this artifact was known by
 
 Flow cards append `capability: <capability>`, `priority: <integer>` (rank across all flows, 1 first to learn, `0` until ranked; unranked sorts last), `ranked_by: {moves money | grants access | most changed | most incidents | unranked}`, `verified_by_trace: <true | false>` (`true` only when a runtime trace matched the hop list hop for hop), and `files:`, the root-relative list of every repo file the card cites, which is the card's contribution to `file-to-flow.json`. `freshness: stale` is set only on flow cards.
 
-### AGENTS.md
+### CLAUDE.md
 
 ```markdown
 # {Domain} knowledge base
@@ -195,17 +195,17 @@ Flow cards append `capability: <capability>`, `priority: <integer>` (rank across
 
 ## Solve
 
-- **Implement skill:** unknown - set in AGENTS.md ## Solve
+- **Implement skill:** unknown - set in CLAUDE.md ## Solve
 - **Review skill:** core:task-code-review
-- **Test skill:** unknown - set in AGENTS.md ## Solve
-- **Test command:** unknown - set in AGENTS.md ## Solve
-- **Conventions file:** unknown - set in AGENTS.md ## Solve
+- **Test skill:** unknown - set in CLAUDE.md ## Solve
+- **Test command:** unknown - set in CLAUDE.md ## Solve
+- **Conventions file:** unknown - set in CLAUDE.md ## Solve
 - **PR draft path:** tmp/pr.md
 - **Base branch:** main
 
 ## Precedence
 
-When sources disagree: hand-written `rules/` > hand-written `specs/` > generated cards > hand-written `context/`. A card citation that is `verified` against the repo outranks any doc claim it contradicts; the disagreement is reported as drift and never resolved silently. `context/` is background, never the source of truth.
+When sources disagree: curated `rules/` > curated `specs/` > generated cards > curated `context/`. A card citation that is `verified` against the repo outranks any doc claim it contradicts; the disagreement is reported as drift and never resolved silently. `context/` is background, never the source of truth.
 
 ## Notes
 ```
@@ -232,7 +232,7 @@ Every section is parsed by the narrow-read rule `stack-detect` uses for `## Tech
 - `overview/domain-model.md` - {one line}
 - `capabilities/payments/flows/order-refund.md` - {story sentence}
 
-## Hand-written
+## Curated
 
 ### rules
 
@@ -251,7 +251,7 @@ Every section is parsed by the narrow-read rule `stack-detect` uses for `## Tech
 ## Notes
 ```
 
-The Need table and `## Retrieval hints` are fixed text. `## Files` lists every generated Markdown file except the root files, one line each, in layout order and then by path; a card's line is its Story sentence, any other file's line is its purpose from the layout table. `## Hand-written` is rebuilt at Finalise from every hand-written doc's frontmatter, grouped by folder as `### {folder}` in the folder table's order, one line per doc `- path - title (status; tags)`; incidents sort by filename descending, rules group by their first non-`rule` tag under `#### {tag}`, every other folder sorts by path; a folder with no docs reads `- none`.
+The Need table and `## Retrieval hints` are fixed text. `## Files` lists every generated Markdown file except the root files, one line each, in layout order and then by path; a card's line is its Story sentence, any other file's line is its purpose from the layout table. `## Curated` is rebuilt at Finalise from every curated doc's frontmatter, grouped by folder as `### {folder}` in the folder table's order, one line per doc `- path - title (status; tags)`; incidents sort by filename descending, rules group by their first non-`rule` tag under `#### {tag}`, every other folder sorts by path; a folder with no docs reads `- none`.
 
 ### ATLAS.md
 
@@ -294,7 +294,7 @@ The Need table and `## Retrieval hints` are fixed text. `## Files` lists every g
 ## Notes
 ```
 
-`Flows` counts every card, orphaned included; `missing` counts triggers with no card, the rows of `### Untraced`. Capabilities are ordered by their best flow priority, and the learning-path reason is that flow's `ranked_by` tier. `#` restarts per capability and is the reading order inside it. `Read before` names the flow whose state this one depends on, `none` when there is none. `## Citation drift` holds one row per hand-written citation the Verify pass found `moved` or `gone`: `Doc` the hand-written path, `Citation` as written, `Commit` the newest commit touching that file since the doc's `updated` date, `Status` `{moved | gone}`; a `verified` citation is not a row.
+`Flows` counts every card, orphaned included; `missing` counts triggers with no card, the rows of `### Untraced`. Capabilities are ordered by their best flow priority, and the learning-path reason is that flow's `ranked_by` tier. `#` restarts per capability and is the reading order inside it. `Read before` names the flow whose state this one depends on, `none` when there is none. `## Citation drift` holds one row per curated citation the Verify pass found `moved` or `gone`: `Doc` the curated path, `Citation` as written, `Commit` the newest commit touching that file since the doc's `updated` date, `Status` `{moved | gone}`; a `verified` citation is not a row.
 
 ### Flow card
 
@@ -385,12 +385,12 @@ The Need table and `## Retrieval hints` are fixed text. `## Files` lists every g
 
 ## Related
 
-- {flows as <capability>/<flow> or flow to trace: <kind>: <surface>, rules as R-n, doc: <path> for hand-written docs naming a surface, entity, or rule on the path, consumer: consumers/<name>.md for an external party with a doc, incidents and ADRs by path}
+- {flows as <capability>/<flow> or flow to trace: <kind>: <surface>, rules as R-n, doc: <path> for curated docs naming a surface, entity, or rule on the path, consumer: consumers/<name>.md for an external party with a doc, incidents and ADRs by path}
 
 ## Notes
 ```
 
-The second Story sentence, in the second Audience language, follows the first on the same line when one is listed. Enums: `Kind` as listed; Side effects `Kind` is `{webhook out | event | email | third-party call | file}`; `From` is `new` for a row creation and `To` is `deleted` for a row deletion; a Rules `Kind` is `{code | process | policy | rollout gate}`, always `code` on a card, and `Doc` is the hand-written rule path or `none`; `Confidence` is `{documented | inferred | unknown}`; `Quirk` is `{yes | no}`; `Exercised in traces` is `{yes | no | unavailable}`; `Source` in Recent changes is a commit short SHA, a PR number, or `deploy`. A Debt row's `class` is one of `swallowed error`, `write outside transaction`, `no monitor`, `missing containment`, `trace differs`, `unreachable precondition`, `hotspot`, `single point of knowledge`, `coupling`; `severity` is `{high | medium | low}`; `category` is `{code-quality | security | dependency | compliance | architecture | operational | correctness}`. Monitors and Error tracker each take exactly one of the shapes shown; `(from observability tool)` marks a monitor the tool lists that no file defines, and a monitor list may hold several names. `Detected by` cites exactly one Monitors name, one Error tracker capture string, or repeats the line's `none` or `unknown` form. Markers: `(unverified)` on a hop the code implies but cannot pin; `(external - not in repos)` on a hop that leaves the repos; `(external - from traces)` on a caller only a trace names; `(no producer in repos)` on a precondition no code in scope produces; a Side effects `Target` outside the repos reads `<name> (external - not in repos)` or `consumer not in repos`. Every `Enforced at` is `file:line`. Recent changes covers the window; `## Changed since` covers commits since the previously recorded SHA, exists only on a stale card, and accumulates across updates until the card regenerates. The Runtime block reads `unavailable - <reason>` on every line when traces cannot be fetched, the reason being the preflight's `Observability MCP reachable` finding. `domain-flow-trace` fills the card, `files` included; the sync passes above set `Id` numbers, `Doc`, `priority`, and the `doc:` and `consumer:` entries.
+The second Story sentence, in the second Audience language, follows the first on the same line when one is listed. Enums: `Kind` as listed; Side effects `Kind` is `{webhook out | event | email | third-party call | file}`; `From` is `new` for a row creation and `To` is `deleted` for a row deletion; a Rules `Kind` is `{code | process | policy | rollout gate}`, always `code` on a card, and `Doc` is the curated rule path or `none`; `Confidence` is `{documented | inferred | unknown}`; `Quirk` is `{yes | no}`; `Exercised in traces` is `{yes | no | unavailable}`; `Source` in Recent changes is a commit short SHA, a PR number, or `deploy`. A Debt row's `class` is one of `swallowed error`, `write outside transaction`, `no monitor`, `missing containment`, `trace differs`, `unreachable precondition`, `hotspot`, `single point of knowledge`, `coupling`; `severity` is `{high | medium | low}`; `category` is `{code-quality | security | dependency | compliance | architecture | operational | correctness}`. Monitors and Error tracker each take exactly one of the shapes shown; `(from observability tool)` marks a monitor the tool lists that no file defines, and a monitor list may hold several names. `Detected by` cites exactly one Monitors name, one Error tracker capture string, or repeats the line's `none` or `unknown` form. Markers: `(unverified)` on a hop the code implies but cannot pin; `(external - not in repos)` on a hop that leaves the repos; `(external - from traces)` on a caller only a trace names; `(no producer in repos)` on a precondition no code in scope produces; a Side effects `Target` outside the repos reads `<name> (external - not in repos)` or `consumer not in repos`. Every `Enforced at` is `file:line`. Recent changes covers the window; `## Changed since` covers commits since the previously recorded SHA, exists only on a stale card, and accumulates across updates until the card regenerates. The Runtime block reads `unavailable - <reason>` on every line when traces cannot be fetched, the reason being the preflight's `Observability MCP reachable` finding. `domain-flow-trace` fills the card, `files` included; the sync passes above set `Id` numbers, `Doc`, `priority`, and the `doc:` and `consumer:` entries.
 
 ### capability.md
 
@@ -428,17 +428,17 @@ Each has an H1 and these sections, in order, then `## Notes`.
 
 - `domain-model.md`: `## Actors` (`| Actor | Kind | Does |`, kind `{person | system}`), `## Entities` (`| Entity | Owned by | Lifecycle | Key relations |`), `## Value flow` (one paragraph and a Mermaid flowchart of money or work moving between actors and services), `## External systems` (`| System | Direction | Used by flows | Integration code |`, direction `{in | out | both}`).
 - `state-machines.md`: `## {Entity}` per lifecycle entity, each with a Mermaid stateDiagram and `| From | To | Guard | Enforced at | Flow |`.
-- `glossary.md`: `## Terms` with `| Term | Also called | Code identifier | Flows |`; `Also called` holds every alias found in code, hand-written docs and Notes, in whatever language it appears.
-- `not-supported.md`: `## Not supported` with `- {statement} - {evidence: a hardcoded value, an explicit rejection, an absent branch, or a hand-written doc path}`.
+- `glossary.md`: `## Terms` with `| Term | Also called | Code identifier | Flows |`; `Also called` holds every alias found in code, curated docs and Notes, in whatever language it appears.
+- `not-supported.md`: `## Not supported` with `- {statement} - {evidence: a hardcoded value, an explicit rejection, an absent branch, or a curated doc path}`.
 
 ### Ledger, playbook, contracts, debt, surfaces
 
 Each has an H1, the sections named here, then `## Notes`.
 
-- `ledger/rules.md`: `## Rules` with `| Id | Rule | Kind | Flows | Enforced at | Doc | Rationale | Confidence | Quirk | Last touched |`; `Kind` is `{code | process | policy | rollout gate}`; `Enforced at` is `file:line` for `code` and `process - <doc path>` otherwise; `Doc` is the hand-written `rules/` path or `none`; `Flows` for a non-code rule is the flows whose docs or cards name it, else `none - not tied to a flow`; `Last touched` is the author and date of the last commit to the enforcing lines, `n/a - process rule` otherwise. A non-code row enters the ledger only through the Link pass, from a `rules/` doc no card row matched. `unknown-rationale.md`: `## Unknown` with the same columns, only the rows whose confidence is `unknown`. `chains.md`: `## R-n` per rule holding the block `domain-rationale-chain` emits.
+- `ledger/rules.md`: `## Rules` with `| Id | Rule | Kind | Flows | Enforced at | Doc | Rationale | Confidence | Quirk | Last touched |`; `Kind` is `{code | process | policy | rollout gate}`; `Enforced at` is `file:line` for `code` and `process - <doc path>` otherwise; `Doc` is the curated `rules/` path or `none`; `Flows` for a non-code rule is the flows whose docs or cards name it, else `none - not tied to a flow`; `Last touched` is the author and date of the last commit to the enforcing lines, `n/a - process rule` otherwise. A non-code row enters the ledger only through the Link pass, from a `rules/` doc no card row matched. `unknown-rationale.md`: `## Unknown` with the same columns, only the rows whose confidence is `unknown`. `chains.md`: `## R-n` per rule holding the block `domain-rationale-chain` emits.
 - `playbook/by-symptom.md`: `## Symptoms` with `| Symptom | Flows | First checks | Past incidents |`; `Past incidents` cites `incidents/` files by path, filled by the Link pass from every incident whose text names the symptom or a flow in the row.
 - `contracts/<caller>.md`: `- **Kind:** {team | external system | ui app}`, `- **Doc:** {consumers/<name>.md | none - no consumer doc}`, then `## Surfaces used` with `| Surface | Flow | Sharp edges |`.
-- `debt/register.md`: `## Register` with `| Id | Location | Signal | Severity | Category | Trade-off made | Cost today | Fix | Detection | Doc | Flows |`; `Severity` and `Category` per the card enums; `Doc` is `tech-debt/<file>.md#<anchor>` when a hand-written item names the same location, else `none`. `detection-gaps.md`: `## Gaps` with `| Flow | Priority | Signal | Monitor | Error tracker | Gap |`, `Signal` being `no signal` (Monitors and Error tracker both `none` or `unknown`) or `capture only` (an error-tracker capture but no monitor); a `monitored` flow is never a row. `recent-risk.md`: `## Recent risk` with `| Flow | Commits ({window}d) | Monitor | Risk |`, one row per flow with 3 or more commits in the window.
+- `debt/register.md`: `## Register` with `| Id | Location | Signal | Severity | Category | Trade-off made | Cost today | Fix | Detection | Doc | Flows |`; `Severity` and `Category` per the card enums; `Doc` is `tech-debt/<file>.md#<anchor>` when a curated item names the same location, else `none`. `detection-gaps.md`: `## Gaps` with `| Flow | Priority | Signal | Monitor | Error tracker | Gap |`, `Signal` being `no signal` (Monitors and Error tracker both `none` or `unknown`) or `capture only` (an error-tracker capture but no monitor); a `monitored` flow is never a row. `recent-risk.md`: `## Recent risk` with `| Flow | Commits ({window}d) | Monitor | Risk |`, one row per flow with 3 or more commits in the window.
 - `surfaces/<repo>.md`: `## Surfaces` with `| Kind | Surface | Enforced at | Capability | Used by flows |`, `Capability` filled for trigger kinds (`infrastructure` for auth, API docs, admin console, staff management, and maintenance-status triggers) and `-` otherwise; `Kind` is a trigger kind (`ui screen`, `public api`, `internal api`, `schedule`, `webhook in`, `message`) or `webhook out`, `event out`, `outbound client`, `table`. Real rows, not the `none` placeholder, are the repo's `surfaces` count.
 
 ### Indexes
@@ -449,7 +449,7 @@ Each has an H1, the sections named here, then `## Notes`.
 { "repos/orders/app/services/refund_service.rb": ["payments/order-refund"] }
 ```
 
-`_index/sync-state.json`, the authoritative sync record, written by the Record pass; `sha` is the full `git rev-parse HEAD` at the last completed sync, `window` the day count both windows use, `fetch` whether the last run fetched, `in_progress` the `{command}:{pass}` a running command is in or `null`, `hand_written` the per-folder doc counts read at Finalise:
+`_index/sync-state.json`, the authoritative sync record, written by the Record pass; `sha` is the full `git rev-parse HEAD` at the last completed sync, `window` the day count both windows use, `fetch` whether the last run fetched, `in_progress` the `{command}:{pass}` a running command is in or `null`, `curated` the per-folder doc counts read at Finalise:
 
 ```json
 {
@@ -458,7 +458,7 @@ Each has an H1, the sections named here, then `## Notes`.
   "window": 30,
   "fetch": true,
   "in_progress": null,
-  "hand_written": { "rules": 12, "incidents": 3 },
+  "curated": { "rules": 12, "incidents": 3 },
   "repos": {
     "orders": { "path": "repos/orders", "sha": "3f2a1c9e0b7d4c2a91f6e8d5b3a7c1e2f4d6a8b0", "branch": "main", "scope": "all", "stack": "Ruby / Rails 7.2", "database": "PostgreSQL", "surfaces": 42 }
   }
@@ -469,7 +469,7 @@ Each has an H1, the sections named here, then `## Notes`.
 
 ### Stale marking
 
-The Mark pass diffs each repo from its recorded `sha` to the tip the run records, within the repo's scope. A changed file the reverse index maps marks every flow it maps to: the card's `freshness` becomes `stale` and a `## Changed since` section is inserted before `## Notes` (or extended when present) with `| Date | Commit | Files |`, one row per commit in the diff touching the flow's mapped files, ascending. The mark propagates to the capability's Flows `Status`, the ATLAS row, and the ATLAS counts line. A changed file the index does not map is appended to ATLAS `## Unmapped changes` until surface discovery places it. A changed file that a hand-written doc cites is left to the Verify citations pass, which appends to `## Citation drift`; the doc itself is never edited. Regenerating the card restores `current`, removes `## Changed since`, and refreshes line numbers. A `## Changed since` section on a stale card is not drift. The recorded `sha` advances only in the Record pass, so an interrupted `update` diffs from the same base next time.
+The Mark pass diffs each repo from its recorded `sha` to the tip the run records, within the repo's scope. A changed file the reverse index maps marks every flow it maps to: the card's `freshness` becomes `stale` and a `## Changed since` section is inserted before `## Notes` (or extended when present) with `| Date | Commit | Files |`, one row per commit in the diff touching the flow's mapped files, ascending. The mark propagates to the capability's Flows `Status`, the ATLAS row, and the ATLAS counts line. A changed file the index does not map is appended to ATLAS `## Unmapped changes` until surface discovery places it. A changed file that a curated doc cites is left to the Verify citations pass, which appends to `## Citation drift`; the doc itself is never edited. Regenerating the card restores `current`, removes `## Changed since`, and refreshes line numbers. A `## Changed since` section on a stale card is not drift. The recorded `sha` advances only in the Record pass, so an interrupted `update` diffs from the same base next time.
 
 ## Output Format
 
@@ -478,12 +478,12 @@ Emitted by every sync command and by standalone verification.
 ```
 - **Layout:** {created | updated | verified | drifted}
 - **Root:** {absolute path}
-- **Files:** {n} written, {n} verified, {n} seeded, {n} hand-written read
+- **Files:** {n} written, {n} verified, {n} seeded, {n} curated read
 - **Drift:**                                              {only when drifted}
-  - {path} - {missing | missing folder | occupied by hand-written file | key missing: <key> | sections missing: <a>, <b> | index invalid | freshness mismatch: <file> vs <file> | id renamed: <old> -> <new> | hand-written missing frontmatter | hand-written status invalid: <value> | generated path collides with hand-written folder: <folder>}
+  - {path} - {missing | missing folder | occupied by curated file | key missing: <key> | sections missing: <a>, <b> | index invalid | freshness mismatch: <file> vs <file> | id renamed: <old> -> <new> | curated missing frontmatter | curated status invalid: <value> | generated path collides with curated folder: <folder>}
 ```
 
-`created` is `init` and `rebuild`; `updated` is `update` and `import`, counting the files written or marked, JSON indexes included; `verified` and `drifted` are standalone results. `written` counts generated files created, regenerated, or marked; `seeded` counts `seed` paths created this run; `verified` counts generated files read and found conforming; `hand-written read` counts hand-written Markdown files outside `repos/`, each checked for frontmatter with `title`, `status`, `created`, `updated`, `tags` and a valid `status`. Standalone verification writes nothing, so `written` and `seeded` are `0`, and the drift list is what the next `rebuild` corrects. `occupied by hand-written file` is a file without `generated: domain-sync` at a generated path; `id renamed` is a frontmatter `id` that differs from the path-derived id and is resolved by restoring the path-derived id and recording the other as an alias; `generated path collides with hand-written folder` is a generated file under `rules/`, `specs/`, `tech-debt/`, or any other seed folder.
+`created` is `init` and `rebuild`; `updated` is `update` and `import`, counting the files written or marked, JSON indexes included; `verified` and `drifted` are standalone results. `written` counts generated files created, regenerated, or marked; `seeded` counts `seed` paths created this run; `verified` counts generated files read and found conforming; `curated read` counts curated Markdown files outside `repos/`, each checked for frontmatter with `title`, `status`, `created`, `updated`, `tags` and a valid `status`. Standalone verification writes nothing, so `written` and `seeded` are `0`, and the drift list is what the next `rebuild` corrects. `occupied by curated file` is a file without `generated: domain-sync` at a generated path; `id renamed` is a frontmatter `id` that differs from the path-derived id and is resolved by restoring the path-derived id and recording the other as an alias; `generated path collides with curated folder` is a generated file under `rules/`, `specs/`, `tech-debt/`, or any other seed folder.
 
 ## Avoid
 
@@ -491,4 +491,4 @@ Emitted by every sync command and by standalone verification.
 - Adding a `## Notes` section or frontmatter to the JSON indexes or `last-sync.md`
 - Writing a flow reference in any form other than `<capability>/<flow>`
 - Advancing a repo's recorded `sha` anywhere but the Record pass
-- Writing, moving, or adopting a hand-written file from any sync pass
+- Writing, moving, or adopting a curated file from any sync pass

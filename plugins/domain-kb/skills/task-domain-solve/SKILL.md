@@ -26,7 +26,7 @@ Reads a ticket or problem statement against both layers of the knowledge base, w
 | Text or `--in <file>` | yes | The ticket or problem, inline or read from the file; a bare tracker URL is not fetched, the workflow asks for the text and stops           |
 | `--out <file>`   | no       | The analysis path; default: `--in` with `-out` inserted before the extension in the same directory, or `tmp/solve-out.md` for inline text  |
 | `--prompt <file>` | no      | The super-prompt path; default: `--in` with `-prompt` inserted before the extension, or `tmp/solve-prompt.md` for inline text              |
-| `--base <branch>` | no      | The base branch for the diff and PR draft; default `Base branch` from `AGENTS.md` `## Solve`, else `main`                                  |
+| `--base <branch>` | no      | The base branch for the diff and PR draft; default `Base branch` from `CLAUDE.md` `## Solve`, else `main`                                  |
 | `--repo <name>`  | no       | The target repo under `repos/`; absent, inferred from the flows the ticket touches; ambiguous (two repos share the changes), the workflow lists them and asks |
 
 ## Workflow
@@ -37,7 +37,7 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Locate the knowledge base and its configuration
 
-The root is the working directory; both layers are located as `task-domain-ask` Step 2 does, and the workflow stops with `no knowledge base here - run task-domain-sync init or import` when neither exists. Read `AGENTS.md` `## Solve` (every key; a missing section or an `unknown - set in AGENTS.md ## Solve` value means the default applies and the report says so), `## Precedence`, `## Audience`, and `## Tech Stack` when present. Read `--in` when given; a tracker URL alone stops with `paste the ticket text - URLs are not fetched`.
+The root is the working directory; both layers are located as `task-domain-ask` Step 2 does, and the workflow stops with `no knowledge base here - run task-domain-sync init or import` when neither exists. Read `CLAUDE.md` `## Solve` (every key; a missing section or an `unknown - set in CLAUDE.md ## Solve` value means the default applies and the report says so), `## Precedence`, `## Audience`, and `## Tech Stack` when present. Read `--in` when given; a tracker URL alone stops with `paste the ticket text - URLs are not fetched`.
 
 ### Step 3 - Target repo and stack
 
@@ -45,7 +45,7 @@ Resolve `--repo`, or infer it after Step 4 from the repo that owns the most chan
 
 ### Step 4 - Retrieve
 
-Retrieve as `task-domain-ask`'s ticket shape does: the flows touched, their state changes and side effects, coupling rows, callers, and size signal, every citation read in the repo and marked `verified | moved | gone`; plus the hand-written `rules/`, `specs/`, `incidents/`, and `tech-debt/` docs naming the item's surfaces, entities, or terms, in every Audience language. A surface no card and no doc covers is `not found in docs`.
+Retrieve as `task-domain-ask`'s ticket shape does: the flows touched, their state changes and side effects, coupling rows, callers, and size signal, every citation read in the repo and marked `verified | moved | gone`; plus the curated `rules/`, `specs/`, `incidents/`, and `tech-debt/` docs naming the item's surfaces, entities, or terms, in every Audience language. A surface no card and no doc covers is `not found in docs`.
 
 ### Step 5 - Analyse
 
@@ -61,7 +61,7 @@ Write `--out` per the Output Format's analysis shape, creating its directory whe
 
 ### Step 8 - Write the super-prompt
 
-Write `--prompt` per the Output Format's super-prompt contract. Skills are chosen in this order: the `## Solve` `Implement skill`, `Review skill`, and `Test skill` when set; otherwise `core` skills by topic (`core:task-code-review` always; `core:task-code-review-security` when the change touches auth, secrets, or money; `core:backend-db-migration` for a schema change; `core:backend-idempotency` for a retried or webhook-driven write; `core:ops-release-safety` for a change behind a flag or with a rollout; `core:task-pr-create` for the PR draft; any other `core` atomic whose concern the change names), at most five in total with a one-line reason each, and the prompt states `defaults used - set AGENTS.md ## Solve to name project skills` when no `## Solve` skill was set. The `Conventions file` is named as the first file to read and treated as binding; when unset the line reads `no conventions file configured`. The `Test command` is copied verbatim; when unset the phase says `test command not configured - use the framework's default runner` and names the framework from Step 3.
+Write `--prompt` per the Output Format's super-prompt contract. Skills are chosen in this order: the `## Solve` `Implement skill`, `Review skill`, and `Test skill` when set; otherwise `core` skills by topic (`core:task-code-review` always; `core:task-code-review-security` when the change touches auth, secrets, or money; `core:backend-db-migration` for a schema change; `core:backend-idempotency` for a retried or webhook-driven write; `core:ops-release-safety` for a change behind a flag or with a rollout; `core:task-pr-create` for the PR draft; any other `core` atomic whose concern the change names), at most five in total with a one-line reason each, and the prompt states `defaults used - set CLAUDE.md ## Solve to name project skills` when no `## Solve` skill was set. The `Conventions file` is named as the first file to read and treated as binding; when unset the line reads `no conventions file configured`. The `Test command` is copied verbatim; when unset the phase says `test command not configured - use the framework's default runner` and names the framework from Step 3.
 
 ## Output Format
 
@@ -139,7 +139,7 @@ Super-prompt file (`--prompt`): the file is the prompt. No fence wraps it, no he
 - [ ] Step 1: `behavioral-principles` loaded
 - [ ] Step 2: both layers located; `## Solve`, `## Precedence`, `## Audience`, `## Tech Stack` read; defaults named where a value was unset; URL-only input stopped
 - [ ] Step 3: target repo resolved or inferred, ambiguity asked; `stack-detect` run over `repos/<target>/` and surfaced only through the `**Stack:**` line
-- [ ] Step 4: flows, changes, coupling, callers, size, and hand-written docs retrieved in every Audience language; every citation read and marked; uncovered surfaces stated as `not found in docs`
+- [ ] Step 4: flows, changes, coupling, callers, size, and curated docs retrieved in every Audience language; every citation read and marked; uncovered surfaces stated as `not found in docs`
 - [ ] Step 5: analysis written from retrieved rows and docs only, with gaps stated
 - [ ] Step 6: pushback items only where warranted, each with the four fields
 - [ ] Step 7: analysis file written at `--out` in the stated shape
@@ -147,7 +147,7 @@ Super-prompt file (`--prompt`): the file is the prompt. No fence wraps it, no he
 
 ## Avoid
 
-- Naming any skill outside `core` and this plugin unless `AGENTS.md` `## Solve` names it
+- Naming any skill outside `core` and this plugin unless `CLAUDE.md` `## Solve` names it
 - Filling the stack, test command, or conventions from what such repos usually use instead of `stack-detect` and `## Solve`
 - Wrapping the super-prompt in a fence or a heading that calls it a prompt
 - Letting the prompt commit, push, or open a PR

@@ -21,10 +21,10 @@ Finds every place a business flow can start, leave, or land in one service repos
 | Input                 | Required | Notes                                                                                                                              |
 | --------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Repo                  | yes      | `repos/<repo>/` and its stack note from `_index/sync-state.json` (`unknown stack` is accepted)                                      |
-| Scope                 | no       | The repo's `Scope` cell from `AGENTS.md` `## Repos`: `all` (default), or `include=<regex>` on repo-relative paths, optionally `; tables=<regex>` on table names |
+| Scope                 | no       | The repo's `Scope` cell from `CLAUDE.md` `## Repos`: `all` (default), or `include=<regex>` on repo-relative paths, optionally `; tables=<regex>` on table names |
 | Other repos           | no       | The other `repos/<repo>/` directories in scope, with their inventories when already discovered this run; needed to tell `internal api` from `public api` and to give a screen its backend's capability |
 | Existing inventory    | no       | `surfaces/<repo>.md` from the last sync; `Used by flows` and `## Notes` are carried for rows whose surface persists                 |
-| Capability table      | no       | `AGENTS.md` `## Capabilities` rows and the existing `capabilities/` ids with each `capability.md` `aliases`                          |
+| Capability table      | no       | `CLAUDE.md` `## Capabilities` rows and the existing `capabilities/` ids with each `capability.md` `aliases`                          |
 | Unmapped changes      | no       | Rows of ATLAS `## Unmapped changes` whose file sits under this repo; rows for other repos are left to their own pass                |
 
 ## Rules

@@ -13,7 +13,7 @@ Turns the tracing tool's and the error tracker's view of one surface into the ei
 
 ## When to Use
 
-- `task-domain-sync` Trace pass, once per flow trigger, when `AGENTS.md` `## Observability` names a tracing or error tool and its MCP server is reachable
+- `task-domain-sync` Trace pass, once per flow trigger, when `CLAUDE.md` `## Observability` names a tracing or error tool and its MCP server is reachable
 - `task-domain-ask` and `task-domain-explain` showing live numbers for a flow
 - Standalone: one surface named by the user, or a paste of the tool's output to be shaped into blocks
 
@@ -23,8 +23,8 @@ Turns the tracing tool's and the error tracker's view of one surface into the ei
 | --------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Surface   | yes      | The APM service name and the surface as the code registers it (`orders-api`, `POST /api/orders/:id/refund`, or `ReconcileRefundsJob`); for a ui screen trigger, the first backend hop |
 | Branches  | no       | The card's Edge branches rows, each with its guard and the log message or span the guard produces; absent on a first trace              |
-| Tracing   | yes      | `Tracing:` from `AGENTS.md` `## Observability`; `none` is accepted                                                                    |
-| Errors    | yes      | `Errors:` from `AGENTS.md` `## Observability`; `none` is accepted                                                                     |
+| Tracing   | yes      | `Tracing:` from `CLAUDE.md` `## Observability`; `none` is accepted                                                                    |
+| Errors    | yes      | `Errors:` from `CLAUDE.md` `## Observability`; `none` is accepted                                                                     |
 | Window    | no       | Days; default `window` in `_index/sync-state.json`, else 30                                                                           |
 | Paste     | no       | Text the user copied from the tool; parsed into the blocks it can fill, the rest `unavailable - not in paste`                          |
 

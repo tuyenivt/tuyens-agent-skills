@@ -22,23 +22,24 @@ Turns one knowledge-base artifact into a lesson a person can read once and expla
 | Input   | Required | Notes                                                                                                                                     |
 | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Target  | yes      | A flow card path or `<capability>/<flow>`; a bare flow id or alias; a `capability.md` path or capability id; a rule id `R-<n>`             |
-| KB root | yes      | `ATLAS.md`, `ledger/rules.md`, `capabilities/` (for bare-name resolution and the cards a capability lists), and the hand-written `rules/` doc a ledger row's `Doc` names |
+| KB root | yes      | `ATLAS.md`, `ledger/rules.md`, `capabilities/` (for bare-name resolution and the cards a capability lists), and the curated docs the target names: every `rules/` file a Rules row's `Doc` or a ledger row's `Doc` points at, and every `doc:` and `consumer:` entry under the card's `## Related` |
 
 ## Rules
 
 - **Resolve the target first.** A bare name is matched against capability ids and aliases, then flow ids and aliases across every capability; one match emits `resolved: <id>` as the first line and the lesson follows; several are listed as `ambiguous: <candidates>` and nothing else is emitted. A rule id the card still writes as `R-new` is rendered as `R-new`. A missing source is reported in one line and nothing else is emitted: `no card for <name> - trace it first` for a flow, `no capability file for <name> - sync first` for a capability, `no ledger row <id> - sync first` for a rule.
-- **Render, never research.** Every statement comes from the target file, the ledger, the `rules/` doc a ledger row's `Doc` names, or ATLAS. A citation the source row carries (`file:line`, a path) is kept in the slot that has room for it: the parenthesis after a step, the `Where` column, the surprise line, the Monitor cell; a hop's `(unverified)` or `(external - not in repos)` marker travels with its step. A card whose `freshness` is `stale` renders `stale since {date}` in its Status line, the date being the first `## Changed since` row's, and its `## Changed since` rows under Read next. A card whose `freshness` is `orphaned` renders `orphaned - frozen at {synced}`.
+- **Render, never research.** Every statement comes from the target file, the ledger, the curated docs the target links (`Doc` cells, `doc:` and `consumer:` entries), or ATLAS; a linked doc that does not exist renders as `doc missing: <path>` and nothing is searched for. A citation the source row carries (`file:line`, a path) is kept in the slot that has room for it: the parenthesis after a step, the `Where` column, the surprise line, the Monitor cell; a hop's `(unverified)` or `(external - not in repos)` marker travels with its step. A card whose `freshness` is `stale` renders `stale since {date}` in its Status line, the date being the first `## Changed since` row's, and its `## Changed since` rows under Read next. A card whose `freshness` is `orphaned` renders `orphaned - frozen at {synced}`.
 - **Plain words first.** Prose and numbered steps carry the lesson; tables condense, they do not introduce. Service and endpoint names appear in What happens, never in the one-sentence summary, which is the card's Story verbatim, both sentences when it has two.
 - **Rules come from the card**, one lesson row per card row, keeping the card's `Id`.
 - **Surprises are chosen by rule, in this order, three at most:** rules with `Quirk: yes`; rules with `Confidence: unknown`; failure modes whose `Detected by` reads a `none` or `unknown` form; edge branches with `Exercised in traces: no`; Debt rows whose finding starts `trace differs`. Fewer candidates yield fewer surprises, never padding.
 - **Questions are derived, not invented.** At most five: rules first in card order, then failure modes, keeping at least one failure mode when the card has any; each restates its row as a stakeholder would ask it, and its answer cites the row.
-- **Only the target kind's sections are emitted.** The prose cap counts the Story, the surprises, and the questions only, never steps, diagram, or tables: 400 words for a flow lesson, 250 for a capability, 150 for a rule.
+- **Linked docs are rendered inline, in the section they belong to.** A Rules row with a `Doc` gets the doc's Statement as the `Rule` cell and its Exceptions and Scope as a `From the docs` line under the table; a `doc:` incident becomes a `When it breaks` row's `Past incident` and a `doc:` spec or context file becomes one `Background` line; a `consumer:` doc becomes one `Who calls this` line from its `## Who` and `## Sharp edges`. Each rendered line ends with the doc path. The reader never has to open the second folder to finish the lesson.
+- **Only the target kind's sections are emitted.** The prose cap counts the Story, the surprises, and the questions only, never steps, diagram, tables, or doc lines: 400 words for a flow lesson, 250 for a capability, 150 for a rule.
 
 ## Patterns
 
 ### Flow lesson
 
-`What happens` is the hop list rewritten as plain-language steps, one per hop, each ending with its citation; branch sub-items become indented sub-steps. `What changes` condenses State changes to entity, from, to, the guard in plain words, and the citation. `The rules, and why` takes one row per card rule with the rationale in a sentence, and the word `quirk` in front of any row with `Quirk: yes`. `When it breaks` pairs each failure mode's `User sees` with its `First check`, and names the monitor or capture string from `Detected by`, or writes `no signal`. A Related entry that reads `flow to trace:` renders as `not yet traced: <kind>: <surface>`; a `doc:` or `consumer:` entry renders as its path under Read next.
+`What happens` is the hop list rewritten as plain-language steps, one per hop, each ending with its citation; branch sub-items become indented sub-steps. `What changes` condenses State changes to entity, from, to, the guard in plain words, and the citation. `The rules, and why` takes one row per card rule with the rationale in a sentence, and the word `quirk` in front of any row with `Quirk: yes`; a row whose `Doc` is a path takes the doc's `## Statement` sentence as its `Rule` cell and adds a `From the docs` line below the table with the doc's `Does NOT apply to` and `## Exceptions` in plain words. `When it breaks` pairs each failure mode's `User sees` with its `First check`, names the monitor or capture string from `Detected by`, or writes `no signal`, and fills `Past incident` from the `doc:` incidents whose text names that failure, else `none`. `Background` holds one line per `doc:` spec or context entry, its title and first sentence; `Who calls this` holds one line per `consumer:` entry. A Related entry that reads `flow to trace:` renders as `not yet traced: <kind>: <surface>`; every `doc:` and `consumer:` path is repeated under Read next.
 
 Bad - a table with the card's cells copied:
 
@@ -90,14 +91,24 @@ Flow target:
 | Id | Rule | Why | Confidence |
 | -- | ---- | --- | ---------- |
 
+- **From the docs:** {R-n: does not apply to ...; exceptions: ... ({doc path})}    {one line per rule with a Doc; absent when none has one}
+
 ## What will surprise you
 
 1. {surprise - source section and row - file:line when the row has one}
 
 ## When it breaks
 
-| You will hear | Look first | Monitor |
-| ------------- | ---------- | ------- |
+| You will hear | Look first | Monitor | Past incident |
+| ------------- | ---------- | ------- | ------------- |
+
+## Background                                          {only when the card has a doc: spec or context entry}
+
+- {title - first sentence ({doc path})}
+
+## Who calls this                                      {only when the card has a consumer: entry}
+
+- {who - sharp edges in one sentence ({doc path})}
 
 ## See it yourself
 
@@ -124,6 +135,7 @@ An empty section keeps its header and one line `none - {evidence from the source
 ## Avoid
 
 - Re-tracing or reading repo code to fill a gap the card left
+- Searching the curated folders for a doc the card does not link
 - Restating a card table cell for cell instead of rewriting it as a sentence
 - Ranking surprises by interest instead of the rule order
 - Emitting the card itself, or the trace summary block, as part of the lesson
