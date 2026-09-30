@@ -14,7 +14,7 @@ Places one input, a single fact or a whole document, into the curated layer `dom
 ## When to Use
 
 - `task-domain-sync import` for inline text, one file, or every file of a foreign knowledge base
-- `task-domain-sync update` Distil pass, for each cited candidate fact from the commit window
+- `task-domain-sync` Distil pass (`update`), for each cited candidate fact from the commit window
 - `task-domain-ask` with `save` on a pasted message that is a durable fact
 - Standalone: one fact or one file named by the user
 
