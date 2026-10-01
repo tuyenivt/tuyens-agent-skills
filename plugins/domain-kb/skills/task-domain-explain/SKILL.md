@@ -1,6 +1,6 @@
 ---
 name: task-domain-explain
-description: Read the domain knowledge base: no argument lists the atlas and learning path; a flow, capability, or rule name renders it as a lesson.
+description: "Read the domain knowledge base: the atlas and learning path, the stale cards sync will touch, or a flow, capability, or rule as a lesson."
 metadata:
   category: domain
   tags: [domain, knowledge-base, explain, lesson, atlas, learning-path]
@@ -10,13 +10,13 @@ user-invocable: true
 
 # Domain Explain
 
-The newcomer's entry to the knowledge base `task-domain-sync` built. With no argument it shows what exists and in what order to read it; with a name it renders one artifact as a lesson through `domain-flow-explain`. It reads and writes nothing; a stale card is rendered as stale and refreshed by `task-domain-sync`.
+The newcomer's entry to the knowledge base `task-domain-sync` built. With no argument it shows what exists and in what order to read it; with a name it renders one artifact as a lesson through `domain-flow-explain`. It writes nothing; a stale card is rendered as stale and refreshed by `task-domain-sync`.
 
 ## When to Use
 
 - You do not yet know what to ask: run it with no argument and pick from the atlas
 - You want one flow, capability, or rule explained in plain words with its reasons, surprises, and symptoms
-- You want to see which cards the next `task-domain-sync` will touch: run it with `stale`
+- You want to see what the next `task-domain-sync` will touch: run it with `stale`
 
 **Not for:** a question, ticket, alert, or pasted message (`task-domain-ask`); building or refreshing the knowledge base (`task-domain-sync`).
 
@@ -24,7 +24,7 @@ The newcomer's entry to the knowledge base `task-domain-sync` built. With no arg
 
 | Input  | Required | Notes                                                                                                              |
 | ------ | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| Target | no       | Nothing, or `stale`, for the atlas view; a `<capability>/<flow>`, a bare flow or capability name or alias, or `R-<n>` for a lesson |
+| Target | no       | Nothing for the atlas view; `stale` for the stale view; a `<capability>/<flow>`, a bare flow or capability id or alias, or `R-<n>` for a lesson |
 
 ## Workflow
 
@@ -34,19 +34,15 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Locate the knowledge base
 
-Use skill: `domain-kb-layout` for the file shapes. The root is the working directory. When `_index/sync-state.json` is absent or records no `sha`, emit `no knowledge base here - run task-domain-sync init` (adding `; curated docs exist - task-domain-ask reads them` when any curated folder holds a Markdown file) and stop; when it records `in_progress`, emit `sync interrupted at {command}:{pass} - run task-domain-sync to finish` and stop. Read `ATLAS.md` for the counts line, the flows, the reading order, and `### Untraced`, `_index/sync-state.json` for the repos, SHAs, window, and `curated` counts, `_index/last-sync.md` for its `Start with` and `Flows` lines, `index.md` `## Curated` for the per-folder counts when `curated` is absent, and the frontmatter `aliases` of every card and `capability.md`.
+Use skill: `domain-kb-layout` for every path, section, and empty form named below. The root is the working directory. Check in this order and stop on the first that holds, emitting its stop line from the Output Format: `_index/sync-state.json` records `in_progress` (`interrupted`); it is absent or records no `sha` (`no knowledge base`, with the curated hint when any curated folder holds a Markdown file); `ATLAS.md` is absent (`no atlas`). Then read `sync-state.json` for `synced`, `window`, every repo's `sha`, and `curated`; `ATLAS.md` for the counts line, `## Learning path`, every `## Capabilities` table, `### Untraced`, and `## Unmapped changes`; `_index/last-sync.md` for its `Start with` and `Flows` lines; `index.md` `## Curated` when `curated` is absent, counting the doc lines under each `### {folder}` (a `- none` line counts 0); and `CLAUDE.md` `## Audience` `Language:` (default `en`).
 
-### Step 3 - Atlas view (no target, or `stale`)
+### Step 3 - Atlas or stale view (no target, or `stale`)
 
-Render the Output Format's atlas block: Synced and Repos from `sync-state.json`, Flows from the ATLAS counts line, the learning path and every capability with its flows in reading order from `ATLAS.md`, the untraced triggers, the curated counts, and the last sync's two lines. With `stale`, list only the flows whose Status is `stale` and the `## Unmapped changes` rows, so the reader sees what the next `task-domain-sync` will touch; orphaned flows are listed under their own heading, since `task-domain-sync init` is what removes them. Stop after the block.
+Render the matching Output Format block and stop. The atlas view takes Synced, Repos, and Flows from Step 2, the learning path and every capability table verbatim from ATLAS (the `#` column as ATLAS numbers it), `### Untraced` and `### Unmapped changes` when their ATLAS table has a row other than the `none` row, the curated counts, the two last-sync lines, and Next. The stale view lists what the last sync marked and the next bare `task-domain-sync` will touch (commits since `{synced}` are not visible until it runs): the ATLAS rows whose Status is `stale`, the `### Untraced` rows (it traces missing cards too), and `## Unmapped changes`; orphaned rows go under their own heading, since `update` leaves them and `task-domain-sync init` deletes an orphan whose `## Notes` is empty.
 
-### Step 4 - Resolve the target
+### Step 4 - Resolve and render the lesson (any other target)
 
-A `<capability>/<flow>` id resolves directly when its card exists. Otherwise apply `domain-flow-explain`'s resolution rule: capability ids and aliases first, then flow ids and aliases across every capability, then `R-<n>` against `ledger/rules.md`. A single match continues; an ambiguous name emits the candidates and stops; a name matching nothing emits `no such flow, capability, or rule: <name>` with the three nearest ids from ATLAS and stops.
-
-### Step 5 - Render the lesson
-
-Use skill: `domain-flow-explain` with the resolved target and the KB root; emit its lesson unchanged, preceded by the `resolved:` line when the target was a bare name. A stale card's lesson carries `stale since` in its Status line and its `## Changed since` rows under Read next, as the atomic renders them; the closing line names `task-domain-sync` as the way to refresh it.
+Use skill: `domain-flow-explain` with the target as typed, the KB root, and the Languages; it resolves the target by its own rule and emits the resolution and stop lines its contract defines. Emit its output unchanged. When the lesson's Status starts with `stale`, add the Refresh line after it.
 
 ## Output Format
 
@@ -55,61 +51,97 @@ Atlas view:
 ```
 ## Domain atlas
 
-- **Synced:** {date} ({n} days window)
-- **Repos:** {repo@sha, ...}
-- **Flows:** {n} ({n} stale, {n} orphaned, {n} missing)
+- **Synced:** {synced} ({window} days window)
+- **Repos:** {repo@first 7 characters of sha | repo@unsynced, ...}
+- **Flows:** {the ATLAS counts line's Flows value}
 
 ### Read in this order
 
-1. {learning path line from ATLAS}
-2. ...
+{the ATLAS learning path list, verbatim}
 
 ### {n}. {Capability}
 
 | # | Flow | Trigger | Status | Read before |
 | - | ---- | ------- | ------ | ----------- |
 
-### Untraced                                          {only when ATLAS ### Untraced has rows}
+### Untraced                                          {only when ATLAS ### Untraced has a row other than the none row}
 
 | Capability | Trigger |
 | ---------- | ------- |
 
+### Unmapped changes                                  {only when ATLAS ## Unmapped changes has a row other than the none row}
+
+| File | Commit | Date |
+| ---- | ---- | ---- |
+
 ### Curated
 
-{n} rules, {n} specs, {n} incidents, {n} context, {n} debt, {n} adr, {n} consumers, {n} patterns
+{folder} {n}, ...
 
 ### Last sync
 
-- **Start with:** {the line from `_index/last-sync.md` | unavailable - no last-sync.md}
-- **Flows:** {the line from `_index/last-sync.md` | unavailable - no last-sync.md}
+- **Start with:** {the line from `_index/last-sync.md` | unavailable - not in last-sync.md}
+- **Flows:** {the line from `_index/last-sync.md` | unavailable - not in last-sync.md}
 
-### Orphaned                                          {only with `stale`, when any flow is orphaned}
+### Next
+
+- {the first non-orphaned flow of the first capability in ATLAS order}
+```
+
+`Curated` lists one `{folder} {n}` per `curated` key, in the layout's curated-folder order, keys as written (`tech-debt`, never `debt`). Next reads `run task-domain-sync - {n} stale, {m} missing` instead when the counts line shows any stale or missing card.
+
+Stale view:
+
+```
+## Domain atlas - stale
+
+- **Synced:** {synced}
+- **Flows:** {the ATLAS counts line's Flows value}
+
+### Stale
+
+| Flow | Capability | Trigger |
+| ---- | ---------- | ------- |
+
+### Missing
+
+| Capability | Trigger |
+| ---------- | ------- |
+
+### Orphaned
 
 | Flow | Capability |
 | ---- | ---------- |
 
-### Unmapped changes                                  {only with `stale`, or when the table has rows}
+### Unmapped changes
 
 | File | Commit | Date |
 | ---- | ------ | ---- |
 
 ### Next
 
-- {the first flow of the first capability, or `run task-domain-sync - {n} stale cards` when any is stale}
+- {run task-domain-sync - {n} stale, {m} missing, {k} unmapped | nothing to refresh}
 ```
 
-Lesson: `resolved: <id>` when the target was a bare name, then the `domain-flow-explain` lesson verbatim, then `- **Refresh:** run task-domain-sync` when the card is stale.
+`Flow` is `<capability>/<flow>` linked as ATLAS links it; Next reads `nothing to refresh` when the stale, missing, and unmapped counts are all 0. Every table is present; one with nothing to list keeps its header and one row reading `none - <evidence>` (`none - no stale card`, `none - every trigger has a card`, `none - no orphaned card`, `none - no unmapped change since the last sync`).
+
+Lesson: the `domain-flow-explain` output verbatim; when its Status starts with `stale`, a blank line and then `**Refresh:** run task-domain-sync`.
+
+Stop lines, each emitted alone:
+
+- `sync interrupted at {command}:{pass} - run task-domain-sync to finish`
+- `no knowledge base here - run task-domain-sync init{; curated docs exist - task-domain-ask reads them}`
+- `no atlas - run task-domain-sync init to rebuild ATLAS.md`
 
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: layout loaded; knowledge base located by a recorded `sha` and no `in_progress`; absence or interruption reported, with the curated hint when docs exist, and nothing else emitted; `last-sync.md` and curated counts read
-- [ ] Step 3: Synced and Repos from `sync-state.json`, counts, flows, order and untraced from `ATLAS.md`, curated counts and the two last-sync lines rendered; `stale` filter applied with orphans under their own heading; stopped after the block
-- [ ] Step 4: target resolved by the atomic's rule; ambiguity and no-match stopped with candidates
-- [ ] Step 5: lesson emitted verbatim from `domain-flow-explain`, with the `resolved:` line and the refresh line when they apply; nothing written
+- [ ] Step 2: layout loaded; `in_progress`, then `sha`, then `ATLAS.md` checked in that order, a stop line emitted alone on the first that held; `synced`, window, SHAs, curated counts, every ATLAS section the views render, both last-sync lines, and Languages read
+- [ ] Step 3: atlas view rendered from `sync-state.json` and ATLAS with the learning path and capability tables verbatim, Untraced and Unmapped only when they have real rows, curated keys as written, Next filled; stale view with all four tables, missing cards included, empty tables in the `none` form; stopped after the block
+- [ ] Step 4: target and Languages passed to `domain-flow-explain`; its output emitted unchanged, including its resolution and stop lines; Refresh line added only when the lesson's Status starts with `stale`; nothing written
 
 ## Avoid
 
 - Tracing, refreshing, or writing a card here; that is `task-domain-sync`'s job
-- Rewriting the atomic's lesson into a different shape
+- Resolving a name here instead of in `domain-flow-explain`, or rewriting its lesson into a different shape
 - Listing flows in the atlas from `capabilities/` instead of `ATLAS.md`, which carries the reading order
