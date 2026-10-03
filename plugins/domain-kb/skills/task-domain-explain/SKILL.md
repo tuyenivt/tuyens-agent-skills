@@ -24,7 +24,7 @@ The newcomer's entry to the knowledge base `task-domain-sync` built. With no arg
 
 | Input  | Required | Notes                                                                                                              |
 | ------ | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| Target | no       | Nothing for the atlas view; `stale` for the stale view; a `<capability>/<flow>`, a bare flow or capability id or alias, or `R-<n>` for a lesson |
+| Target | no       | Nothing for the atlas view; `stale`, in any case, for the stale view; a `<capability>/<flow>`, a card or `capability.md` path, a bare flow or capability id or alias, or `R-<n>` for a lesson (a flow or capability named `stale` is reached as `<capability>/<flow>` or by its path) |
 
 ## Workflow
 
@@ -34,15 +34,15 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Locate the knowledge base
 
-Use skill: `domain-kb-layout` for every path, section, and empty form named below. The root is the working directory. Check in this order and stop on the first that holds, emitting its stop line from the Output Format: `_index/sync-state.json` records `in_progress` (`interrupted`); it is absent or records no `sha` (`no knowledge base`, with the curated hint when any curated folder holds a Markdown file); `ATLAS.md` is absent (`no atlas`). Then read `sync-state.json` for `synced`, `window`, every repo's `sha`, and `curated`; `ATLAS.md` for the counts line, `## Learning path`, every `## Capabilities` table, `### Untraced`, and `## Unmapped changes`; `_index/last-sync.md` for its `Start with` and `Flows` lines; `index.md` `## Curated` when `curated` is absent, counting the doc lines under each `### {folder}` (a `- none` line counts 0); and `CLAUDE.md` `## Audience` `Language:` (default `en`).
+Use skill: `domain-kb-layout` for every path, section, and empty form named below; read its Rules and the Patterns sections Ids and references, index.md, ATLAS.md, Indexes, and Stale marking. The root is the working directory. Check in this order and stop on the first that holds, emitting its stop line from the Output Format: `_index/sync-state.json` records a non-null `in_progress` (`interrupted`); it is absent or records no `sha` (`no knowledge base`, with the curated hint when any curated folder holds a Markdown file); `ATLAS.md` is absent (`no atlas`). Then read `CLAUDE.md` `## Audience` `Language:` (default `en`) and, for the view the target selects, nothing more than it renders: the atlas view reads `sync-state.json` for `synced`, `window`, every repo's `sha`, and `curated`; `ATLAS.md` for the counts line, `## Learning path`, every `## Capabilities` table, `### Untraced`, and `## Unmapped changes` (its `## Notes` is not rendered); `_index/last-sync.md` for the value after the `Start with` and `Flows` labels (a line or the file absent, as after an `import`, reads `unavailable - not in last-sync.md`); and `index.md` `## Curated` when `curated` is absent, counting the doc lines under each `### {folder}` (a `- none` line counts 0). The stale view reads `synced`, the counts line, the `## Capabilities` tables, `### Untraced`, and `## Unmapped changes`. A lesson reads nothing else here.
 
 ### Step 3 - Atlas or stale view (no target, or `stale`)
 
-Render the matching Output Format block and stop. The atlas view takes Synced, Repos, and Flows from Step 2, the learning path and every capability table verbatim from ATLAS (the `#` column as ATLAS numbers it), `### Untraced` and `### Unmapped changes` when their ATLAS table has a row other than the `none` row, the curated counts, the two last-sync lines, and Next. The stale view lists what the last sync marked and the next bare `task-domain-sync` will touch (commits since `{synced}` are not visible until it runs): the ATLAS rows whose Status is `stale`, the `### Untraced` rows (it traces missing cards too), and `## Unmapped changes`; orphaned rows go under their own heading, since `update` leaves them and `task-domain-sync init` deletes an orphan whose `## Notes` is empty.
+Render the matching Output Format block and stop. The atlas view takes Synced, Repos, and Flows from Step 2, the learning path and every capability table verbatim from ATLAS (the `#` column as ATLAS numbers it), `### Untraced` and `### Unmapped changes` when their ATLAS table has a row other than the `none` row, the curated counts, the two last-sync lines, and Next. The stale view lists what the last sync marked and the next bare `task-domain-sync` will touch (commits after the recorded `sha` are not visible until it runs): the ATLAS rows whose Status is `stale`, the `### Untraced` rows (it traces missing cards too), and `## Unmapped changes`; orphaned rows go under their own heading, since `update` leaves them and `task-domain-sync init` deletes an orphan whose `## Notes` is empty.
 
 ### Step 4 - Resolve and render the lesson (any other target)
 
-Use skill: `domain-flow-explain` with the target as typed, the KB root, and the Languages; it resolves the target by its own rule and emits the resolution and stop lines its contract defines. Emit its output unchanged. When the lesson's Status starts with `stale`, add the Refresh line after it.
+Use skill: `domain-flow-explain` with the target as typed, the KB root, and the Languages; it resolves the target by its own rule and emits the resolution and stop lines its contract defines. Emit its output unchanged. When the lesson's Status starts with `stale`, append the Refresh line after the whole lesson, as the Output Format shows.
 
 ## Output Format
 
@@ -72,7 +72,7 @@ Atlas view:
 ### Unmapped changes                                  {only when ATLAS ## Unmapped changes has a row other than the none row}
 
 | File | Commit | Date |
-| ---- | ---- | ---- |
+| ---- | ------ | ---- |
 
 ### Curated
 
@@ -80,15 +80,15 @@ Atlas view:
 
 ### Last sync
 
-- **Start with:** {the line from `_index/last-sync.md` | unavailable - not in last-sync.md}
-- **Flows:** {the line from `_index/last-sync.md` | unavailable - not in last-sync.md}
+- **Start with:** {the value of that line in `_index/last-sync.md` | unavailable - not in last-sync.md}
+- **Flows:** {the value of that line in `_index/last-sync.md` | unavailable - not in last-sync.md}
 
 ### Next
 
-- {the first non-orphaned flow of the first capability in ATLAS order}
+- {run task-domain-sync - {n} stale, {m} missing{, {k} unmapped} | <capability>/<flow> of the first non-orphaned ATLAS row | none - no flow in ATLAS}
 ```
 
-`Curated` lists one `{folder} {n}` per `curated` key, in the layout's curated-folder order, keys as written (`tech-debt`, never `debt`). Next reads `run task-domain-sync - {n} stale, {m} missing` instead when the counts line shows any stale or missing card.
+`Curated` lists one `{folder} {n}` per `curated` key, zeros included, in the layout's curated-folder order, keys as written (`tech-debt`, never `debt`); from the `index.md` fallback, one per `### {folder}` heading under `## Curated`; with neither, the line reads `unavailable - no curated counts`. Next, in both views, takes the sync form when the counts line shows a stale or missing card, `n` and `m` those counts (orphans are not counted) and `, {k} unmapped` appended when `## Unmapped changes` has a row other than the `none` row (an unmapped row alone never selects the sync form, since a file no card cites stays listed); otherwise the atlas view names the first non-orphaned row in ATLAS order, or `none - no flow in ATLAS`, and the stale view reads `nothing to refresh`.
 
 Stale view:
 
@@ -120,10 +120,10 @@ Stale view:
 
 ### Next
 
-- {run task-domain-sync - {n} stale, {m} missing, {k} unmapped | nothing to refresh}
+- {run task-domain-sync - {n} stale, {m} missing{, {k} unmapped} | nothing to refresh}
 ```
 
-`Flow` is `<capability>/<flow>` linked as ATLAS links it; Next reads `nothing to refresh` when the stale, missing, and unmapped counts are all 0. Every table is present; one with nothing to list keeps its header and one row reading `none - <evidence>` (`none - no stale card`, `none - every trigger has a card`, `none - no orphaned card`, `none - no unmapped change since the last sync`).
+`Flow` is `<capability>/<flow>` linked as ATLAS links it, and `Capability` is the capability id the link carries (the directory name, not the heading text); Next follows the rule under the atlas view. Every table is present; one with nothing to list keeps its header and one row reading `none - <evidence>` (`none - no stale card`, `none - every trigger has a card`, `none - no orphaned card`, `none - no unmapped change since the last sync`).
 
 Lesson: the `domain-flow-explain` output verbatim; when its Status starts with `stale`, a blank line and then `**Refresh:** run task-domain-sync`.
 
@@ -136,9 +136,9 @@ Stop lines, each emitted alone:
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: layout loaded; `in_progress`, then `sha`, then `ATLAS.md` checked in that order, a stop line emitted alone on the first that held; `synced`, window, SHAs, curated counts, every ATLAS section the views render, both last-sync lines, and Languages read
+- [ ] Step 2: layout loaded; non-null `in_progress`, then `sha`, then `ATLAS.md` checked in that order, a stop line emitted alone on the first that held; Languages read, then only what the selected view renders (`synced`, window, SHAs, curated counts, the ATLAS sections, both last-sync values)
 - [ ] Step 3: atlas view rendered from `sync-state.json` and ATLAS with the learning path and capability tables verbatim, Untraced and Unmapped only when they have real rows, curated keys as written, Next filled; stale view with all four tables, missing cards included, empty tables in the `none` form; stopped after the block
-- [ ] Step 4: target and Languages passed to `domain-flow-explain`; its output emitted unchanged, including its resolution and stop lines; Refresh line added only when the lesson's Status starts with `stale`; nothing written
+- [ ] Step 4: target, KB root, and Languages passed to `domain-flow-explain`; its output emitted unchanged, including its resolution and stop lines; Refresh line added only when the lesson's Status starts with `stale`; nothing written
 
 ## Avoid
 
