@@ -9,7 +9,7 @@ user-invocable: false
 
 # Unity Performance
 
-> Confirm the project's target platforms first - they decide which of the texture, fill-rate, and load-time guidance applies. C# allocation mechanics belong to `csharp-unity-patterns`; sprite atlases, sorting, and tilemap setup to `unity-2d-rendering`; UI Toolkit structure to `unity-ui-patterns`; where code lives to `unity-architecture-patterns`. This skill owns **cost**: what a frame, a byte of texture memory, and a scene load cost the player.
+> Confirm the project's target platforms first - they decide which of the texture, fill-rate, and load-time guidance applies. C# allocation mechanics belong to `csharp-unity-patterns`; sprite atlases, sorting, and tilemap setup to `unity-2d-rendering`; UI Toolkit structure to `unity-ui-patterns`; where code lives to `unity-architecture-patterns`; build size and the shipped artifact to `unity-build-release`; whether an ECS or pooling layer should exist at all to `unity-overengineering-review`. This skill owns **cost**: what a frame, a byte of texture memory, and a scene load cost the player.
 
 ## When to Use
 
@@ -20,13 +20,13 @@ user-invocable: false
 
 ## Rules
 
-- **Measure with the Profiler attached to a development *build* on a real target device.** Editor Play-mode timings are not the game: the editor runs extra tooling, uses a different scripting backend than the shipped IL2CPP build, and hides device thermal and GPU limits. An editor number is not evidence
-- Development builds carry profiler instrumentation and deep-call overhead. Use them to find *where* the cost is; confirm the shipped number in a non-development build (`unity-build-release`)
-- Frame budget is **16ms at 60fps, 33ms at 30fps**. Read the project's `Application.targetFrameRate` before assuming 60 - casual 2D games commonly ship 30fps deliberately for battery and thermal headroom, and 30 stable beats 60 unstable. When the target is stated by a person rather than read from the project, say so and use the stated figure
-- `Owner: Memory` and `Owner: Load` need their own budgets, since a frame figure says nothing about either. Memory: a 3GB Android device gives a game roughly 1GB before the OS starts killing it, so state total against that ceiling and split managed from native - they have different causes and different fixes. Load: cold start to first playable, measured from process start on a mid-tier device, not from the editor's first frame
+- **Measure with the Profiler attached to a development *build* on a real target device.** Editor Play-mode timings are not the game: the editor runs extra tooling, uses a different scripting backend than the shipped (typically IL2CPP) build, and hides device thermal and GPU limits. An editor number is not evidence
+- Development builds carry profiler markers (and per-call overhead when Deep Profiling Support is on). Use them to find *where* the cost is; confirm the shipped number in a non-development build (`unity-build-release`)
+- Frame budget is **16ms at 60fps, 33ms at 30fps**. Read the project's `Application.targetFrameRate`: unset (-1) means 30fps on mobile, and casual 2D games often ship 30fps deliberately for battery and thermal headroom - 30 stable beats 60 unstable. When the target is stated by a person rather than read from the project, say so and use the stated figure
+- `Owner: Memory` and `Owner: Load` need their own budgets, since a frame figure says nothing about either. Memory: on a 3GB Android device a game can expect on the order of 1GB before the low-memory killer acts (it varies by maker and OS version), so state total against that ceiling and split managed from native - they have different causes and different fixes. Load: cold start to first playable, measured from process start on a mid-tier device, not from the editor's first frame
 - **Per-frame managed allocation is the dominant mobile Unity performance failure.** Steady garbage forces collections, and a collection during play is a visible hitch. Target zero allocation in the steady-state frame loop
 - Never `Instantiate`/`Destroy` in a spawn loop or per-frame path. Pool
-- Attribute an overrun to CPU (main thread), GPU (fill rate/draw calls), or GC before changing anything. The Profiler timeline names which
+- Attribute an overrun to its owner - CPU (main thread), GPU (fill rate, draw calls), GC, Memory, or Load - before changing anything. The Profiler timeline names which
 - A fix without a before/after number on the same device is a guess. Report the number or report that you have none
 
 ## Patterns
@@ -36,28 +36,28 @@ user-invocable: false
 | Symptom | Likely owner | Typical cause |
 | --- | --- | --- |
 | Periodic hitch every few seconds, otherwise smooth | GC | steady per-frame allocation triggering collection |
-| Steady low framerate, main thread saturated | CPU scripts | `Update` on many objects, per-frame `GetComponent`/`Find`, physics queries |
+| Steady low framerate, main thread saturated | CPU | `Update` on many objects, per-frame `GetComponent`/`Find`, physics queries |
 | Slower the more of the screen the effect covers | GPU fill rate | overdraw from stacked transparent sprites |
 | Slower with more distinct on-screen objects, resolution-independent | GPU draw calls | broken batching, material variants |
-| Hitch on spawn, wave start, or first use of an effect | CPU + alloc | `Instantiate`, shader/material warm-up, lazy asset load |
+| Hitch on spawn, wave start, or first use of an effect | CPU and GC | `Instantiate`, shader/material warm-up, lazy asset load |
 | Hitch on scene change | Load | synchronous `LoadScene`, large asset dependency graph |
-| Fine on a flagship, unplayable on a budget device | GPU or memory | fill rate, texture memory, or thermal throttling |
+| Fine on a flagship, unplayable on a budget device | GPU or Memory | fill rate, texture memory, or thermal throttling |
 
 The Profiler's CPU timeline separates scripts, rendering, physics, and GC. The Memory Profiler package attributes retained bytes by asset. Attribute first; the wrong fix costs the same effort as the right one.
 
 ### GC allocation: the dominant problem
 
 ```csharp
-// Bad - allocates a string every frame; 60 collections' worth of garbage per minute
+// Bad - allocates a string every frame: 3,600 allocations a minute at 60fps
 void Update() { label.text = $"Score: {score}"; }
 
 // Good - allocation only when the displayed value actually changes
-void Update() { if (score != _shown) { _shown = score; label.text = _cached[score]; } }
+void Update() { if (score != _shown) { _shown = score; label.text = $"Score: {score}"; } }   // _shown starts at -1
 ```
 
-Common per-frame allocation sources: string building and interpolation, LINQ, capturing lambdas, `new` collections, allocating physics/component query overloads, and `foreach` over an interface-typed collection. Mechanics and the full list belong to `csharp-unity-patterns`; the point here is that each one shows in the Profiler's `GC.Alloc` column, and that column should read 0 B in a steady frame.
+Common per-frame allocation sources: string building and interpolation, LINQ, capturing lambdas, `new` collections, allocating physics/component query overloads, and `foreach` over an interface-typed collection. Mechanics and the full list belong to `csharp-unity-patterns`; the point here is that each one shows in the Profiler's GC Alloc column (the `GC.Alloc` marker on the timeline), and that column should read 0 B in a steady frame.
 
-**Incremental GC is a mitigation, not a fix.** It splits collection across frames so a single hitch becomes several smaller ones. It does not reduce the garbage, and under heavy allocation it still overruns. Enabling it while continuing to allocate per frame converts a visible stall into sustained frame-time noise. Remove the allocation.
+**Incremental GC is a mitigation, not a fix.** It is on by default and splits collection across frames, so a single hitch becomes several smaller ones. It does not reduce the garbage, and under heavy allocation it still overruns - leaning on it while allocating per frame turns a visible stall into sustained frame-time noise. Remove the allocation.
 
 ### Update cost and the update manager
 
@@ -83,18 +83,20 @@ An empty `Update`, `FixedUpdate`, or `LateUpdate` method still costs the interop
 ```csharp
 // Bad - per-shot allocation plus Destroy garbage; hitches on wave start
 var b = Instantiate(bulletPrefab, pos, rot);
-Destroy(b, 2f);
+Destroy(b.gameObject, 2f);
 
-// Good - fixed-size reuse, no allocation after warm-up
+// Good - reuse after warm-up; no allocation while the pool holds enough
 _pool = new ObjectPool<Bullet>(
     createFunc: () => Instantiate(bulletPrefab),
     actionOnGet: b => b.gameObject.SetActive(true),
     actionOnRelease: b => b.gameObject.SetActive(false),
     actionOnDestroy: b => Destroy(b.gameObject),
     maxSize: 64);
+var shot = _pool.Get();
+shot.transform.SetPositionAndRotation(pos, rot);   // the bullet releases itself on hit or timeout
 ```
 
-`UnityEngine.Pool.ObjectPool<T>` ships with the engine, so a hand-rolled pool needs a reason. It is a stack-backed collection, is not thread-safe, and destroys returned instances beyond `maxSize`. `Get(out PooledObject<T>)` releases on dispose for scoped use.
+`UnityEngine.Pool.ObjectPool<T>` ships with the engine, so a hand-rolled pool needs a reason. It is LIFO and not thread-safe, and it never caps live objects: `Get` creates whenever the pool is empty, and `maxSize` only bounds how many released instances it keeps (the rest go to `actionOnDestroy`). `using (_pool.Get(out var b)) { ... }` releases on dispose for scoped use. There is no prewarm call - `Get` the expected count at load, then release them.
 
 Two failure modes that make pooling a bug source rather than a win: **state leaking across reuse** (a pooled object must be fully reset on get or release, not partially), and **pooling a single instance** or a rarely-spawned object, which adds indirection for no measured gain (`unity-overengineering-review`). Pre-warm the pool at load rather than paying the first `Instantiate` mid-gameplay.
 
@@ -105,10 +107,10 @@ Each draw call is a CPU-side submission. 2D casual games rarely saturate a moder
 | Mechanism | Batches when | Broken by |
 | --- | --- | --- |
 | SRP Batcher (URP) | consecutive draws share the same **shader variant**, per-object data going to a constant buffer | a different shader variant between draws; a `MaterialPropertyBlock` set on the renderer, which removes SRP Batcher compatibility outright |
-| Sprite/dynamic batching | small sprites share one material and one texture | a different material or texture between draws |
+| Dynamic sprite batching (the fallback when a sprite is not SRP-batched) | small sprites share one material and one texture | a different material or texture between draws |
 | Sprite atlas | sprites drawn together live in the same atlas page | sprites split across atlases, or an atlas that overflowed to a second page |
 
-The recurring 2D cause is **material variants**: duplicating a material to tweak one colour or tint gives every copy a separate binding and splits an otherwise single batch into many. `MaterialPropertyBlock` is not the escape hatch it is often assumed to be - `Renderer.SetPropertyBlock` is the documented way to *remove* SRP Batcher compatibility for a renderer, and the dynamic batcher likewise refuses to merge renderers carrying different blocks. Prefer a built-in per-renderer channel (`SpriteRenderer.color`) or a shader parameter the batcher keeps in the per-object constant buffer. Sorting also matters: interleaving objects from different atlases in sorting order forces a state change between each, so a batch that "should" merge does not - sorting layer and atlas assignment are `unity-2d-rendering`.
+On URP 2D, sprite, tilemap, and SpriteShape renderers on the stock Sprite-Lit/Unlit shaders take the SRP Batcher path, so duplicated materials on one shader variant still batch there; a keyword change (a different variant) splits it. The recurring 2D cause is **shader variants and per-renderer material instances**: on the dynamic path every duplicated material splits the batch too. `MaterialPropertyBlock` is not the escape hatch it is often assumed to be - `Renderer.SetPropertyBlock` is the documented way to *remove* SRP Batcher compatibility for a renderer, and the dynamic batcher likewise refuses to merge renderers carrying different blocks. Prefer a built-in per-renderer channel (`SpriteRenderer.color`), or a separate material on the same shader variant. Sorting also matters: interleaving objects from different atlases in sorting order forces a state change between each, so a batch that "should" merge does not - sorting layer and atlas assignment are `unity-2d-rendering`.
 
 Confirm the reason in the Frame Debugger, which names why a batch broke, rather than inferring it from the code.
 
@@ -118,7 +120,7 @@ Transparent sprites do not depth-reject. Every stacked transparent layer shades 
 
 Typical sources: a full-screen transparent background stack, large mostly-empty sprite quads with big alpha borders, particle effects covering the screen, several full-screen UI panels left active behind the top one, and tilemaps layered with transparent decoration passes.
 
-Fixes, in order of usual payoff: draw large opaque backgrounds as opaque rather than transparent; deactivate or hide fully covered UI screens instead of leaving them rendering behind a popup (`unity-ui-patterns`); tighten sprite meshes so the quad is not mostly transparent border; reduce particle overdraw by cutting count and size, not just alpha. Confirm with the Frame Debugger and the platform's GPU profiler; the editor's overdraw view is directional only.
+Fixes, in order of usual payoff: flatten static full-screen layers into one authored background; deactivate or hide fully covered UI screens instead of leaving them rendering behind a popup (`unity-ui-patterns`); tighten sprite meshes so the quad is not mostly transparent border; reduce particle overdraw by cutting count and size, not just alpha. Confirm with the Frame Debugger and the platform's GPU profiler; the editor's overdraw view is directional only.
 
 ### Texture memory and compression
 
@@ -154,7 +156,7 @@ Element lifetime, UXML structure, and panel scaling belong to `unity-ui-patterns
 
 - `SceneManager.LoadSceneAsync` rather than the synchronous form for anything the player waits on. Synchronous load blocks the main thread for the whole dependency graph, which reads as a freeze, not a load
 - Load time is dominated by the **asset dependency graph**, not by scene file size. A prefab referencing a large atlas pulls it in whole
-- `Resources` folder contents load into the build's index and are loaded eagerly in ways Addressables content is not - Addressables gives explicit control over what loads when (`unity-build-release` owns the build and catalog pipeline)
+- `Resources` folder contents all ship in the build and are indexed at startup, which costs launch time whether or not they are used; Addressables gives explicit control over what loads when (`unity-build-release` owns the build and catalog pipeline)
 - Show a first frame quickly with a small entry scene, then load content additively behind a loading screen. `allowSceneActivation` lets you hold the swap until content is ready
 - Measure cold start on a real device from process start, not from the editor's first frame
 
@@ -172,65 +174,69 @@ Element lifetime, UXML structure, and panel scaling belong to `unity-ui-patterns
 
 ## Output Format
 
-Two modes, chosen by whether the request supplies something to diagnose or asks for code to be produced - plus a third form, the budget table at the end of this section, when an implementation workflow asks for budgets before code exists.
+Two modes and one budget form, chosen by what the request supplies.
 
-**Authoring mode** - the request is to write or design something. Emit the code or design, then any `Deferred:` lines. No finding blocks, no severity, no status line: nothing was measured, so a not-run line would misdescribe the work.
+**Authoring mode** - the request asks for code or a design. Emit, in order: any `Precondition: {defect in existing code the design depends on fixing}` lines; the code or design; one-line notes after it, one per decision this skill governs; then any `Deferred:` lines. No finding blocks, no severity, no status line.
 
-**Review mode** - a review workflow, or a direct performance investigation with a profile, source, or symptom report. Emit one block per finding:
+**Budget form** - an implementation workflow asks for budgets before code exists. Emit the budget table at the end of this section, then any `Deferred:` lines.
+
+**Review mode** - the request supplies something to diagnose: source, a diff, a profile, an asset or setting, or a report of a symptom (a QA ticket, a stated measurement, a verbal description). Emit, in order: the finding blocks, any `Deferred:` lines, and - only when no block was emitted - the status line. Nothing else precedes the first block. A review requested with nothing to judge is still review mode.
 
 ```
-### [Severity] {file:line | symbol or type.member, when source was supplied without paths | asset path | symptom, when no source was supplied}
+### [{Critical | High | Medium | Low}] {anchor}
 
-- Category: {GCAllocation | UpdateCost | Instantiation | DrawCalls | Overdraw | TextureMemory | Physics2D | UIRepaint | LoadTime | BuildSize}
-- Evidence: {measured (device, build) | estimated (no profile) | inferred (no source read)}
+- Category: {GCAllocation | UpdateCost | Instantiation | DrawCalls | Overdraw | TextureMemory | Physics2D | UIRepaint | LoadTime}
+- Evidence: {measured (device, build) | estimated (no profile) | inferred (what was not seen)}
 - Owner: {CPU | GPU | GC | Memory | Load}
-- Code: {one-line citation, or `not supplied` when the finding is inferred}
+- Code: {one-line citation | not supplied}
 - Cost: {with units - "1.4 KB/frame steady garbage", "500 Update calls/frame", "16 MB texture for a 200px sprite", "8 full-screen transparent layers"}
 - Fix: {concrete change}
-- Verify: {what to re-measure - GC.Alloc column, Frame Debugger batch count, Memory Profiler texture total, cold-start seconds}
+- Verify: {what to re-measure - GC Alloc column, Frame Debugger batch count, Memory Profiler texture total, cold-start seconds}
 ```
 
-`Severity: {Critical | High | Medium | Low}` - Critical = sustained missed frame budget, unbounded memory growth, or an OOM-risk load on the target device tier. High = a measurable regression on a primary gameplay path. Medium = cost on a rare path or only at unlikely content sizes. Low = a cheap win with no observed symptom.
+The anchor is the first that applies: `file:line` when the source carries paths (a diff hunk by its new-file line); `Type.Member` when it arrived without paths; the asset path for an asset or setting; a short paraphrase of the reported symptom when nothing was read. `Code` is `not supplied` when nothing was read.
 
-Severity that does not fit a listed band: assign the nearest lower band and state why in `Cost`. `Category` takes exactly one value - where a defect fits two, pick the one the `Fix` addresses and name the other in `Cost`; where it fits none, pick the closest and name the real concern in `Cost`.
+**One block per defect** - one root cause with one fix. The same defect at several sites is one block: anchor the clearest site and list the others in `Cost`. One line carrying two defects with separate fixes is two blocks. A reported symptom gets one block per cause - among those this skill's Patterns name for it - that the evidence cannot rule out, most likely first, each `Fix` opening with the check that confirms or eliminates it.
 
-**Evidence gating.** `Evidence: measured (device, build)` requires a Profiler capture from a development build on a physical target device - name the device and build type. Anything else is `estimated (no profile)`. Use `inferred (no source read)` when the finding comes from a bug report, a CI log, or a stated fact rather than from source you read - state what was not seen. Never report a runtime timing or profiled total you did not measure; quantities computed from source or asset settings (object counts, call sites, stacked layers, texture dimensions x format) are citable in `Cost` under any evidence level, stated as computed. When no profile and no source were supplied, `inferred (no source read)` wins - it is the stronger claim about what was not seen.
+`Category` takes exactly one value. Where a defect fits two, take the one whose cost is larger and name the other in `Cost`; where it fits none, take the closest and name the real concern in `Cost`. A value in this enum is this skill's finding even where a sibling owns the mechanics behind it.
 
-Both `estimated` and `inferred` bound the header at High: a Critical-band defect is written High, and `Cost` names the uncapped band. Neither ever raises a block - a Medium defect stays Medium. Among blocks sharing a band, order by what the reader must fix first: root cause before the symptoms it produces.
+Severity bands - Critical = sustained missed frame budget, unbounded memory growth, or an OOM-risk load on the target device tier. High = a measurable regression on a primary gameplay path. Medium = cost on a rare path or only at unlikely content sizes. Low = a cheap win with no observed symptom. A defect no band names takes the band of the listed defect with the closest consequence, and `Cost` names that comparison.
 
-A defect owned by a sibling named in the ownership blockquote is not emitted as a finding. Write those after the findings, one per line, as `Deferred: {defect} -> {owning skill}`, so the workflow routes rather than drops them. In authoring mode the same line routes a design decision the sibling owns (`Deferred: atlas grouping for the batching fix -> unity-2d-rendering`). Omit entirely when there are none.
+**Evidence.** `measured (device, build)` requires a capture on a physical target device - a development-build Profiler capture to locate cost, or a release-build figure (frame time, memory total, cold start) to confirm it; name the device and build type. An editor capture, or a figure someone states without device and build, is `estimated (no profile)` even when no source was supplied, and `Cost` cites it as stated ("2.1 KB/frame per the reporter's editor capture"). `inferred` applies when the block rests on a symptom report or a stated fact rather than source, and wins when neither a profile nor source was supplied; state what was not seen. Quantities computed from source or asset settings (object counts, call sites, stacked layers, texture dimensions x format) are citable under any evidence level, stated as computed; a runtime timing or total nobody measured is never written, and with no quantity at all `Cost` names the unit that would be measured. `estimated` and `inferred` both cap the header at High: a Critical-band defect is written `[High]` and its `Cost` ends with `Uncapped: Critical.` Evidence never raises a band.
 
-In review mode, close with exactly one status line, after any `Deferred:` lines:
+Order blocks by band, Critical first; a capped `[High]` block sorts before the other High blocks. Within a band, a root cause comes before the symptoms it produces, then the defect with the larger cost; where neither separates two blocks, keep the order the input presents them in.
+
+A defect owned by a sibling skill this file names is not emitted here. Write it after the findings as `Deferred: {defect} -> {owning skill}`, one line per defect. When a finding's fix needs a sibling's decision, emit the finding and add a `Deferred:` line for that part. In authoring mode and the budget form the same line routes a design decision the sibling owns (`Deferred: atlas grouping for the batching fix -> unity-2d-rendering`). `Deferred:` lines may precede any status line; omit them when there are none.
+
+When no block was emitted, close with exactly one status line - the first row whose condition holds:
 
 | Condition | Line |
 | --- | --- |
-| One or more findings emitted | none - the findings are the output |
-| No findings, and a symptom or report was available to reason from | `No performance findings.` |
-| No source, diff, symptom, or report of any kind was supplied | `Performance check not run: no source supplied.` |
+| Source, a diff, a profile, an asset or setting, or a symptom report was supplied, and it yields no finding | `No performance findings.` |
+| A review was requested with nothing to judge | `Performance check not run: no source supplied.` |
 
-A symptom-only report (a QA ticket, a verbal description) is checkable input: emit `Evidence: inferred (no source read)` findings from it rather than the not-run line.
-
-When invoked from an implementation workflow rather than a review, emit a budget table instead:
+The budget table has one row per surface the feature adds, and covers every `Owner` the feature stresses. Its figures are targets, not measurements:
 
 ```
-| Surface | Budget | Risk | Mitigation |
-|---------|--------|------|------------|
-| Match-3 cascade resolve | 33ms CPU / 30fps | 8x8 board, chain reactions, per-step alloc | resolve in rules layer, reuse buffers, cap steps per frame |
-| Wave spawn (TD) | 33ms CPU / 30fps | 60 enemies instantiated at wave start | ObjectPool pre-warmed to 64, staggered activation |
-| Board background + FX stack | GPU fill | 5 stacked transparent full-screen layers | opaque background, deactivate covered UI |
+| Surface | Owner | Budget | Risk | Mitigation |
+|---------|-------|--------|------|------------|
+| Match-3 cascade resolve | CPU | 4ms of 33ms / 30fps | 8x8 board, chain reactions, per-step alloc | resolve in rules layer, reuse buffers, cap steps per frame |
+| Wave spawn (TD) | CPU, GC | 3ms of 33ms, 0 B steady | 60 enemies instantiated at wave start | ObjectPool warmed to 64 at load, staggered activation |
+| Board background + FX stack | GPU | 2 full-screen layers | 5 stacked transparent full-screen layers | one authored background, deactivate covered UI |
+| Wave assets | Memory | 40 MB textures | 12 enemy sheets at 2048 | atlas per wave, 1024 max size, ASTC |
 ```
 
-Budget defaults to 33ms at 30fps for mobile casual 2D; use 16ms where the project sets `Application.targetFrameRate = 60`. Take the target from the project's setting, not from aspiration.
+`Budget` is a share of the frame for CPU, a layer or draw count for GPU, a byte figure for Memory and GC, and seconds for Load. The frame is 33ms at 30fps for mobile casual 2D, or 16ms where the project sets `Application.targetFrameRate = 60` - take it from the project's setting, not from aspiration.
 
 ## Avoid
 
 - Timing in the editor, or on a non-target device, and calling it a measurement
 - Reporting a number from a development build as the shipped number
-- "Optimizing" without naming which of CPU, GPU, GC, or load was over budget
-- Enabling incremental GC and leaving the per-frame allocation in place
+- "Optimizing" without naming which of CPU, GPU, GC, Memory, or Load was over budget
+- Relying on incremental GC while the per-frame allocation stays
 - Empty `Update`/`FixedUpdate`/`LateUpdate` bodies left on many objects
 - `Instantiate`/`Destroy` in a spawn loop, or a pool whose objects are not fully reset on reuse
-- Duplicating a material to change one colour, then wondering why batches split
+- A shader-keyword change per renderer, or per-renderer material instances on the dynamic path, then wondering why batches split
 - Stacked full-screen transparent layers, and UI screens left rendering behind a popup
 - Import settings left at defaults for sprites, or mipmaps enabled on screen-aligned 2D
 - Physics used for grid or board legality

@@ -3,7 +3,7 @@ name: unity-i18n
 description: Localize Unity 2D games with the Localization package - string tables, smart strings, plurals, CJK font atlases, text expansion, RTL, formatting.
 metadata:
   category: mobile
-  tags: [unity, localization, i18n, string-tables, tmp, font-atlas, rtl, pluralization]
+  tags: [unity, localization, i18n, string-tables, textcore, font-atlas, rtl, pluralization]
 user-invocable: false
 ---
 
@@ -38,16 +38,18 @@ user-invocable: false
 // Bad - unlocalizable, and the string is duplicated across three screens
 scoreLabel.text = "Score: " + score;
 
-// Good - one entry, one parameter, translatable word order
-scoreLabel.text = LocalizationSettings.StringDatabase
-    .GetLocalizedString("UI", "hud.score", arguments: new object[] { score });
+// Good - one entry, one parameter, translatable word order, re-resolved on locale change
+var scoreVar = new IntVariable();                       // entry "hud.score" is Smart: "Score: {score}"
+var hudScore = new LocalizedString("UI", "hud.score") { { "score", scoreVar } };
+scoreLabel.SetBinding("text", hudScore);
+// on change: scoreVar.Value = score;   - the bound text re-resolves
 ```
 
 Split tables by load unit, not by screen: a UI table, a gameplay table, and one table per content bank slice. Loading a single monolithic table means every locale's worst case is one large resident asset.
 
-For UI Toolkit and TextMeshPro elements, prefer the package's binding/localization components over manual lookups where the project's Localization package version provides them - the API surface for UI Toolkit binding is version-sensitive, so confirm against the installed package version rather than assuming.
+Bind UI Toolkit text through the Localization package's data binding (`SetBinding("text", localizedString)`, Localization 1.5 on 2023.2+) rather than manual lookups: the binding waits for the table and re-resolves on every locale change.
 
-Localization tables load asynchronously. Text set before the table resolves shows the key or a blank; bind after the locale-loaded operation completes and re-bind on locale change rather than only at startup.
+Localization tables load asynchronously. A manual lookup made before its table resolves shows the key or a blank, and one made once at startup never follows a locale change.
 
 ### Smart strings and pluralization
 
@@ -56,12 +58,12 @@ Localization tables load asynchronously. Text set before the table resolves show
 label.text = $"{n} " + (n == 1 ? "move left" : "moves left");
 
 // Good - smart string; each locale's table supplies its own plural forms
-// entry "hud.moves" = "{0:plural:{} move left|{} moves left}"
+// entry "hud.moves" (marked Smart in the table) = "{0:plural:{} move left|{} moves left}"
 ```
 
 Smart strings also carry gender and conditional selection. Keep the branching inside the entry where a translator can restructure it; branching in C# forces every locale into English's grammar.
 
-Ordering: use indexed or named placeholders (`{0}`, `{name}`), never positional-only concatenation, so a translator can reorder them.
+Ordering: use indexed or named placeholders (`{0}`, `{name}` - named ones need a Smart entry), never positional-only concatenation, so a translator can reorder them.
 
 ### Fonts and glyph coverage
 
@@ -69,10 +71,10 @@ This is the dominant mobile memory problem in localization. A full CJK font cove
 
 | Atlas mode | Behaviour | Use for |
 | --- | --- | --- |
-| Static | All glyphs pre-rasterized at build; fixed cost, no runtime work | Latin/Cyrillic sets, and any fixed known string set |
+| Static | All glyphs pre-rasterized into the asset in the editor; fixed cost, no runtime work | Latin/Cyrillic sets, and any fixed known string set - outside any Advanced Text Generator subtree |
 | Dynamic | Glyphs rasterized on demand into a growing atlas; small baseline, runtime cost on first use | CJK and any large or open-ended character set |
 
-For CJK, use a **dynamic atlas plus a static pre-warm of the frequent set** (the characters the UI and the most common content actually use), with a dynamic fallback for the tail. That keeps the baseline small and avoids a visible hitch the first time an uncommon character appears.
+For CJK, use a **dynamic atlas plus a static pre-warm of the frequent set** (the characters the UI and the most common content actually use), with a dynamic fallback for the tail (no static pre-warm under the Advanced Text Generator). That keeps the baseline small and avoids a visible hitch the first time an uncommon character appears.
 
 Font fallback chains resolve missing glyphs from a secondary font. Chains are searched in order on a miss, so a long chain costs on every uncached glyph - keep it short and ordered by likelihood. A glyph missing from the whole chain renders as a blank box or a replacement square.
 
@@ -83,7 +85,7 @@ Font fallback chains resolve missing glyphs from a secondary font. Chains are se
 
 Ship font assets per locale through Addressables so a Latin-only install does not carry the CJK atlas. Verify glyph coverage at build time by scanning every shipped table entry against the locale's font - this is the same class of import-time validation `unity-content-data` applies to banks, and it must fail the build.
 
-Scripts with shaping requirements (Arabic, Hebrew, Thai, Devanagari) need more than glyph presence - see Complex scripts below.
+Arabic, Hebrew, Thai, and Devanagari need more than glyph presence: shaping (Arabic joining, Indic conjuncts, Thai mark stacking) or bidi and line breaking (Hebrew). UI Toolkit's Standard text generator, the 6000.3 runtime default, does neither and only reverses RTL text. The Advanced Text Generator (the runtime default from 6.5) does both through HarfBuzz and ICU; through 6.4 it takes two switches - Enable Advanced Text Generator in Project Settings > UI Toolkit, and `-unity-text-generator: advanced` on the elements. It supports only dynamic font assets, and it applies per element, so set it on the subtrees that render those scripts, or migrate every static font asset under it.
 
 ### Text expansion
 
@@ -107,7 +109,7 @@ Pseudo-localization (expand every string ~40% and bracket it) catches both hardc
 
 **Shaping is a separate axis from direction.** Devanagari and Thai are left-to-right and need no mirroring or bidi reordering, but they do need shaping - Devanagari forms conjuncts and repositions vowel signs (including pre-base matras), Thai stacks marks above and below the base. Every glyph can be present in the atlas and the text still render as broken, unreadable clusters.
 
-For an LTR complex script, apply the shaping and glyph-coverage requirements below and skip the mirroring and bidi ones. The do-not-ship rule applies on the same terms: if shaping cannot be verified to a shippable standard by someone who reads the script, do not ship the locale. Devanagari also runs taller than Latin because of stacked matras and conjuncts, so vertical clipping is its characteristic layout failure - a pseudo-locale that only widens strings will not catch it.
+In-engine shaping means the Advanced Text Generator (Fonts and glyph coverage, above). For an LTR complex script, apply the shaping and glyph-coverage requirements below and skip the mirroring and bidi ones. The do-not-ship rule applies on the same terms: if shaping cannot be verified to a shippable standard by someone who reads the script, do not ship the locale. Devanagari also runs taller than Latin because of stacked matras and conjuncts, so vertical clipping is its characteristic layout failure - a pseudo-locale that only widens strings will not catch it.
 
 ### RTL and its limits
 
@@ -117,7 +119,7 @@ Arabic and Hebrew need three separate things, and they fail independently:
 2. **Bidirectional reordering** - mixed RTL text with embedded numbers or Latin names must be reordered per the Unicode bidi algorithm
 3. **Layout mirroring** - the UI direction flips: navigation, back arrows, progress direction, and horizontal flex order
 
-TextMeshPro provides RTL handling with limits that vary by version, and complex-script shaping quality is the part most likely to fall short; verify rendering with native-speaker review rather than assuming the renderer handles it. Layout mirroring is not automatic - it is done in USS by flipping flex direction and start/end padding on a root RTL class.
+Shaping, bidi, and RTL line breaking need the Advanced Text Generator plus `language-direction="RTL"` on the text elements; the Standard generator only reverses the string. Verify rendering with native-speaker review either way. Layout mirroring is not automatic - flip flex direction and start/end padding on a root RTL class in USS.
 
 Do not mirror everything: numerals, clocks, progress-toward-a-goal in some contexts, and game boards with intrinsic orientation (a chessboard) stay unmirrored. Mirror chrome and reading flow, not the play space.
 
@@ -127,18 +129,20 @@ If RTL cannot be verified to a shippable standard, **do not ship the locale**. A
 
 ```csharp
 // Bad - invariant or implicit culture; "1,234.5" is wrong in most of Europe
-label.text = score.ToString();
+label.text = avgScore.ToString("N1");          // thread culture, not the player's locale
 dateLabel.text = when.ToString("MM/dd/yyyy");
 
 // Good - formatted against the selected locale's culture
 var ci = LocalizationSettings.SelectedLocale.Identifier.CultureInfo;
-label.text = score.ToString("N0", ci);
+label.text = avgScore.ToString("N1", ci);
 dateLabel.text = when.ToString("d", ci);
 ```
 
+`Identifier.CultureInfo` is null for a locale .NET does not know (a pseudo-locale), and formatting then silently falls back to the thread culture; format through an explicit fallback culture (`Locale.Formatter` falls back to the same null unless the locale sets a custom formatter).
+
 The inverse also matters: data written to a save file, sent to a server, or used as a dictionary key formats with `CultureInfo.InvariantCulture`. A score serialized under a German culture and parsed under a US one is a real save-corruption path (`unity-save-persistence`).
 
-Durations (an mm:ss countdown) have no culture pattern in .NET: the separator pattern is yours, but format each numeric part through the culture so digit-substituting locales render their own numerals. A literal mm:ss timer is not a hardcoded-pattern finding.
+Durations (an mm:ss countdown) have no culture pattern in .NET: the separator pattern is yours, and a literal mm:ss timer is not a hardcoded-pattern finding. .NET formatting always emits ASCII digits (`NativeDigits` is never applied), so a locale that wants native numerals maps them itself.
 
 Large numbers in idle games need locale-aware abbreviation - "1.2K" and "1.2M" are not universal. CJK locales group by 10,000 (man/wan) rather than 1,000, and Indic locales group by lakh (100,000) and crore (10,000,000) with a different digit-separator pattern entirely. The **threshold** at which an abbreviation kicks in is therefore locale data too, not just the suffix. Route both through table entries rather than hardcoding a divisor.
 
@@ -146,7 +150,7 @@ Large numbers in idle games need locale-aware abbreviation - "1.2K" and "1.2M" a
 
 Detect from the platform locale on first run, fall back to a default locale when the detected one is not shipped, and persist any user override. Do not re-detect over an explicit override on later launches.
 
-Locale changes at runtime must re-resolve every visible string, re-bind content bank text, and reload the locale's font assets. A locale switch that only takes effect after a restart is a defect on a device where the player changes system language.
+Locale changes at runtime must re-resolve every visible string, re-bind content bank text, and reload the locale's font assets. A locale switch that only takes effect after a restart is a defect.
 
 ### Content bank interaction
 
@@ -162,42 +166,47 @@ Correctness never keys off translated text: grade by answer id, not by comparing
 
 ## Output Format
 
-Two modes, chosen by whether the request supplies code to judge or asks for code to be produced.
+Two modes, chosen by what the request supplies.
 
-**Authoring mode** - the request is to write or design something. Emit the code or design, then any `Deferred:` lines. No finding blocks, no severity, no status line: nothing was reviewed, so a not-run line would misdescribe the work.
+**Authoring mode** - the request asks for code or a design. Emit, in order: any `Precondition: {defect in existing code the design depends on fixing}` lines; the code or design; one-line notes after it, one per decision this skill governs; then any `Deferred:` lines. No finding blocks, no severity, no status line.
 
-**Review mode** - source, a diff, or a symptom report was supplied. Emit one block per finding.
+**Review mode** - the request supplies something to judge: source, a diff, an asset or setting, or a report of a symptom (a QA ticket, a crash or CI log, a verbal description). Emit, in order: the single-locale scope header when it applies, the finding blocks, any `Deferred:` lines, and - only when no block was emitted - the status line. Nothing else precedes the first block. A review requested with nothing to judge is still review mode.
 
 ```
-### [Severity] {file:line | symbol or type.member, when source was supplied without paths | asset path | symptom, when no source was supplied}
+### [{Critical | High | Medium | Low}] {anchor}
 
-- Category: {HardcodedString | KeyStability | Concatenation | Pluralization | GlyphCoverage | FontMemory | TextExpansion | RTL | Formatting | LocaleDetection | TableResolution | ContentBankLocale}
-- Evidence: {source | inferred (state what was not seen)}
+- Category: {HardcodedString | KeyStability | Concatenation | Pluralization | GlyphCoverage | FontMemory | TextExpansion | RTL | Shaping | Formatting | LocaleDetection | TableResolution | ContentBankLocale}
+- Evidence: {source | inferred (what was not seen)}
 - Locales affected: {list, or "all non-English", or "all"}
-- Code: {one-line citation, or `not supplied` when the finding is inferred}
+- Code: {one-line citation | not supplied}
 - Impact: {what a player in that locale sees - "blank boxes for all CJK text", "answer button clips at 60% of the German string"}
 - Fix: {concrete change}
 ```
 
-`Severity: {Critical | High | Medium | Low}` - Critical = a shipped locale is unusable (missing glyphs render as boxes, unshaped RTL, correctness keyed off translated text, culture-dependent formatting written to a save or wire format). High = a user-facing string is untranslatable or wrong in a shipped locale (hardcoded string on a player-visible surface, concatenated sentence, two-form plural in a multi-form language, text clipped by a fixed container). Medium = a locale-correctness gap on a secondary surface, an oversized font atlas, or a missing runtime locale-change re-bind. Low = key naming or table organization nit.
+The anchor is the first that applies: `file:line` when the source carries paths (a diff hunk by its new-file line); `Type.Member` when it arrived without paths; the asset path for an asset or setting; a short paraphrase of the reported symptom when nothing was read. `Code` is `not supplied` when nothing was read.
 
-Severity that does not fit a listed band: assign the nearest lower band and state why in `Impact`. `Category` takes exactly one value - where a defect fits two, pick the one the `Fix` addresses and name the other in `Impact`; where it fits none, pick the closest and name the real concern in `Impact`. `TableResolution` covers an entry missing from a shipped locale's table, text bound before the table load resolves, and a missing locale-change re-bind - the defects that put a raw key or blank on screen.
+`TableResolution` covers an entry missing from a shipped locale's table or text bound before the table resolves (a raw key or blank on screen, High), and a missing locale-change re-bind (stale text, Medium). `Shaping` covers any script rendered unshaped (Arabic, Devanagari, Thai); `RTL` covers direction, bidi, and mirroring.
 
-`Evidence: inferred` is required whenever the source was not read. It bounds the header at High: a Critical-band defect is written High, and `Impact` names the uncapped band. It never raises a block - a Medium defect stays Medium. Among blocks sharing a band, order by what the reader must fix first: root cause before the symptoms it produces.
+If the project ships a single locale and has no localization package installed (with the package installed, every category applies), the scope header is exactly `Single-locale project - i18n review limited to hardcoded-string and formatting findings.`, and only those two categories are reported (a concatenated sentence files as `HardcodedString`), at the bands below. Everything else in this format applies unchanged.
 
-A defect owned by a sibling named in the ownership blockquote is not emitted as a finding. Write those after the findings, one per line, as `Deferred: {defect} -> {owning skill}`, so the workflow routes rather than drops them. In authoring mode the same line routes a design decision the sibling owns (`Deferred: font atlas memory budget -> unity-performance`). Omit entirely when there are none.
+**One block per defect** - one root cause with one fix. The same defect at several sites is one block: anchor the clearest site and list the others in `Impact`. One line carrying two defects with separate fixes is two blocks. A reported symptom gets one block per cause - among those this skill's Patterns name for it - that the evidence cannot rule out, most likely first, each `Fix` opening with the check that confirms or eliminates it.
 
-If the project ships a single locale and has no localization package installed, emit exactly `Single-locale project - i18n review limited to hardcoded-string and formatting findings.` before any findings, and report only those two categories. This is a scope header, not a status line - a status line still closes the report.
+`Category` takes exactly one value. Where a defect fits two, take the one whose failure is worse and name the other in `Impact`; where it fits none, take the closest and name the real concern in `Impact`. A value in this enum is this skill's finding even where a sibling owns adjacent mechanics.
 
-In review mode, close with exactly one status line, after any `Deferred:` lines:
+Severity bands - Critical = a shipped locale is unusable (missing glyphs render as boxes, unshaped RTL or complex-script text, correctness keyed off translated text, culture-dependent formatting written to a save or wire format). High = a user-facing string untranslatable or wrong in a shipped locale (a hardcoded string on a player-visible surface, a concatenated sentence, a two-form plural in a multi-form language, text clipped by a fixed container). Medium = a locale-correctness gap on a secondary surface (a chrome element left unmirrored, a game board mirrored), an oversized font atlas, or a missing runtime locale-change re-bind. Low = a key naming or table organization nit. A defect no band names takes the band of the listed defect with the closest consequence, and `Impact` names that comparison.
+
+`Evidence: source` means the lines that decide the defect and its band were read; an absence is source when the whole file that would hold it was read, and a diff hunk is source for the lines it shows. `Evidence: inferred` means some were not - a symptom report, a diff summary naming only a path, or a read line whose band turns on something unseen (a declaration, a caller, whether an asset is referenced); state what was not seen. Inferred caps the header at High: a Critical-band defect is written `[High]` and its `Impact` ends with `Uncapped: Critical.` Evidence never raises a band.
+
+Order blocks by band, Critical first; a capped `[High]` block sorts before the other High blocks. Within a band, a root cause comes before the symptoms it produces, then the defect with the wider player impact; where neither separates two blocks, keep the order the input presents them in.
+
+A defect owned by a sibling skill this file names is not emitted here. Write it after the findings as `Deferred: {defect} -> {owning skill}`, one line per defect. When a finding's fix needs a sibling's decision, emit the finding and add a `Deferred:` line for that part. In authoring mode the same line routes a design decision the sibling owns (`Deferred: font atlas memory budget -> unity-performance`). `Deferred:` lines may precede any status line; omit them when there are none.
+
+When no block was emitted, close with exactly one status line - the first row whose condition holds:
 
 | Condition | Line |
 | --- | --- |
-| One or more findings emitted | none - the findings are the output |
-| No findings, and a symptom or report was available to reason from | `No i18n findings.` |
-| No source, diff, symptom, or report of any kind was supplied | `I18n check not run: no source supplied.` |
-
-A symptom-only report (a QA ticket, a verbal description) is checkable input: emit `Evidence: inferred` findings from it rather than the not-run line.
+| Source, a diff, an asset or setting, or a symptom report was supplied, and it yields no finding | `No i18n findings.` |
+| A review was requested with nothing to judge | `I18n check not run: no source supplied.` |
 
 ## Avoid
 
@@ -212,6 +221,7 @@ A symptom-only report (a QA ticket, a verbal description) is checkable input: em
 - Fixed-width or fixed-height text containers sized to the English string
 - Auto-shrink-to-fit used as the expansion strategy
 - Shipping RTL with layout mirroring or shaping unverified
+- Arabic, Hebrew, Thai, or Devanagari rendered without the Advanced Text Generator
 - Mirroring game boards and numerals along with UI chrome
 - Re-detecting locale over a persisted user override
 - Locale change that requires an app restart

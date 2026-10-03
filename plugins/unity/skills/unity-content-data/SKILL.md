@@ -21,13 +21,13 @@ user-invocable: false
 
 ## Rules
 
-- **Content is data, never code and never prefabs.** A question, level, or item is a row in a bank. One prefab or one C# constant per question is unshippable at bank scale and unreviewable in a diff
+- **Content is data, never code and never prefabs.** A question, level, or item is a row in a bank. One prefab or one C# constant per question is unshippable at bank scale and unreviewable in a diff. A handful of items passed as code arguments is not yet a bank; once entries number more than a few dozen or are authored outside code, these rules apply
 - **A malformed bank fails at import or build, never at runtime.** Validation runs in the editor and in CI, and a validation failure fails the build. A user seeing a question with no correct answer is a shipped defect that validation would have caught
 - Every content entry has a **stable identifier** that is independent of its array position, its text, and its locale. Reordering a bank must not invalidate saved progress or analytics
 - The correct answer is identified by a stable answer id, not by an index into a shuffled list and not by string comparison against display text
 - Content is versioned separately from the app binary, with an explicit `contentVersion` the app checks and can migrate across
 - Loading strategy is chosen against a measured bank size. Load the whole bank only when the whole bank is small enough to state a number for; otherwise stream by group
-- Remote or downloaded content is untrusted input: validate shape, size, and identifiers on arrival, and fall back to bundled content on failure
+- Remote or downloaded content is untrusted input: check the load result (`AsyncOperationHandle.Status` for Addressables, `UnityWebRequest.result` for a raw fetch), validate shape, size, and identifiers on arrival, and fall back to bundled content on failure
 
 ## Patterns
 
@@ -37,9 +37,9 @@ user-invocable: false
 | --- | --- | --- | --- | --- |
 | CSV | Spreadsheet, non-engineers, bulk edit | Clean line diffs | Import script | Flat rows at volume - questions, words, flags, balance tables |
 | JSON | Text editor or tooling, nested shapes | Readable, noisy on reformat | Schema check at import | Nested or heterogeneous content; remote-delivered content |
-| ScriptableObject | Unity inspector, one asset per entry | Binary-ish YAML, merge-hostile | Editor validation | Small hand-curated sets that reference other Unity assets |
+| ScriptableObject | Unity inspector, one asset per entry | One YAML file per entry, merge-hostile at volume | Editor validation | Small hand-curated sets that reference other Unity assets |
 
-The workable default for a quiz bank: **author in CSV or JSON, import into one ScriptableObject holding the whole bank as a serializable array.** Authors get spreadsheet ergonomics and clean diffs; the runtime gets a single asset load with no per-entry file overhead and no runtime parse.
+The workable default for a quiz bank: **author in CSV or JSON, import into one ScriptableObject per load unit as a serializable array** - the whole bank when it is small, one asset per category slice when it is not (Loading and streaming, below). Authors get spreadsheet ergonomics and clean diffs; the runtime gets a single asset load with no per-entry file overhead and no runtime parse.
 
 One ScriptableObject asset per question is the failure mode to name explicitly: 2,000 assets means 2,000 `.meta` files, 2,000 GUIDs, a slow import, an unreviewable diff, and Addressables entries that dominate the catalog.
 
@@ -50,6 +50,7 @@ One ScriptableObject asset per question is the failure mode to name explicitly: 
 [Serializable] public class Question { public string text; public string[] answers; public int correctIndex; }
 
 // Good - stable ids survive shuffling, reordering, and localization
+[Serializable] public sealed class Answer { public string id; public string textKey; }
 [Serializable] public sealed class Question {
     public string id;               // stable, unique, never reused: "de-signs-0142"
     public string promptKey;        // localization key, not display text
@@ -71,14 +72,17 @@ Distractors (wrong answers) are authored content, not generated at runtime. A ge
 
 ```csharp
 // Bad - trusts the file; the failure surfaces in front of a player
-var bank = JsonUtility.FromJson<QuestionBank>(text);
+var bank = JsonUtility.FromJson<QuestionBankDto>(text);   // used as-is
 
-// Good - validated at import, build fails on error
-foreach (var q in bank.questions) {
-    Assert(!string.IsNullOrEmpty(q.id), $"empty id at row {i}");
-    Assert(seen.Add(q.id), $"duplicate id {q.id}");
-    Assert(q.answers.Any(a => a.id == q.correctAnswerId), $"{q.id}: correctAnswerId matches no answer");
+// Good - an editor validation entry point CI runs in batch mode; every defect reported, the job fails on any
+var errors = new List<string>(); var seen = new HashSet<string>();
+for (var i = 0; i < bank.questions.Length; i++) {
+    var q = bank.questions[i];
+    if (string.IsNullOrEmpty(q.id)) errors.Add($"row {i}: empty id");
+    else if (!seen.Add(q.id)) errors.Add($"duplicate id {q.id}");
+    if (Array.FindIndex(q.answers, a => a.id == q.correctAnswerId) < 0) errors.Add($"{q.id}: correctAnswerId matches no answer");
 }
+if (errors.Count > 0) throw new BuildFailedException(string.Join("\n", errors));
 ```
 
 The validation set that catches real bank defects:
@@ -87,7 +91,7 @@ The validation set that catches real bank defects:
 | --- | --- |
 | Non-empty, unique ids | Save/analytics collisions; unresolvable progress |
 | `correctAnswerId` resolves to an answer | Ungradeable question shown to a player |
-| Exactly one correct answer (or `n` where multi-select is intended) | Ambiguous grading |
+| Answer ids unique within a question (multi-select uses a `correctAnswerIds` array with its own count check) | Ambiguous grading |
 | Answer count within the range the UI renders | Truncated or clipped options |
 | No duplicate answer text within a question | Two identical options, one of them "wrong" |
 | Referenced assets (images, audio, flags) resolve | Missing sprite at runtime |
@@ -111,11 +115,12 @@ var bank = Resources.Load<QuestionBank>("AllQuestions");
 // Good - load the slice the round needs, release when the round ends
 var handle = Addressables.LoadAssetAsync<QuestionBank>(categoryKey);
 var bank = await handle.Task;
+if (handle.Status != AsyncOperationStatus.Succeeded) { /* bundled fallback */ }
 // ...
 Addressables.Release(handle);
 ```
 
-`Resources/` is the legacy path: everything under it is loaded into the build unconditionally, cannot be partially updated, and inflates startup. Use Addressables.
+`Resources/` is the legacy path: everything under it ships in the build, is indexed at startup, and cannot be partially updated. Use Addressables.
 
 Every `LoadAssetAsync` needs a matching `Release`. Unreleased handles are the standard Addressables memory leak, and they compound across rounds. Handles held by a screen are released when the screen pops.
 
@@ -132,7 +137,7 @@ build -> remote catalog + content bundles -> CDN
 app start -> check catalog hash -> download changed bundles -> use
 ```
 
-What this can and cannot do: content bundles can change data, text, and referenced assets. They cannot change C# in an IL2CPP build, which is AOT-compiled - a rules change still needs a store release. Bundles built against a different Unity version or a changed serialized type layout will not load; content updates must be built from the same content-update workflow as the shipped player.
+What this can and cannot do: content bundles can change data, text, and referenced assets. They never carry code, on any scripting backend - a rules change still needs a store release. Build content updates with the same Unity and Addressables versions and the shipped build's content state. A serialized field the installed player does not know is silently dropped on load (bundles carry type trees by default), which is what `minAppVersion` below guards against.
 
 Every remote fetch needs the offline path: bundled content ships in the build and is the fallback when the catalog is unreachable, the download fails, or validation of the downloaded bank fails. A first-run experience that requires a download is a first-run failure on a plane.
 
@@ -140,10 +145,12 @@ Version explicitly:
 
 ```csharp
 // Bad - swap the file and hope every install agrees
+public QuestionBank bank;   // no version: an old binary loads a bank it cannot fully read
+
 // Good - the app knows what it holds and what it needs
 public sealed class BankManifest : ScriptableObject {
     public int contentVersion;      // bumped on every shipped bank change
-    public int minAppVersion;       // below this, the app refuses the bank and keeps bundled content
+    public int minAppVersion;       // CI-stamped integer build number, shipped in a ScriptableObject; below it, keep bundled content
 }
 ```
 
@@ -151,7 +158,7 @@ public sealed class BankManifest : ScriptableObject {
 
 ### Localization interaction
 
-A bank multiplies by locale. Two shapes, and the choice is structural:
+A bank multiplies by locale. Two shapes, and the choice is structural - keys when the UI already uses string tables or translators work per string, per-locale banks when translation arrives as whole files:
 
 | Shape | Bank holds | Cost |
 | --- | --- | --- |
@@ -162,40 +169,43 @@ Either way: **never ship every locale's text resident at once**, and never key c
 
 ## Output Format
 
-Two modes, chosen by whether the request supplies code to judge or asks for code to be produced.
+Two modes, chosen by what the request supplies.
 
-**Authoring mode** - the request is to write or design something. Emit the code or design, then any `Deferred:` lines. No finding blocks, no severity, no status line: nothing was reviewed, so a not-run line would misdescribe the work.
+**Authoring mode** - the request asks for code or a design. Emit, in order: any `Precondition: {defect in existing code the design depends on fixing}` lines; the code or design; one-line notes after it, one per decision this skill governs; then any `Deferred:` lines. No finding blocks, no severity, no status line.
 
-**Review mode** - source, a diff, or a symptom report was supplied. Emit one block per finding.
+**Review mode** - the request supplies something to judge: source, a diff, an asset or setting, or a report of a symptom (a QA ticket, a crash or CI log, a verbal description). Emit, in order: the finding blocks, any `Deferred:` lines, and - only when no block was emitted - the status line. Nothing else precedes the first block. A review requested with nothing to judge is still review mode.
 
 ```
-### [Severity] {file:line | symbol or type.member, when source was supplied without paths | asset path | symptom, when no source was supplied}
+### [{Critical | High | Medium | Low}] {anchor}
 
 - Category: {Format | Schema | Validation | Identifier | Loading | Memory | Versioning | RemoteContent | LocaleStructure}
-- Evidence: {source | inferred (state what was not seen)}
-- Code: {one-line citation, or `not supplied` when the finding is inferred}
+- Evidence: {source | inferred (what was not seen)}
+- Code: {one-line citation | not supplied}
 - Impact: {what a player or author hits - "shuffled answers grade wrong", "whole bank resident for a 10-question round"}
 - Fix: {concrete change}
 ```
 
-`Severity: {Critical | High | Medium | Low}` - Critical = content defect reaches a player (ungradeable or wrongly graded question, unvalidated remote bank, no offline fallback) or a content id collides with saved progress. High = whole-bank load where a slice is needed, unreleased Addressables handles, or validation that exists but does not fail the build. Medium = format or grouping choice that costs authoring or download efficiency with no correctness impact. Low = schema or naming nit.
+The anchor is the first that applies: `file:line` when the source carries paths (a diff hunk by its new-file line); `Type.Member` when it arrived without paths; the asset path for an asset or setting; a short paraphrase of the reported symptom when nothing was read. `Code` is `not supplied` when nothing was read.
 
-Severity that does not fit a listed band: assign the nearest lower band and state why in `Impact`. `Category` takes exactly one value - where a defect fits two, pick the one the `Fix` addresses and name the other in `Impact`; where it fits none, pick the closest and name the real concern in `Impact`.
+**One block per defect** - one root cause with one fix. The same defect at several sites is one block: anchor the clearest site and list the others in `Impact`. One line carrying two defects with separate fixes is two blocks. A reported symptom gets one block per cause - among those this skill's Patterns name for it - that the evidence cannot rule out, most likely first, each `Fix` opening with the check that confirms or eliminates it.
 
-`Evidence: inferred` is required whenever the source was not read. It bounds the header at High: a Critical-band defect is written High, and `Impact` names the uncapped band. It never raises a block - a Medium defect stays Medium. Among blocks sharing a band, order by what the reader must fix first: root cause before the symptoms it produces.
+`Category` takes exactly one value. Where a defect fits two, take the one whose failure is worse and name the other in `Impact`; where it fits none, take the closest and name the real concern in `Impact`. A value in this enum is this skill's finding even where a sibling owns adjacent mechanics.
 
-A defect owned by a sibling named in the ownership blockquote is not emitted as a finding. Write those after the findings, one per line, as `Deferred: {defect} -> {owning skill}`, so the workflow routes rather than drops them. In authoring mode the same line routes a design decision the sibling owns (`Deferred: string-table structure -> unity-i18n`). Omit entirely when there are none.
+Severity bands - Critical = content defect reaches a player (ungradeable or wrongly graded question, no import validation at all, unvalidated remote bank, no offline fallback) or a content id collides with saved progress. High = whole-bank load where a slice is needed, unreleased Addressables handles, or validation that exists but does not fail the build. Medium = format or grouping choice that costs authoring or download efficiency with no correctness impact. Low = schema or naming nit. A defect no band names takes the band of the listed defect with the closest consequence, and `Impact` names that comparison.
 
-In review mode, close with exactly one status line, after any `Deferred:` lines:
+`Evidence: source` means the lines that decide the defect and its band were read; an absence is source when the whole file that would hold it was read, and a diff hunk is source for the lines it shows. `Evidence: inferred` means some were not - a symptom report, a diff summary naming only a path, or a read line whose band turns on something unseen (a declaration, a caller, whether an asset is referenced); state what was not seen. Inferred caps the header at High: a Critical-band defect is written `[High]` and its `Impact` ends with `Uncapped: Critical.` Evidence never raises a band.
+
+Order blocks by band, Critical first; a capped `[High]` block sorts before the other High blocks. Within a band, a root cause comes before the symptoms it produces, then the defect with the wider player impact; where neither separates two blocks, keep the order the input presents them in.
+
+A defect owned by a sibling skill this file names is not emitted here. Write it after the findings as `Deferred: {defect} -> {owning skill}`, one line per defect. When a finding's fix needs a sibling's decision, emit the finding and add a `Deferred:` line for that part. In authoring mode the same line routes a design decision the sibling owns (`Deferred: string-table structure -> unity-i18n`). `Deferred:` lines may precede any status line; omit them when there are none.
+
+When no block was emitted, close with exactly one status line - the first row whose condition holds:
 
 | Condition | Line |
 | --- | --- |
-| The project ships no static content bank | `No content bank in scope.` and no findings |
-| One or more findings emitted | none - the findings are the output |
-| No findings, and a symptom or report was available to reason from | `No content findings.` |
-| No source, diff, symptom, or report of any kind was supplied | `Content check not run: no source supplied.` |
-
-A symptom-only report (a QA ticket, a verbal description) is checkable input: emit `Evidence: inferred` findings from it rather than the not-run line.
+| The project ships no static content bank | `No content bank in scope.` |
+| Source, a diff, an asset or setting, or a symptom report was supplied, and it yields no finding | `No content findings.` |
+| A review was requested with nothing to judge | `Content check not run: no source supplied.` |
 
 ## Avoid
 

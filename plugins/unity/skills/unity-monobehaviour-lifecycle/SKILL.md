@@ -22,9 +22,9 @@ user-invocable: false
 
 - **`Awake` initializes self; `Start` reads others.** Any cross-object reference resolved in `Awake` depends on undefined ordering between objects
 - Never depend on `Awake` ordering across GameObjects. If order genuinely matters, make it explicit with Script Execution Order or an initializer that calls its dependents
-- **Assume domain reload is disabled.** Statics and static event subscriptions carry over between Play sessions in the editor. Reset every static explicitly via `[RuntimeInitializeOnLoadMethod]`
+- **Assume domain reload may be off.** Unity 6.3 reloads the domain on entering Play mode by default, but projects switch that off for fast iteration, and then statics and static event subscriptions carry over between Play sessions. Reset every static explicitly via `[RuntimeInitializeOnLoadMethod]`
 - Unsubscribe in `OnDisable` from anything subscribed in `OnEnable`, and in `OnDestroy` from anything subscribed in `Awake`. Symmetric pairs, always
-- Coroutines are owned by the MonoBehaviour that started them: disabling the component stops them, destroying the object kills them. Neither raises an error
+- Coroutines are owned by the MonoBehaviour that started them: deactivating its GameObject or destroying it stops them, silently. Disabling only the component (`enabled = false`) leaves them running
 - `DontDestroyOnLoad` objects survive scene loads, so a scene containing one that is loaded twice produces duplicates. The instance must guard against that itself
 - Do not put per-frame work in `Update` when the state only changes on an event
 
@@ -32,18 +32,18 @@ user-invocable: false
 
 ### Callback order
 
-Within a single object, for one frame:
+Within a single object:
 
 | Phase | Callbacks | Runs |
 | --- | --- | --- |
-| Initialization | `Awake` -> `OnEnable` -> `Start` | `Awake`/`OnEnable` on instantiation, `Start` before the first `Update` after enablement |
+| Initialization | `Awake` -> `OnEnable` -> `Start` | `Awake` on first activation, `OnEnable` on every activation, `Start` once, before the first `Update` after the first enablement |
 | Physics | `FixedUpdate` -> physics step -> `OnCollision*` / `OnTrigger*` | zero or more times per frame, on the fixed timestep |
 | Logic | `Update` -> coroutine resumption -> `LateUpdate` | once per frame |
 | Teardown | `OnDisable` -> `OnDestroy` | on disable, destroy, and application quit |
 
-`Awake` and `OnEnable` run on instantiation even if the object is later disabled before `Start`; `Start` is deferred until the object is actually enabled, and never runs if it never is. `LateUpdate` is where you read a transform another script moved this frame - camera follow belongs there, not in `Update`.
+`Awake` runs when an object first becomes active: at instantiation for an active prefab, but deferred to first activation for one instantiated inactive or under an inactive parent. `Start` is deferred until the object is enabled, and never runs if it never is. `LateUpdate` is where you read a transform another script moved this frame - camera follow belongs there, not in `Update`.
 
-Pooled objects live on exactly these semantics: `Awake` runs once at instantiation, `OnEnable` on every activation, and `Start` has not run while the object sits disabled in the pool. One-time setup goes in `Awake`, per-use reset in `OnEnable`.
+Pooled objects live on exactly these semantics: `Awake` runs once, at first activation (a pool that instantiates inactive defers it to the first `Get`), `OnEnable` on every activation, and `Start` once, before its first `Update` - never again on reuse. One-time setup goes in `Awake`, per-use reset in `OnEnable`.
 
 ### Awake versus Start
 
@@ -60,11 +60,11 @@ The safest structure removes the question: inject the reference through a serial
 
 ### Script Execution Order
 
-Project Settings -> Script Execution Order assigns a numeric order; lower runs first, and it applies to `Awake`, `Start`, `Update`, and the rest. Use it only for one or two genuine infrastructure scripts (a bootstrap or service registry). It is a project-wide setting invisible from the source file, so a class whose correctness depends on it needs a comment saying so. More than a handful of entries means the initialization design is wrong.
+Project Settings -> Script Execution Order assigns a numeric order; lower runs first, and it applies to `Awake`, `Start`, `Update`, and the rest. Use it only for one or two genuine infrastructure scripts (a bootstrap or service registry). Prefer `[DefaultExecutionOrder(n)]` on the class, which is visible in source; a Project Settings entry for the same type overrides it and is invisible from the file, so a class depending on that route needs a comment saying so. More than a handful of entries means the initialization design is wrong.
 
 ### Domain reload disabled: the session-two trap
 
-With Enter Play Mode Options enabled and domain reload disabled (the default configuration for fast iteration), entering Play mode does **not** reset the C# domain. Statics keep the values the previous session left, and static event subscriptions from destroyed objects remain subscribed.
+When Project Settings -> Editor -> Enter Play Mode Settings skips the domain reload (Unity 6.3 reloads by default; projects switch it off for fast iteration), entering Play mode does **not** reset the C# domain. Statics keep the values the previous session left, and static event subscriptions from destroyed objects remain subscribed.
 
 ```csharp
 // Bad - session 2 starts with session 1's score, and the stale handler still fires
@@ -89,23 +89,26 @@ void Awake() {
     if (Instance != null && Instance != this) { Destroy(gameObject); return; }
     Instance = this; DontDestroyOnLoad(gameObject);
 }
+void OnDestroy() { if (Instance == this) Instance = null; }   // the duplicate never registered
 ```
+
+`Destroy` is deferred to the end of the frame, so the duplicate's `OnEnable` still runs - a subscription there needs the same `Instance == this` guard.
 
 `DontDestroyOnLoad` moves the object to a separate scene, so it does not appear in the loaded scene hierarchy and is not unloaded with it. Combined with disabled domain reload, `Instance` also survives into the next Play session pointing at a destroyed object - so the static needs the reset from the previous pattern too. Prefer a single bootstrap scene that creates persistent services once over one self-registering singleton per service.
 
 ### Coroutine lifetime
 
 ```csharp
-// Bad - disabling the component silently stops this mid-sequence, leaving the flag set
+// Bad - deactivating the GameObject silently stops this mid-sequence, leaving the flag set
 IEnumerator Resolve() { _busy = true; yield return _delay; _busy = false; }
 
-// Good - state that must survive lives outside the coroutine, and cleanup is in OnDisable
-void OnDisable() { _busy = false; }
+// Good - cleanup lives outside the coroutine body and also stops it on component disable
+void OnDisable() { StopAllCoroutines(); _busy = false; }
 ```
 
-Disabling the component or its GameObject stops its coroutines; re-enabling does not resume them. Destroying the object kills them. Neither logs anything, so a half-completed sequence leaves whatever invariant it was holding broken. `StopCoroutine` needs the same handle `StartCoroutine` returned - passing the method or a fresh iterator does not match. A coroutine that must outlive its object belongs on a persistent host, or should be an `Awaitable` with an explicit token (`csharp-unity-patterns`).
+Deactivating the GameObject stops its coroutines, and reactivating does not resume them; destroying the object kills them; disabling only the component leaves them running. None of these logs anything, so a half-completed sequence leaves whatever invariant it was holding broken. `StopCoroutine` needs the `Coroutine` handle `StartCoroutine` returned, or the same `IEnumerator` instance - a fresh iterator from calling the method again matches nothing. A coroutine that must outlive its object belongs on a persistent host, or should be an `Awaitable` with an explicit token (`csharp-unity-patterns`).
 
-Note `WaitForSeconds` uses scaled time, so it never completes while `Time.timeScale` is 0 - use `WaitForSecondsRealtime` for pause menus.
+Note `WaitForSeconds` uses scaled time, so it never completes while `Time.timeScale` is 0 - use `WaitForSecondsRealtime` for pause menus. One owner sets `Time.timeScale`; other pausers request through it. The owner restores it in `OnDisable`, or a killed routine leaves the game frozen.
 
 ### Pause, focus, and quit on mobile
 
@@ -125,41 +128,46 @@ On mobile, backgrounding raises `OnApplicationPause(true)`; a subsequent kill ma
 
 ## Output Format
 
-Two modes, chosen by whether the request supplies code to judge or asks for code to be produced.
+Two modes, chosen by what the request supplies.
 
-**Authoring mode** - the request is to write or design something. Emit the code or design, then any `Deferred:` lines. No finding blocks, no severity, no status line: nothing was reviewed, so a not-run line would misdescribe the work.
+**Authoring mode** - the request asks for code or a design. Emit, in order: any `Precondition: {defect in existing code the design depends on fixing}` lines; the code or design; one-line notes after it, one per decision this skill governs; then any `Deferred:` lines. No finding blocks, no severity, no status line.
 
-**Review mode** - source, a diff, or a symptom report was supplied. Emit one block per defect. highest severity first. One line carrying two distinct failures is two blocks; the same defect reachable from several lines is one.
+**Review mode** - the request supplies something to judge: source, a diff, an asset or setting, or a report of a symptom (a QA ticket, a crash or CI log, a verbal description). Emit, in order: the finding blocks, any `Deferred:` lines, and - only when no block was emitted - the status line. Nothing else precedes the first block. A review requested with nothing to judge is still review mode.
 
 ```
-### [Severity] {file:line | symbol or type.member, when source was supplied without paths | symptom, when no source was supplied}
+### [{Critical | High | Medium | Low}] {anchor}
 
 - Category: {InitOrder | CallbackPlacement | StaticNotReset | SubscriptionLeak | CoroutineLifetime | ScaledTimeWait | SingletonDuplication | PauseSaveGap | SceneCallback | ExecutionOrderDependency}
-- Evidence: {source | inferred (state what was not seen)}
-- Code: {one-line citation, or `not supplied` when the finding is inferred}
+- Evidence: {source | inferred (what was not seen)}
+- Code: {one-line citation | not supplied}
 - Impact: {observable failure - "null on first frame in a build", "session 2 starts with session 1 state"}
 - Fix: {concrete change}
 ```
 
-`CallbackPlacement` covers work in the wrong callback (a transform read in `Update` that belongs in `LateUpdate`, per-frame polling of event-driven state). `ScaledTimeWait` covers a wait that stalls at `Time.timeScale == 0`.
+The anchor is the first that applies: `file:line` when the source carries paths (a diff hunk by its new-file line); `Type.Member` when it arrived without paths; the asset path for an asset or setting; a short paraphrase of the reported symptom when nothing was read. `Code` is `not supplied` when nothing was read.
 
-`Severity: {Critical | High | Medium | Low}` - Critical = unreset static or static event under disabled domain reload, or progress lost because saving depends on `OnApplicationQuit`. High = an initialization read that legal activation order can break (a cross-object reference resolved in `Awake`, `Start`-deferred state used while the object is still disabled), subscription without its symmetric unsubscribe, a coroutine holding an invariant that disablement breaks, or a wait that stalls a core loop at `timeScale` 0. Medium = singleton without a duplicate guard, callback placement that another script can observe mid-frame, or undocumented Script Execution Order dependence. Low = a lifecycle nit with no reachable failure.
+`CallbackPlacement` covers work in the wrong callback (a transform read in `Update` that belongs in `LateUpdate`, per-frame polling of event-driven state). `ScaledTimeWait` covers a wait that stalls at `Time.timeScale == 0`. A static event a destroyed subscriber still holds is `StaticNotReset` when domain reload is off, `SubscriptionLeak` otherwise.
 
-Severity that does not fit a listed band: assign the nearest lower band and state why in `Impact`. `Category` takes exactly one value - where a defect fits two, pick the one the `Fix` addresses and name the other in `Impact`; where it fits none, pick the closest and name the real concern in `Impact`.
+`Fix` opens with the one check that confirms the diagnosis (for the session-two signature: Project Settings -> Editor -> Enter Play Mode Settings). When that setting was not seen, an unreset static is Critical-band and `inferred`: `[High]` with `Uncapped: Critical.`
 
-`Evidence: inferred` is required whenever the source was not read. It bounds the header at High: a Critical-band defect is written High, and `Impact` names the uncapped band. It never raises a block - a Medium defect stays Medium. Among blocks sharing a band, order by what the reader must fix first: root cause before the symptoms it produces. `Fix` opens with the one check that confirms the diagnosis (for the session-two signature: Project Settings -> Editor -> Enter Play Mode Options).
+**One block per defect** - one root cause with one fix. The same defect at several sites is one block: anchor the clearest site and list the others in `Impact`. One line carrying two defects with separate fixes is two blocks. A reported symptom gets one block per cause - among those this skill's Patterns name for it - that the evidence cannot rule out, most likely first, each `Fix` opening with the check that confirms or eliminates it.
 
-A defect owned by a sibling named in the ownership blockquote is not emitted as a finding. Write those after the findings, one per line, as `Deferred: {defect} -> {owning skill}`, so the workflow routes rather than drops them. In authoring mode the same line routes a design decision the sibling owns (`Deferred: service registration shape -> unity-architecture-patterns`). Omit entirely when there are none.
+`Category` takes exactly one value. Where a defect fits two, take the one whose failure is worse and name the other in `Impact`; where it fits none, take the closest and name the real concern in `Impact`. A value in this enum is this skill's finding even where a sibling owns adjacent mechanics.
 
-In review mode, close with exactly one status line, after any `Deferred:` lines:
+Severity bands - Critical = unreset static or static event under disabled domain reload, or progress lost because saving depends on `OnApplicationQuit`. High = an initialization read that legal activation order can break (a cross-object reference resolved in `Awake`, `Start`-deferred state used while the object is still disabled), subscription without its symmetric unsubscribe, a coroutine holding an invariant that disablement breaks, or a wait that stalls a core loop at `timeScale` 0. Medium = singleton without a duplicate guard, callback placement that another script can observe mid-frame, or undocumented Script Execution Order dependence. Low = a lifecycle nit with no reachable failure. A defect no band names takes the band of the listed defect with the closest consequence, and `Impact` names that comparison.
+
+`Evidence: source` means the lines that decide the defect and its band were read; an absence is source when the whole file that would hold it was read, and a diff hunk is source for the lines it shows. `Evidence: inferred` means some were not - a symptom report, a diff summary naming only a path, or a read line whose band turns on something unseen (a declaration, a caller, whether an asset is referenced); state what was not seen. Inferred caps the header at High: a Critical-band defect is written `[High]` and its `Impact` ends with `Uncapped: Critical.` Evidence never raises a band.
+
+Order blocks by band, Critical first; a capped `[High]` block sorts before the other High blocks. Within a band, a root cause comes before the symptoms it produces, then the defect with the wider player impact; where neither separates two blocks, keep the order the input presents them in.
+
+A defect owned by a sibling skill this file names is not emitted here. Write it after the findings as `Deferred: {defect} -> {owning skill}`, one line per defect. When a finding's fix needs a sibling's decision, emit the finding and add a `Deferred:` line for that part. In authoring mode the same line routes a design decision the sibling owns (`Deferred: service registration shape -> unity-architecture-patterns`). `Deferred:` lines may precede any status line; omit them when there are none.
+
+When no block was emitted, close with exactly one status line - the first row whose condition holds:
 
 | Condition | Line |
 | --- | --- |
-| One or more findings emitted | none - the findings are the output |
-| No findings, and a symptom or report was available to reason from | `No lifecycle findings.` |
-| No source, symptom, or report of any kind was supplied | `Lifecycle check not run: no source supplied.` |
-
-A symptom-only report (a QA repro, a verbal description) is checkable input: emit `Evidence: inferred` findings from it rather than the not-run line.
+| Source, a diff, an asset or setting, or a symptom report was supplied, and it yields no finding | `No lifecycle findings.` |
+| A review was requested with nothing to judge | `Lifecycle check not run: no source supplied.` |
 
 ## Avoid
 

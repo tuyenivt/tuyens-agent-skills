@@ -37,11 +37,14 @@ user-invocable: false
 public void SlideLeft() { for (var r = 0; r < 4; r++) CollapseRow(_cells, r); }
 
 // Good - previous state is still intact, so undo is a pop
-public readonly record struct MoveResult(BoardState Board, int ScoreGained, bool Changed);
+public readonly struct MoveResult {
+    public readonly BoardState Board; public readonly int ScoreGained; public readonly bool Changed;
+    public MoveResult(BoardState board, int gained, bool changed) { Board = board; ScoreGained = gained; Changed = changed; }
+}
 public static MoveResult SlideLeft(in BoardState board) { /* builds a new BoardState */ }
 ```
 
-Undo/redo becomes two stacks of `BoardState`. Push before applying, pop to undo. For a 4x4 or 9x9 board a snapshot is tens of bytes, so snapshot-per-move costs less than maintaining inverse operations and cannot drift out of sync with the forward move.
+Undo/redo becomes two stacks of `BoardState`. Push before applying, pop to undo. A snapshot holds everything a move reads: the generator state is a value inside `BoardState`, and a move returns the advanced state with the new board, or undo-then-redo spawns a different tile. For a 4x4 or 9x9 board a snapshot is tens of bytes, so snapshot-per-move costs less than maintaining inverse operations and cannot drift out of sync with the forward move.
 
 For large boards, store snapshots as the flat backing array only, and reconstruct derived data (score totals, match caches) on restore rather than snapshotting it.
 
@@ -55,17 +58,18 @@ For large boards, store snapshots as the flat backing array only, and reconstruc
 
 `T[,]` (true 2D) is slower to index than a flat array in Unity's IL2CPP builds and cannot be sliced or copied as cheaply. Prefer the flat array with one indexing helper.
 
-**The row-major trap.** `y * width + x` and `x * height + y` are both valid; mixing them silently transposes the board and only shows up on non-square grids. Write one accessor and never index the backing array directly:
+**The row-major trap.** `y * width + x` and `x * height + y` are both valid; mixing them silently transposes the board and only shows up on non-square grids. Write one accessor and never compute an index at a call site:
 
 ```csharp
 // Bad - the convention is re-derived at each call site, and one of them is wrong
 var cell = _cells[x * _height + y];
 
-// Good - one definition, one place to be wrong
-public int At(int x, int y) => y * Width + x;
+// Good - one definition, one place to be wrong, bounds checked
+public int At(int x, int y) =>
+    (uint)x < (uint)Width && (uint)y < (uint)Height ? y * Width + x : throw new ArgumentOutOfRangeException();
 ```
 
-Bounds checks belong in the accessor too. A silent wrap from `x = -1` reading the previous row's last cell is the classic off-by-one in grid games.
+The bounds check lives in the accessor. A silent wrap from `x = -1` reading the previous row's last cell is the classic off-by-one in grid games.
 
 ### Turn and phase as an explicit state machine
 
@@ -79,7 +83,7 @@ bool _isAnimating, _isPlayerTurn, _isGameOver;
 enum Phase { AwaitingInput, Resolving, Animating, GameOver }
 ```
 
-The presentation layer reads the phase to decide whether to accept input. The rules layer advances it. A cascade running while `AwaitingInput` is true is the bug this shape prevents.
+The presentation layer reads the phase to decide whether to accept input. The rules layer advances it. A cascade running while the phase is `AwaitingInput` is the bug this shape prevents.
 
 Animation duration must not gate rule progression: resolve the full move in the rules layer first, then play the resulting animation sequence. Otherwise a skipped or interrupted animation desynchronises the board from the display.
 
@@ -104,7 +108,7 @@ static bool IsLegal(byte[] grid, int index, byte value) =>
     && !BoxHas(grid, (index / 27) * 3 + (index % 9) / 3, value);
 ```
 
-Track per-row/column/box occupancy as nine `ushort` bitmasks to make this O(1) and to make generation and hint-solving affordable.
+Track occupancy as nine `ushort` bitmasks each for rows, columns, and boxes to make this O(1) and to make generation and hint-solving affordable.
 
 **Chess move generation and legality.** Generation and legality are two stages, and conflating them is the common bug:
 
@@ -115,7 +119,7 @@ IEnumerable<Move> Pseudo(Position p);
 bool IsLegal(Position p, Move m) => !IsKingAttacked(Apply(p, m), p.SideToMove);
 ```
 
-Because `Apply` is pure, the legality filter is a one-liner and needs no make/unmake pair. Castling, en passant, and promotion are position state (rights, target square), not board contents, so they must live in `Position` alongside the squares or they are lost on snapshot.
+Because `Apply` is pure, the legality filter is a one-liner and needs no make/unmake pair. Castling also needs an attack test before the move: the king may not castle out of, or through, an attacked square. Castling rights, the en passant target, the halfmove clock, and repetition history are position state, not board contents, so they live in `Position` alongside the squares or they are lost on snapshot. Promotion belongs to the move.
 
 **Match-3 detection.** Scan runs, do not compare fixed offsets:
 
@@ -132,10 +136,12 @@ Detection returns the matched cell set for the caller to clear. It does not clea
 // Bad - a refill rule that can regenerate a match makes this a hang, not a slow frame
 while (TryFindMatches(board, out var m)) board = Refill(Clear(board, m));
 
-// Good - bounded, and the bound is an assertion about the rules
+// Good - bounded, and hitting the bound is reported, not mistaken for a settled board
 const int MaxCascades = 32;
-for (var i = 0; i < MaxCascades && TryFindMatches(board, out var m); i++)
+var i = 0;
+for (; i < MaxCascades && TryFindMatches(board, out var m); i++)
     board = Refill(Clear(board, m));
+if (i == MaxCascades && TryFindMatches(board, out _)) ReportCascadeBound(board);   // assert in tests, log in release
 ```
 
 The bound is not defensive decoration: hitting it means the refill can produce matches indefinitely, which is a rules bug worth surfacing in a test rather than shipping as a freeze. Assert on the bound in tests; log and break in release.
@@ -149,18 +155,21 @@ Resolve the whole cascade in the rules layer, producing an ordered list of steps
 var spawn = UnityEngine.Random.Range(0, free.Count);
 
 // Good - the seed is part of the game state and is saved with it
-public sealed class SeededRandom(int seed) : IRandom { /* System.Random */ }
+public readonly struct SeededRandom {   // a value: snapshots copy it, a draw returns the advanced generator
+    public readonly ulong State;        // xorshift or PCG state; never 0
+    public SeededRandom(ulong state) => State = state == 0 ? 0x9E3779B97F4A7C15UL : state;
+}
 ```
 
 Requirements this buys, all of which are common in the target genres:
 
-- **Daily puzzle**: seed derived from one agreed calendar date (UTC or server-supplied, never the device's local date), identical board for every player
+- **Daily puzzle**: seed derived from one agreed calendar date (UTC or server-supplied, never the device's local date), e.g. the `yyyyMMdd` integer fed to the generator's seeding; identical board for every player
 - **Replay**: seed plus the move list reproduces the game exactly; store those instead of every frame
 - **Reproducible bug reports**: seed plus moves is the whole repro
 
-Three constraints. Save the **generator's position** (or the move count that reconstructs it), not just the seed, or a resumed game diverges from the original. Do not assume `System.Random`'s sequence is stable across .NET runtime versions - if cross-version reproducibility matters, implement a small explicit PRNG (xorshift, PCG) in the rules assembly so the sequence is yours.
+Three constraints. Save the **generator's state**, not just the seed, or a resumed game diverges from the original; give each move a fixed number of draws so a replay can recover the position. `System.Random` exposes no state - resuming it means re-seeding and discarding the number of draws taken, which is not the move count unless every move draws the same number. Do not assume `System.Random`'s sequence is stable across .NET runtime versions - if cross-version reproducibility matters, implement a small explicit PRNG (xorshift, PCG) in the rules assembly so the sequence is yours.
 
-The third only binds when a replay must reproduce on a *different machine* than it recorded on - lockstep multiplayer, a shared daily leaderboard, a replay file opened on another device. Three things desync before the PRNG does: `float`/`Mathf` results differ across IL2CPP and Mono and across ARM and x64, so rules math is integer or fixed-point; `Dictionary` and `HashSet` iteration order is not part of the .NET contract, so any rule iterating one needs an explicit sort; and `List.Sort` is introsort and unstable, so its comparer must be a total order with no equal elements. A same-device replay is unaffected by all three.
+The third only binds when a replay must reproduce on a *different machine* than it recorded on - lockstep multiplayer, a shared daily leaderboard, a replay file opened on another device. Three things desync before the PRNG does: `float`/`Mathf` results can differ across IL2CPP and Mono and across ARM and x64, so rules math is integer or fixed-point; `Dictionary` and `HashSet` iteration order is not part of the .NET contract, so any rule iterating one needs an explicit sort; and `List.Sort` is introsort and unstable, so its comparer must be a total order with no equal elements. A same-device replay is unaffected by all three, given keys with value-based hashes.
 
 ### Advancing the loop
 
@@ -171,46 +180,52 @@ Turn-based genres (2048, Sudoku, Chess, quiz) advance on input, not on frames - 
 void Update() { _sim.Advance(Time.deltaTime); }
 
 // Good - the rules layer takes fixed ticks; the remainder carries to the next frame
-_acc += dt; while (_acc >= Tick) { _sim.Step(Tick); _acc -= Tick; }
+_acc += dt; var steps = 0;
+while (_acc >= Tick && steps++ < MaxStepsPerFrame) { _sim.Step(Tick); _acc -= Tick; }
 ```
 
-Cap the number of catch-up steps per frame (backgrounding produces a huge `dt`), and let `unity-game-economy-progression` own the elapsed-time math for anything longer than a frame hitch.
+Cap the number of catch-up steps per frame. `Time.deltaTime` is already clamped to `Time.maximumDeltaTime`, so time lost to a backgrounded app never arrives as one huge `dt` - it is silently dropped. `unity-game-economy-progression` owns the elapsed-time math for anything longer than a frame hitch.
 
 ## Output Format
 
-Two modes, chosen by whether the request supplies code to judge or asks for code to be produced.
+Two modes, chosen by what the request supplies.
 
-**Authoring mode** - the request is to write or design something. Emit the code or design, then any `Deferred:` lines. No finding blocks, no severity, no status line: nothing was reviewed, so a not-run line would misdescribe the work.
+**Authoring mode** - the request asks for code or a design. Emit, in order: any `Precondition: {defect in existing code the design depends on fixing}` lines; the code or design; one-line notes after it, one per decision this skill governs; then any `Deferred:` lines. No finding blocks, no severity, no status line.
 
-**Review mode** - source, a diff, or a symptom report was supplied. Emit one block per finding:
+**Review mode** - the request supplies something to judge: source, a diff, an asset or setting, or a report of a symptom (a QA ticket, a crash or CI log, a verbal description). Emit, in order: the finding blocks, any `Deferred:` lines, and - only when no block was emitted - the status line. Nothing else precedes the first block. A review requested with nothing to judge is still review mode.
 
 ```
-### [Severity] {file:line | symbol or type.member, when source was supplied without paths | asset path | symptom, when no source was supplied}
+### [{Critical | High | Medium | Low}] {anchor}
 
-- Category: {Mutation | Determinism | Termination | GridIndexing | PhaseModel | EngineCoupling | LegalitySeam | SnapshotIntegrity}
-- Evidence: {source | inferred (state what was not seen)}
-- Code: {one-line citation, or `not supplied` when the finding is inferred}
+- Category: {Mutation | Determinism | Termination | GridIndexing | PhaseModel | EngineCoupling | LegalitySeam | SnapshotIntegrity | RuleLogic}
+- Evidence: {source | inferred (what was not seen)}
+- Code: {one-line citation | not supplied}
 - Impact: {what breaks - "undo restores a corrupted board", "cascade can hang the main thread"}
 - Fix: {concrete change}
 ```
 
-`Severity: {Critical | High | Medium | Low}` - Critical = an unbounded resolution loop, or state corruption that survives into a save. High = rules whose outcome varies by device, run, or environment (including seed provenance), in-place mutation defeating undo/replay, or `UnityEngine` referenced from a rule. Medium = an indexing or phase-model flaw contained to one screen. Low = a clarity or structure nit with no current behavioural cost.
+The anchor is the first that applies: `file:line` when the source carries paths (a diff hunk by its new-file line); `Type.Member` when it arrived without paths; the asset path for an asset or setting; a short paraphrase of the reported symptom when nothing was read. `Code` is `not supplied` when nothing was read.
 
-Severity that does not fit a listed band: assign the nearest lower band and state why in `Impact`. `Category` takes exactly one value - where a defect fits two, pick the one the `Fix` addresses and name the other in `Impact`; where it fits none, pick the closest and name the real concern in `Impact`.
+`LegalitySeam` covers a method that both checks and mutates, and a detector that also clears, scores, or refills. `RuleLogic` covers a rule that computes the wrong outcome (a missed vertical run, a double merge).
 
-`Evidence: inferred` is required whenever the source was not read. It bounds the header at High: a Critical-band defect is written High, and `Impact` names the uncapped band. It never raises a block - a Medium defect stays Medium. Among blocks sharing a band, order by what the reader must fix first: root cause before the symptoms it produces.
+**One block per defect** - one root cause with one fix. The same defect at several sites is one block: anchor the clearest site and list the others in `Impact`. One line carrying two defects with separate fixes is two blocks. A reported symptom gets one block per cause - among those this skill's Patterns name for it - that the evidence cannot rule out, most likely first, each `Fix` opening with the check that confirms or eliminates it.
 
-A defect owned by a sibling named in the ownership blockquote is not emitted as a finding. Write those after the findings, one per line, as `Deferred: {defect} -> {owning skill}`, so the workflow routes rather than drops them. In authoring mode the same line routes a design decision the sibling owns (`Deferred: rules-assembly asmdef boundary -> unity-architecture-patterns`). Omit entirely when there are none.
+`Category` takes exactly one value. Where a defect fits two, take the one whose failure is worse and name the other in `Impact`; where it fits none, take the closest and name the real concern in `Impact`. A value in this enum is this skill's finding even where a sibling owns adjacent mechanics.
 
-In review mode, close with exactly one status line, after any `Deferred:` lines:
+Severity bands - Critical = an unbounded resolution loop, or state corruption that survives into a save. High = rules whose outcome varies by device, run, or environment (including seed provenance), in-place mutation defeating undo or replay, `UnityEngine` referenced from a rule, or a rule computing the wrong outcome in normal play (a transposed index included). Medium = a phase-model flaw contained to one screen, or an indexing flaw with no reachable wrong outcome (a missing bounds check behind validated input). Low = a clarity or structure nit with no current behavioural cost. A defect no band names takes the band of the listed defect with the closest consequence, and `Impact` names that comparison.
+
+`Evidence: source` means the lines that decide the defect and its band were read; an absence is source when the whole file that would hold it was read, and a diff hunk is source for the lines it shows. `Evidence: inferred` means some were not - a symptom report, a diff summary naming only a path, or a read line whose band turns on something unseen (a declaration, a caller, whether an asset is referenced); state what was not seen. Inferred caps the header at High: a Critical-band defect is written `[High]` and its `Impact` ends with `Uncapped: Critical.` Evidence never raises a band.
+
+Order blocks by band, Critical first; a capped `[High]` block sorts before the other High blocks. Within a band, a root cause comes before the symptoms it produces, then the defect with the wider player impact; where neither separates two blocks, keep the order the input presents them in.
+
+A defect owned by a sibling skill this file names is not emitted here. Write it after the findings as `Deferred: {defect} -> {owning skill}`, one line per defect. When a finding's fix needs a sibling's decision, emit the finding and add a `Deferred:` line for that part. In authoring mode the same line routes a design decision the sibling owns (`Deferred: rules-assembly asmdef boundary -> unity-architecture-patterns`). `Deferred:` lines may precede any status line; omit them when there are none.
+
+When no block was emitted, close with exactly one status line - the first row whose condition holds:
 
 | Condition | Line |
 | --- | --- |
-| One or more findings emitted | none - the findings are the output |
-| No findings, and a symptom or report was available to reason from | `No gameplay findings.` |
-| No source, diff, symptom, or report of any kind was supplied | `Gameplay check not run: no source supplied.` |
-
-A symptom-only report (a QA ticket, a verbal description) is checkable input: emit `Evidence: inferred` findings from it rather than the not-run line.
+| Source, a diff, an asset or setting, or a symptom report was supplied, and it yields no finding | `No gameplay findings.` |
+| A review was requested with nothing to judge | `Gameplay check not run: no source supplied.` |
 
 ## Avoid
 

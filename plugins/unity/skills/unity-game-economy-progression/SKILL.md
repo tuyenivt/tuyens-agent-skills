@@ -9,7 +9,7 @@ user-invocable: false
 
 # Unity Game Economy and Progression
 
-> This skill owns **currency, progression, and time-based accrual math**. The `IClock` seam and the engine-free rules boundary belong to `unity-architecture-patterns`; board and turn resolution belongs to `unity-2d-gameplay-patterns`; storing and migrating the save belongs to `unity-save-persistence`; server-side receipt validation and anti-tamper enforcement belong to `unity-security-patterns`.
+> This skill owns **currency, progression, and time-based accrual math**. The `IClock` seam and the engine-free rules boundary belong to `unity-architecture-patterns`; board and turn resolution belongs to `unity-2d-gameplay-patterns`; storing and migrating the save belongs to `unity-save-persistence`; server-side receipt validation and anti-tamper enforcement belong to `unity-security-patterns`; import pipelines for large content banks belong to `unity-content-data`.
 
 ## When to Use
 
@@ -25,7 +25,7 @@ user-invocable: false
 - Elapsed time comes from a substitutable `IClock`, never from a direct `DateTime` or `Time` read inside economy math. Offline math is untestable otherwise
 - Monotonic time (`Time.realtimeSinceStartup`, `Stopwatch`) is tamper-resistant but does not survive process death; wall-clock survives but is forgeable. Every offline-progress design picks a combination and states which failure it accepts
 - Accrual is computed as a **closed-form function of elapsed time**, not by simulating skipped ticks. A one-week absence must not run a week of steps
-- Currency totals that can exceed `double`'s exact-integer range use a big-number representation. Silent precision loss is the failure, not overflow to a wrong sign
+- Currency totals that can exceed `double`'s exact-integer range use a big-number representation. It buys range, not exactness: small additions to a huge total still round away, so the UI must not promise them. Silent overflow or a stalled total that should still grow is the failure
 - Balance numbers - costs, rates, curve coefficients, wave tables - live in ScriptableObjects or imported data, never as literals in gameplay code
 - Every currency has an enumerated set of sources and sinks. A currency with no sink inflates; a sink with no source is dead content
 
@@ -38,8 +38,8 @@ The exploit is one line long: set the device clock forward a year, collect a yea
 | Time source | Survives app kill | Tamper-resistant | Use for |
 | --- | --- | --- | --- |
 | `DateTime.UtcNow` | yes | no | offline elapsed, when clamped or server-checked |
-| `Time.realtimeSinceStartup` | no (resets) | yes | in-session timers, cooldowns while running |
-| `Stopwatch` / monotonic OS tick | no | yes | in-session accrual, background-duration checks |
+| `Time.realtimeSinceStartupAsDouble` | no (resets) | yes | in-session timers, cooldowns while running (the `float` version loses precision over long sessions) |
+| `Stopwatch` / monotonic OS tick | no | yes | in-session accrual; it pauses while a mobile device sleeps, so it undercounts background time |
 | Server timestamp | yes | yes | authoritative grants, anything monetised |
 
 ```csharp
@@ -47,15 +47,16 @@ The exploit is one line long: set the device clock forward a year, collect a yea
 var elapsed = DateTime.UtcNow - save.LastSeenUtc;
 Grant(rate * elapsed.TotalSeconds);
 
-// Good - bounded, and backward jumps yield nothing instead of negative or huge values
+// Good - bounded; a backward jump grants nothing and is recorded (defence 2)
 var raw = _clock.UtcNow - save.LastSeenUtc;
+if (raw < TimeSpan.Zero) save.ClockSuspect = true;
 var elapsed = raw < TimeSpan.Zero ? TimeSpan.Zero : (raw > MaxOffline ? MaxOffline : raw);
 ```
 
 Three defences, in increasing strength:
 
 1. **Clamp** to a maximum offline window (a design number anyway - most idle games cap at 2-12 hours). Costs nothing, bounds the exploit to one cap per app launch
-2. **Detect backwards movement**: a `LastSeenUtc` in the future, or a wall-clock delta far exceeding the monotonic delta measured while running, marks the save suspicious. Record the flag, degrade the grant, do not silently continue
+2. **Detect clock tampering**: a `LastSeenUtc` in the future, or a wall-clock delta far exceeding the monotonic delta measured while running, marks the save suspicious. Record the flag, degrade the grant, do not silently continue
 3. **Server timestamp** for anything with real-money consequence. The server is the only authority a modified client cannot forge; enforcement design belongs to `unity-security-patterns`
 
 Store `LastSeenUtc` in UTC. Local time makes a timezone flight indistinguishable from tampering, and a DST transition mints or destroys an hour.
@@ -81,11 +82,11 @@ Offline earnings are conventionally reduced against online earnings (a fraction 
 `float` is exact only to 2^24 (about 1.7e7) and is never a currency type. `double` represents integers exactly only up to 2^53 (about 9.0e15); `long` overflows at about 9.2e18. Idle games with exponential growth cross both, and the `double` failure is worse because it is silent: additions of small values to a large total simply stop having an effect.
 
 ```csharp
-// Bad - past 2^53, adding 1 gold to the total changes nothing at all
+// Bad - past 2^53, adding 1 gold rounds to the nearest representable total - here, no change
 double gold = 9.1e15;
 gold += 1; // gold is unchanged
 
-// Good - mantissa and exponent kept separate and normalised
+// Good - range past 1e308 without overflow; still not exact (see below)
 public readonly struct BigDouble { public readonly double Mantissa; public readonly int Exponent; }
 ```
 
@@ -93,13 +94,13 @@ Choose deliberately:
 
 | Range needed | Representation |
 | --- | --- |
-| below ~9e15 | `long`, exact, checked for overflow |
+| below ~9.2e18 | `long`, exact, checked for overflow |
 | unbounded exponential growth | mantissa-plus-exponent struct (a `BigDouble`-style type) |
 | exact arbitrary precision | `System.Numerics.BigInteger` - correct but allocating; wrong for per-frame math |
 
-Requirements for a mantissa/exponent type, all of which bite in practice: normalise after every operation, define comparison and equality (mantissa comparison after exponent comparison), define a display format (scientific, engineering, or named tiers - K/M/B/T then AA/AB), and make it serialisable in a form that round-trips exactly through the save (`unity-save-persistence`). Write it as a `readonly struct` in the rules assembly so it stays engine-free and allocation-free.
+Requirements for a mantissa/exponent type, all of which bite in practice: normalise after every operation, define comparison and equality (mantissa comparison after exponent comparison), define a display format (scientific, engineering, or named tiers - K/M/B/T then AA/AB), and make it serialisable in a form that round-trips exactly through the save (`unity-save-persistence`). Write it as a `readonly struct` in the rules assembly so it stays engine-free and allocation-free; Unity's serializer and `JsonUtility` skip `readonly` fields, so the save writes it through a mutable DTO or a custom converter.
 
-Adding a value more than ~17 orders of magnitude below the total is a no-op in any mantissa representation. That is correct behaviour, not a bug, but the UI must not show a "+1" that never lands.
+Adding a value more than about 16 orders of magnitude below the total is a no-op with a `double` mantissa. That is correct behaviour, not a bug, but the UI must not show a "+1" that never lands.
 
 ### Currency, sources, and sinks
 
@@ -120,7 +121,10 @@ Grant and spend go through one guarded path:
 wallet.Coins -= cost;
 
 // Good - the caller must handle failure, and every mutation has a reason attached
-public bool TrySpend(CurrencyId id, BigDouble cost, string reason);
+public interface IWallet {
+    bool TrySpend(CurrencyId id, BigDouble cost, string reason);
+    void Grant(CurrencyId id, BigDouble amount, string reason);
+}
 ```
 
 The `reason` string feeds analytics and makes economy bugs diagnosable.
@@ -129,7 +133,7 @@ The `reason` string feeds analytics and makes economy bugs diagnosable.
 
 A prestige loop trades current progress for a permanent multiplier. The design points that break implementations:
 
-- **Conversion is a curve, not a ratio.** `stars = floor(k * sqrt(lifetimeEarned / threshold))` and similar sublinear forms keep late resets meaningful without runaway. Put `k` and the threshold in balance data
+- **Conversion is a curve, not a ratio.** `stars = floor(k * sqrt(lifetimeEarned / threshold))` and similar sublinear forms keep late resets meaningful without runaway. The formula gives the total a lifetime has earned: each prestige grants that total minus stars already banked, and `lifetimeEarned` (everything ever granted - spending never reduces it) never resets. Put `k` and the threshold in balance data
 - **The reset must be an explicit list of what is cleared and what persists**, held as data. An implicit "clear everything except these fields" reset drifts every time a field is added, and the resulting bug destroys player progress
 - Preview the exact gain before confirming; an irreversible reset with a surprise result is the top complaint in the genre
 - Reset is a save-schema event. Version it and make it idempotent, so an interrupted reset does not double-apply (`unity-save-persistence`)
@@ -140,10 +144,10 @@ A prestige loop trades current progress for a permanent multiplier. The design p
 // Bad - a rebalance is a code change, a rebuild, and a store release
 private const float UpgradeCost = 25f * 1.15f;
 
-// Good - authored, tunable, and shippable without a client build
+// Good - authored and tunable without a code change (post-release changes need remote config, below)
 [CreateAssetMenu] public sealed class EconomyConfig : ScriptableObject {
-    [SerializeField] private AnimationCurve costCurve;
-    public float CostAt(int level) => costCurve.Evaluate(level);
+    [SerializeField] private double baseCost = 25, growth = 1.15;
+    public double CostAt(int level) => baseCost * Math.Pow(growth, level);   // BigDouble past ~9e15
 }
 ```
 
@@ -152,7 +156,7 @@ Format by use:
 | Data | Format |
 | --- | --- |
 | A handful of tunables, designer-edited in the editor | ScriptableObject with serialized fields |
-| Wave tables, level tables, hundreds of rows | CSV or JSON imported into a ScriptableObject at build time, validated on import |
+| Wave tables, level tables, hundreds of rows | CSV or JSON imported into a ScriptableObject in the editor, validated on import |
 | Values that must change after release | remote config, with the shipped ScriptableObject as the fallback |
 
 Validate on import, not at first use: a wave table with a missing column should fail the import, not produce a null-reference on wave 40 in production. Curve shapes are worth checking too - a cost curve that dips is an infinite-money exploit, and it is cheap to assert monotonicity at import.
@@ -169,7 +173,7 @@ Three shapes cover nearly all of it:
 | Geometric | `base * r^n` (typically `r` in 1.07-1.15) | upgrade costs, idle income tiers |
 | Sublinear | `base * n^p`, `p < 1` | prestige conversion, catch-up bonuses |
 
-Geometric costs against geometric income is the standard idle balance: keep the income ratio slightly above the cost ratio and the player advances; invert it and progress stalls. Express both in the same balance asset so the relationship is visible rather than emergent.
+The standard idle shape is geometric cost per purchase against income that grows linearly per purchase plus periodic multipliers; the multipliers decide whether progress outpaces cost. Express both in the same balance asset so the relationship is visible rather than emergent.
 
 For tower-defense waves, scale count, health, and reward on separate curves. One shared multiplier makes a wave that is simultaneously unbeatable and unrewarding, and a reward curve that outpaces cost growth trivialises the run. Verify by simulating the curves headlessly in an EditMode test - the rules layer is engine-free, so a hundred waves run in milliseconds.
 
@@ -187,39 +191,42 @@ Cases worth having: clock moved backwards, clock moved forward past the clamp, e
 
 ## Output Format
 
-Two modes, chosen by whether the request supplies code to judge or asks for code to be produced.
+Two modes, chosen by what the request supplies.
 
-**Authoring mode** - the request is to write or design something. Emit the code or design, then any `Deferred:` lines. No finding blocks, no severity, no status line: nothing was reviewed, so a not-run line would misdescribe the work.
+**Authoring mode** - the request asks for code or a design. Emit, in order: any `Precondition: {defect in existing code the design depends on fixing}` lines; the code or design; one-line notes after it, one per decision this skill governs; then any `Deferred:` lines. No finding blocks, no severity, no status line.
 
-**Review mode** - source, a diff, or a symptom report was supplied. Emit one block per finding.
+**Review mode** - the request supplies something to judge: source, a diff, an asset or setting, or a report of a symptom (a QA ticket, a crash or CI log, a verbal description). Emit, in order: the finding blocks, any `Deferred:` lines, and - only when no block was emitted - the status line. Nothing else precedes the first block. A review requested with nothing to judge is still review mode.
 
 ```
-### [Severity] {file:line | symbol or type.member, when source was supplied without paths | asset path | symptom, when no source was supplied}
+### [{Critical | High | Medium | Low}] {anchor}
 
 - Category: {ClockTrust | OfflineAccrual | NumericPrecision | CurrencyFlow | PrestigeReset | BalanceHardcoding | CurveShape | TimeInjection}
-- Evidence: {source | inferred (state what was not seen)}
-- Code: {one-line citation - code, config value, or curve setting; or `not supplied` when the finding is inferred}
+- Evidence: {source | inferred (what was not seen)}
+- Code: {one-line citation of code, a config value, or a curve setting | not supplied}
 - Impact: {what it allows or breaks - "clock change mints unlimited currency", "totals stop increasing past 9e15"}
 - Fix: {concrete change}
 ```
 
-`Severity: {Critical | High | Medium | Low}` - Critical = a currency grant unbounded or repeatable-at-will from player-controllable input, or progress loss on reset or migration. High = silent precision loss, an offline catch-up that hangs at resume, or a monetised grant with no server check. Medium = balance hardcoded in code, a curve flaw affecting pacing, or an untestable time read. Low = a naming, structure, or documentation nit in economy data.
+The anchor is the first that applies: `file:line` when the source carries paths (a diff hunk by its new-file line); `Type.Member` when it arrived without paths; the asset path for an asset or setting; a short paraphrase of the reported symptom when nothing was read. `Code` is `not supplied` when nothing was read.
 
-Severity that does not fit a listed band: assign the nearest lower band and state why in `Impact`. `Category` takes exactly one value - where a defect fits two, pick the one the `Fix` addresses and name the other in `Impact`; where it fits none, pick the closest and name the real concern in `Impact`.
+**One block per defect** - one root cause with one fix. The same defect at several sites is one block: anchor the clearest site and list the others in `Impact`. One line carrying two defects with separate fixes is two blocks. A reported symptom gets one block per cause - among those this skill's Patterns name for it - that the evidence cannot rule out, most likely first, each `Fix` opening with the check that confirms or eliminates it.
 
-`Evidence: inferred` is required whenever the source was not read. It bounds the header at High: a Critical-band defect is written High, and `Impact` names the uncapped band. It never raises a block - a Medium defect stays Medium. Among blocks sharing a band, order by what the reader must fix first: root cause before the symptoms it produces.
+`Category` takes exactly one value. Where a defect fits two, take the one whose failure is worse and name the other in `Impact`; where it fits none, take the closest and name the real concern in `Impact`. A value in this enum is this skill's finding even where a sibling owns adjacent mechanics.
 
-A defect owned by a sibling named in the ownership blockquote is not emitted as a finding. Write those after the findings, one per line, as `Deferred: {defect} -> {owning skill}`, so the workflow routes rather than drops them. In authoring mode the same line routes a design decision the sibling owns (`Deferred: reset save-schema migration -> unity-save-persistence`). Omit entirely when there are none.
+Severity bands - Critical = a currency grant unbounded, or repeatable at will with no clamp, from player-controllable input, or progress lost on a prestige reset. High = silent precision loss, a spend with no balance check (a negative balance or a free purchase), an offline catch-up that hangs at resume, or a monetised grant computed client-side. Medium = balance hardcoded in code, a curve flaw affecting pacing, or an untestable time read. Low = a naming, structure, or documentation nit in economy data. A defect no band names takes the band of the listed defect with the closest consequence, and `Impact` names that comparison.
 
-In review mode, close with exactly one status line, after any `Deferred:` lines:
+`Evidence: source` means the lines that decide the defect and its band were read; an absence is source when the whole file that would hold it was read, and a diff hunk is source for the lines it shows. `Evidence: inferred` means some were not - a symptom report, a diff summary naming only a path, or a read line whose band turns on something unseen (a declaration, a caller, whether an asset is referenced); state what was not seen. Inferred caps the header at High: a Critical-band defect is written `[High]` and its `Impact` ends with `Uncapped: Critical.` Evidence never raises a band.
+
+Order blocks by band, Critical first; a capped `[High]` block sorts before the other High blocks. Within a band, a root cause comes before the symptoms it produces, then the defect with the wider player impact; where neither separates two blocks, keep the order the input presents them in.
+
+A defect owned by a sibling skill this file names is not emitted here. Write it after the findings as `Deferred: {defect} -> {owning skill}`, one line per defect. When a finding's fix needs a sibling's decision, emit the finding and add a `Deferred:` line for that part. In authoring mode the same line routes a design decision the sibling owns (`Deferred: reset save-schema migration -> unity-save-persistence`). `Deferred:` lines may precede any status line; omit them when there are none.
+
+When no block was emitted, close with exactly one status line - the first row whose condition holds:
 
 | Condition | Line |
 | --- | --- |
-| One or more findings emitted | none - the findings are the output |
-| No findings, and a symptom or report was available to reason from | `No economy findings.` |
-| No source, diff, symptom, or report of any kind was supplied | `Economy check not run: no source supplied.` |
-
-A symptom-only report (a QA ticket, a verbal description) is checkable input: emit `Evidence: inferred` findings from it rather than the not-run line.
+| Source, a diff, an asset or setting, or a symptom report was supplied, and it yields no finding | `No economy findings.` |
+| A review was requested with nothing to judge | `Economy check not run: no source supplied.` |
 
 ## Avoid
 

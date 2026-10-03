@@ -9,7 +9,7 @@ user-invocable: false
 
 # Unity Overengineering Review
 
-> Confirm any DI container the project already uses from `Packages/manifest.json` first. A container in place is context, not a finding - review what the diff adds against it, and never propose migrating off it.
+> Confirm any DI container the project already uses first - in `Packages/manifest.json`, in embedded packages under `Packages/`, and in source under `Assets/` (Zenject/Extenject from the Asset Store lands there with no manifest entry). A container in place is context, not a finding - review what the diff adds against it, and never propose migrating off it.
 >
 > This skill owns **whether a layer earns its keep**. Where code should live and what the composition root looks like belongs to `unity-architecture-patterns`; callback timing and static lifetime to `unity-monobehaviour-lifecycle`; allocation and language mechanics to `csharp-unity-patterns`; measured cost to `unity-performance`.
 
@@ -20,9 +20,9 @@ user-invocable: false
 
 ## Rules
 
-- Every finding names what makes the abstraction unnecessary: no engine callback, no second reader, no second implementer, no measured cost, the value never varies. When several stack, comma-separate them in `Unnecessary because:`
+- Every finding names what makes the abstraction unnecessary (`Unnecessary because:` - no engine callback, no second reader, no second implementer, no measured cost, the value never varies; comma-separate when several stack), or for Absent Structure what the absence costs (`Missing because:`)
 - Intent:
-  - **`[Recommend]`** (default). Name the constraint, recommend the edit. Escalate to **`[Must]`** when measurable cost is present; cite it in `Cost:`. Triggers: an abstraction that forces Play mode to test what was previously a plain-C# unit test; a pooling or caching layer whose bookkeeping exceeds the allocation it avoids; a branch presented as handling a case it can never reach
+  - **`[Recommend]`** (default). Name the constraint, recommend the edit. Escalate to **`[Must]`** only on one of these countable costs, cited in `Cost:`: an abstraction that makes a rule need a `GameObject` (`AddComponent`) or a running scene to test where a plain class would be `new`ed; a pooling or caching layer whose bookkeeping exceeds the allocation it avoids; a branch presented as handling a case it can never reach (the cost is the branch no test exercises); for Absent Structure, the edit-site or regression count already being paid
   - **`[Recommend]`** when justification is plausible but not visible in the diff - state the assumption and ask the author to confirm
 - An abstraction with **visible** justification - a second implementer, a test seam, a profiler measurement in the PR - is not a finding
 - **Scale is the discriminator, and scale is not genre.** Price an abstraction against the variation it absorbs: team size, shipped platforms, storefronts, locales, and runtime-selected variants. A casual 2D game on four platforms with a runtime consent split has a large distribution matrix and earns the layers that track it; a 2-scene puzzle game on one store does not. Cite the project's actual numbers, not a general principle
@@ -46,7 +46,7 @@ public class ScoreCalculator : MonoBehaviour {
 public sealed class ScoreCalculator { public int Score(Board b) => ... }
 ```
 
-`Cost:` the rule now requires Play mode and a `GameObject` to test. Justified when the class uses a lifecycle callback, a serialized inspector field, a coroutine, or a collision/trigger hook.
+What it costs: the rule now needs a `GameObject` and `AddComponent` to test, and a running scene if a callback must fire. Justified when the class uses a lifecycle callback, a serialized inspector field, a coroutine, or a collision/trigger hook.
 
 #### ScriptableObject per constant
 
@@ -58,7 +58,7 @@ public sealed class ScoreCalculator { public int Score(Board b) => ... }
 public const int GridSize = 4;
 ```
 
-Justified when a designer genuinely tunes the value without a rebuild, it varies per level or per difficulty, or it is one field in a config asset that already exists. Do not flag a populated balance table - that is `unity-game-economy-progression` working as intended.
+Justified when a designer genuinely tunes the value without a code change, it varies per level or per difficulty, or it is one field in a config asset that already exists. Do not flag a populated balance table - that is `unity-game-economy-progression` working as intended.
 
 #### Singleton for a service with one call site
 
@@ -77,10 +77,10 @@ Justified when several unrelated scenes need it and its lifetime genuinely spans
 // Bad - an entity/component/system stack to move 16 tiles on a 4x4 board
 public partial struct TileMoveSystem : ISystem { ... }
 
-// Good - a plain array and a loop; the whole board fits in a cache line
+// Good - a plain array and a loop; 16 int cells are 64 bytes
 ```
 
-`Cost:` a second programming model, a separate debugging story, and rules that are no longer plain C#. ECS earns its complexity at thousands of entities. A 2048 board, a Sudoku grid, a chess position, and a typical Match-3 field are all far below that line. Justified only with a profile showing the entity count and the frame cost that motivates it.
+What it costs: a second programming model, a separate debugging story, and rules that are no longer plain C#. ECS earns its complexity at thousands of entities. A 2048 board, a Sudoku grid, a chess position, and a typical Match-3 field are all far below that line. Justified only with a profile showing the entity count and the frame cost that motivates it.
 
 #### DI container for a small game
 
@@ -119,7 +119,7 @@ Justified when a fake or a second implementation exists, or arrives in the same 
 _pool = new ObjectPool<GameOverPanel>(...);   // exactly one, alive for the session
 ```
 
-`Cost:` pool bookkeeping and lifecycle bugs (a returned object that keeps running) in exchange for an allocation that happens once. Justified for objects spawned and released repeatedly - TD projectiles, Match-3 particles, damage numbers - where a profile shows the allocation.
+What it costs: pool bookkeeping and lifecycle bugs (a returned object that keeps running) in exchange for an allocation that happens once. Justified for objects spawned and released repeatedly - TD projectiles, Match-3 particles, damage numbers - where a profile shows the allocation.
 
 #### Caching or micro-optimizing without a profile
 
@@ -127,7 +127,7 @@ _pool = new ObjectPool<GameOverPanel>(...);   // exactly one, alive for the sess
 // Bad - a hand-rolled cache added "for performance" with no measurement
 ```
 
-`unity-performance` owns the measurement discipline. The finding here is the abstraction added on a guess; if a profile is cited, this is not a finding regardless of the outcome.
+`unity-performance` owns the measurement discipline. The finding here is the abstraction added on a guess; a cited profile showing the layer pays clears it; one showing its bookkeeping costs more than it saves is the `[Must]` case.
 
 #### Struct/generic gymnastics for a cold path
 
@@ -138,7 +138,7 @@ Allocation avoidance in code that runs once per level load buys nothing and cost
 #### Null check against a Unity object that cannot be null there
 
 ```csharp
-// Bad - a serialized field guaranteed assigned in the inspector, checked on every frame
+// Bad - a required serialized field the scene validates at load, checked again on every frame
 void Update() { if (target == null) return; ... }
 ```
 
@@ -155,7 +155,7 @@ Justified at 2+ instantiations, or when the type is a package's public API.
 #### Dead feature flag
 
 ```csharp
-// Bad - a constant flag; the other branch is never compiled into any test
+// Bad - a constant flag; the other branch is never exercised by any test
 if (Features.NewBoardRenderer) { ... } else { ... }
 ```
 
@@ -163,32 +163,30 @@ Justified when remote config, a staged rollout, or a kill switch backs it. Other
 
 ## Output Format
 
-One block per finding; the consuming workflow merges them:
-
-```
-### [Must | Recommend] {file:line | asset path | symptom, when no source was supplied}
-
-- Category: {Engine Ceremony | Premature Architecture | Speculative Performance | Type-System Waste | Absent Structure}
-- Code: {one-line citation, or `not supplied` when the finding is inferred}
-- Unnecessary because: {what makes it dead or unread; comma-separate when stacked} -- OR, for Absent Structure -- Missing because: {what the absence costs}
-- Cost: {required for [Must]; omit otherwise}
-- Recommendation: {concrete C# or asset edit; for Absent Structure, the extraction and its owning skill}
-- Justified when: {one-line note if a legitimate reason might apply; otherwise omit}
-```
-
-`Absent Structure` is the floor rule's category. Its `Cost:` is the edit-site count or the regression count already being paid, and that count is what escalates the block to `[Must]`.
-
-Two kinds of abstraction earn a `Justified as-is:` line, written before the per-category lines: one that matched a category pattern here but was cleared by a visible justification, and any layer the request itself questioned. Code that matched no pattern gets no line.
+The output is, in order: `Justified as-is:` lines, finding blocks (`[Must]` first, then `[Recommend]`, each in file order), one `No <category> findings.` line for every one of the five categories with no finding block, then `Deferred:` lines. A planned, unbuilt change is `[Recommend]`: `[Must]` needs a cost already being paid. The consuming workflow merges it.
 
 ```
 Justified as-is: {abstraction} - {the visible justification: implementer count, the test double, the measurement}
+
+### [{Must | Recommend}] {anchor}
+
+- Category: {Engine Ceremony | Premature Architecture | Speculative Performance | Type-System Waste | Absent Structure}
+- Code: {one-line citation | planned: the change as described | not supplied}
+- Unnecessary because: {what makes it dead or unread; comma-separate when stacked}
+- Cost: {the countable cost}
+- Recommendation: {concrete C# or asset edit; for Absent Structure, the extraction and its owning skill}
+- Justified when: {the legitimate reason that would clear it}
 ```
 
-This distinguishes a defended layer from an unexamined one - `No <category> findings.` alone reads as "nothing was checked" rather than "this was checked and it holds".
+The anchor is the first that applies: `file:line` of the declaration when the source carries paths; the asset path for an asset; a short paraphrase of the described or planned change when no source was supplied. A finding spanning files anchors the file that holds the fix and lists the others in `Unnecessary because:` or `Missing because:`.
 
-For each category with zero findings, emit exactly: `No <category> findings.` (using the category name from the enum) so the workflow knows the check ran. Omit this line for categories that have at least one finding. Emit `Necessity check not run: no source supplied.` instead of the per-category lines only when nothing at all was supplied - a prose description of the architecture is checkable input, and yields findings, `Justified as-is:` lines, or `Deferred:` lines like any other source.
+An Absent Structure block writes `Missing because: {what the absence costs}` in place of `Unnecessary because:`. A `[Must]` block carries `Cost:`; a `[Recommend]` block omits it. `Justified when:` is omitted when no legitimate reason could apply.
 
-A defect owned by a sibling named in the ownership blockquote is not emitted as a finding. Write those at the end, one per line, as `Deferred: {defect} -> {owning skill}`, so the workflow routes rather than drops them. Omit entirely when there are none.
+A `Justified as-is:` line is written for an abstraction that matched a category pattern here but was cleared by a visible justification, and for any layer the request itself questioned. Code that matched no pattern gets no line. A category whose only entries are `Justified as-is:` lines still gets its `No <category> findings.` line - the pair reads "checked, and it holds".
+
+Emit `Necessity check not run: no source supplied.` in place of the category lines only when nothing at all was supplied. A prose description of the architecture or of a planned change is checkable input, and yields findings, `Justified as-is:` lines, or `Deferred:` lines like any other source.
+
+Absent Structure is always this skill's finding: emit it, and name `unity-architecture-patterns` as the owner of the extraction in `Recommendation`. Any other defect owned by a sibling skill this file names is written at the end as `Deferred: {defect} -> {owning skill}`, so the workflow routes rather than drops it. Omit `Deferred:` lines when there are none.
 
 ## Avoid
 
@@ -196,7 +194,7 @@ A defect owned by a sibling named in the ownership blockquote is not emitted as 
 - Flagging `IClock`, `IRandom`, or another interface that exists as a visible test seam
 - Flagging a ScriptableObject that a designer tunes, or one holding a real balance table
 - Flagging a DI container the project already standardized on, or proposing migration off it
-- Flagging a pool, cache, or Job whose PR cites a profile
+- Flagging a pool, cache, or Job whose PR cites a profile showing it pays
 - Flagging ECS in a project that already uses it throughout
 - Treating file count, class count, or folder depth as a complexity metric
 - Removing a layer the diff's own tests bind to

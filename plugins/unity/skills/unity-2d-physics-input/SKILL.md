@@ -22,12 +22,12 @@ user-invocable: false
 
 - **Grid and board games do not use physics for board logic.** 2048, Sudoku, Chess, and Match-3 resolve on array indices in the rules layer. Colliders as cell detectors, rigidbodies as falling tiles, and trigger overlaps as match detection are correctness bugs, not just cost
 - Physics runs on the fixed timestep. Read and write rigidbody state in `FixedUpdate`; read input and set visuals in `Update`
-- Body type is a decision, not a default. Static never moves, Kinematic moves under code control, Dynamic moves under forces. A moved Static collider forces a broadphase rebuild
+- Body type is a decision, not a default. Static never moves, Kinematic moves under code control, Dynamic moves under forces. A moved Static collider has its shapes recreated every time it moves
 - Never write `transform.position` on a body with a collider. Use `Rigidbody2D.MovePosition` for Kinematic and forces or `linearVelocity` for Dynamic. `Rigidbody2D.velocity` is the pre-Unity-6 spelling and is superseded by `linearVelocity` - flag it on sight in a 6.3 project
 - A body fast enough to cross a collider within one step needs `CollisionDetectionMode2D.Continuous` on that body
-- Every query passes an explicit `LayerMask`. An unmasked `Raycast2D` tests every collider in the scene and hits things the caller never meant to
+- Every query passes an explicit `LayerMask`. An unmasked `Physics2D.Raycast` tests every collider on the default raycast layers and hits things the caller never meant to
 - The Physics 2D collision matrix is part of the design. Turn off every layer pair that should never interact before optimising anything else
-- Input is read inside the action callback or from the action's current value in the same frame; input state is not cached across frames or read from a background thread
+- Input is read on the main thread: in the action callback, or as an edge (`WasPressedThisFrame`) in `Update`. Physics consumes intent latched in `Update` (a queued flag), never raw input state sampled in `FixedUpdate`
 
 ## Patterns
 
@@ -38,7 +38,7 @@ user-invocable: false
 | Tile slides into a cell, merges by rule | indices; the rules layer decides, the presenter animates |
 | Piece drops into a column, lands on the stack | indices; a fall animation is a tween, not a simulation |
 | Match-3 refill "gravity" | indices; column compaction is a loop, not falling bodies |
-| TD projectile travelling to a target | physics or a tween; physics if it needs collision against varied shapes |
+| TD projectile travelling to a target | physics or a tween; physics if it needs collision against varied shapes - a fast one is Dynamic (gravity scale 0) with Continuous, since Continuous sweeps only Dynamic bodies; pooled either way |
 | Casual toss/stack/ragdoll toy where the simulation *is* the game | physics |
 
 ```csharp
@@ -69,10 +69,10 @@ Auto-generated polygon colliders from sprite outlines can produce dozens of vert
 
 ```csharp
 // Bad - a moving obstacle with a collider and no rigidbody; Unity treats it as a moved Static
-// collider and rebuilds the static broadphase every frame
+// collider and recreates its shapes every frame
 transform.Translate(Vector2.left * speed * Time.deltaTime);
 
-// Good - Kinematic body, moved on the physics step, swept correctly against Dynamic bodies
+// Good - Kinematic body, moved on the physics step, collides correctly with Dynamic bodies
 void FixedUpdate() => _rb.MovePosition(_rb.position + _velocity * Time.fixedDeltaTime);
 ```
 
@@ -84,18 +84,18 @@ void FixedUpdate() => _rb.MovePosition(_rb.position + _velocity * Time.fixedDelt
 
 Kinematic bodies do not collide with other Kinematic or Static bodies by default and will not generate contacts unless `useFullKinematicContacts` is enabled. If two Kinematic objects must report collisions, enable it or make one Dynamic with gravity scale 0.
 
-Set `Rigidbody2D.gravityScale = 0` for top-down games rather than zeroing project gravity, which also affects UI-adjacent and future systems.
+Set `Rigidbody2D.gravityScale = 0` for top-down games rather than zeroing project gravity, which silently changes every Dynamic body added later.
 
 ### Fixed timestep and interpolation
 
-Fixed Timestep (Project Settings > Time) defaults to 0.02s (50Hz). For mobile casual 2D, a slower step (0.0333s, 30Hz) halves physics cost where precision allows.
+Fixed Timestep (Project Settings > Time) defaults to 0.02s (50Hz). For mobile casual 2D, a slower step (0.0333s, 30Hz) cuts physics steps by 40% where precision allows.
 
-**Tunnelling is a per-body setting, not a timestep problem.** A fast body passing through a collider is fixed with `Rigidbody2D.collisionDetectionMode = CollisionDetectionMode2D.Continuous`, which sweeps that one body between steps. Raising the global step rate to fix it multiplies physics cost for every body in the scene, and on a device already dropping frames it makes the tunnelling worse, not better - the frame that stretches is the frame the body crosses the wall in. Set Continuous on the handful of bodies that need it (the ball, the bullet) and leave the rest Discrete.
+**Tunnelling is a per-body setting, not a timestep problem.** A fast body passing through a collider is fixed with `Rigidbody2D.collisionDetectionMode = CollisionDetectionMode2D.Continuous`, which sweeps that one body between steps. Raising the global step rate to fix it multiplies physics cost for every body in the scene, and on a device already dropping frames the extra steps deepen the frame-time hole. Set Continuous on the handful of bodies that need it (the ball, the bullet) and leave the rest Discrete.
 
-The related containment lever is `Time.maximumDeltaTime` (default 0.333s), which bounds how many catch-up steps one long frame may run. Lowering it toward ~0.1s makes a catastrophic frame degrade into visible slow motion rather than a large unsimulated jump.
+The related containment lever is `Time.maximumDeltaTime` (default 0.333s), which caps the frame time physics will catch up on; time beyond the cap is dropped and reads as slow motion. Lowering it toward ~0.1s stops one long frame from running so many catch-up steps that the next frame is long too.
 
 ```csharp
-// Bad - reads a tap in FixedUpdate, so an input between steps is missed entirely
+// Bad - in FixedUpdate a press is missed on frames with no physics step and repeated on frames with several
 void FixedUpdate() { if (_fire.WasPressedThisFrame()) Shoot(); }
 
 // Good - latch intent in Update, consume it on the next physics step
@@ -120,17 +120,17 @@ var count = Physics2D.Raycast(origin, dir, _filter, _hits, range);
 Points to get right:
 
 - Build masks with `LayerMask.GetMask("Enemy")` once and cache them; a per-frame string lookup is waste, and a hand-written integer literal breaks silently when layers are reordered
-- Use the `ContactFilter2D` + results-buffer overloads in anything running per frame; the array-returning overloads allocate every call. The older `*NonAlloc` family is deprecated in the Unity 6 line in favour of these - do not reintroduce it. Build the filter once (`ContactFilter2D.CreateLegacyFilter` converts a layer mask) and reuse it
-- `Physics2D.queriesHitTriggers` and `queriesStartInColliders` are project-wide defaults that change query results; set them deliberately or pass an explicit `ContactFilter2D`
+- Use the `ContactFilter2D` + results-buffer overloads in anything running per frame; the array-returning overloads allocate every call. The older `*NonAlloc` family is deprecated (since 2023.1) in favour of these - do not reintroduce it. Build the filter once (`var f = new ContactFilter2D(); f.SetLayerMask(mask); f.useTriggers = false;`) and reuse it
+- `Physics2D.queriesHitTriggers` and `queriesStartInColliders` are project-wide defaults that change query results. A `ContactFilter2D` overrides the first (`useTriggers`) but not the second, so set `queriesStartInColliders` deliberately
 - `OverlapCircle` / `OverlapBox` are the right tools for "what is in this area", not a raycast fan
 
 Screen-to-world for tap targeting goes through the camera, and the Z matters:
 
 ```csharp
-// Bad - ScreenToWorldPoint with an orthographic camera returns the near-plane Z
+// Bad - the input z (0) is read as distance from the camera, so the point sits on the camera's Z plane
 var world = _cam.ScreenToWorldPoint(screenPos);
 
-// Good - flatten to the gameplay plane explicitly
+// Good (orthographic camera) - flatten to the gameplay plane explicitly
 var world = (Vector2)_cam.ScreenToWorldPoint(screenPos);
 ```
 
@@ -145,16 +145,16 @@ Start from a small layer set - `Player`, `Enemy`, `Projectile`, `Pickup`, `World
 ### Input System: actions and action maps
 
 ```csharp
-// Bad - legacy polling, no rebinding, no device abstraction, misses taps between frames
+// Bad - legacy Input: throws under an Input-System-only project, no rebinding, no device abstraction
 if (Input.GetMouseButtonDown(0)) SelectCell(Input.mousePosition);
 
 // Good - one action, works for mouse and touch, callback fires on the event
-_actions.Gameplay.Select.performed += ctx => SelectCell(_point.ReadValue<Vector2>());
+_actions.Gameplay.Select.performed += ctx => SelectCell(_point.ReadValue<Vector2>());   // Select carries a Tap interaction: performs on release
 ```
 
 Structure:
 
-- **Action map per input context**: `Gameplay`, `UI`, `Paused`. Enable exactly one gameplay map at a time; leaving both enabled is how a paused game still accepts board input
+- **Action map per input context**: `Gameplay`, `UI`, `Paused`. Enable exactly one of `Gameplay` and `Paused` at a time (the `UI` map stays on for UI navigation); leaving both enabled is how a paused game still accepts board input. In the default Dynamic update mode, input callbacks keep firing at `Time.timeScale` 0, so disabling the map is the pause, not time
 - **Action per intent**, not per device. `Select` binds `<Pointer>/press`, and mouse, pen, and touch all satisfy it
 - Bind through `<Pointer>` for anything that is "the primary pointing device". Reach for `<Touchscreen>` only for genuinely multi-touch behaviour (pinch, two-finger pan)
 - Generate the C# wrapper class from the `.inputactions` asset and use the typed API rather than string lookups
@@ -162,12 +162,12 @@ Structure:
 
 ### Touch gestures for board games
 
-Tap, drag, and swipe cover board input in the target genres; derive them from pointer position and press state rather than adding a gesture library. Pinch and two-finger pan (map or zoom screens) are the multi-touch exception: bind `<Touchscreen>` touch positions and drive zoom by the ratio of the current to the initial distance between the two touches.
+Tap, drag, and swipe cover board input in the target genres; derive them from pointer position and press state rather than adding a gesture library. Pinch and two-finger pan (map or zoom screens) are the multi-touch exception: bind `<Touchscreen>/touch0/position` and `touch1/position` and drive zoom by the ratio of the current to the initial distance between the two touches. A tap commits on release and is cancelled when a second touch begins, so the start of a pinch never selects. On desktop, `<Mouse>/scroll/y` drives the same zoom value the pinch ratio sets.
 
 ```csharp
 // Swipe (2048): direction from press-to-release delta, gated on distance and time
 var d = endPos - startPos;
-if (d.magnitude >= MinSwipePx && elapsed <= MaxSwipeSeconds)
+if (d.magnitude >= minSwipe && elapsed <= MaxSwipeSeconds)   // minSwipe scaled by dpi, below
     Dispatch(Mathf.Abs(d.x) > Mathf.Abs(d.y) ? (d.x > 0 ? Dir.Right : Dir.Left)
                                              : (d.y > 0 ? Dir.Up : Dir.Down));
 ```
@@ -176,7 +176,7 @@ Thresholds are in **screen-independent units, not raw pixels**. A 50-pixel swipe
 
 For Match-3 swap-by-drag, resolve the gesture to a source cell and a direction, then hand a single move to the rules layer. Do not let the drag continuously mutate the board.
 
-Interactions (Tap, Hold, SlowTap) and processors on the action itself handle press-duration semantics without hand-rolled timers, and their exact parameter set is package-version dependent - read the action asset rather than assuming defaults.
+Interactions (Tap, Hold, SlowTap) on the action handle press-duration semantics without hand-rolled timers; processors only transform values. A parameter left at its default resolves from Input System settings (`defaultTapTime` and similar), so read both the action asset and the settings rather than assuming.
 
 ### Reading input outside the callback
 
@@ -198,39 +198,42 @@ Interactive rebinding (`PerformInteractiveRebinding`) is only needed where the t
 
 ## Output Format
 
-Two modes, chosen by whether the request supplies code to judge or asks for code to be produced.
+Two modes, chosen by what the request supplies.
 
-**Authoring mode** - the request is to write or design something. Emit the code or design, then any `Deferred:` lines. No finding blocks, no severity, no status line: nothing was reviewed, so a not-run line would misdescribe the work.
+**Authoring mode** - the request asks for code or a design. Emit, in order: any `Precondition: {defect in existing code the design depends on fixing}` lines; the code or design; one-line notes after it, one per decision this skill governs; then any `Deferred:` lines. No finding blocks, no severity, no status line.
 
-**Review mode** - source, a diff, or a symptom report was supplied. Emit one block per finding.
+**Review mode** - the request supplies something to judge: source, a diff, an asset or setting, or a report of a symptom (a QA ticket, a crash or CI log, a verbal description). Emit, in order: the finding blocks, any `Deferred:` lines, and - only when no block was emitted - the status line. Nothing else precedes the first block. A review requested with nothing to judge is still review mode.
 
 ```
-### [Severity] {file:line | symbol or type.member, when source was supplied without paths | asset path | symptom, when no source was supplied}
+### [{Critical | High | Medium | Low}] {anchor}
 
 - Category: {PhysicsMisuse | BodyType | CollisionDetection | TimestepCoupling | QueryMask | CollisionMatrix | ColliderCost | ActionMap | GestureThreshold | InputTiming | LegacyInput}
-- Evidence: {source | inferred (state what was not seen)}
-- Code: {one-line citation - code, component setting, or project setting; or `not supplied` when the finding is inferred}
+- Evidence: {source | inferred (what was not seen)}
+- Code: {one-line citation of code, a component setting, or a project setting | not supplied}
 - Impact: {what breaks - "board state diverges across devices", "tap dropped on slow frames"}
 - Fix: {concrete change}
 ```
 
-`Severity: {Critical | High | Medium | Low}` - Critical = physics governs board or rule outcomes, or input is unreachable on a primary-tier device. High = dropped or duplicated input under normal play, a physics correctness failure under normal play (tunnelling, missed or phantom contacts), a moved Static collider, or an unmasked per-frame query. Medium = a body-type, timestep, or collider-cost inefficiency with headroom. Low = a convention nit such as an uncached layer mask.
+The anchor is the first that applies: `file:line` when the source carries paths (a diff hunk by its new-file line); `Type.Member` when it arrived without paths; the asset path for an asset or setting; a short paraphrase of the reported symptom when nothing was read. `Code` is `not supplied` when nothing was read.
 
-Severity that does not fit a listed band: assign the nearest lower band and state why in `Impact`. `Category` takes exactly one value - where a defect fits two, pick the one the `Fix` addresses and name the other in `Impact`; where it fits none, pick the closest and name the real concern in `Impact`.
+**One block per defect** - one root cause with one fix. The same defect at several sites is one block: anchor the clearest site and list the others in `Impact`. One line carrying two defects with separate fixes is two blocks. A reported symptom gets one block per cause - among those this skill's Patterns name for it - that the evidence cannot rule out, most likely first, each `Fix` opening with the check that confirms or eliminates it.
 
-`Evidence: inferred` is required whenever the source was not read. It bounds the header at High: a Critical-band defect is written High, and `Impact` names the uncapped band. It never raises a block - a Medium defect stays Medium. Among blocks sharing a band, order by what the reader must fix first: root cause before the symptoms it produces.
+`Category` takes exactly one value. Where a defect fits two, take the one whose failure is worse and name the other in `Impact`; where it fits none, take the closest and name the real concern in `Impact`. A value in this enum is this skill's finding even where a sibling owns adjacent mechanics.
 
-A defect owned by a sibling named in the ownership blockquote is not emitted as a finding. Write those after the findings, one per line, as `Deferred: {defect} -> {owning skill}`, so the workflow routes rather than drops them. In authoring mode the same line routes a design decision the sibling owns (`Deferred: what the swipe means for the board -> unity-2d-gameplay-patterns`). Omit entirely when there are none.
+Severity bands - Critical = physics governs board or rule outcomes, or input is unreachable on a primary-tier device. High = dropped or duplicated input under normal play (legacy `Input` polling included), input accepted while it should be blocked (a paused board), a physics correctness failure under normal play (tunnelling, missed or phantom contacts), a moved Static collider, or an unmasked per-frame query. Medium = a body-type, timestep, or collider-cost inefficiency with headroom. Low = a convention nit such as an uncached layer mask. A defect no band names takes the band of the listed defect with the closest consequence, and `Impact` names that comparison.
 
-In review mode, close with exactly one status line, after any `Deferred:` lines:
+`Evidence: source` means the lines that decide the defect and its band were read; an absence is source when the whole file that would hold it was read, and a diff hunk is source for the lines it shows. `Evidence: inferred` means some were not - a symptom report, a diff summary naming only a path, or a read line whose band turns on something unseen (a declaration, a caller, whether an asset is referenced); state what was not seen. Inferred caps the header at High: a Critical-band defect is written `[High]` and its `Impact` ends with `Uncapped: Critical.` Evidence never raises a band.
+
+Order blocks by band, Critical first; a capped `[High]` block sorts before the other High blocks. Within a band, a root cause comes before the symptoms it produces, then the defect with the wider player impact; where neither separates two blocks, keep the order the input presents them in.
+
+A defect owned by a sibling skill this file names is not emitted here. Write it after the findings as `Deferred: {defect} -> {owning skill}`, one line per defect. When a finding's fix needs a sibling's decision, emit the finding and add a `Deferred:` line for that part. In authoring mode the same line routes a design decision the sibling owns (`Deferred: what the swipe means for the board -> unity-2d-gameplay-patterns`). `Deferred:` lines may precede any status line; omit them when there are none.
+
+When no block was emitted, close with exactly one status line - the first row whose condition holds:
 
 | Condition | Line |
 | --- | --- |
-| One or more findings emitted | none - the findings are the output |
-| No findings, and a symptom or report was available to reason from | `No physics or input findings.` |
-| No source, diff, symptom, or report of any kind was supplied | `Physics and input check not run: no source supplied.` |
-
-A symptom-only report (a QA ticket, a verbal description) is checkable input: emit `Evidence: inferred` findings from it rather than the not-run line.
+| Source, a diff, an asset or setting, or a symptom report was supplied, and it yields no finding | `No physics or input findings.` |
+| A review was requested with nothing to judge | `Physics and input check not run: no source supplied.` |
 
 ## Avoid
 
@@ -244,6 +247,6 @@ A symptom-only report (a QA ticket, a verbal description) is checkable input: em
 - The collision matrix left fully enabled
 - Auto-generated polygon colliders left unsimplified
 - Legacy `Input.GetMouseButton` / `Input.touches` alongside the Input System
-- Gameplay and UI action maps enabled at the same time
+- Gameplay and Paused action maps enabled at the same time
 - Swipe and drag thresholds expressed in raw pixels
 - `.isPressed` polled where an edge is meant
