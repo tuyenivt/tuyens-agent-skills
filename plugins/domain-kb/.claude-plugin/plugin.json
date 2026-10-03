@@ -1,6 +1,6 @@
 {
   "name": "domain-kb",
-  "version": "1.179.0",
+  "version": "1.180.0",
   "description": "Domain knowledge tooling for multi-service systems.",
   "author": {
     "name": "Tuyen"
