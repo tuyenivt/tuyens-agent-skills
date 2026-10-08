@@ -51,7 +51,7 @@ Follows one real business action from its trigger through every service, write, 
 
 ### Step 0 - Name, id, frontmatter, Story
 
-- **Name**: the business action in stakeholder words, verb first (`Refund an order`, `Ship a print job`); for a callback trigger, the action the callback completes. **Id**: kebab-case, object then action (`order-refund`, `print-job-ship`). A re-trace keeps the existing id, `aliases` (union), `priority`, `ranked_by`, and the `## Notes` section verbatim, and adds the card's previous H1 name to `aliases` when the Name changes; a new flow gets `priority: 0` and `ranked_by: unranked`.
+- **Name**: the business action in stakeholder words, verb first (`Refund an order`, `Ship a print job`); for a callback trigger, the action the callback completes. **Id**: kebab-case, object then action (`order-refund`, `print-job-ship`). A re-trace keeps the existing id, `aliases` (union), and the `## Notes` section verbatim, and adds the card's previous H1 name to `aliases` when the Name changes; the card carries no `priority` or `ranked_by` (the rank lives in `_index/priority.json`), so a re-trace drops either line the prior card still holds.
 - **Frontmatter**: `sources` as `repo@` plus the first 7 characters of `git rev-parse HEAD` in every repo a file in `files` belongs to, and every citation read at that checkout, never at a recorded sync `sha`; `synced` today; `freshness: current`; `capability` from the input, or the proposed name bare (the summary carries `proposed:`); `files` as the Files on path list below.
 - **Story**: one sentence naming the actors and the business outcome, no service, endpoint or table names; a second sentence in the second Audience language on the same line when one is listed.
 

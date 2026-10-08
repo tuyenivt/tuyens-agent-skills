@@ -9,7 +9,7 @@ user-invocable: false
 
 # Domain Flow Explain
 
-> Load `Use skill: domain-kb-layout` first and read at least its Rules and these Patterns sections: Flow card, capability.md, ATLAS.md, Generated-file frontmatter, Curated layer, Templates, Stale marking, and the Ledger, playbook, contracts, debt, surfaces entry for `ledger/rules.md`. It owns every path, frontmatter key, section shape, and empty form this skill reads; the lesson shapes below are this skill's own.
+> Load `Use skill: domain-kb-layout` first and read at least its Rules and these Patterns sections: Flow card, capability.md, ATLAS.md, Generated-file frontmatter, Curated layer, Templates, Stale marking, Indexes, and the Ledger, playbook, contracts, debt, surfaces entry for `ledger/rules.md`. It owns every path, frontmatter key, section shape, and empty form this skill reads; the lesson shapes below are this skill's own.
 
 Turns one knowledge-base artifact into a lesson a person can read once and explain back. It renders what the artifact holds; it never traces, searches, or infers beyond it.
 
@@ -24,7 +24,7 @@ Turns one knowledge-base artifact into a lesson a person can read once and expla
 | Input   | Required | Notes                                                                                                                                     |
 | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Target  | yes      | A flow card path or `<capability>/<flow>`; a bare flow id or alias; a `capability.md` path or capability id; a rule id `R-<n>`             |
-| KB root | yes      | `ATLAS.md`, `ledger/rules.md`, `capabilities/` (for bare-name resolution and the cards a capability lists), and the curated docs the target names: every `rules/` file a Rules row's `Doc` or a ledger row's `Doc` points at, every `doc:` and `consumer:` entry under the card's `## Related`, and the `superseded_by` target of any deprecated doc among them |
+| KB root | yes      | `ATLAS.md`, `ledger/rules.md`, `_index/priority.json`, `capabilities/` (for bare-name resolution and the cards a capability lists), and the curated docs the target names: every `rules/` file a Rules row's `Doc` or a ledger row's `Doc` points at, every `doc:` and `consumer:` entry under the card's `## Related`, and the `superseded_by` target of any deprecated doc among them |
 | Languages | no       | The `## Audience` `Language:` list from `CLAUDE.md`, `en` when absent; the first is the output language, and a bare name is matched against aliases in every listed language as written, never translated |
 
 ## Rules
@@ -141,7 +141,7 @@ Capability target: the `resolved:` line when one was emitted, `# Lesson: {Capabi
 
 Rule target: `# Lesson: {R-n}`, then bullets `**Rule:**` (the ledger's `Rule` text), `**Kind:**`, `**Enforced at:**`, `**Why:**` (ending `- {confidence}`), `**Shapes:**` (flows), `**Quirk:**` (`yes` or `no`), `**Last touched:**`, `**Doc:**` (path or `none`); then, only when `Doc` is a path, `**Statement:**` (ending `; doc disagrees - drift` when it contradicts the ledger's `Rule`), `**Scope:**`, `**Parameters:**`, `**Exceptions:**`, each from the doc's section and ending `({doc path}{ (draft)})`, a section the doc leaves empty reading `none - not filled in the doc`; a missing doc makes `**Statement:**` read `doc missing: <path>` and the other three absent.
 
-An empty section takes the layout's empty form (a table keeps its header and one `none - <evidence>` row; a list, numbered or not, reads `- none - <evidence>`); a section annotated `{only when ...}` is absent instead. `Priority` reads `unranked` for a card whose `priority` is `0`.
+An empty section takes the layout's empty form (a table keeps its header and one `none - <evidence>` row; a list, numbered or not, reads `- none - <evidence>`); a section annotated `{only when ...}` is absent instead. `Priority` is the flow's `priority` in `_index/priority.json`, `unranked` when the file does not list the flow.
 
 ## Avoid
 
