@@ -132,7 +132,7 @@ class FulfillOrder
 end
 ```
 
-Rescuing `Faraday::Error` in a service couples business logic to the transport. The Transient/Permanent split is the contract: Sidekiq retries transient; permanent becomes a 4xx via `Result.failure`. For full translation patterns, use skill: `rails-exception-handling`.
+Rescuing `Faraday::Error` in a service couples business logic to the transport. The Transient/Permanent split is the contract: Sidekiq retries transient; permanent becomes a 4xx via `Result.failure`. For full translation patterns, see `rails-exception-handling`.
 
 ### Timeouts
 
@@ -178,9 +178,9 @@ Hard quotas (60/min per token) need proactive throttling before any retry logic:
 | Layer             | Count | Backoff       | When                                            |
 | ----------------- | ----- | ------------- | ----------------------------------------------- |
 | Faraday `:retry`  | 2-3   | <5s total     | Transient blips during one request              |
-| Retriable wrapper | 2-3   | <30s total    | Non-Faraday clients / SDK calls on the web path: `Retriable.retriable(tries: 3, base_interval: 0.5, multiplier: 2, on: [Sdk::TimeoutError, Sdk::ServerError]) { sdk.call }` - `on:` names the SDK's own transient classes |
+| Retriable wrapper | 2-3   | <5s web, <30s job | Non-Faraday clients / SDK calls: `Retriable.retriable(tries: 3, base_interval: 0.5, multiplier: 2, on: [Sdk::TimeoutError, Sdk::ServerError]) { sdk.call }` - `on:` names the SDK's own transient classes |
 | Sidekiq retry     | 5-25  | minutes-hours | Anything that needs to wait out an outage       |
-| Don't retry       | -     | -             | 4xx other than 408/429; POST without key        |
+| Don't retry       | -     | -             | 4xx outside the retryable set (408, 425, 429; a 409 with `Retry-After`; a 401 once after a token refresh; 412 / 423 after re-reading state); POST without key |
 
 Stacking all three compounds wait time unpredictably. Inside a Sidekiq job, prefer Sidekiq's retry over wrapping in Retriable.
 
@@ -229,7 +229,7 @@ f.request :instrumentation
 
 ### Webhooks (inbound)
 
-Verify signature **before** parsing the body. Persist `webhook_events(provider, event_id)` with a unique index for replay protection. Respond 200 quickly; dispatch work to Sidekiq. For signature verification, use skill: `rails-security-patterns`.
+Verify signature **before** parsing the body. Persist `webhook_events(provider, event_id)` with a unique index for replay protection. Respond 200 quickly; dispatch work to Sidekiq. For signature verification, see `rails-security-patterns`.
 
 ### Testing
 
@@ -287,5 +287,5 @@ Tests: {WebMock unit | VCR cassettes | both - file paths | none or live HTTP - G
 - Stacking retry layers (Faraday + Retriable + Sidekiq) - wait times compound unpredictably
 - Circuit breakers on every integration - reserve for high-volume request-path calls
 - Rescuing `Faraday::Error` in services - couples business logic to the transport
-- Retrying 4xx other than 408 / 429
+- Retrying a 4xx outside the retryable set (408, 425, 429, and the conditional 409 / 401 / 412 / 423 cases)
 - Full URLs in logs - query string tokens leak

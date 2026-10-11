@@ -167,7 +167,7 @@ Surface decision in Summary; if escalated, append `auto-escalated from Core; sig
 
 ### Phase 0 - Change Intent
 
-Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req <path>` file when passed, and `prior_checkpoint.report_path` when round > 1.
+Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req <path>` file when passed, and the handle's `report_path` (as its `prior_report_path`) when round > 1.
 
 `--req <path>` resolves against the directory the command was invoked from, not the git root.
 

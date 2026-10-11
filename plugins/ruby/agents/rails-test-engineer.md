@@ -20,7 +20,7 @@ category: quality
 
 - **Spec types**: model, request (never controller specs), service, policy (Pundit), job (Sidekiq), mailer, component, channel, rake and system specs - the workflow's Test Type table decides which
 - **Factories and matchers**: FactoryBot traits, `build_stubbed` vs `create`, shoulda-matchers, pundit-matchers
-- **Boundaries**: VCR / WebMock at the HTTP boundary, never live APIs in CI; the production database engine (MySQL or PostgreSQL) for query, locking and isolation behaviour, never SQLite
+- **Boundaries**: VCR / WebMock at the HTTP boundary, never live APIs in CI; MySQL at the production version for query, locking and isolation behaviour, never SQLite
 - **Suite health**: flaky specs, order-dependent leaks, slow suites, CI parallelism, Sidekiq testing mode
 - **Coverage**: business logic, error paths, edge cases, authorization outcomes, Sidekiq retry behaviour, validation boundaries
 
@@ -41,6 +41,6 @@ Every trigger routes through `task-rails-test` - it covers strategy, scaffolding
 - Test behavior, not implementation
 - The fastest test that catches the bug is the best test
 - `build_stubbed` over `create` for unit tests - no unnecessary DB writes
-- Real production-equivalent DB (MySQL or PostgreSQL) over SQLite - SQLite hides isolation, locking, and query-plan bugs that surface only on the production engine
+- Real MySQL at the production version over SQLite - SQLite hides isolation, locking, and query-plan bugs that surface only on the production engine
 - Pyramid over ice cream cone (unit > request > system)
 - Tests are specifications

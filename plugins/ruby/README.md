@@ -8,7 +8,7 @@ Claude Code plugin for Ruby / Ruby on Rails projects.
 - Ruby 3.4+
 - RSpec
 - Sidekiq
-- MySQL 8.0+ (primary), PostgreSQL 17+ (supported)
+- MySQL 8.0 (8.0.x; examples target 8.0.46), InnoDB, `mysql2` or `trilogy` adapter
 - ActiveRecord
 
 ## Agents
@@ -39,12 +39,11 @@ Claude Code plugin for Ruby / Ruby on Rails projects.
 
 | Skill                         | Description                                                                                                                                                                        |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rails-activerecord-patterns` | ActiveRecord optimization: N+1 prevention, scopes, enum with integer mapping, associations with dependent options, counter_cache, batch processing, MySQL/PostgreSQL features, locking. |
+| `rails-activerecord-patterns` | ActiveRecord optimization: N+1 prevention, scopes, enum with integer mapping, associations with dependent options, counter_cache, batch processing, MySQL JSON / multi-valued / fulltext indexes, locking. |
 | `rails-implicit-config-audit` | Audit hidden Rails configuration: `load_defaults` 6.1 baseline, `new_framework_defaults_*.rb` initializer-timing footguns, per-model `touch:`/`autosave:`/`inverse_of`/callback side effects, env overrides, curated 7.0-7.2 cherry-pick suggestions. |
-| `rails-migration-safety`      | Zero-downtime Rails migrations: MySQL 8.0 online/instant DDL, invisible indexes, gh-ost; PG concurrent indexes via sibling skill.                                                  |
-| `rails-postgresql-migration-safety` | Zero-downtime Rails/PostgreSQL migrations: concurrent indexes, validate-false check constraints, pg_advisory_lock, lock_timeout, large tables.                              |
-| `rails-connection-pool-sizing` | Connection pool sizing for Rails: Puma + Sidekiq + console budget vs DB max_connections, deploy spikes, RDS Proxy / ProxySQL / PgBouncer.                                         |
-| `rails-db-locking-patterns`   | Database locking for Rails: advisory locks (GET_LOCK / pg_advisory_lock) for leader election and per-tenant serialization, isolation tiers, hold-time discipline, deadlock avoidance. |
+| `rails-migration-safety`      | Zero-downtime Rails migrations: MySQL 8.0 online/instant DDL, invisible indexes, gh-ost / pt-online-schema-change, lock_wait_timeout.                                              |
+| `rails-connection-pool-sizing` | Connection pool sizing for Rails: Puma + Sidekiq + console budget vs DB max_connections, deploy spikes, RDS Proxy / ProxySQL.                                         |
+| `rails-db-locking-patterns`   | MySQL locking for Rails: `GET_LOCK` advisory locks for leader election and per-tenant serialization, InnoDB isolation tiers, hold-time discipline, deadlock avoidance. |
 | `rails-work-splitter-patterns` | Splitting batch work across Rake/Sidekiq: modulo shards, SKIP LOCKED cursors, shards-table, rake fan-out with leader lock and push_bulk.                                          |
 | `rails-batch-processing-patterns` | Batch processing for Rails: chunked transactions, memory-safe iteration, jemalloc, pluck cursors, GC.compact, WorkerKiller, MySQL undo log.                                    |
 | `rails-testing-patterns`      | RSpec testing: model specs, service specs, Pundit policy specs, request specs, FactoryBot with state traits, Sidekiq testing, VCR/WebMock, shared examples.                        |
@@ -56,9 +55,9 @@ Claude Code plugin for Ruby / Ruby on Rails projects.
 | `rails-http-client-patterns`  | External HTTP integration with Faraday + Retriable: client-class wrappers, explicit timeouts, idempotency-aware retries with bounded budgets, domain error taxonomy (transient vs permanent), circuit-breaker posture, and boundary-stubbed tests with WebMock / VCR.                     |
 | `rails-onboard-map`           | Gemfile, Rails version, environment configs, AR + migrations, ActiveJob backend, ActionCable wiring, asset pipeline (importmap/jsbundling/Propshaft) - injected into `task-onboard`. |
 | `rails-overengineering-review` | Necessity review: validations duplicating DB constraints (FK / NOT NULL / UNIQUE / enum), defensive guards on impossible states, service objects / Result types / base classes wrapping trivial logic. Includes "when redundancy is justified" (form UX, system boundaries, 3+ call sites). Composed into `task-rails-review` Step 7 (Code Hygiene). |
-| `rails-transaction-patterns`  | Transaction boundary discipline: nested transactions and `requires_new`, savepoints, `after_save` vs `after_commit`, `after_commit_everywhere` for dispatch, isolation levels, deadlock/serialization-failure retry. |
-| `rails-concurrency-patterns`  | Ruby 3.x concurrency in Rails: `load_async`, `Concurrent::Promises`, `Fiber::Scheduler` and the `async` gem, `Ractor` for CPU work, GVL implications, connection-pool discipline across threads/fibers. |
-| `rails-actioncable-patterns`  | ActionCable for Rails 7.2: channel auth via `identified_by`, subscription authorization (IDOR prevention), `turbo_stream_from` scope security, Redis vs PG adapter, fan-out batching, channel and broadcast testing. |
+| `rails-transaction-patterns`  | Transaction boundary discipline: nested transactions and `requires_new`, savepoints, `after_save` vs `after_commit`, `after_commit_everywhere` for dispatch, InnoDB isolation levels, deadlock retry. |
+| `rails-concurrency-patterns`  | Ruby 3.4+ concurrency in Rails: `load_async`, `Concurrent::Promises`, `Fiber::Scheduler` and the `async` gem, `Ractor` for CPU work, GVL implications, connection-pool discipline across threads/fibers. |
+| `rails-actioncable-patterns`  | ActionCable for Rails 7.2+: channel auth via `identified_by`, subscription authorization (IDOR prevention), `turbo_stream_from` scope security, Redis vs Solid Cable adapter, fan-out batching, channel and broadcast testing. |
 | `rails-exception-handling`    | Application-wide rescue strategy: `ApplicationController#rescue_from` ladder, domain error taxonomy (`ApplicationError::*`), `Result` vs raise, Sidekiq retry propagation, SDK-error translation at boundaries, single-source reporting via `Rails.error`. |
 | `rails-active-storage-patterns` | Active Storage on Rails 7.2: direct upload to S3/GCS, content-type/size validation with magic-byte sniffing, libvips variants, background variant warming, `purge_later` semantics, orphan blob cleanup, migration from CarrierWave/Paperclip. |
 

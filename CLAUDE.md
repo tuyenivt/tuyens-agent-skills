@@ -14,7 +14,7 @@ plugins/
   architecture/  # Stack-agnostic architecture design, reviewer-calibrated design briefs, re-architecture, task breakdown, and incident response
   java/          # Java 21+ / Spring Boot 4.0+
   python/        # Python 3.11+ / FastAPI (primary), Django (secondary)
-  ruby/          # Ruby 3.4+ / Ruby on Rails 7.2+
+  ruby/          # Ruby 3.4+ / Ruby on Rails 7.2+ / MySQL 8.0
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
   go/            # Go 1.25+ / Gin / GORM+sqlx
   react/         # React 19 / Next.js 16 App Router / TypeScript - fullstack

@@ -7,11 +7,11 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first. Use when `Database: MySQL` or MariaDB; on `Database: unknown` read `config/database.yml` `adapter:` before choosing. For PostgreSQL, see `rails-postgresql-migration-safety` (sibling - load that instead, never both).
+> Load `Use skill: stack-detect` first. Targets MySQL 8.0 (8.0.x); on `Database: unknown` read `config/database.yml` `adapter:` (`mysql2` or `trilogy`).
 
 ## When to Use
 
-- Creating or modifying tables, columns, indexes on MySQL/MariaDB
+- Creating or modifying tables, columns, indexes on MySQL
 - Adding NOT NULL, renaming, or removing columns on deployed tables
 - Backfilling >100K rows
 - Adding foreign keys without downtime
@@ -23,10 +23,10 @@ user-invocable: false
 - One structural change per migration; reversible.
 - Data backfills live in rake tasks, not `db/migrate/` (see `rails-rake-task-patterns`).
 - New tables include `timestamps` and indexes on FK + filter columns.
-- `schema_format = :sql` - `:ruby` loses views, triggers, stored procedures, partitioning, and expression-index fidelity. (Rails 7.2 does dump charset/collation, `t.virtual` generated columns and `t.check_constraint`, so those are no longer the argument.)
+- `schema_format = :sql` - `:ruby` loses views, triggers, stored procedures, partitioning and a FULLTEXT index's `WITH PARSER ngram`. (Rails 7.2 does dump charset/collation, `t.virtual` generated columns, `t.check_constraint` and functional indexes, so those are no longer the argument.)
 - `ignored_columns` ships in a deploy before `remove_column`.
 - `safety_assured` only after verifying the operation is safe for the table size.
-- Tables >100M rows: any rebuild (COPY or INPLACE) goes through `gh-ost` / `pt-online-schema-change`, never in-process - INPLACE may be online on the primary but replicates as one serialized DDL and stalls replicas (the stall scales with table size; the threshold is where in-process becomes unacceptable, not where it starts). INSTANT (metadata-only) operations are exempt at any size.
+- Tables >100M rows: any operation that scans or rebuilds the table (COPY, an INPLACE rebuild, an INPLACE secondary-index build) goes through `gh-ost` / `pt-online-schema-change`, never in-process - INPLACE may be online on the primary but replicates as one serialized DDL and stalls replicas (the stall scales with table size; the threshold is where in-process becomes unacceptable, not where it starts). INSTANT and INPLACE metadata-only operations are exempt at any size.
 
 ## Patterns
 
@@ -38,16 +38,16 @@ StrongMigrations.lock_timeout      = 5.seconds   # emits lock_wait_timeout - the
 # statement_timeout emits max_execution_time, which applies to SELECTs only - it bounds
 # neither the ALTER nor a backfill UPDATE.
 StrongMigrations.statement_timeout = 1.hour
-StrongMigrations.target_version    = "8.0.35"  # the real server version - a bare "8.0" sorts
+StrongMigrations.target_version    = "8.0.46"  # the real server version - a bare "8.0" sorts
                                                # below 8.0.12/8.0.16 and fails every version gate
 ```
 
 ### Online DDL: INPLACE / LOCK=NONE
 
-Rails does **not** auto-emit `algorithm: :concurrently` (PG-only):
+`add_index`'s `algorithm:` takes MySQL's `ALGORITHM` values (`:inplace`, `:copy`, `:instant`, `:default` - MySQL then rejects INSTANT for ADD INDEX); anything else raises:
 
 ```ruby
-# Bad - raises on MySQL
+# Bad - raises ArgumentError on the MySQL adapter
 add_index :orders, :status, algorithm: :concurrently
 
 # Good (tables under the gh-ost threshold)
@@ -56,7 +56,7 @@ add_index :orders, :status, algorithm: :inplace
 execute "ALTER TABLE orders ADD INDEX idx_orders_status (status), ALGORITHM=INPLACE, LOCK=NONE"
 ```
 
-`VARCHAR` resizes: widening is INPLACE only while the column stays in the same length-byte class, and that boundary is **255 bytes**, not 255 characters. Under the utf8mb4 this skill mandates, one character is up to 4 bytes, so the 1-byte class ends at 63 characters (63 x 4 = 252) and 64 crosses into 2 bytes (256). `VARCHAR(50) -> VARCHAR(100)` crosses it (200 -> 400 bytes) and forces a COPY rebuild. Compute `chars x charset maxlen <= 255` before assuming INPLACE. Narrowing always forces COPY and risks truncation - treat it as a type change (add/backfill/remove). A COPY on a table below ~1M rows blocks writes for seconds: `Hardening advised`, not `Reject`.
+`VARCHAR` resizes: widening is INPLACE only while the column stays in the same length-byte class, and that boundary is **255 bytes**, not 255 characters. Under the utf8mb4 this skill mandates, one character is up to 4 bytes, so the 1-byte class ends at 63 characters (63 x 4 = 252) and 64 crosses into 2 bytes (256). `VARCHAR(50) -> VARCHAR(100)` crosses it (200 -> 400 bytes) and forces a COPY rebuild. Compute `chars x charset maxlen <= 255` before assuming INPLACE. Narrowing always forces COPY and risks truncation - treat it as a type change (add/backfill/remove). A COPY blocks writes for its whole run: below ~100K rows that is seconds (`Lock window: write-blocking rebuild`, `Safety: Hardening advised`, not `Reject`); from there up to the 100M-row rule it is `Safety: Maintenance Window`, or gh-ost / pt-osc.
 
 ### INSTANT DDL (MySQL 8.0)
 
@@ -71,8 +71,9 @@ Metadata-only - finishes in ms even on TB tables.
 | Add/drop virtual generated column    | 8.0.12  |
 | Enum/set additions                   | 8.0.12  |
 | Rename table                         | 8.0.12  |
+| Rename column                        | 8.0.28  |
 
-The server auto-selects INSTANT when the operation is eligible - a plain `add_column` on an eligible operation is already instant. Write `ALGORITHM=INSTANT` explicitly anyway (via `execute`; Rails emits no algorithm clause): an ineligible operation then fails loudly instead of silently degrading to a multi-hour rebuild.
+The server auto-selects INSTANT when the operation is eligible - a plain `add_column` on an eligible operation is already instant. On a table at or near the gh-ost threshold, write `ALGORITHM=INSTANT` explicitly (via `execute`; Rails emits no algorithm clause): an ineligible operation then fails loudly instead of silently degrading to a multi-hour rebuild. The helper examples below rely on the server picking INSTANT. INSTANT ADD COLUMN is unavailable on a table with a FULLTEXT index, a `ROW_FORMAT=COMPRESSED` table, or one out of row versions - there the ADD is a rebuild.
 
 ```ruby
 execute "ALTER TABLE orders ADD COLUMN notes TEXT, ALGORITHM=INSTANT"
@@ -101,16 +102,16 @@ execute "ALTER TABLE users ADD COLUMN tier VARCHAR(20) NOT NULL DEFAULT 'standar
 A column added *with* a DEFAULT needs no backfill on any version - MySQL gives every existing row that default as part of the ADD (instantly on 8.0.12+, during the rebuild before that), so a `where(status: nil)` pass would match nothing. The three-step sequence is for a column added *without* one, where existing rows really are NULL:
 
 ```ruby
-add_column :orders, :status, :string                                        # 1. nullable, no default
-Order.in_batches(of: 10_000) { |b| b.where(status: nil).update_all(...) }   # 2. backfill (rake)
-change_column_null :orders, :status, false                                  # 3. enforce
+add_column :orders, :status, :string                                                   # 1. nullable, no default
+Order.in_batches(of: 10_000) { |b| b.where(status: nil).update_all(status: "pending") }   # 2. backfill (rake)
+change_column_null :orders, :status, false                                             # 3. enforce
 ```
 
 Tables >100M rows: don't `change_column_null` directly. Keep nullable + model validation, or use `gh-ost`.
 
 ### CHECK constraints (8.0.16+)
 
-Validated on creation - no `validate: false`. Large tables: maintenance window or `gh-ost --alter`.
+Validated on creation - no `validate: false` - so existing violating rows fail the ALTER: count them first (`SELECT COUNT(*) FROM orders WHERE NOT (total >= 0)`). Large tables: maintenance window or `gh-ost --alter` (pt-osc when FK-bearing).
 
 ```ruby
 add_check_constraint :orders, "total >= 0", name: "orders_total_non_negative"
@@ -118,7 +119,7 @@ add_check_constraint :orders, "total >= 0", name: "orders_total_non_negative"
 
 ### Functional indexes (MySQL 8.0.13+; `JSON_VALUE` 8.0.21+)
 
-MySQL has no partial indexes (`where:`). Functional index is the closest analogue - MySQL wants `((expr))` and Rails adds the outer pair, so the String carries one. Not available on MariaDB at any version - index a virtual generated column there instead. Indexing TEXT/BLOB needs a prefix (`length: { notes: 191 }`) or a generated column - MySQL rejects a bare one:
+MySQL has no partial indexes (`where:`). Functional index is the closest analogue - MySQL wants `((expr))` and Rails adds the outer pair, so the String carries one. A B-tree on TEXT/BLOB needs a prefix (`length: { notes: 100 }` - sized to the selectivity you need, within InnoDB's 3072-byte key limit, 768 utf8mb4 characters) or a generated column - MySQL rejects a bare one. Searching words in a TEXT column is a FULLTEXT index instead: `ADD FULLTEXT` is INPLACE but permits no concurrent writes (`LOCK=SHARED`), and a table's first FULLTEXT index also rebuilds it (adding the hidden `FTS_DOC_ID`), so on a large table it is a maintenance window or pt-osc:
 
 ```ruby
 add_index :users, "(LOWER(email))", name: "idx_users_email_lower"
@@ -127,14 +128,14 @@ add_index :users, "(JSON_VALUE(metadata, '$.tier' RETURNING CHAR(50)))", name: "
 
 ### Renaming columns (five-step copy)
 
-`RENAME COLUMN` is INPLACE and metadata-only - no rebuild, concurrent DML allowed while the type is unchanged. The five-step copy below is also the shape for a type change (`decimal` to integer cents): the backfill carries the conversion. MySQL has never supported `ALGORITHM=INSTANT` for a rename, in any 8.0.x. It is cheap at the storage layer and still wrong here, because it breaks rolling deploys (old code reads and writes the old name) and every external reader. Use it only with a coordinated cutover; default to the five-step copy:
+`RENAME COLUMN` is metadata-only while the type is unchanged - INSTANT from 8.0.28, INPLACE with concurrent DML before. It is cheap at the storage layer and still wrong here, because it breaks rolling deploys (old code reads and writes the old name) and every external reader. Use it only with a coordinated cutover; default to the five-step copy. The same shape carries a type change (`decimal` to integer cents): the backfill does the conversion.
 
 ```ruby
-add_column :orders, :amount, :decimal, precision: 10, scale: 2          # 1
+add_column :orders, :amount_cents, :bigint                              # 1
 # Deploy dual-writes (model writes both columns) BEFORE the backfill -  # 2
 # rows inserted mid-backfill otherwise keep NULL in the new column
-Order.in_batches { |b| b.update_all("amount = total") }                 # 3 backfill (rake)
-# Cut reads to :amount; self.ignored_columns += ["total"] ; deploy      # 4
+Order.in_batches { |b| b.update_all("amount_cents = ROUND(total * 100)") }   # 3 backfill (rake)
+# Cut reads to :amount_cents; self.ignored_columns += ["total"]; deploy # 4
 safety_assured { remove_column :orders, :total, :decimal, precision: 10, scale: 2 }  # 5 next deploy
 ```
 
@@ -149,13 +150,13 @@ rg -n "legacy_field" app/ lib/ config/ spec/ db/ \
   -g '*.{rb,rake,erb,haml,slim,jbuilder,yml,sql}'
 ```
 
-Find DB-side view dependencies (MySQL has no `pg_depend`):
+Find DB-side view dependencies (MySQL tracks them per table only - `VIEW_TABLE_USAGE`, 8.0.13+ - not per column, so search the view definitions):
 
 ```sql
 SELECT TABLE_NAME FROM information_schema.VIEWS WHERE VIEW_DEFINITION LIKE '%legacy_field%';
 ```
 
-Also check: BI dashboards, ETL pipelines, triggers, replicas with custom subscribers. External readers you can't migrate yourself (Metabase, Looker): hand the owning team a deadline and verify the cutover before Deploy B - their breakage is your incident. Drop or recreate dependent FK / index / generated column / CHECK / views in a *prior* migration. Nothing catches these for you - strong_migrations does no dependency inspection (its `remove_column` check is only about `ignored_columns`), and MySQL raises at ALTER time. The `information_schema` query above plus `KEY_COLUMN_USAGE`, `CHECK_CONSTRAINTS` and `COLUMNS.GENERATION_EXPRESSION` is the pre-flight audit.
+Also check: BI dashboards, ETL pipelines, triggers, binlog/CDC consumers (Debezium, DMS). External readers you can't migrate yourself (Metabase, Looker): hand the owning team a deadline and verify the cutover before Deploy B - their breakage is your incident. Drop or recreate dependent FK / index / generated column / CHECK / views in a *prior* migration. Nothing catches these for you - strong_migrations does no dependency inspection (its `remove_column` check is only about `ignored_columns`), and MySQL raises at ALTER time only for FKs, generated columns, functional indexes and CHECK constraints: a dependent view is not checked (the drop succeeds, the view fails at query time), and a plain index containing the column is narrowed - or dropped when it was the only key part, so a composite UNIQUE silently changes meaning. The `information_schema` query above plus `KEY_COLUMN_USAGE`, `STATISTICS` (`COLUMN_NAME`, and `EXPRESSION` for functional key parts), `CHECK_CONSTRAINTS` and `COLUMNS.GENERATION_EXPRESSION` is the pre-flight audit.
 
 **Phase 2 - Prep (only if NOT NULL with no DB default AND app writes on every insert).** Once deploy A stops writing, the next insert fails - so ship one of these *before* Deploy A (either suffices; the default is INSTANT and the usual choice, any inert sentinel works):
 
@@ -181,15 +182,13 @@ end                                                          # null: true after 
 
 Restate type/null/default as they exist *at drop time* (whichever Phase-2 option ran) so `db:rollback` re-adds the column in that state. A rename whose target column already exists is a finding, not a migration - reconcile the two columns first. `DROP COLUMN` is INSTANT-eligible on 8.0.29+.
 
-Edge cases requiring extra steps: dependent objects (FK / index / generated / CHECK / view), external systems consuming the column, tables >100M rows (use `gh-ost --alter="DROP COLUMN ..."`).
+Edge cases requiring extra steps: dependent objects (FK / index / generated / CHECK / view), external systems consuming the column, and a large table where INSTANT drop is unavailable (before 8.0.29, or row versions exhausted) - gh-ost, or pt-osc when the table is FK-bearing.
 
 ### Creating tables
 
 ```ruby
-# utf8mb4_0900_ai_ci is MySQL 8.0 only - MariaDB raises "Unknown collation".
-# On MariaDB use utf8mb4_uca1400_ai_ci (10.10+) or utf8mb4_unicode_ci.
 create_table :orders, options: "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci" do |t|
-  t.references :user, null: false, foreign_key: true
+  t.references :user, null: false, foreign_key: true, index: false   # the composite below leads with user_id
   t.integer :total_cents, null: false  # money as integer cents; decimal only to match an existing convention
   t.integer :status, null: false, default: 0
   t.datetime :fulfilled_at
@@ -202,31 +201,40 @@ add_index :orders, [:user_id, :status]
 
 ### Large tables (>100M rows): `gh-ost`
 
-Rails migrations don't throttle at all. `gh-ost` throttles on replication lag (`--max-lag-millis`) and MySQL status variables (`--max-load`, `--critical-load`, e.g. `Threads_running`), with anything else expressible as `--throttle-query` or a `--throttle-flag-file`. It has no disk or CPU metric of its own:
+Rails migrations don't throttle at all. `gh-ost` throttles on replication lag (`--max-lag-millis`) and MySQL status variables (`--max-load`, e.g. `Threads_running`), with anything else expressible as `--throttle-query` or a `--throttle-flag-file`; crossing `--critical-load` aborts the migration rather than throttling it. It has no disk or CPU metric of its own:
 
 ```bash
-gh-ost --user=app --host=primary.db --database=app --table=orders \
-  --alter="ADD COLUMN amount DECIMAL(10,2) NOT NULL DEFAULT 0" \
+# A real rebuild (a column type change) on a table with no FKs - an appended
+# ADD COLUMN is INSTANT and needs no gh-ost at all
+gh-ost --user=app --ask-pass --host=primary.db --database=app --table=events \
+  --alter="MODIFY COLUMN payload MEDIUMTEXT" \
   --max-load=Threads_running=25 --critical-load=Threads_running=100 \
   --max-lag-millis=1500 --allow-on-master --execute
 ```
 
-`--allow-on-master` is required whenever gh-ost connects to the primary, on any topology. On RDS/managed MySQL (no SUPER): add `--assume-rbr`. After any out-of-band gh-ost ALTER, regenerate `db/structure.sql` (`db:schema:dump`) so the repo matches production. Alternative: `pt-online-schema-change` (trigger-based, slower, more topologies). Data backfills - including lag-aware throttling and external-API safety in backfill loops: see `rails-batch-processing-patterns` and `rails-rake-task-patterns`.
+`--allow-on-master` is required whenever gh-ost connects to the primary, on any topology. On RDS/managed MySQL (no SUPER): add `--assume-rbr`. After any out-of-band gh-ost ALTER, apply the same ALTER locally (or record it in a guarded migration), then `db:schema:dump`, so `db/structure.sql` matches production - a dump of a database that never got the ALTER shows no diff. Alternative: `pt-online-schema-change` (trigger-based, slower, more topologies). Data backfills - including lag-aware throttling and external-API safety in backfill loops: see `rails-batch-processing-patterns` and `rails-rake-task-patterns`.
 
 ### Foreign keys
 
 With the default `foreign_key_checks=1`, `ALTER TABLE ... ADD FOREIGN KEY` supports **only ALGORITHM=COPY** - a full table rebuild that blocks writes, not a brief metadata lock. INPLACE becomes available only with `foreign_key_checks=0`, which buys `LOCK=NONE` at the cost of an unvalidated constraint until you re-check it.
 
-On a large table this is *not* gh-ost work: gh-ost does not support foreign keys at all and refuses to run on any table holding an FK as child or parent. Use `pt-online-schema-change --alter-foreign-keys-method=rebuild_constraints` (or `drop_swap`). The same limitation qualifies the ">100M rows -> gh-ost" rule everywhere in this skill: `t.references ... foreign_key: true` is the house convention, so most large tables here are FK-bearing and belong to pt-osc.
+Before adding one, audit orphans (`SELECT COUNT(*) FROM order_items c LEFT JOIN orders p ON p.id = c.order_id WHERE p.id IS NULL`) - they fail the COPY, or sit silently under an unvalidated INPLACE constraint. On a large table this is *not* gh-ost work: gh-ost does not support foreign keys at all and refuses to run on any table holding an FK as child or parent. Use `pt-online-schema-change --alter "ADD FOREIGN KEY ..."`, adding `--alter-foreign-keys-method=rebuild_constraints` (or `drop_swap`) when other tables reference this one; pt-osc prefixes the new table's constraint names with `_`, so re-dump the schema afterwards. The same limitation qualifies the ">100M rows -> gh-ost" rule everywhere in this skill: `t.references ... foreign_key: true` is the house convention, so most large tables here are FK-bearing and belong to pt-osc.
 
 ### Lock timeout per migration
 
 ```ruby
-def change
+# up/down, not change: `execute` has no inverse, so inside `change` it makes db:rollback raise
+def up
   execute "SET SESSION lock_wait_timeout = 5"   # metadata-lock timeout - what DDL queues on
   add_index :orders, :status, algorithm: :inplace
 end
+
+def down
+  remove_index :orders, :status
+end
 ```
+
+`StrongMigrations.lock_timeout` emits the same setting for every migration, which makes the per-migration line unnecessary.
 
 `innodb_lock_wait_timeout` bounds InnoDB *row-lock* waits and has no effect on the metadata lock a DDL statement waits for; with only that set, the migration still blocks indefinitely behind a long-running transaction. `lock_wait_timeout` is the MDL knob (default 31536000 - a year), and it is what `StrongMigrations.lock_timeout` emits on MySQL.
 
@@ -237,7 +245,7 @@ Guard against double-runs (deploy retry, two engineers). Full leader-election pa
 ```ruby
 # In the backfill rake task (never db/migrate):
 ApplicationRecord.with_advisory_lock!("backfill_order_amount", timeout_seconds: 0) do
-  Order.in_batches(of: 10_000) { |b| b.where(amount: nil).update_all(amount: ...) }
+  Order.in_batches(of: 10_000) { |b| b.where(amount: nil).update_all("amount = total") }
 end
 # The bang form raises WithAdvisoryLock::FailedToAcquireLock when someone else holds it.
 # `with_advisory_lock(...) { } || abort` is a trap: the block returns in_batches' nil on a
@@ -246,7 +254,7 @@ end
 
 ### Rollback safety
 
-Test `db:migrate && db:rollback && db:migrate` in CI, and test rollback on a clone before merging. MySQL DDL is not transactional: a multi-statement migration that fails midway leaves the earlier statements applied and `schema_migrations` unrecorded. Reconcile first (`Operation: Reconcile` - compare `information_schema` to the file), then split or delete what already applied so the file re-runs cleanly. Two INSTANT caveats, in opposite directions: on 8.0.12-8.0.28 an instantly-added column could not be dropped instantly, so the rollback rebuilt the table; from 8.0.29 instant `DROP COLUMN` exists, but every instant ADD/DROP consumes one of a table's **64 row versions** - once exhausted, any `ALGORITHM=INSTANT` fails with "Maximum row versions reached for table" until an INPLACE or COPY rebuild (or `OPTIMIZE TABLE`) resets the count.
+Test `db:migrate && db:rollback && db:migrate` in CI, and test rollback on a clone before merging. MySQL DDL is not transactional: a multi-statement migration that fails midway leaves the earlier statements applied and `schema_migrations` unrecorded. Reconcile first (`Operation: Reconcile` - compare `information_schema` to the file), then split or delete what already applied so the file re-runs cleanly. Two INSTANT caveats, in opposite directions: on 8.0.12-8.0.28 an instantly-added column could not be dropped instantly, so the rollback rebuilt the table; from 8.0.29 instant `DROP COLUMN` exists, but every instant ADD/DROP COLUMN consumes one of a table's **64 row versions** - once exhausted, instant ADD/DROP COLUMN fails with "Maximum row versions reached for table" until an INPLACE or COPY rebuild (or `OPTIMIZE TABLE`) resets the count; other INSTANT operations (rename, defaults, ENUM append) are unaffected. Check the budget before planning instant steps: `SELECT TOTAL_ROW_VERSIONS FROM information_schema.INNODB_TABLES WHERE NAME = 'app/orders'`.
 
 ```ruby
 def change
@@ -257,33 +265,24 @@ def change
 end
 ```
 
-### MariaDB caveats
-
-- INSTANT not until 10.3+ and narrower: 10.3 adds a last-position column and changes defaults instantly, 10.4+ adds any position and `DROP COLUMN`; verify anything else against the MariaDB matrix before assuming
-- CHECK syntax differs
-- Invisible indexes are spelled `ALTER TABLE ... ALTER INDEX idx IGNORED` (MariaDB 10.6+); absent below 10.6
-- `utf8mb4_0900_*` collations do not exist
-- No functional indexes at any version - index a virtual generated column instead
-- For divergence, prefer `pt-online-schema-change`
-
 ## Output Format
 
-One block per operation, in execution order - a migration file bundling two operations emits two blocks sharing one `Migration:` value (and a finding against Rule 1), and a multi-step plan emits a numbered sequence. Rake backfills get blocks too (`Operation: Backfill`, `Algorithm: batched rake`); a gh-ost / pt-osc run keeps its DDL `Operation` with `Algorithm: gh-ost` / `pt-online-schema-change`. Non-DDL sequence steps that the patterns require - a dependency audit, an `ignored_columns`-only deploy, an external-reader cutover, a reconcile after a partial run - get a block with `Operation: Coordination` (or `Reconcile`) and `Algorithm: n/a`. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. The blocks describe the corrected operations, so target state lives there. This applies to a post-incident review of an already-executed migration as much as to a pre-merge one.
+One block per operation, in execution order - a migration file bundling two operations emits two blocks sharing one `Migration:` value (and a finding against the one-structural-change-per-migration rule), and a multi-step plan emits a numbered sequence whose `Step` numbers run across the whole plan, split files included. Rake backfills get blocks too (`Operation: Backfill`, `Algorithm: batched rake`); a gh-ost / pt-osc run keeps its DDL `Operation` with `Algorithm: gh-ost` / `pt-online-schema-change`. Non-DDL sequence steps that the patterns require - a dependency audit, an `ignored_columns`-only deploy, an external-reader cutover, a reconcile after a partial run - get a block with `Operation: Coordination` (or `Reconcile`), `Algorithm: n/a`, and `n/a` in `Lock window` and `Safety`. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. In review or diagnosis mode each field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and its numbered finding explains the fix. A build-mode block holds corrected values only, and build mode still numbers findings for the pre-existing violations it touches. A request to design or change code is build mode; one that assesses or diagnoses code as it stands is review or diagnosis mode. A block is the corrected operation, so `Safety` rates the operation as corrected - `Blocked` when its required tool is absent - and the as-written verdict lives in the finding; a block keeps `Reject` only when this skill has no safe rewrite for it, with `n/a` in `Algorithm` and `Lock window`. Prerequisite Coordination steps (an audit, a tool install) come first in the sequence; a file split in the correction keeps its name on the operation it retains, and each split-off operation reads `proposed - split from <file>`. This applies to a post-incident review of an already-executed migration as much as to a pre-merge one.
 
 ```
 Step: {n of N | n/a (single operation)}
 
 Migration: {file name | rake file path | rake file not provided - name it | proposed - not yet created | n/a (out-of-band gh-ost / pt-osc run, a DBA command, a decision or a deploy-only step)}
 
-Operation: {Create Table | Add Column | Change Column | Rename Column (coordinated cutover only) | Add Index | Alter Index (invisible / ignored soak) | Drop Index | Add FK | Add CHECK | Drop Constraint | Backfill | Remove Column | Drop/Recreate View | Coordination | Reconcile}
+Operation: {Create Table | Rename Table | Drop Table | Add Column | Change Column | Rename Column (coordinated cutover only) | Add Index | Alter Index (invisible soak) | Drop Index | Add FK | Add CHECK | Drop Constraint | Backfill | Remove Column | Drop/Recreate View | Coordination | Reconcile}
 
 Table: {name} ({row count | new - 0 rows | absent from the schema - Blocked | "size unstated - assume large and justify"})
 
-Adapter: {MySQL | MariaDB} {x.y.z from SELECT VERSION() or the declared ## Tech Stack | unknown - assume no INSTANT support}
+Adapter: MySQL {x.y.z from SELECT VERSION() or the declared ## Tech Stack | unknown - assume no INSTANT support}
 
 Algorithm: {INSTANT | INPLACE | COPY | gh-ost | pt-online-schema-change | batched rake | n/a}
 
-Lock window: {none (online) | brief metadata lock | write-blocking rebuild (COPY - brief only on a small table) | maintenance required | n/a (Coordination, Reconcile, Backfill)}
+Lock window: {none (online) | brief cut-over lock (gh-ost / pt-osc) | brief metadata lock | write-blocking rebuild (COPY or LOCK=SHARED - brief only on a small table) | maintenance required | n/a (Coordination, Reconcile, Backfill)}
 
 Safety: {Zero-Downtime | Maintenance Window | Batched Backfill | Hardening advised - compliant but under-specified | Blocked - required tooling or dependency absent (tool, target table), name it | Reject - rewrite required | Already applied - unsafe as run, findings say what changes | n/a (Coordination, Reconcile)}
 
@@ -294,15 +293,16 @@ Notes: {charset/collation, INSTANT eligibility, gh-ost throttle config}
 
 ## Avoid
 
-- `algorithm: :concurrently` on MySQL (PG-only)
+- `algorithm: :concurrently` (not a MySQL algorithm - the adapter raises)
 - `where:` partial indexes on MySQL
 - Data changes in schema migrations
 - `remove_column` without `ignored_columns` first
-- Direct column type changes - use add/backfill/remove
+- In-process type changes that force a COPY on a deployed table - use add/backfill/remove, or gh-ost / pt-osc for a pure widening
+- `disable_ddl_transaction!` as a safety measure - MySQL DDL is never transactional, so it changes nothing
 - Irreversible migrations without explicit `raise ActiveRecord::IrreversibleMigration`
 - Missing indexes on FK columns
 - `add_column` with `null: false` on existing tables without default
 - `change_column_null` on hot multi-100M-row tables
 - Default `utf8` instead of `utf8mb4`
-- `:ruby` schema format on MySQL with functional indexes / generated columns / CHECK
+- `:ruby` schema format on MySQL with views, triggers, stored procedures, partitioning or an ngram FULLTEXT index
 - In-process migrations on >100M-row tables

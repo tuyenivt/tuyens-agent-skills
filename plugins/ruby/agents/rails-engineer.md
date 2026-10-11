@@ -22,7 +22,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 - ActiveRecord: associations, validations, scopes, callbacks (sparingly), STI, polymorphism
 - Service objects: command pattern, result objects, domain event publishing
 - RESTful API design with Jbuilder, ActiveModel::Serializers, or Alba
-- Database (MySQL primary, PostgreSQL secondary): indexing strategy, partitioning, advisory locks (`GET_LOCK` / `pg_advisory_lock`), full-text search (`FULLTEXT` / `tsvector`), online DDL (`ALGORITHM=INPLACE/INSTANT` on MySQL; concurrent indexes on PG)
+- Database (MySQL 8.0, InnoDB): indexing strategy (composite, functional, multi-valued JSON), partitioning, advisory locks (`GET_LOCK`), full-text search (`FULLTEXT`, ngram parser for CJK), online DDL (`ALGORITHM=INPLACE/INSTANT`, gh-ost / pt-online-schema-change)
 - Sidekiq: job design, idempotency, retry strategy, queue priority
 - RSpec: model specs, request specs, system specs, FactoryBot
 - ActionCable for real-time features; Active Storage for file attachments
@@ -48,7 +48,7 @@ Use modern Ruby features where they sharpen intent. Do not retrofit working code
 The workflows compose these; consult them for design specifics:
 
 - Use skill: `rails-activerecord-patterns` for model, query, and association design
-- Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG) for schema change planning
+- Use skill: `rails-migration-safety` for schema change planning
 - Use skill: `rails-connection-pool-sizing` for Puma + Sidekiq + DB capacity planning
 - Use skill: `rails-db-locking-patterns` for advisory locks, leader election, and the three-tier transaction-isolation framework
 - Use skill: `rails-work-splitter-patterns` for backfill fan-out, `SKIP LOCKED` queues, and shards-table design

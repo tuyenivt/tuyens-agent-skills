@@ -37,7 +37,7 @@ category: engineering
 
 - Use skill: `rails-activerecord-patterns` for N+1 prevention, eager loading strategy, and batch processing
 - Use skill: `rails-sidekiq-patterns` for job queue design, throughput tuning, and retry strategy
-- Use skill: `rails-migration-safety` (MySQL) or `rails-postgresql-migration-safety` (PG) for safe-migration checks when perf fixes touch `db/migrate/`
+- Use skill: `rails-migration-safety` for safe-migration checks when perf fixes touch `db/migrate/`
 - Use skill: `rails-connection-pool-sizing` for Puma + Sidekiq pool math, deploy-window peaks, and proxy guidance
 - Use skill: `rails-db-locking-patterns` for advisory-lock patterns, lock-hold discipline, and the three-tier transaction-isolation framework
 - Use skill: `rails-work-splitter-patterns` for backfill fan-out, `SKIP LOCKED` queues, and shards-table design

@@ -58,7 +58,7 @@ class ApplicationController < ActionController::API
   def service_unavailable(e)  = (Rails.error.report(e); render_error(e, :service_unavailable))   # a 503 is reported; needs config.rails.register_error_subscriber = true (Single-Source Reporting)
   def unprocessable(e)        = render json: { error: e.message, request_id: request.request_id,
                                                details: e.try(:record)&.errors || e.try(:details) },
-                                       status: :unprocessable_entity
+                                       status: :unprocessable_content
   def render_error(e, status) = render json: { error: e.message, request_id: request.request_id }, status: status
 end
 ```
@@ -114,7 +114,7 @@ class FulfillOrder
 end
 ```
 
-Raise across boundaries you don't control, translate at the client, rescue domain errors in the service. For service-object structure, use skill: `rails-service-objects`.
+Raise across boundaries you don't control, translate at the client, rescue domain errors in the service. For service-object structure, see `rails-service-objects`.
 
 ### Sidekiq Retry Semantics
 
@@ -166,7 +166,7 @@ class BillingClient
 end
 ```
 
-Swapping Faraday for HTTPX or Stripe for Adyen does not ripple. A client-local namespace (`BillingError::Declined`) is fine - it is boundary vocabulary, named for the *capability*, not the vendor or SDK; each class still maps onto one caller-response category from the taxonomy. SDKs that raise one class for everything: branch on the error's `code`/`status` attribute the same way this example branches on HTTP status. Auth-expiry belongs to the client too - refresh and retry once inside the client, then translate to `Unavailable` if it still fails. For client structure, use skill: `rails-http-client-patterns`.
+Swapping Faraday for HTTPX or Stripe for Adyen does not ripple. A client-local namespace (`BillingError::Declined`) is fine - it is boundary vocabulary, named for the *capability*, not the vendor or SDK; each class still maps onto one caller-response category from the taxonomy. SDKs that raise one class for everything: branch on the error's `code`/`status` attribute the same way this example branches on HTTP status. Auth-expiry belongs to the client too - refresh and retry once inside the client, then translate to `Unavailable` if it still fails. For client structure, see `rails-http-client-patterns`.
 
 ### Single-Source Reporting
 

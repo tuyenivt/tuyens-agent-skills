@@ -25,7 +25,7 @@ Not for single-lens reviews (`*-review-perf` / `-security` / `-observability` / 
 | `diff`               | yes      | `git diff <base_ref>...<head_ref>` - the full PR range, on every round |
 | `commit_log`         | yes      | `git log <base_ref>..<head_ref>` over the same range                         |
 | `requirement_source` | no       | `--req <path>` forwarded by the workflow, or requirement text already in context |
-| `prior_report_path`  | no       | `prior_checkpoint.report_path` from the precondition handle, when round > 1  |
+| `prior_report_path`  | no       | `review-target.report_path` from the precondition handle, when round > 1     |
 
 Repository context outside these inputs (deploy plans, architecture docs) may inform Watch points and may be cited there by path; it becomes a traceability source only when the change names it (source row 3).
 
