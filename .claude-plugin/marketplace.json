@@ -10,7 +10,7 @@
       "name": "core",
       "source": "./plugins/core",
       "description": "Stack-agnostic skills for multi-stack development - auto-detects any tech stack",
-      "version": "1.182.0",
+      "version": "1.183.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -29,7 +29,7 @@
       "name": "architecture",
       "source": "./plugins/architecture",
       "description": "Stack-agnostic architecture plugin: unified system design (boundaries + API contracts + C4 diagrams), reviewer-calibrated design briefs for epic approval, migration planning (monolith decomposition, service consolidation, legacy modernization, zero-downtime schema change), dependency upgrade assessment, design-to-tasks breakdown, and live incident response (triage, root cause analysis). Every authoring workflow doubles as a review workflow with severity-tagged findings and verdict.",
-      "version": "1.182.0",
+      "version": "1.183.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -54,7 +54,7 @@
       "name": "java",
       "source": "./plugins/java",
       "description": "Skills and agents for Java 21+ / Spring Boot 4.0+ development.",
-      "version": "1.182.0",
+      "version": "1.183.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -72,7 +72,7 @@
       "name": "python",
       "source": "./plugins/python",
       "description": "Skills and agents for Python 3.11+ / FastAPI / Django development.",
-      "version": "1.182.0",
+      "version": "1.183.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -90,7 +90,7 @@
       "name": "ruby",
       "source": "./plugins/ruby",
       "description": "Skills and agents for Ruby 3.2+ / Ruby on Rails 7.2+ development.",
-      "version": "1.182.0",
+      "version": "1.183.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -108,7 +108,7 @@
       "name": "node",
       "source": "./plugins/node",
       "description": "Skills and agents for Node.js/TypeScript development.",
-      "version": "1.182.0",
+      "version": "1.183.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -129,7 +129,7 @@
       "name": "go",
       "source": "./plugins/go",
       "description": "Skills and agents for Go/Gin development.",
-      "version": "1.182.0",
+      "version": "1.183.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -146,7 +146,7 @@
       "name": "react",
       "source": "./plugins/react",
       "description": "Skills and agents for React/Next.js fullstack development - UI plus the Next.js server surface.",
-      "version": "1.182.0",
+      "version": "1.183.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -171,7 +171,7 @@
       "name": "unity",
       "source": "./plugins/unity",
       "description": "Skills and agents for Unity 2D game development.",
-      "version": "1.182.0",
+      "version": "1.183.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -192,7 +192,7 @@
       "name": "flutter",
       "source": "./plugins/flutter",
       "description": "Skills and agents for Flutter/Dart client development.",
-      "version": "1.182.0",
+      "version": "1.183.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"
@@ -213,7 +213,7 @@
       "name": "domain-kb",
       "source": "./plugins/domain-kb",
       "description": "Domain knowledge tooling for multi-service systems.",
-      "version": "1.182.0",
+      "version": "1.183.0",
       "author": {
         "name": "Tuyen",
         "url": "https://github.com/tuyenivt"

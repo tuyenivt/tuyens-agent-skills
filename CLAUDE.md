@@ -20,7 +20,7 @@ plugins/
   react/         # React 19 / Next.js 16 App Router / TypeScript - fullstack
   unity/         # Unity 6.3 LTS 2D games / C# - engine-free rules core, URP 2D, UI Toolkit
   flutter/       # Flutter / Dart 3 client apps - Riverpod, go_router, Dio, Drift
-  domain-kb/     # Unlisted (see below) - domain knowledge base for taking over an existing system: sync, explain, ask
+  domain-kb/     # Unlisted (see below) - domain knowledge base for taking over an existing system: sync, explain, ask, plus a local multi-service dev environment (devenv)
 ```
 
 Each plugin folder has a `README.md`, except `plugins/domain-kb`, which is unlisted: no `README.md`, no row in the root `README.md`, no usage guide anywhere; its `plugin.json` and `marketplace.json` entries carry one generic line. Never add any of these. Each skill lives in its own directory as `SKILL.md`. Agent files are plain Markdown in `plugins/<stack>/agents/`.
