@@ -13,13 +13,13 @@ The single source of truth for the local environment that runs a domain's servic
 
 ## When to Use
 
-- `task-domain-devenv` writing the manifest (`init`, `update`) or rendering it (`render`, `update`)
+- `task-domain-devenv` writing the manifest (`init`, `update`, `decide`) or rendering it (`render`, `update`, `decide`)
 - Invoked standalone: verify an existing `devenv/` against this contract, write nothing, and emit the Output Format block
 
 ## Rules
 
-- **Ownership.** `devenv/` sits in the knowledge-base root, beside `repos/`. Its writers are `task-domain-devenv` (the `regenerate` and `seed` files), `bin/dev` at run time (`.env`, `.cache/`, `wt/`, `infra/tls/`, and the developer's `sources.env`: copied from the example once, rewritten by `wt`), and a person (`devenv.yaml`, `compose.local.yaml`, stub bodies, e2e specs, `sources.env`). Under `repos/` only `bin/dev wt` writes, and only worktree metadata and the branch it checks out, as `domain-kb-layout` records; no service repository file is modified, and nothing is committed.
-- **The manifest is the only input to rendering.** `devenv/devenv.yaml` is proposed by discovery, reviewed and edited by a person, and read whole by rendering together with the stack profiles; rendering never reads a service repository. The host rule and the TLS default below apply when the manifest is written (`init`, `update`); rendering uses every host, origin, and env value as the manifest states it. A field rendering reads whose value starts `unknown`, or that a profile needs and the manifest lacks, keeps its service out of the render (an infra entry: every service using it), and the console names it.
+- **Ownership.** `devenv/` sits in the knowledge-base root, beside `repos/`. Its writers are `task-domain-devenv` (the `regenerate` and `seed` files), `bin/dev` at run time (`.env`, `.cache/`, `wt/`, `infra/tls/`, and the developer's `sources.env`: copied from the example once, rewritten by `wt`), and a person (`devenv.yaml`, `compose.local.yaml`, `local/`, stub bodies, e2e specs, `sources.env`). A person extends a generated file through `local/`, which the render includes (a merged realm, Caddy imports, task scripts), never by replacing the file from `compose.local.yaml`, which loses regeneration. Under `repos/` only `bin/dev wt` writes, and only worktree metadata and the branch it checks out, as `domain-kb-layout` records; no service repository file is modified, and nothing is committed.
+- **The manifest is the only input to rendering.** `devenv/devenv.yaml` is proposed by discovery, reviewed and edited by a person, and read whole by rendering together with the stack profiles; rendering never reads a service repository. The host rule and the TLS default below apply when the manifest is written (`init`, `update`, `decide`); rendering uses every host, origin, and env value as the manifest states it. A field rendering reads whose value starts `unknown`, or that a profile needs and the manifest lacks, keeps its service out of the render (an infra entry: every service using it), and the console names it.
 - **Sources are per developer.** `sources.env` maps each service to a source directory (`<SVC>_SRC`, any clone or worktree, any branch, pushed or not) and a mode (`<SVC>_MODE`, `pinned` or `live`); an unmapped service runs `pinned` from `../repos/<svc>`. `pinned` builds the committed `HEAD` of its source from a `git archive` snapshot (submodule contents and `export-ignore` paths excluded); `live` bind-mounts the working tree with the profile's reload and debugger, and is refused for a source under `repos/`, whose checkout sync moves and records.
 - **One name per thing, in every mode.** A service is reached at `http://<svc>:<port>`, infra at the fixed names below, a browser-facing host at its origin, the same URL in a browser and in a container; standalone (`solo`) answers the same names with mocks, so no setting differs between modes. Every connection setting a service reads is set by its own config key in the manifest; nothing is passed to a service any other way.
 - **Images are pinned.** Every `image` is an exact tag; an engine's tag is the production version the evidence names, a tool's (`wiremock`, `proxy`, `mailpit`, `playwright`, `curl`) the one `task-domain-devenv` confirmed in the registry or a person sets. `latest` is never written.
@@ -47,6 +47,8 @@ devenv/stubs/peers/<peer>/*.json      seed         WireMock mappings for solo mo
 devenv/stubs/external/<name>/*.json   seed         WireMock mappings for dependencies outside the domain
 devenv/e2e/                           seed         Playwright project (only when a frontend exists)
 devenv/compose.local.yaml             seed         a person's additions, loaded last; created as `services: {}`
+devenv/local/                         person       extension points the render includes: keycloak-realm.json, caddy/*.caddy, caddy/sites/<host>.caddy, tasks/, patches/
+devenv/local/{caddy/sites,tasks}/.gitkeep   seed   so the proxy and task mounts exist before a person adds a file
 devenv/sources.env                    bin/dev      per developer; copied from the example once, rewritten by bin/dev wt
 devenv/.env  .cache/  wt/             bin/dev      resolved Compose env, pinned snapshots, worktrees
 devenv/infra/tls/                     bin/dev      cert.pem, key.pem, ca.pem from bin/dev certs; per machine, only with TLS on
@@ -57,6 +59,7 @@ devenv/infra/tls/                     bin/dev      cert.pem, key.pem, ca.pem fro
 ### Manifest
 
 ```yaml
+# proposed by task-domain-devenv init; a person edits this file
 domain: checkout                        # Compose project and image prefix, kebab-case
 proxy_port: 8000                        # the proxy's HTTP port, used only with TLS off
 tls:
@@ -82,9 +85,11 @@ infra:                                  # the engines some service uses, plus th
     image: quay.io/keycloak/keycloak:26.4.0
     realm: checkout
     host: keycloak.checkout.test
+    # host_aliases: [sso.checkout.test]  more proxied hosts for Keycloak (a repo hardcodes one); each answers with its own issuer
     users:
       - username: buyer
         roles: [buyer]
+        # password: password             default: the username; a username may be an email
     evidence: repos/orders/config/initializers/oidc.rb:5
   mailpit:
     image: axllent/mailpit:v1.27.0      # tool images: wiremock, proxy, mailpit, playwright (with a frontend), curl (with topology provisioned)
@@ -98,6 +103,9 @@ external:
   partner-api:
     port: 8080
     calls: [POST /v1/quotes]            # from discovery; seeds the stubs
+    # routes: [{host: partner.checkout.test, path: /}]   browser-facing: proxied to its mock; (browser) keys take this origin
+    # tls: true                         reached as https://partner-api.mock through the proxy (a client that forces TLS)
+    # hijack: [api.partner.example]     a person's: hardcoded real hosts the proxy answers, inside containers only
 services:
   orders:                               # the service key is its directory name under repos/
     profile: rails                      # domain-devenv-stack-profiles id
@@ -110,6 +118,7 @@ services:
     processes:
       web: default                      # default = the profile's command; web never renders as a process
       worker: exec bundle exec sidekiq  # <cmd> | {run: <cmd>, live: <cmd>} when live mode needs another command
+      # assets: {live: exec bin/assets-dev, port: 3036}   a listening process: its port, reached by a route's process
       css:                              # live-only process: added by the live overlay, absent from compose.yaml
         live: exec bin/rails tailwindcss:watch[always]   # block form: [ ] inside a {live: ...} flow mapping is not valid YAML
     migrate: default
@@ -124,6 +133,10 @@ services:
       # generate: prisma                node: prisma | none
       # native: true                    node: a dependency builds a native addon
       # install: <command>              a person's: replaces the profile's install command
+      # secrets: [PKG_REGISTRY_TOKEN]   env names install steps read as build secrets, from the developer's shell or sources.env
+      # ssh: true                       install fetches over SSH through the developer's agent
+      # node: "22.11.0"                 rails: the Node pin asset builds use
+      # framework_version: "7.2.2"      rails: selects the profile's version-dependent values
     # profile fields, only when the profile names them:
     # module: billing-app               spring - the boot module of a multi-module build
     # main: ./cmd/api                   go - the main package, always (./cmd/<svc>, the only ./cmd/*, or .)
@@ -132,6 +145,9 @@ services:
     uses:
       mysql:
         database: orders_development
+        # databases: [orders_analytics]  more databases, created and granted like database
+        # create: false                  provision grants only; the service's own migrate creates (and seeds) the database
+        # grants: [SET_USER_ID]          global privileges, for schemas that set a DEFINER
         env:
           DATABASE_URL: mysql2://orders:orders@mysql:3306/orders_development
       redis:
@@ -144,6 +160,10 @@ services:
       keycloak:
         client: orders
         roles: [ops, finance]           # the realm roles discovery found in this repo
+        # protocol: saml                 oidc (default) | saml
+        # entity_id: https://orders.checkout.test/saml/metadata   saml: the SP entity id, from the app's SAML config
+        # acs: https://orders.checkout.test/saml/acs               saml: the assertion consumer URL
+        # service_roles: [realm-management/manage-users]          <client>/<role> granted to the client's service account
         env:
           OIDC_ISSUER: https://keycloak.checkout.test/realms/checkout
           OIDC_CLIENT_ID: orders
@@ -163,15 +183,21 @@ services:
     routes:
       - host: shop.checkout.test        # the frontend's dev host when evidenced, else orders.localhost
         path: /api                      # the path the frontend's API base config names; / on its own host otherwise
+        # process: assets                route to <svc>-<process> at its port instead of the service
+        # headers: {X-User-Id: uid}      header set from that cookie, removed when the cookie is absent
+    # tasks: {seed-clients: exec bin/rails runner /devenv/tasks/clients.rb}   opt-in one-shots: bin/dev task orders seed-clients
     evidence: {}                        # slot -> repos/<repo>/file:line, from discovery
     unknowns: []                        # discovery's Unknowns lines, verbatim
   # payments and checkout-web (kind: frontend, route shop.checkout.test /): same shape, omitted
 flows:
   all: [checkout-web, orders, payments]
   checkout/place-order: [checkout-web, orders, payments]
+decisions:                              # a person's choices; update never proposes changing a field listed here
+  infra.redis.image: "2026-10-12 - pinned the 7.4 minor; production is managed"
+  infra.kafka: "2026-10-12 - removed: only out-of-scope code uses it"
 ```
 
-`host_port` values, debug ports, `proxy_port`, and `tls.port` are unique (services from 3001, debug ports from 12341, in manifest order; kafka takes no `host_port`, its advertised listener being `kafka:9092`); `routes` is empty for a service no browser calls; `flows` always has `all`. A secret's value never enters the manifest: it is read from `sources.env` as `<SVC>_<KEY>`. A credential the naming contract fixes (a database password, a Keycloak client secret) is a `uses.*.env` value, never a secret.
+`host_port` values, debug ports, `proxy_port`, and `tls.port` are unique (services from 3001, debug ports from 12341, in manifest order; kafka takes no `host_port`, its advertised listener being `kafka:9092`); `routes` is empty for a service no browser calls; `flows` always has `all`. A secret's value never enters the manifest: it is read from `sources.env` as `<SVC>_<KEY>`; a build secret is read by its own name, from the developer's shell or `sources.env`. The workflow writes the manifest with every string scalar double-quoted with JSON escaping, which is always valid YAML (a person's edits may use any YAML), and starts it with the header comment above. `decisions` maps a field path (`services.<svc>.<field>`, `infra.<name>`, `external.<name>`) to `<date> - <reason>`; it records a value a person chose with no `file:line` behind it, and an entry naming a removed entry keeps it removed. An `unknowns` line reads `<slot>: <why> - <what>`, `<slot>` a field path relative to the service or a short label; a line whose field path now holds a value not starting `unknown` is resolved. Every field added after the first manifest version is optional with the default its comment states, so an older manifest stays valid. A credential the naming contract fixes (a database password, a Keycloak client secret) is a `uses.*.env` value, never a secret.
 
 ### Naming contract
 
@@ -183,18 +209,18 @@ flows:
 | Redis                 | `redis:6379`                                         | none                                              | its `db` number (0-15)                 |
 | RabbitMQ              | `rabbitmq:5672`                                      | `dev` / `dev`                                     | the domain vhost, shared               |
 | Kafka                 | `kafka:9092`                                         | none                                              | its topics, auto-created               |
-| Keycloak              | the origin of `infra.keycloak.host`, in every container too | admin `admin` / `admin`; client secret `<svc>-secret`; user password = username | its client                 |
+| Keycloak              | the origin of `infra.keycloak.host`, in every container too | admin `admin` / `admin`; client secret `<svc>-secret`; user password its `password`, else the username | its client                 |
 | Mailpit               | SMTP `mailpit:1025`; UI the origin of `mail.localhost` | none                                            | -                                      |
 | External dependency   | `<name>.mock:<port>`                                 | as the stub expects                               | its stub folder                        |
 | Browser entry         | the origin of each route `host`                      | -                                                 | its `routes`                           |
 
-A proxied host is every route host, the Keycloak host, and `mail.localhost` and `rabbitmq.localhost` when those engines run; each is a network alias of the proxy, so a container resolves it to the proxy. TLS is on by default (`tls.issuer: mkcert`) and off only when a person sets `issuer: none`. A host's origin is `https://<host>` with TLS on at port 443, `https://<host>:<port>` at any other `tls.port`, and `http://<host>:<proxy_port>` with TLS off; the proxy listens on the same port it publishes, so the origin is one URL in a browser and in a container. A route host is the repo's dev host when discovery cites one, else `<svc>.localhost`; the Keycloak host is the one a repo's dev config names, else `keycloak.` plus the suffix every route host shares when it is not `localhost`, else `keycloak.localhost`. A `*.localhost` host resolves in a browser by itself and is a secure context even over HTTP; any other host needs one hosts-file line per machine, which `bin/dev hosts` prints. With TLS off, every route host is `<svc>.localhost` and the Keycloak host `keycloak.localhost` whatever the repos name, since a browser treats any other host as insecure over HTTP, which breaks OIDC PKCE and `Secure` cookies; `update` rewrites the hosts and every env value carrying a proxied origin when a person flips `tls.issuer`. A browser-facing URL a service is configured with is its origin, never `localhost:<port>`.
+A proxied host is every route host (an external's `routes` included), the Keycloak host and its `host_aliases`, and `mail.localhost` and `rabbitmq.localhost` when those engines run; each is a network alias of the proxy, so a container resolves it to the proxy. A container-only host is `<name>.mock` of an external with `tls: true` and every `hijack` host: also a proxy alias and in the certificate, never printed by `bin/dev hosts` nor put in a hosts file, so only containers reach it; both need TLS on, and with `issuer: none` the external counts as `unknown` for the render. TLS is on by default (`tls.issuer: mkcert`) and off only when a person sets `issuer: none`. A host's origin is `https://<host>` with TLS on at port 443, `https://<host>:<port>` at any other `tls.port`, and `http://<host>:<proxy_port>` with TLS off; the proxy listens on the same port it publishes, so the origin is one URL in a browser and in a container. A route host is the repo's dev host when discovery cites one, else `<svc>.localhost`; the Keycloak host is the one a repo hardcodes, else the first one a repo's dev config names in manifest order (each other named one goes to `host_aliases`), else `keycloak.` plus the suffix every route host shares when it is not `localhost`, else `keycloak.localhost`. A `*.localhost` host resolves in a browser by itself and is a secure context even over HTTP; any other host needs one hosts-file line per machine, which `bin/dev hosts` prints. With TLS off, every route host is `<svc>.localhost` and the Keycloak host `keycloak.localhost` whatever the repos name, since a browser treats any other host as insecure over HTTP, which breaks OIDC PKCE and `Secure` cookies; `update` rewrites the hosts and every env value carrying a proxied origin when a person flips `tls.issuer`. A browser-facing URL a service is configured with is its origin, never `localhost:<port>`.
 
-With TLS on, one certificate from the developer's local mkcert CA covers every proxied host, issued by `bin/dev certs` into `infra/tls/` (`cert.pem`, `key.pem`, and the CA as `ca.pem`); a repository's own certificate or key is never used. The proxy terminates TLS; service-to-service calls stay plain HTTP on `<svc>:<port>`, except a peer the code calls by an `https://` URL, which takes the peer's origin and so goes through the proxy.
+With TLS on, one certificate from the developer's local mkcert CA covers every proxied host, issued by `bin/dev certs` into `infra/tls/` (`cert.pem`, `key.pem`, and the CA as `ca.pem`); a repository's own certificate or key is never used. The proxy terminates TLS; service-to-service calls stay plain HTTP on `<svc>:<port>`, except a peer the code calls by an `https://` URL, whose routes are host-constrained, or that forces HTTPS, which takes the peer's origin (the constrained host the caller's dev value names) and so goes through the proxy.
 
 ### Compose: services
 
-`compose.yaml` holds, in order: `name: <domain>`, the infra services, the proxy, the external mocks, every service and process, `e2e`, then `volumes:` (each engine's data volume from the infra table and each live named volume). Every service and process has `profiles: [<svc>]`; every infra entry, the proxy, and the external mocks have the union of the profiles of the services using them (the proxy: every service), so selecting services starts exactly the infra they need. A service's `depends_on` names each infra it uses with `condition: service_healthy`, `<engine>-provision` with `condition: service_completed_successfully`, and, when it uses keycloak, `proxy` with `condition: service_started` (OIDC discovery at boot goes through the proxy).
+`compose.yaml` holds, in order: `name: <domain>`, the infra services, the proxy, the external mocks, every service and process, `e2e`, then `volumes:` (each engine's data volume from the infra table and each live named volume), then `secrets:` (each `build.secrets` name as `<KEY>: {environment: <KEY>}`). Every service and process has `profiles: [<svc>]`; every infra entry, the proxy, and the external mocks have the union of the profiles of the services using them (the proxy: every service), so selecting services starts exactly the infra they need. A service's `depends_on` names each infra it uses with `condition: service_healthy`, `<engine>-provision` with `condition: service_completed_successfully`, and, when it uses keycloak, `proxy` with `condition: service_started` (OIDC discovery at boot goes through the proxy).
 
 ```yaml
   <svc>:
@@ -238,7 +264,7 @@ With TLS on, one certificate from the developer's local mkcert CA covers every p
     mem_limit: <profile memory, worker>
 ```
 
-`command` is the `&&` chain of the slots that are not `none` (a profile's web and live commands carry their own `exec`; `<profile migrate>` is the manifest's `migrate` when it is not `default`). `environment` is the ordered union of the profile's `Env`, with TLS on its `Trust` env and its `Scheme` value when that is a `KEY=value`, then every `uses.*.env`, `peers.*.env`, `external.*.env`, `env`, then each secret; a key set twice keeps the later value, so the manifest beats the profile. A process shares the web image, never migrates, and takes the profile's worker memory, else its web memory; `<process command>` is the entry's value or its `run:` half; in live mode it runs the entry's `live:` command when the manifest gives one, else the profile's live process command when the profile names one, else keeps its command (`bin/dev restart <svc>-<process>` picks up a change). A `kind: worker` service has no `ports`, `healthcheck`, or routes; its processes depend on it with `service_started`. A `profile: custom` service renders `FROM <base> AS deps`, `WORKDIR /app`, `COPY --from=src . .`, `RUN <build.install>`, `FROM deps AS app`; its web and live commands are `exec <web>`, its health `tcp`, and it has no debug port.
+`command` is the `&&` chain of the slots that are not `none` (a profile's web and live commands carry their own `exec`; `<profile migrate>` is the manifest's `migrate` when it is not `default`). `environment` is the ordered union of the profile's `Env`, with TLS on its `Trust` env and its `Scheme` value when that is a `KEY=value`, then every `uses.*.env`, `peers.*.env`, `external.*.env`, `env`, then each secret; a key set twice keeps the later value, so the manifest beats the profile. A process shares the web image, never migrates, and takes the profile's worker memory, else its web memory; `<process command>` is the entry's value or its `run:` half; in live mode it runs the entry's `live:` command when the manifest gives one, else the profile's live process command when the profile names one, else keeps its command (`bin/dev restart <svc>-<process>` picks up a change). A `kind: worker` service has no `ports`, `healthcheck`, or routes; its processes depend on it with `service_started`. A process with a `port` publishes nothing; routes reach it as `<svc>-<process>:<port>`. With `build.secrets` the service's `build` adds `secrets: [<KEY>, ...]`, with `build.ssh` `ssh: [default]` (the developer's agent). Each `tasks.<name>` is a `<svc>-task-<name>` entry shaped like a process (the web image, the service's environment, `<profile trust prestart> && <task command>`) with `profiles: [tasks]`, no `ports` or `healthcheck`, `depends_on` the service (`service_healthy`, a worker `service_started`), and `./local/tasks:/devenv/tasks:ro` mounted; `up` never starts it, `bin/dev task <svc> <name>` runs it once, and the live overlay switches it like a process, so it runs the same code as the service in either mode. A `profile: custom` service renders `FROM <base> AS deps`, `WORKDIR /app`, `COPY --from=src . .`, `RUN <build.install>`, `FROM deps AS app`; its web and live commands are `exec <web>`, its health `tcp`, and it has no debug port.
 
 `overlays/<svc>.live.yaml` switches one service and its processes to the working tree:
 
@@ -266,7 +292,7 @@ services:
       - <profile live volume>      {one line per entry}
 ```
 
-The `ports` entry exists only when the profile has a debug port. A live-only process (`processes.<name>: {live: <command>}`) is absent from `compose.yaml` and added here, with `stdin_open: true` and `tty: true` (a watcher exits when stdin closes), as a full `<svc>-<process>` entry (`profiles: [<svc>]`, the live image, that command, the service's environment, the live volumes). `overlays/<svc>.solo.yaml` exists for every service and adds one mock per distinct peer port, answering under the names of the peers on that port (`services: {}` when the service has no peers):
+The `ports` entry exists only when the profile has a debug port; each `<svc>-task-<name>` gets the same image and volumes as a process. A live-only process (`processes.<name>: {live: <command>}`) is absent from `compose.yaml` and added here, with `stdin_open: true` and `tty: true` (a watcher exits when stdin closes), as a full `<svc>-<process>` entry (`profiles: [<svc>]`, the live image, that command, the service's environment, the live volumes). `overlays/<svc>.solo.yaml` exists for every service and adds one mock per distinct peer port, answering under the names of the peers on that port (`services: {}` when the service has no peers):
 
 ```yaml
 services:
@@ -319,7 +345,7 @@ Each block below sits under `services:` with its profiles; mysql and postgres ge
     entrypoint: ["sh", "-c", "mysql -h mysql -uroot -proot < /provision.sql"]
 ```
 
-`infra/mysql/provision.sql`, per service using mysql (idempotent, so a service added later needs no volume reset; in the `LIKE` grant every `_` of `<user>` is escaped too):
+`infra/mysql/provision.sql`, per service using mysql (idempotent, so a service added later needs no volume reset; in the `LIKE` grant every `_` of `<user>` is escaped too; the `CREATE DATABASE` and database `GRANT` lines repeat per `databases` entry, the `CREATE DATABASE` lines are absent with `create: false`, and `grants` adds `GRANT <grants> ON *.* TO '<user>'@'%';`):
 
 ```sql
 CREATE DATABASE IF NOT EXISTS `<database>`;
@@ -335,6 +361,8 @@ SELECT 'CREATE ROLE <user> LOGIN CREATEDB PASSWORD ''<user>''' WHERE NOT EXISTS 
 SELECT 'CREATE DATABASE <database> OWNER <user>' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '<database>')\gexec
 ```
 
+The database line repeats per `databases` entry and is absent with `create: false` (the role has `CREATEDB`).
+
 | Engine   | Image settings and data volume                                                                                                                                                            | Health                                                              |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | redis    | `redis-data:/data`                                                                                                                                                                        | `redis-cli ping`                                                    |
@@ -343,9 +371,9 @@ SELECT 'CREATE DATABASE <database> OWNER <user>' WHERE NOT EXISTS (SELECT FROM p
 | keycloak | `command: ["start-dev", "--import-realm"]`, `KC_BOOTSTRAP_ADMIN_USERNAME: admin`, `KC_BOOTSTRAP_ADMIN_PASSWORD: admin`, `KC_HEALTH_ENABLED: "true"`, `KC_HOSTNAME: <keycloak origin>`, `KC_PROXY_HEADERS: xforwarded`, `./infra/keycloak:/opt/keycloak/data/import:ro`, no data volume, `mem_limit: 768m` | the bash probe (the image has bash, no curl): `exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && head -1 <&3 \| grep -q ' 200 '` |
 | mailpit  | none (the image ships its own `HEALTHCHECK`)                                                                                                                                              | the image's                                                         |
 
-RabbitMQ with `topology: provisioned` adds `rabbitmq-provision` (`infra.curl` image, `depends_on` rabbitmq healthy, `./infra/rabbitmq/provision.sh:/provision.sh:ro`, `entrypoint: ["sh", "/provision.sh"]`) running `infra/rabbitmq/provision.sh` (`#!/bin/sh`, then `set -e`), which waits for the management API (`until curl -fsS -u dev:dev http://rabbitmq:15672/api/overview >/dev/null; do sleep 1; done`), then issues one `curl -fsS -u dev:dev -H 'content-type: application/json'` per `infra.rabbitmq.declarations` entry: `-X PUT http://rabbitmq:15672/api/exchanges/<vhost>/<exchange> -d '{"type":"<type>","durable":true}'`, `-X PUT .../api/queues/<vhost>/<queue> -d '{"durable":true}'`, `-X POST .../api/bindings/<vhost>/e/<exchange>/q/<queue> -d '{"routing_key":"<key>"}'`; services using rabbitmq then depend on it completing. The external mocks are one `external-mocks-<port>` service per distinct external port on the wiremock image with `--port <port>`, `./stubs/external:/home/wiremock/mappings:ro`, the `profiles` of the services with an external on that port, no `depends_on`, and the aliases `<name>.mock` of the externals on that port; a seeded external stub matches `Host` against `<name>\.mock(:\d+)?` and carries one mapping per `external.<name>.calls` entry.
+RabbitMQ with `topology: provisioned` adds `rabbitmq-provision` (`infra.curl` image, `depends_on` rabbitmq healthy, `./infra/rabbitmq/provision.sh:/provision.sh:ro`, `entrypoint: ["sh", "/provision.sh"]`) running `infra/rabbitmq/provision.sh` (`#!/bin/sh`, then `set -e`), which waits for the management API (`until curl -fsS -u dev:dev http://rabbitmq:15672/api/overview >/dev/null; do sleep 1; done`), then issues one `curl -fsS -u dev:dev -H 'content-type: application/json'` per `infra.rabbitmq.declarations` entry: `-X PUT http://rabbitmq:15672/api/exchanges/<vhost>/<exchange> -d '{"type":"<type>","durable":true}'`, `-X PUT .../api/queues/<vhost>/<queue> -d '{"durable":true}'`, `-X POST .../api/bindings/<vhost>/e/<exchange>/q/<queue> -d '{"routing_key":"<key>"}'`; services using rabbitmq then depend on it completing. The external mocks are one `external-mocks-<port>` service per distinct external port on the wiremock image with `--port <port>`, `./stubs/external:/home/wiremock/mappings:ro`, the `profiles` of the services with an external on that port, no `depends_on`, and the aliases `<name>.mock` of the externals on that port without `tls: true` (the proxy holds those); a seeded external stub matches `Host` against `<name>\.mock(:\d+)?` and carries one mapping per `external.<name>.calls` entry.
 
-`infra/keycloak/<realm>-realm.json` holds: `realm`, `enabled: true`; per service using keycloak one client with `clientId` `<client>` (`kind: backend` or `worker`: `secret` `<svc>-secret`, `publicClient: false`, `serviceAccountsEnabled: true`, `standardFlowEnabled` `true` with `redirectUris` `<origin>/*` per route host when it has routes, else `false`; `kind: frontend`: `publicClient: true`, `standardFlowEnabled: true`, `redirectUris` `<origin>/*` per route host and `webOrigins` `+`); the union of every `uses.keycloak.roles` as realm roles; and every `users` entry with a fixed `id` (the UUID v5 of the username in the DNS namespace, so the token `sub` is stable for seed data), `username`, `firstName` and `lastName` both the username, `email` `<username>@example.test`, `emailVerified: true`, `enabled: true`, `credentials` one `password` equal to the username, not temporary, and its `realmRoles`.
+`infra/keycloak/<realm>-realm.json` holds: `realm`, `enabled: true`; per service using keycloak one client with `clientId` `<client>` (`kind: backend` or `worker`: `secret` `<svc>-secret`, `publicClient: false`, `serviceAccountsEnabled: true`, `standardFlowEnabled` `true` with `redirectUris` `<origin>/*` per route host when it has routes, else `false`; `kind: frontend`: `publicClient: true`, `standardFlowEnabled: true`, `redirectUris` `<origin>/*` per route host and `webOrigins` `+`); the union of every `uses.keycloak.roles` as realm roles; and every `users` entry with a fixed `id` (the UUID v5 of the username in the DNS namespace, so the token `sub` is stable for seed data), `username`, `firstName` and `lastName` both the username, `email` `<username>@example.test`, `emailVerified: true`, `enabled: true`, `credentials` one `password` (its `password`, else the username), not temporary, and its `realmRoles`. A `protocol: saml` client has `clientId` its `entity_id`, `protocol` `saml`, `redirectUris` `[<acs>]`, and `attributes` `saml_assertion_consumer_url_post` `<acs>` and `saml.client.signature` `"false"`. `service_roles` adds a user `service-account-<client>` with `serviceAccountClientId` `<client>` and `clientRoles` `{<client>: [<role>]}` per entry. With `host_aliases`, keycloak drops `KC_HOSTNAME` (start-dev then derives each URL from the forwarded host, so every alias answers with its own issuer) and the Caddyfile proxies each alias like the Keycloak host. `local/keycloak-realm.json`, when present, is merged into the generated realm before it is written: objects key by key, arrays of objects by `clientId`, `username`, `name`, or `alias` (the local entry replaces the generated one), other arrays appended. A fixed IdP signing key (apps that pin the IdP certificate fingerprint) lives there as a key-provider component, a person's decision; the README then states the SHA-256 of the certificate's DER bytes (the base64 value decoded) for comparing with the pinned value.
 
 ### Proxy and e2e
 
@@ -355,6 +383,7 @@ RabbitMQ with `topology: provisioned` adds `rabbitmq-provision` (`infra.curl` im
     profiles: [<every svc>]
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./local/caddy:/etc/caddy/local:ro
       - ./infra/tls:/certs:ro
     ports:
       - 127.0.0.1:<listen port>:<listen port>
@@ -363,7 +392,7 @@ RabbitMQ with `topology: provisioned` adds `rabbitmq-provision` (`infra.curl` im
         aliases: [<every proxied host>]
 ```
 
-`<listen port>` is `tls.port` with TLS on, else `proxy_port`; the `/certs` mount exists only with TLS on. `infra/caddy/Caddyfile` holds, after the header, the global block, then one site block per proxied host addressed by its origin, with one `handle` per route of that host (most specific path first; a path other than `/` is matched by a named matcher `@<name> path <path> <path>/*` on the line before its `handle @<name>`, since an inline matcher is a single token) and `reverse_proxy <svc>:<port>`; the Keycloak host proxies `keycloak:8080`, `rabbitmq.localhost` `rabbitmq:15672`, `mail.localhost` `mailpit:8025`. Caddy keeps the `Host` header and adds `X-Forwarded-*`. With TLS off the `tls` line is absent and the origin is `http://`.
+`<listen port>` is `tls.port` with TLS on, else `proxy_port`; the `/certs` mount exists only with TLS on. `infra/caddy/Caddyfile` holds, after the header, the global block, then one site block per proxied host addressed by its origin, with one `handle` per route of that host (most specific path first; a path other than `/` is matched by a named matcher `@<name> path <path> <path>/*` on the line before its `handle @<name>`, since an inline matcher is a single token) and `reverse_proxy <svc>:<port>`; the Keycloak host proxies `keycloak:8080`, `rabbitmq.localhost` `rabbitmq:15672`, `mail.localhost` `mailpit:8025`. A route with `process` proxies `<svc>-<process>:<port>`; an external route proxies `external-mocks-<port>:<port>` with `header_up Host <name>.mock` inside its `reverse_proxy` block, so its stubs match, as does each container-only host's site. A route's `headers` entry `<Header>: <cookie>` adds, inside that route's `handle`, `@<id>_set expression {http.request.cookie.<cookie>} != ""`, `@<id>_unset expression {http.request.cookie.<cookie>} == ""`, `request_header @<id>_set <Header> {http.request.cookie.<cookie>}`, and `request_header @<id>_unset -<Header>`: each branch has its own matcher, so a client-sent header is always replaced or removed whatever order Caddy sorts the two into. Every site block ends with `import /etc/caddy/local/sites/<host>.caddy*` and the file ends with `import /etc/caddy/local/*.caddy` (globs, so an absent file is no error): a person adds header mappings or routes in `local/caddy/` without forking the file. Caddy keeps the `Host` header and adds `X-Forwarded-*`. With TLS off the `tls` line is absent and the origin is `http://`.
 
 ```
 {
@@ -407,6 +436,7 @@ Sharing the proxy's network makes every proxied host land on the proxy: a `*.loc
 # bin/dev wt <svc> <branch>      worktree + live mode       bin/dev status        sources, modes, containers
 # bin/dev e2e [flow|service...]  start, then Playwright     bin/dev down [-v]     stop (-v: drop data)
 # bin/dev certs                  TLS certificate (mkcert)   bin/dev hosts         hosts-file lines to add
+# bin/dev task <svc> <name>      one-shot from devenv.yaml tasks
 # anything else is passed to docker compose (logs -f <svc>, ps, restart <svc>, exec <svc> bash)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -414,6 +444,7 @@ DOMAIN=<domain>
 SERVICES="<svc> <svc>"
 TLS=<mkcert or none>
 HOSTS="<every proxied host>"
+CERT_HOSTS="<every container-only host>"
 REPOS="$(cd ../repos && pwd)"
 [ -f sources.env ] || cp sources.env.example sources.env
 set -a; . ./sources.env; . infra/flows.env; set +a
@@ -472,17 +503,18 @@ case "$cmd" in
           [ -f .env ] && docker compose ps || true ;;
   e2e)  resolve "$(profiles "${@:-all}")"; docker compose up -d --build --wait --renew-anon-volumes --remove-orphans
         docker compose run --rm e2e ;;
+  task) docker compose run --rm "${1:?service}-task-${2:?task}" ;;
   down) docker compose --profile '*' down ${1+"$@"} ;;
   certs) command -v mkcert >/dev/null || { echo "install mkcert, then run mkcert -install where the browser runs" >&2; exit 1; }
-         mkdir -p infra/tls && mkcert -cert-file infra/tls/cert.pem -key-file infra/tls/key.pem $HOSTS
+         mkdir -p infra/tls && mkcert -cert-file infra/tls/cert.pem -key-file infra/tls/key.pem $HOSTS $CERT_HOSTS
          cp "$(mkcert -CAROOT)/rootCA.pem" infra/tls/ca.pem ;;
   hosts) for h in $HOSTS; do case "$h" in *.localhost) ;; *) echo "127.0.0.1 $h" ;; esac; done ;;
-  help) sed -n '3,7p' "$0" ;;
+  help) sed -n '3,8p' "$0" ;;
   *)    docker compose "$cmd" ${1+"$@"} ;;
 esac
 ```
 
-`resolve` resolves every service, selected or not, so the Compose model has every image tag; `solo` goes through it with the solo overlay, under the same project, so `down`, `logs`, and `ps` reach a solo stack like any other. `docker compose run --rm e2e` enables the `e2e` profile for that run on top of `COMPOSE_PROFILES`. `infra/flows.env` holds one `FLOW_<NAME>="<svc> <svc>"` line per manifest flow, `<NAME>` the flow key upper-cased with `-` and `/` as `_`. `sources.env.example` holds, per service, `# <SVC>_SRC=../repos/<svc>`, `# <SVC>_MODE=pinned`, and `<SVC>_<SECRET>=` per secret. `solo` stops every running service first (`docker compose --profile '*' stop`), so the mocks alone answer the peers' names; the next `up` restarts the stack.
+`resolve` resolves every service, selected or not, so the Compose model has every image tag; `solo` goes through it with the solo overlay, under the same project, so `down`, `logs`, and `ps` reach a solo stack like any other. `docker compose run --rm e2e` enables the `e2e` profile for that run on top of `COMPOSE_PROFILES`. `infra/flows.env` holds one `FLOW_<NAME>="<svc> <svc>"` line per manifest flow, `<NAME>` the flow key upper-cased with `-` and `/` as `_`. `sources.env.example` holds, per service, `# <SVC>_SRC=../repos/<svc>`, `# <SVC>_MODE=pinned`, and `# <SVC>_<SECRET>=` per secret, then `# <KEY>=` per distinct build secret: every line commented, because `bin/dev` sources the file and an empty assignment would override a value the developer's shell exports. `solo` stops every running service first (`docker compose --profile '*' stop`), so the mocks alone answer the peers' names; the next `up` restarts the stack.
 
 ### Dev Container and README
 
@@ -502,7 +534,7 @@ esac
 }
 ```
 
-It joins the running stack: `bin/dev up` writes the `<SVC>_LIVE_SRC` and `COMPOSE_PROFILES` it reads into `.env`, so the service is set to `live` and started before the container is opened. `README.md` holds, in order: what the folder is (one paragraph); the commands (the `bin/dev` header lines); modes and source mapping (`sources.env`, `bin/dev wt`, pinned is committed `HEAD`, live is the working tree and never `repos/`); with TLS on, the one-time setup (`mkcert -install` where the browser runs, on Windows the Windows side, with WSL pointing `CAROOT` at the same CA; then `bin/dev certs`, again whenever a proxied host is added) and the `bin/dev hosts` lines; the browser URLs (one origin per route host); a table of services (`| Service | Profile | Kind | Port | Host port | Debug port | Uses | Peers |`); the secrets each service needs in `sources.env`; and the manifest's open unknowns, one line each.
+It joins the running stack: `bin/dev up` writes the `<SVC>_LIVE_SRC` and `COMPOSE_PROFILES` it reads into `.env`, so the service is set to `live` and started before the container is opened. `README.md` holds, in order: what the folder is (one paragraph); the commands (the `bin/dev` header lines); modes and source mapping (`sources.env`, `bin/dev wt`, pinned is committed `HEAD`, live is the working tree and never `repos/`); with TLS on, the one-time setup (`mkcert -install` where the browser runs, on Windows the Windows side, with WSL pointing `CAROOT` at the same CA; then `bin/dev certs`, again whenever a proxied host is added) and the `bin/dev hosts` lines; the browser URLs (one origin per route host); a table of services (`| Service | Profile | Kind | Port | Host port | Debug port | Uses | Peers |`); the secrets each service needs in `sources.env`, and the build secrets with where they are read from; the container-only hosts, with the warning never to add them to a hosts file; the realm's IdP certificate fingerprint when it carries one; the `decisions`; and the manifest's open unknowns, one line each.
 
 ## Output Format
 
@@ -527,6 +559,7 @@ Rendering writes the files above exactly. Invoked standalone, the verification b
 
 - Writing a connection setting into a Dockerfile, an image, or a file mounted over the repo, instead of the service's own config key in `environment`
 - A browser-facing URL in `localhost:<port>` form, or a second URL for the same thing in another mode
-- Mounting a repository's own certificate or key, or a second CA next to the mkcert one
+- Mounting a repository's own TLS certificate or key, or a second CA next to the mkcert one (a committed development IdP signing key goes only into `local/keycloak-realm.json`, by a person's decision)
+- Replacing a regenerated file from `compose.local.yaml` where a `local/` inclusion extends it
 - Giving an infra service a profile its dependents do not share, which makes Compose refuse a selected service
 - Bind-mounting anything under `repos/`
