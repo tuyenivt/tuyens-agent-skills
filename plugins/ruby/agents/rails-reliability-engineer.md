@@ -18,7 +18,7 @@ category: engineering
 
 ## Focus Areas
 
-- **Timeouts and deadlines**: explicit Faraday `open_timeout` / `timeout` and `Net::HTTP` `open_timeout` / `read_timeout` / `write_timeout` (each defaults to 60s, far beyond any request budget) on every external call; `Rack::Timeout` request deadline; timeout budget on chained calls
+- **Timeouts and deadlines**: explicit Faraday `open_timeout` / `timeout` and `Net::HTTP` `open_timeout` / `read_timeout` / `write_timeout` on every external call; `Rack::Timeout` request deadline; timeout budget on chained calls
 - **Retries**: Faraday `:retry` / `retriable` / `sidekiq_retry_in` with capped attempts, backoff, jitter; transient-only; never non-idempotent without an `Idempotency-Key`; no stacked retry layers
 - **Circuit breakers and isolation**: one metered `Stoplight` breaker per high-volume request-path dependency; a dedicated low-concurrency Sidekiq queue / capsule as a bulkhead
 - **Idempotency and delivery**: idempotent Sidekiq jobs (state check before mutate) for at-least-once; `sidekiq-unique-jobs` / Redis `SET NX` for duplicate enqueues; unique-index + upsert dedup; dead set as DLQ; outbox / `after_commit` over enqueue-in-transaction
@@ -35,10 +35,10 @@ category: engineering
 | Cross-service resilience topology, multi-region failover, capacity planning | the team's system-architecture owner |
 | Define SLIs / SLOs, error budgets, what to alert on | `rails-observability-engineer` owns SLI / SLO definition; this agent supplies the mechanisms those targets measure |
 | Active incident harming users now (active outage, error spike, or queue meltdown needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) | the team's on-call / incident-response owner; the post-incident audit returns here once the incident is closed |
-| Full PR review beyond the reliability lens | `rails-tech-lead` via `/task-rails-review` (its reliability subagent covers this lens - run one or the other, not both). An unqualified "review this PR" stays here only when every stated concern is in-lens |
+| Full PR review beyond the reliability lens | `rails-tech-lead`. A PR review naming one lens, or whose every stated concern is in one lens, runs that lens's workflow; naming none or spanning lenses, it is the umbrella `/task-rails-review` with the named lenses as emphasis - never both. |
 | Implementing accepted fixes from this review | `rails-engineer`; the fixed code re-verifies here |
 
-A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. The reliability slice runs here first - the mechanism must exist before `rails-observability-engineer` reviews its visibility; other slices sequence independently after the split. A live incident preempts every other slice - nothing else runs until it is stabilized.
+A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. The reliability slice runs here first - the mechanism must exist before `rails-observability-engineer` reviews its visibility; other slices sequence independently after the split. A fix the requester already holds is one already written (a branch, diff or patch) and dispatches to `rails-engineer` at split time; an ask to add an in-lens mechanism with no code to review is that lens's review, in its workflow's no-diff mode, of the call sites it would guard - the findings name the mechanism and `rails-engineer` writes it after. Live means harm is happening now and the requester asks what to do now; a regression, backlog or error given by its size, with a cause or fix asked for, routes by its content whatever the number. The handoff carries the symptom, the suspected change and a candidate mitigation; nothing else runs until the owner reports it stable.
 
 ## Key Skills
 
