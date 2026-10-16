@@ -21,7 +21,7 @@ user-invocable: false
 ## Rules
 
 - DB advisory lock when guarding a DB write; Redis lock only for non-DB resources (rate limits, cache stampede). Hybrid work (DB write + external call): the DB is the consistency anchor - advisory lock for the DB side, idempotency key for the external call, and an external failure after commit routes to a reconciliation job (`rails-service-objects`); never a Redis lock for the pair.
-- Locks prevent overlap, not duplicates - a crash-rerun or manual re-fire re-does the work. Pair every leader lock with row-level idempotency (unique index + create-if-absent / upsert).
+- Locks prevent overlap, not duplicates - a crash-rerun or manual re-fire re-does the work. Pair every leader lock with row-level idempotency (unique index + create-if-absent / upsert; create-if-absent is `create_or_find_by`, which rescues `RecordNotUnique` and reads the winner). A MySQL unique index admits any number of NULLs, so an optional key column enforces nothing for rows without one - make the key NOT NULL, or scope the index to the pair that is always present (`[order_id, idempotency_key]`).
 - Acquire lock, do DB work, release. Never wrap network calls in an open transaction or row lock. (A long-lived *leader* lock spanning a run that includes IO is legitimate - it serializes runs, holds no row locks - but it costs one connection for the duration; see Connection accounting.)
 - Never `find_each` inside `Model.transaction { ... }`.
 - Set `innodb_lock_wait_timeout` to 5-10s at the worker session.
@@ -170,15 +170,14 @@ Fail-fast lock-wait timeouts:
 
 ```yaml
 # config/database.yml - variables: run as SET SESSION on every new connection,
-# so no pooled connection misses them; scoped to the worker role by an env var
+# so no pooled connection misses them; the value differs per role (an env var the
+# process manager sets), the web role tighter than the worker role
 production:
   primary:
     # adapter, database, host, ... as usual
-    <% if ENV["PROCESS_ROLE"] == "worker" %>
     variables:
-      innodb_lock_wait_timeout: 5   # row-lock waits
+      innodb_lock_wait_timeout: <%= ENV["PROCESS_ROLE"] == "worker" ? 5 : 2 %>   # row-lock waits
       lock_wait_timeout: 10         # metadata-lock waits (DDL, LOCK TABLES); default is a year
-    <% end %>
 ```
 
 A one-off `SET SESSION innodb_lock_wait_timeout = 5` stays on the pooled connection after the job ends and bounds whatever runs on it next - set it at connect time per role, or reset it in an `ensure`.
@@ -215,22 +214,24 @@ The gap between iterations is a double-run window - safe only because progress l
 
 ## Output Format
 
-One block per code path under review - three paths contending on one row emit three blocks, each naming its path; a Redis-lock wrapper around a DB path folds into that path's block. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. In review or diagnosis mode each field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and its numbered finding explains the fix. A build-mode block holds corrected values only, and build mode still numbers findings for the pre-existing violations it touches. A request to design or change code is build mode; one that assesses or diagnoses code as it stands is review or diagnosis mode. A cross-path observation (two writers to one row under different lock names) is a numbered finding. `Lock kinds`, the `Adapter` primitive, `Scope`, `Lock wait timeout`, `Idempotency backing the lock` and `Failure modes considered` list every value that applies, joined with ` + `; a design legitimately combining a leader lock and a per-resource lock says both rather than picking one.
+One block per code path under review - three paths contending on one row emit three blocks, each naming its path; a Redis-lock wrapper around a DB path folds into that path's block. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: blocks hold corrected values only, and a pre-existing violation the change touches is still a numbered finding. A cross-path observation (two writers to one row under different lock names) is a numbered finding. `Lock kinds`, the `Adapter` primitive, `Scope`, `Lock wait timeout`, `Idempotency backing the lock` and `Failure modes considered` list every value that applies, joined with ` + `; a design legitimately combining a leader lock and a per-resource lock says both rather than picking one.
+
+The job backend comes from the Gemfile (`sidekiq` or `solid_queue`), not from stack-detect. An Active Job class (`ApplicationJob`, any backend) retries through `retry_on` / `discard_on` and enqueues with `perform_later`; a `Sidekiq::Job` retries through `sidekiq_options retry:` + `sidekiq_retry_in` and enqueues with `perform_async`. A slot named for Sidekiq (`Sidekiq retry`, `sidekiq only`) takes the channel of whichever backend runs the job. A `rescue` inside `perform` for a class the retry channel owns wins and silently disables that retry - one channel per class.
 
 ```
 Path: {file:method, rake task or job class}
 
-Lock kinds: {advisory leader | advisory per-resource | row pessimistic | optimistic | Redis lock (non-DB resource only) | Kubernetes Lease | in-process Mutex}
+Lock kinds: {advisory leader | advisory per-resource | row pessimistic | optimistic | atomic UPDATE (no lock held - `SET col = col + ?`, or a check folded into the WHERE) | Redis lock (non-DB resource only) | Kubernetes Lease | in-process Mutex | none - GAP (unguarded read-modify-write)}
 
 Adapter: {MySQL | unknown - read config/database.yml} (primitive: {GET_LOCK | with_advisory_lock gem | SELECT ... FOR UPDATE | SELECT ... FOR UPDATE SKIP LOCKED | lock_version | Redlock / redis-mutex | n/a})
 
 Scope: {session (advisory) | transaction (row locks) | TTL (Redis) | lease duration (Kubernetes) | process (Mutex) | n/a (optimistic)}
 
-Lock wait timeout: {innodb_lock_wait_timeout N s | default - GAP (50s) | advisory timeout_seconds N (advisory-only path) | lock_wait_timeout N s (the path runs DDL or LOCK TABLES) | n/a (SKIP LOCKED never waits; optimistic, Redis, lease, Mutex)}
+Lock wait timeout: {innodb_lock_wait_timeout N s | default - GAP (50s) | advisory timeout_seconds N (advisory-only path) | lock_wait_timeout N s (the path runs DDL or LOCK TABLES) | n/a (optimistic, Redis, lease, Mutex) | n/a for the claim (SKIP LOCKED never waits) + N s for the follow-up writes on the claimed ids}
 
-On non-acquisition: {raise (job retries) | 409 / retry to the client | StaleObjectError -> retry or 409 (optimistic) | skip via next (cron leader) | clean break (release-and-reacquire loop) | skip locked rows (SKIP LOCKED claim) | ignored - GAP (silent no-op)}
+On non-acquisition: {raise (job retries) | 409 / retry to the client | LockWaitTimeout unrescued - web request 500s (GAP) | StaleObjectError -> retry or 409 (optimistic) | skip via next (cron leader) | clean break (release-and-reacquire loop) | skip locked rows (SKIP LOCKED claim) | ignored - GAP (silent no-op)}
 
-Hold time: {expected per lock kind; long leader holds stated in minutes and flagged with connection cost}
+Hold time: {expected per lock kind, in ms or minutes (estimated from the statements inside when unmeasured - say so); a hold spanning an external call is `<N> s, or unbounded when the call has no timeout - GAP (HTTP inside the lock) -> <N> ms`; long leader holds stated in minutes and flagged with connection cost}
 
 Lock target: {PK lookup | ID list - ordered by PK to fix acquisition order | SKIP LOCKED claim on an indexed predicate under RC (legitimate) | non-PK scan under MySQL RR (flagged; in a corrected block, the PK form that replaces it) | n/a (advisory only)}
 

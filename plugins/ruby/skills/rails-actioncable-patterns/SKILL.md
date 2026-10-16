@@ -26,7 +26,7 @@ user-invocable: false
 - Redis (two conns per process) or Solid Cable in production - Solid Cable when the app already runs the Solid stack and poll latency is acceptable (`polling_interval`; the generated `cable.yml` sets 0.1s), Redis for high broadcast volume or sub-poll latency; `async` in development, `adapter: test` in test - the broadcast matchers require it
 - Broadcast from `after_commit`, not `after_save` - subscribers re-querying mid-broadcast see the pre-commit state otherwise, and a rolled-back write is still announced
 - Fan-out to > 100 *distinct targets* goes through one batched background job that enumerates the targets and broadcasts from the job - calling `broadcast_*_later_to` once per target still loops in the request thread and enqueues N jobs. When every target receives the same payload, the fix is one shared stream scoped to the resource they share (`stream_for warehouse`, authorized in `subscribed`), not batching. One broadcast to a stream many subscribers share is a single publish regardless of subscriber count - that cost is the adapter's, not the request thread's, so viewer count alone never triggers this rule
-- Channel actions are RPC over a socket - rate-limit per connection and validate params like any HTTP endpoint
+- Channel actions are RPC over a socket - rate-limit per identity (`connection.connection_identifier`, shared by every socket of one user) and validate params like any HTTP endpoint
 
 ## Patterns
 
@@ -88,7 +88,7 @@ Same rule for Turbo Stream scope:
 | `redis`      | Production, >1 app process            | Two Redis conns per process (one blocked in SUBSCRIBE, one publishing) - budget `maxclients` accordingly; default in the Rails 7.2 generated `cable.yml` |
 | `solid_cable`| Production, Rails 8 default           | Table-backed (works on MySQL) and polled (`polling_interval`) - delivery is only as fast as the poll; every cable-serving process polls, so give it its own database or budget the connections |
 | `async`      | Development, single process           | No cross-process broadcast                 |
-| `test`       | Test env                              | Records broadcasts instead of delivering; `have_broadcasted_to` requires it and raises under any other adapter |
+| `test`       | Test env                              | Records broadcasts (and still delivers in-process, like async); `have_broadcasted_to` requires it and raises under any other adapter |
 
 ```yaml
 # config/cable.yml
@@ -112,7 +112,9 @@ end
 
 `after_save` fires inside the transaction; subscribers re-querying see the pre-commit state, and if the transaction rolls back they have already received an update for a write that never happened.
 
-One canonical broadcast source per message: the model `after_commit` (or an explicit service call) owns it - channel actions that also broadcast what the callback already broadcasts double-deliver. Persist in the action, let the callback announce.
+One canonical broadcast source per message: the model `after_commit` (or an explicit service call) owns it - channel actions that also broadcast what the callback already broadcasts double-deliver. Persist in the action, let the callback announce. The stream a page subscribes to and the stream the model broadcasts on must be the same computed name, and the broadcast `target:` must be a DOM id the page renders (`dom_id(record)` on both sides) - a mismatch in either is a numbered finding, since the update is published and never shown.
+
+Presence and typing indicators are ephemeral channel-action broadcasts, not model callbacks: `subscribed` / `appear` increment a Redis counter per `connection_identifier` and refresh its TTL (heartbeat every ~30 s from the client, so a dropped socket expires rather than lingering), `unsubscribed` decrements it and removes it at zero - several tabs share one identifier, so a plain key deleted on one tab's unsubscribe would drop a user whose other tabs are open - and a late joiner reads the current set from Redis on `subscribed` instead of waiting for the next event. The roster broadcast carries ids and display names only, never the user record.
 
 ### Fan-Out Batching
 
@@ -162,10 +164,12 @@ RSpec.describe OrderChannel, type: :channel do
   end
 end
 
-# From a model/service spec. Pass the computed stream-name string - a non-string
-# target makes have_broadcasted_to raise "Broadcasting channel can't be inferred".
-# perform_enqueued_jobs runs the _later_to render job - it needs ActiveJob::TestHelper
-# (rspec-rails includes it in no spec type: config.include ActiveJob::TestHelper) and the :test queue adapter.
+# From a model/service spec. Pass the computed stream-name string (a Symbol also works) - a
+# record or array target without `.from_channel(...)` raises "Broadcasting channel can't be
+# inferred", and from_channel(Turbo::StreamsChannel) is wrong for Turbo streams anyway, because
+# broadcasting_for prefixes the channel name. perform_enqueued_jobs runs the _later_to render job -
+# it needs ActiveJob::TestHelper (rspec-rails does not include it in model, service or request
+# specs: config.include ActiveJob::TestHelper for those) and the :test queue adapter.
 it "broadcasts the updated card" do
   expect { perform_enqueued_jobs { order.update!(status: :paid) } }
     .to have_broadcasted_to("#{order.user.to_gid_param}:orders")
@@ -176,14 +180,14 @@ end
 
 ## Output Format
 
-In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. In review or diagnosis mode each field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and its numbered finding explains the fix. A build-mode block holds corrected values only, and build mode still numbers findings for the pre-existing violations it touches. A request to design or change code is build mode; one that assesses or diagnoses code as it stands is review or diagnosis mode. A finding with no channel - a controller lookup, `allowed_request_origins`, a Redis instance shared with Sidekiq - is a numbered finding with no block, naming the file, in build mode too. An observation owned by a sibling skill (template escaping, a key rendered into JS) gets one line naming the skill and no block. A field whose evidence is outside the reviewed files is `not in evidence` plus the file to read. `Broadcast adapter` names the production adapter; a test environment on anything but `test` is a numbered finding. Emit one block per channel. Pure `turbo_stream_from` flows have no custom channel: write `Channel: Turbo::StreamsChannel (turbo_stream_from)` and pick the signed-scope authorization value.
+In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: blocks hold corrected values only, and a pre-existing violation the change touches is still a numbered finding. `Broadcast adapter` names the production adapter; a test environment on anything but `test` is a numbered finding. Emit one block per channel, and one per stream when streams on the same channel differ in scope or hook (an account balance stream and a global entries stream are two blocks). Pure `turbo_stream_from` flows have no custom channel: write `Channel: Turbo::StreamsChannel (turbo_stream_from)` and pick the signed-scope authorization value; when the controller rendering the tag is outside the read set, `Authorization in subscribed` is `not in evidence` plus the controller file. Connection-wide fields (`Identified by`, `Broadcast adapter`, `Request origins`) repeat in every block. An existing policy that cannot express the ownership rule (an admin-only `show?`) is a numbered finding owned by `rails-security-patterns`.
 
 ```
 Channel: <name | Turbo::StreamsChannel (turbo_stream_from)>
 
 Identified by: <current_user | current_user, no reject on a missing user - GAP | session token | resource identifier from a raw id - GAP | JWT (transport) | signed resource ticket (anonymous) | not in evidence - list every identifier the Connection declares, joined with +>
 
-Stream scope: <per-user | per-tenant | per-resource | global - reason>
+Stream scope: <per-user | per-tenant | per-resource | global - reason (a reason is required; a global stream carrying per-user data is a GAP)>
 
 Authorization in subscribed: <Yes - policy/ownership check | fixed at connect (the identifier is the resource) | Signed scope + controller gate (turbo_stream_from) | Signed scope, controller gate missing - GAP | No - GAP>
 
@@ -191,11 +195,11 @@ Authorization in actions: <per-action check + rate limit | per-action check, no 
 
 Broadcast adapter: <redis | solid_cable | async | not in evidence>
 
-Request origins: <allowed_request_origins strict, forgery protection on | allowed_request_origins permissive - GAP | disable_request_forgery_protection - GAP | not in evidence>
+Request origins: <allowed_request_origins strict, forgery protection on | unset - same-origin only (framework default, compliant) | allowed_request_origins permissive - GAP | disable_request_forgery_protection - GAP | not in evidence>
 
-Broadcast hook: <after_commit (later) | after_commit (inline, from a model callback) - GAP | service explicit (later, or inline from a job) | service explicit (inline, request path) - GAP | broadcasts directive | channel action broadcasting an ephemeral event (typing, presence) | channel action re-broadcasting what the callback announces - GAP (persist in the action, let the callback announce) | after_save - GAP>
+Broadcast hook: <after_commit (later) | after_commit (inline, from a model callback) - GAP | service explicit (later, or inline from a job) | service explicit (inline, request path) - GAP | broadcasts directive | channel action broadcasting an ephemeral event (typing, presence) | channel action re-broadcasting what the callback announces - GAP (persist in the action, let the callback announce) | after_save - GAP | not in evidence - the broadcaster is outside the read set>
 
-Fan-out volume: <distinct targets per event - batched job | <= 100 distinct targets broadcast inline | > 100 distinct targets broadcast inline - GAP | single shared stream (subscriber count is not fan-out; a shared stream carrying per-user data is an authorization GAP, not a cost) | not enumerable from the reviewed files>
+Fan-out volume: <distinct targets per event - batched job | <= 100 distinct targets broadcast inline | > 100 distinct targets broadcast inline - GAP | single shared stream (subscriber count is not fan-out; a shared stream carrying per-user data is an authorization GAP, not a cost) | not enumerable from the reviewed files | not in evidence>
 
 Tests: <channel spec | channel spec, no rejection case - GAP | broadcast assertion | broadcast assertion + request/system test (turbo_stream_from flows - full coverage) | channel spec + broadcast assertion | none - GAP>
 ```

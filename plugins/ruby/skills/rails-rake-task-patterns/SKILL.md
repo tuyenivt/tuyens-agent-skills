@@ -29,7 +29,7 @@ Not here: logic that belongs in a service (call it from the task); long-running 
 - Every state-mutating task supports `DRY_RUN=1` - dry runs write *nothing* (audit rows included) and log would-be actions; the shorter examples below elide the flag and the `CONFIRM` gate to show one concern each. "State" includes the job queue and external writes (S3 puts, API calls): a task whose only effect is `perform_async` in a loop still enqueues real work, so it needs the flag and the gate as much as one that writes rows
 - Human-triggered production-mutating tasks require `CONFIRM=yes` when `Rails.env.production?`. A dry run is read-only, so it is checked first and skips the gate. Scheduled (cron) and deploy-hook tasks omit the gate - baking `CONFIRM=yes` into a manifest is ceremony; their safety is the leader lock plus reviewed, dry-run-tested code. A task with both triggers gates the manual path only
 - Tasks needing durable proof write an audit row in the same transaction as the mutation - logs are not evidence. It needs one when the mutation is irreversible and someone may later have to prove what it touched: deletions and anonymisation of regulated data, money movement (a transfer, a payout), permission changes. Reversible recomputes of derived values - a balance recomputed from its source rows - do not. A human-triggered audited task requires `OPERATOR=<name>` and aborts without it (a dry run writes nothing, so it needs none); the audit row records it, in the transaction of the batch it covers
-- Structured logs via `Rails.logger` - a hash is structured only under a JSON formatter (lograge, semantic_logger, a custom `formatter`); the default formatter writes `hash.inspect`. No PII in log fields; exit non-zero on failure (`raise` or `abort`, never `exit 0` after an error)
+- Structured logs via `Rails.logger` - a hash is structured only under a JSON formatter on `Rails.logger` itself (`rails_semantic_logger`, a custom `formatter`; lograge formats only the per-request summary line); the default formatter writes `hash.inspect`. No PII in log fields; exit non-zero on failure (`raise` or `abort`, never `exit 0` after an error)
 - Pass IDs and primitives through `Rake::Task#invoke`, not AR objects
 - Namespace per domain, one `.rake` per top-level namespace, always include `desc`
 
@@ -76,7 +76,9 @@ User.where(welcome_sent_at: nil).find_each do |user|
   UserMailer.welcome(user).deliver_later
 end
 
-# Cursor - durable column/table for anything long; Rails.cache can evict mid-run and lose progress
+# Cursor - durable column/table for anything long; Rails.cache can evict mid-run and lose progress.
+# An ENV cursor (AFTER_ID=) is for a manual re-run only - it needs an operator to carry it between runs.
+# A manual task that would run past ~30 min fans out to jobs instead of checkpointing inline.
 last_id = Checkpoint.for("reports:rebuild").last_id.to_i   # `id > NULL` matches nothing on a fresh row
 Order.where("id > ?", last_id).find_in_batches(batch_size: 1_000) do |batch|
   RebuildReportRows.call(orders: batch)
@@ -84,7 +86,7 @@ Order.where("id > ?", last_id).find_in_batches(batch_size: 1_000) do |batch|
 end
 ```
 
-Enqueued inside a transaction instead, a rollback leaves the job queued with the flag unset, and the re-run mails twice. Active Job `perform_later` / `deliver_later` can be deferred to commit by `enqueue_after_transaction_commit` (7.2+, set per job class - read the app's setting; `deliver_later` follows `ActionMailer::MailDeliveryJob`, which inherits `ActiveJob::Base`, not `ApplicationJob`); Sidekiq-native `perform_async` is not, unless the app enables `Sidekiq.transactional_push!` (6.5+; below Rails 7.2 it needs the `after_commit_everywhere` gem).
+Enqueued inside a transaction instead, a rollback leaves the job queued with the flag unset, and the re-run mails twice. Active Job `perform_later` / `deliver_later` is deferred to commit only by `enqueue_after_transaction_commit`: on Rails 7.2 the app-wide `config.active_job.enqueue_after_transaction_commit` (`:never` unless set; `load_defaults 7.2` sets `:default`, which delegates to the adapter's `enqueue_after_transaction_commit?` - read it for the adapter in use), on 8.0+ a per-job-class boolean defaulting to `false` (the app-wide symbol form is deprecated) - read the Rails version, then the setting or the job class; `deliver_later` follows `ActionMailer::MailDeliveryJob`, which inherits `ActiveJob::Base`, not `ApplicationJob`. Sidekiq-native `perform_async` is never deferred unless `Sidekiq.transactional_push!` is on (6.5+; gem-free on Rails 7.2+, `after_commit_everywhere` below).
 
 Write the cursor after its batch commits - one transaction per batch, never one around the scan (`rails-batch-processing-patterns`). Inside an outer transaction the cursor rolls back with everything; written before its batch commits, it advances past unprocessed rows.
 
@@ -195,6 +197,10 @@ namespace :reports do
 end
 ```
 
+### Queue-Side Maintenance
+
+A task that mutates Sidekiq's own sets (sweeping poisoned jobs) iterates `Sidekiq::Queue`, `Sidekiq::RetrySet`, `Sidekiq::ScheduledSet` and `Sidekiq::DeadSet`, matches on `record.display_class` (the Active Job wrapper hides the job class behind `klass`), and deletes or re-enqueues per entry. Redis writes share no transaction with an audit row, so the task logs each `jid` with its action and the dry run counts matches without deleting. A `DeserializationError` entry is not re-enqueued until its enqueue site is fixed - delete it, and record the args in the log line.
+
 ### Leader Lock and Fan-out
 
 A rake task that mutates shared state (or fans out work) and can be triggered twice - cron, or cron plus a manual run - takes an advisory lock first; two overlapping triggers double-enqueue otherwise. The lock prevents *concurrent* runs only: a second trigger after the first finished gets the free lock, so duplicate work is stopped by idempotent jobs or a per-run row (unique `(task, run_date)`). A manual-only task relies on the operator. The lock is the `with_advisory_lock` gem's (see `rails-db-locking-patterns`); `timeout_seconds: 0` returns false instead of blocking - and that `false` is the only signal, so a task that ignores it reports success while doing nothing. A Kubernetes CronJob needs `concurrencyPolicy: Forbid` and `parallelism: 1` - `parallelism: N` starts N pods per run, all racing for the lock; keep the lock anyway, for manual re-fires and restarted pods.
@@ -254,7 +260,7 @@ namespace :reports do
 end
 ```
 
-`invoke` chains fail fast - a raise in step 1 skips the rest, which is right when steps depend on each other. For independent steps, rescue per step, continue, and raise a summary at the end. The composite owns the cross-cutting pieces exactly once: one leader lock around the chain and one set of `Signal.trap`s (per-child traps overwrite each other in the same process, so the flag lives in `Maintenance.interrupted`, where children's batch loops check it). Children read the same `ENV`, so `DRY_RUN=1` on the composite reaches each of them. Chain-only children don't lock. A child with its own schedule entry keeps its own lock and its own traps and skips both when `Maintenance.chained` is set; a child run by hand alone (like `reports:rebuild` above) keeps its traps, and like any manual-only task needs no lock. Every task has a `desc`, so a `desc` alone does not make a child standalone. Re-entrancy is per lock *name*: only if the child requests the same name as the composite is the chained acquisition free. A differently-named child lock is a genuine second acquisition - harmless on MySQL 8.0 (a session holds several `GET_LOCK`s at once), but not a no-op, so give it a distinct name deliberately rather than by accident. `Rake::Task["foo"].reenable` if a chained task needs to run twice in one process.
+`invoke` chains fail fast - a raise in step 1 skips the rest, which is right when steps depend on each other. For independent steps, rescue per step, continue, and raise a summary at the end. The composite owns the cross-cutting pieces exactly once: one leader lock around the chain and one set of `Signal.trap`s (per-child traps overwrite each other in the same process, so the flag lives in `Maintenance.interrupted`, where children's batch loops check it). Children read the same `ENV`, so `DRY_RUN=1` on the composite reaches each of them. Chain-only children don't lock. A child with its own schedule entry keeps its own lock and its own traps and skips both when `Maintenance.chained` is set - that skip is the rule, so a chained child never acquires a lock of its own; a child run by hand alone (like `reports:rebuild` above) keeps its traps, and like any manual-only task needs no lock. Every task has a `desc`, so a `desc` alone does not make a child standalone. A child that ignores the skip and locks anyway: re-entrancy is per lock *name*, so the same name as the composite is free, and a different name is a genuine second acquisition - harmless on MySQL 8.0 (a session holds several `GET_LOCK`s at once), but not a no-op. `Rake::Task["foo"].reenable` if a chained task needs to run twice in one process.
 
 ### Layout and Testing
 
@@ -268,7 +274,7 @@ Behavioral coverage lives on the service spec; the rake spec verifies wiring onl
 
 ## Output Format
 
-One block per task (a composite plus its children each get one). In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. In review or diagnosis mode each field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and its numbered finding explains the fix. A build-mode block holds corrected values only, and build mode still numbers findings for the pre-existing violations it touches. A request to design or change code is build mode; one that assesses or diagnoses code as it stands is review or diagnosis mode. In build mode, a pre-existing violation the change touches, a scenario fact the fixture contradicts (a cron entry the manifest lacks), or a table the task needs but the schema lacks (an audit table - name the migration) is a numbered finding too. A task absent from every schedule file in scope is `manual`.
+One block per task (a composite plus its children each get one). In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: blocks hold corrected values only, and a pre-existing violation the change touches is still a numbered finding. A table the task needs but the schema lacks (an audit or cursor table) is a numbered finding naming the migration. A task absent from every schedule file in scope is `manual`. A runbook reviewed with its task is read as the task's contract: a step the code cannot honour (an order of operations, a verification the task never performs) is a numbered finding citing the runbook line, and a task that prints instructions and mutates nothing gets a block with `Idempotency: n/a (read-only)`.
 
 ```
 Task: {namespace:name}
@@ -279,21 +285,21 @@ Trigger: {manual | cron (CronJob, whenever, systemd timer) | deploy-hook | chain
 
 Arguments: {positional args and ENV with defaults}
 
-Idempotency: {state-column | checkpoint | natural (the operation is inherently repeatable - a recompute from source, an upsert on a unique key) | per-run row (unique (task, run_date)) | delegated to idempotent jobs / a shards table (fan-out) | n/a (composite - orchestrates only) | none - GAP}
+Idempotency: {state-column | checkpoint | natural (the operation is inherently repeatable - a recompute from source, an upsert on a unique key) | per-run row (unique (task, run_date)) | delegated to idempotent jobs / a shards table (fan-out) | n/a (composite - orchestrates only) | n/a (read-only) | none - GAP}
 
 Leader lock: {advisory lock "<name>", timeout_seconds: 0 | none - chain-only child, the composite holds "<name>" | none - manual-only trigger | none - non-mutating | none - GAP (mutating or fan-out, on a trigger that can fire twice: cron, deploy hook, cron plus manual)}
 
-Checkpoint / signal handling: {durable cursor + interrupt flag checked per batch | composite: shared trap, children check Maintenance.interrupted | natural - the idempotent scope re-derives progress | n/a - bounded run (< 30 min) | none - GAP (> 30 min)}
+Checkpoint / signal handling: {durable cursor + interrupt flag checked per batch (a standalone task traps into `Maintenance.interrupted` too, skipped when `Maintenance.chained`) | composite: shared trap, children check Maintenance.interrupted | natural - the idempotent scope re-derives progress (a state column or `WHERE` scope narrows the re-run to unfinished rows; a cursor is needed when nothing in the row says it is done) | n/a - bounded run (< 30 min, the task's own runtime, not its jobs') | none - GAP (> 30 min)}
 
 Dry-run: {DRY_RUN=1 supported | passed through (composite - children read the same ENV) | n/a (read-only) | missing - GAP}
 
 Production gate: {CONFIRM=yes (manual path) | on the composite (manual path; chained children inherit the run) | none (scheduled or deploy-hook) | n/a (read-only) | missing - GAP (human-triggered, mutating)}
 
-Audit trail: {row in mutation txn (irreversible: regulated-data deletion, money movement, permission change) | logs only (no durable-proof need) | n/a (composite - children write their own) | needed, table absent - GAP | needed, not written or outside the txn - GAP | OPERATOR not required - GAP (human-triggered)}
+Audit trail: {row in mutation txn (irreversible: regulated-data deletion, money movement, permission change) | logs only (no durable-proof need) | n/a (read-only) | n/a (composite - children write their own) | needed, table absent - GAP | needed, not written or outside the txn - GAP | OPERATOR not required - GAP (human-triggered)}
 
 Service delegated to: {ServiceClassName | "trivial wiring only"}
 
-Exit behavior: {raises on failure | abort on precondition fail | abort on a Result failure | abort after interrupt (resumable) | clean skip via `next` when the leader lock is held | `next` after a dry run - list all that apply}
+Exit behavior: {raises on failure (an unrescued exception counts) | abort on precondition fail | abort on a Result failure | abort after interrupt (resumable) | clean skip via `next` when the leader lock is held | `next` after a dry run | exits 0 after a failure - GAP | reports success while doing nothing - GAP (a no-op call, an ignored lock result) - list all that apply}
 ```
 
 ## Avoid

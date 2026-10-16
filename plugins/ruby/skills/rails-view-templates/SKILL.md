@@ -18,7 +18,7 @@ user-invocable: false
 
 ## Rules
 
-- Always match the existing template engine; detect via `gem "slim"` / `gem "haml"`, else ERB
+- Always match the existing template engine; detect from the extensions under `app/views` or `Gemfile.lock` (`slim (` / `haml (` - the `slim-rails` / `haml-rails` wrappers do not match a literal `gem "slim"`), else ERB
 - Default to escaped output (`=` in all three engines); `==` (Slim), `!=` (HAML), `<%==` (ERB), and `raw` / `html_safe` in any engine, only on server-trusted strings
 - User-supplied HTML passes through `sanitize` with an explicit tag/attribute allowlist - never `raw` / `html_safe`
 - Helpers are presentation-only: no DB queries, no service calls, no business logic
@@ -98,6 +98,8 @@ Presenter vs component when both fit: formatting that belongs to one reusable pi
 
 `render @orders` is fine when each item maps to its class-named partial - but it is where N+1 surfaces. The fix lives upstream (controller `includes`, `counter_cache`, presenter accepting pre-loaded data); see `rails-activerecord-patterns`.
 
+Attachments render through `image_tag record.avatar.variant(:thumb)`, `rails_blob_path(file)` or `url_for(file)` - `service_url` (deprecated in 6.1, gone from 7.x) raises `NoMethodError`; whether a URL may be public, and for how long, is `rails-active-storage-patterns`' call. A link that changes state (`Reverse`, `Cancel`) is `button_to` or `link_to ... data: { turbo_method: :post }`, never a bare GET.
+
 `content_for :sidebar do ... end` in the view; `yield :sidebar` in the layout.
 
 ### Fragment Caching
@@ -144,7 +146,7 @@ Caching and streams compose, but not because broadcasts skip the cache - they re
     p Loading...
 ```
 
-The trailing `do` is required. Slim compiles a nested block under a bare `=` as its own block and still emits the closing `end`, so the placeholder never reaches the helper and the generated Ruby has an unbalanced `end` - a compile error inside the enclosing `each`.
+The trailing `do` is required. Slim passes the nested lines as the helper's block only when the `=` line ends in `do`; without it the frame renders empty and the placeholder lands beside it as a sibling - silently, nothing fails to compile.
 
 Frame vs stream: a frame with `src:` *pulls* on navigation/lazy-load; live in-place updates *push* via `turbo_stream_from` + a broadcast targeting `dom_id(record)`. Reuse the same partial for initial render and stream update so markup stays consistent (rows built as ViewComponents: have the broadcast render the component, or keep the row a partial both paths share); a local the broadcast cannot pass defaults via `local_assigns.fetch(:operator, false)`:
 
@@ -153,7 +155,10 @@ Frame vs stream: a frame with `src:` *pulls* on navigation/lazy-load; live in-pl
 order.broadcast_replace_later_to [order.user, :orders], partial: "orders/order", locals: { order: order }
 # request path
 render turbo_stream: turbo_stream.append("orders", partial: "orders/order", locals: { order: @order })
-# in the shared partial
+```
+
+```slim
+/ in the shared partial
 - operator = local_assigns.fetch(:operator, false)
 ```
 
@@ -167,9 +172,9 @@ div data-controller="dropdown"
   ul data-dropdown-target="menu" hidden=true
 ```
 
-`data-action` syntax is `event->controller#method`, parsed by Stimulus - no Ruby expressions in `data-action` values. A new controller under `app/javascript/controllers/` is registered by `controllers/index.js` (`stimulus-rails` pins the directory); nothing else to wire.
+`data-action` syntax is `event->controller#method`, parsed by Stimulus - no Ruby expressions in `data-action` values. Registration depends on the JS pipeline: under importmap-rails `controllers/index.js` eager-loads the directory and a new file needs no wiring; under jsbundling-rails (esbuild, rollup, webpack) `index.js` holds an explicit `import` / `application.register` list - generate the controller with `bin/rails g stimulus <name>` or run `bin/rails stimulus:manifest:update`.
 
-Server data reaches controllers through the values API with the escaped operator - `div data-controller="chart" data-chart-points-value=@points.to_json` - never an inline `script`.
+Server data reaches controllers through the values API with the escaped operator - `div data-controller="chart" data-chart-points-value=@points.to_json` - never an inline `script`. In the controller, `static values = { points: Array }` exposes it as `this.pointsValue`, typed (`String`, `Number`, `Boolean`, `Array`, `Object`).
 
 ### ViewComponent
 
@@ -198,7 +203,7 @@ Markdown / rich-text passes through `sanitize` even if the renderer claims safe-
 
 ## Output Format
 
-Generating - emit the block, then the template code for every file it lists. Multi-valued slots (`Turbo:`, `Fragment Caching:`) list every applying value, `+`-joined. A pre-existing bug the page inherits (a global broadcast scope, a helper that queries) gets one numbered finding above the block, naming the owning skill when it is a sibling's:
+Generating - emit the block, then the template code for every file it lists. Multi-valued slots (`Turbo:`, `Fragment Caching:`) list every applying value, `+`-joined. A pre-existing bug the page inherits (a global broadcast scope, a helper that queries) gets one numbered finding above the block, naming the owning skill when it is a sibling's; a requested attribute the schema lacks is a numbered finding too (the code wins - render what exists and name the column to add):
 
 ```
 Engine: {ERB | HAML | Slim}
@@ -208,7 +213,8 @@ Files Generated:
   app/views/{resource}/_{partial}.html.{ext}
   app/javascript/controllers/{name}_controller.js      # Stimulus, when one is added
   app/helpers/{name}_helper.rb                          # when a stateless transform is added
-  config/locales/{locale}.yml                          # keys added, when strings are user-visible
+  app/presenters/{name}_presenter.rb                    # when Logic Moves names a presenter
+  config/locales/{locale}.yml                          # keys added, when strings are user-visible (create the file when absent)
 
 ViewComponents: {app/components/{name}_component.rb + .html.{ext} | None}
 
@@ -226,7 +232,7 @@ Logic Moves: {helper -> presenter/component verdicts | None}
 Reviewing - one block per finding in the format below, Critical first; after all blocks, emit the corrected template code for each affected file. A project-wide finding (no linter) takes `Location: Gemfile`; a cross-file finding cites the file where the fix lands; a finding on a non-template file takes `Engine: n/a`:
 
 ```
-Severity: {Critical (XSS, JS-context injection, a cache or stream that leaks across users, roles or tenants, a credential or token rendered into the markup - a key designed as publishable is not one) | High (stale/never-invalidating cache, logic/indentation bug, frame collision, per-row rendering or N+1 that degrades the page, a user-supplied href with an unrestricted scheme) | Medium (attribute injection, helper/presenter misplacement) | Low (style, partial contract)}
+Severity: {Critical (XSS, JS-context injection, a cache or stream that leaks across users, roles or tenants, a credential or token rendered into the markup - a key designed as publishable is not one) | High (stale/never-invalidating cache, logic/indentation bug, frame collision, per-row rendering or N+1 that degrades the page, a user-supplied href with an unrestricted scheme, a state-changing bare GET link) | Medium (attribute-value injection - class tokens, style; helper/presenter misplacement; an inline script with no user data) | Low (style, partial contract, a user-visible string outside i18n)}
 
 Engine: {ERB | HAML | Slim | n/a (non-template file)}
 
@@ -237,7 +243,7 @@ Issue: {one line, engine-specific idiom}
 Fix: {one-line remediation | handoff: <skill> - one line when the mechanism lives outside app/views}
 ```
 
-An N+1 or a missing preload seen from the template gets a block here with the query fix named, and a pointer to `rails-activerecord-patterns` for the model-side change - the reader is looking at the view, so dropping the finding entirely is worse than a one-line handoff. Findings whose mechanism lives outside `app/views/**` (channel authorization, `current_account` resolution, broadcast scoping) get a block with `Location:` naming that file and one line saying the fix belongs to that skill.
+An N+1 or a missing preload seen from the template gets a block here with the query fix named, and a pointer to `rails-activerecord-patterns` for the model-side change - the reader is looking at the view, so dropping the finding entirely is worse than a one-line handoff. Findings whose mechanism lives outside `app/views/**` get a block with `Location:` naming that file and `Fix: handoff:` naming the owner - `rails-actioncable-patterns` (channel authorization, broadcast scoping), `rails-security-patterns` (`current_account` resolution, an unscoped controller lookup, params), `rails-active-storage-patterns` (blob URLs and access); corrected code is emitted for template and helper files only. The Generating block is not emitted in a review.
 
 ## Avoid
 

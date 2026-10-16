@@ -111,7 +111,7 @@ Tables >100M rows: don't `change_column_null` directly. Keep nullable + model va
 
 ### CHECK constraints (8.0.16+)
 
-Validated on creation - no `validate: false` - so existing violating rows fail the ALTER: count them first (`SELECT COUNT(*) FROM orders WHERE NOT (total >= 0)`). Large tables: maintenance window or `gh-ost --alter` (pt-osc when FK-bearing).
+Validated on creation - no `validate: false` - so existing violating rows fail an in-process ALTER: count them first (`SELECT COUNT(*) FROM orders WHERE NOT (total >= 0)`). Large tables: maintenance window or `gh-ost --alter` (pt-osc when FK-bearing) - and there the count must be 0 *before* the run, because both tools copy rows with `INSERT ... IGNORE`, under which MySQL turns a CHECK (or FK) violation into a warning and silently leaves the row out of the new table.
 
 ```ruby
 add_check_constraint :orders, "total >= 0", name: "orders_total_non_negative"
@@ -197,7 +197,7 @@ end
 add_index :orders, [:user_id, :status]
 ```
 
-`utf8mb4` (not `utf8`) is required for 4-byte sequences (emoji, supplementary CJK). Set collation explicitly so `db:schema:load` is reproducible.
+`utf8mb4` (not `utf8`) is required for 4-byte sequences (emoji, supplementary CJK). Set collation explicitly so `db:schema:load` is reproducible; `utf8mb4_0900_ai_ci` is accent- and case-insensitive, so a unique index on `users.email` under it already rejects `A@x` next to `a@x` - normalise in the model (`normalizes :email`) rather than switching to a `_bin` collation. A new table's block reads `Algorithm: n/a` and `Lock window: none (online)` - there is no existing data to rebuild, and an FK to a populated parent adds only a brief metadata lock on the parent. Framework tables that arrive as a migration (`bin/rails active_storage:install`) get a block per table with `Migration: generated - <generator>`, reviewed for charset and the polymorphic index only; `solid_queue:install` writes `db/queue_schema.rb` for a separate database, loaded by `db:prepare`, with no migration to review. `StrongMigrations.target_version` set to the full production server version (`"8.0.46"` - a bare `"8.0"` sorts below every 8.0.x gate) is a reviewable rule: its absence, a bare major-minor, or a wrong value is a finding, and a Gemfile without `strong_migrations` at all is a `[Recommend]` finding.
 
 ### Large tables (>100M rows): `gh-ost`
 
@@ -218,7 +218,7 @@ gh-ost --user=app --ask-pass --host=primary.db --database=app --table=events \
 
 With the default `foreign_key_checks=1`, `ALTER TABLE ... ADD FOREIGN KEY` supports **only ALGORITHM=COPY** - a full table rebuild that blocks writes, not a brief metadata lock. INPLACE becomes available only with `foreign_key_checks=0`, which buys `LOCK=NONE` at the cost of an unvalidated constraint until you re-check it.
 
-Before adding one, audit orphans (`SELECT COUNT(*) FROM order_items c LEFT JOIN orders p ON p.id = c.order_id WHERE p.id IS NULL`) - they fail the COPY, or sit silently under an unvalidated INPLACE constraint. On a large table this is *not* gh-ost work: gh-ost does not support foreign keys at all and refuses to run on any table holding an FK as child or parent. Use `pt-online-schema-change --alter "ADD FOREIGN KEY ..."`, adding `--alter-foreign-keys-method=rebuild_constraints` (or `drop_swap`) when other tables reference this one; pt-osc prefixes the new table's constraint names with `_`, so re-dump the schema afterwards. The same limitation qualifies the ">100M rows -> gh-ost" rule everywhere in this skill: `t.references ... foreign_key: true` is the house convention, so most large tables here are FK-bearing and belong to pt-osc.
+Before adding one, audit orphans (`SELECT COUNT(*) FROM order_items c LEFT JOIN orders p ON p.id = c.order_id WHERE p.id IS NULL`) - they fail the COPY, sit silently under an unvalidated INPLACE constraint, or are silently dropped by pt-osc's `INSERT LOW_PRIORITY IGNORE` row copy. On a large table this is *not* gh-ost work: gh-ost does not support foreign keys at all and refuses to run on any table holding an FK as child or parent. Use `pt-online-schema-change --alter "ADD FOREIGN KEY ..."`, adding `--alter-foreign-keys-method=rebuild_constraints` (or `drop_swap`) when other tables reference this one; pt-osc prefixes the new table's constraint names with `_`, so re-dump the schema afterwards. The same limitation qualifies the ">100M rows -> gh-ost" rule everywhere in this skill: `t.references ... foreign_key: true` is the house convention, so most large tables here are FK-bearing and belong to pt-osc.
 
 ### Lock timeout per migration
 
@@ -267,29 +267,29 @@ end
 
 ## Output Format
 
-One block per operation, in execution order - a migration file bundling two operations emits two blocks sharing one `Migration:` value (and a finding against the one-structural-change-per-migration rule), and a multi-step plan emits a numbered sequence whose `Step` numbers run across the whole plan, split files included. Rake backfills get blocks too (`Operation: Backfill`, `Algorithm: batched rake`); a gh-ost / pt-osc run keeps its DDL `Operation` with `Algorithm: gh-ost` / `pt-online-schema-change`. Non-DDL sequence steps that the patterns require - a dependency audit, an `ignored_columns`-only deploy, an external-reader cutover, a reconcile after a partial run - get a block with `Operation: Coordination` (or `Reconcile`), `Algorithm: n/a`, and `n/a` in `Lock window` and `Safety`. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. In review or diagnosis mode each field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and its numbered finding explains the fix. A build-mode block holds corrected values only, and build mode still numbers findings for the pre-existing violations it touches. A request to design or change code is build mode; one that assesses or diagnoses code as it stands is review or diagnosis mode. A block is the corrected operation, so `Safety` rates the operation as corrected - `Blocked` when its required tool is absent - and the as-written verdict lives in the finding; a block keeps `Reject` only when this skill has no safe rewrite for it, with `n/a` in `Algorithm` and `Lock window`. Prerequisite Coordination steps (an audit, a tool install) come first in the sequence; a file split in the correction keeps its name on the operation it retains, and each split-off operation reads `proposed - split from <file>`. This applies to a post-incident review of an already-executed migration as much as to a pre-merge one.
+One block per operation, in execution order - a migration file bundling two operations emits two blocks sharing one `Migration:` value (and a finding against the one-structural-change-per-migration rule; an index or constraint on the table the same file creates belongs to that `Create Table` block, not a second one), and a multi-step plan emits a numbered sequence whose `Step` numbers run across the whole plan, split files included. Rake backfills get blocks too (`Operation: Backfill`, `Algorithm: batched rake`); a gh-ost / pt-osc run keeps its DDL `Operation` with `Algorithm: gh-ost` / `pt-online-schema-change`. Non-DDL sequence steps that the patterns require - a dependency audit, an `ignored_columns`-only deploy, an external-reader cutover, a reconcile after a partial run - get a block with `Operation: Coordination` (or `Reconcile`), `Algorithm: n/a`, and `n/a` in `Lock window` and `Safety`. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: blocks hold corrected values only, and a pre-existing violation the change touches is still a numbered finding. A block is the corrected operation, so `Safety` rates the operation as corrected - `Blocked` when its required tool is absent - and the as-written verdict lives in the finding; a block keeps `Reject` only when this skill has no safe rewrite for it, with `n/a` in `Algorithm` and `Lock window`. Prerequisite Coordination steps (an audit, a tool install) come first in the sequence; a file split in the correction keeps its name on the operation it retains, and each split-off operation reads `proposed - split from <file>`. This applies to a post-incident review of an already-executed migration as much as to a pre-merge one.
 
 ```
 Step: {n of N | n/a (single operation)}
 
-Migration: {file name | rake file path | rake file not provided - name it | proposed - not yet created | n/a (out-of-band gh-ost / pt-osc run, a DBA command, a decision or a deploy-only step)}
+Migration: {file name | rake file path | rake file not provided - name it | proposed - not yet created | proposed - split from <file> | generated - <generator> | n/a (out-of-band gh-ost / pt-osc run, a DBA command, a decision or a deploy-only step)}
 
 Operation: {Create Table | Rename Table | Drop Table | Add Column | Change Column | Rename Column (coordinated cutover only) | Add Index | Alter Index (invisible soak) | Drop Index | Add FK | Add CHECK | Drop Constraint | Backfill | Remove Column | Drop/Recreate View | Coordination | Reconcile}
 
-Table: {name} ({row count | new - 0 rows | absent from the schema - Blocked | "size unstated - assume large and justify"})
+Table: {name} ({row count | new - 0 rows | absent from the schema - Blocked | "size unstated - assume large and justify"}) | n/a (Coordination, Reconcile with no single table)
 
-Adapter: MySQL {x.y.z from SELECT VERSION() or the declared ## Tech Stack | unknown - assume no INSTANT support}
+Adapter: MySQL {x.y.z from SELECT VERSION(), the declared ## Tech Stack or committed ops docs | unknown - assume no INSTANT support}
 
-Algorithm: {INSTANT | INPLACE | COPY | gh-ost | pt-online-schema-change | batched rake | n/a}
+Algorithm: {INSTANT | INPLACE | COPY | gh-ost | pt-online-schema-change | batched rake | n/a (Create Table, Coordination, Reconcile, Reject)}
 
-Lock window: {none (online) | brief cut-over lock (gh-ost / pt-osc) | brief metadata lock | write-blocking rebuild (COPY or LOCK=SHARED - brief only on a small table) | maintenance required | n/a (Coordination, Reconcile, Backfill)}
+Lock window: {none (online) | brief cut-over lock (gh-ost / pt-osc) | brief metadata lock | write-blocking rebuild (COPY or LOCK=SHARED - brief only on a small table) | maintenance required | n/a (Coordination, Reconcile, Backfill, Reject)}
 
-Safety: {Zero-Downtime | Maintenance Window | Batched Backfill | Hardening advised - compliant but under-specified | Blocked - required tooling or dependency absent (tool, target table), name it | Reject - rewrite required | Already applied - unsafe as run, findings say what changes | n/a (Coordination, Reconcile)}
+Safety: {Zero-Downtime | Maintenance Window | Batched Backfill | Hardening advised - compliant but under-specified | Blocked - required tooling or dependency absent (tool, target table), name it | Blocked - depends on step N (a later step behind a Blocked one keeps its own Algorithm and Lock window) | Reject - rewrite required | Already applied - unsafe as run, findings say what changes | n/a (Coordination, Reconcile)}
 
 Notes: {charset/collation, INSTANT eligibility, gh-ost throttle config}
 ```
 
-`Adapter` version drives every INSTANT gate above; `stack-detect` carries a patch level only when `## Tech Stack` declares one, so otherwise read it from the server, and when neither exists say `unknown` rather than assuming 8.0.latest. When the >100M-row rule mandates gh-ost/pt-osc and neither is confirmed installed, that is `Safety: Blocked`, not a silent downgrade to an in-process ALTER: say which tool is needed and that installing it is a prerequisite of the change.
+`Adapter` version drives every INSTANT gate above; `stack-detect` carries a patch level only when `## Tech Stack` declares one, so otherwise read it from committed ops docs or the server, and when none exists say `unknown` rather than assuming 8.0.latest. When the >100M-row rule mandates gh-ost/pt-osc and neither is confirmed installed, that is `Safety: Blocked`, not a silent downgrade to an in-process ALTER: say which tool is needed and that installing it is a prerequisite of the change.
 
 ## Avoid
 
@@ -297,7 +297,7 @@ Notes: {charset/collation, INSTANT eligibility, gh-ost throttle config}
 - `where:` partial indexes on MySQL
 - Data changes in schema migrations
 - `remove_column` without `ignored_columns` first
-- In-process type changes that force a COPY on a deployed table - use add/backfill/remove, or gh-ost / pt-osc for a pure widening
+- In-process type changes that force a COPY on a deployed table above ~100K rows - use add/backfill/remove, or gh-ost / pt-osc for a pure widening
 - `disable_ddl_transaction!` as a safety measure - MySQL DDL is never transactional, so it changes nothing
 - Irreversible migrations without explicit `raise ActiveRecord::IrreversibleMigration`
 - Missing indexes on FK columns

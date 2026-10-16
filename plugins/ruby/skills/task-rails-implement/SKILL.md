@@ -25,7 +25,7 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Stack Detect
 
-Use skill: `stack-detect`. Versions: `stack-detect` carries them only when `## Tech Stack` declares them - otherwise read Ruby / Rails from `.ruby-version` / `Gemfile.lock` and the MySQL patch level from ops docs or the server, else `unknown`; `rails-migration-safety`'s INSTANT / functional-index / CHECK gates read that patch level. API-only vs server-rendered (`views/` beyond mailers, `ActionController::Base` vs `API`), serializer library and view engine (ERB/HAML/Slim) are not stack-detect fields (unless the project declares them under `## Tech Stack`, where they arrive in `Additional`) - read them here from the app itself. An app with both an API namespace and server-rendered views is both. Put the feature on the surface its consumer uses - a partner or SPA caller means the API namespace, an operator screen means the server-rendered controller, and both consumers mean both, with the mutation extracted to one service they share. Say which in the design - it is the `Surface:` line of the Step 4 design.
+Use skill: `stack-detect`. Where the project's declared stack and its code disagree, record what the code does and note the divergence. Versions: `stack-detect` carries them only when `## Tech Stack` declares them - otherwise read Ruby / Rails from `.ruby-version` / `Gemfile.lock` and the MySQL patch level from ops docs or the server, else `unknown`; `rails-migration-safety`'s INSTANT / functional-index / CHECK gates read that patch level. API-only vs server-rendered (`views/` beyond mailers, `ActionController::Base` vs `API`), serializer library and view engine (ERB/HAML/Slim) are not stack-detect fields (unless the project declares them under `## Tech Stack`, where they arrive in `Additional`) - read them here from the app itself. An app with both an API namespace and server-rendered views is both. Put the feature on the surface its consumer uses - a partner or SPA caller means the API namespace, an operator screen means the server-rendered controller, and both consumers mean both, with the mutation extracted to one service they share. Say which in the design - it is the `Surface:` line of the Step 4 design.
 
 ### Step 3 - Gather Requirements
 
@@ -37,10 +37,11 @@ Resolve (ask, or infer per the threshold below):
 5. Authorization rules (admin / owner / public)
 6. Status transitions
 
-Anything the design assumes but the project does differently or lacks - a gem (Pundit, a serializer, advisory locks), a base class (`ApplicationMailer`), or a convention (a project `Result` whose shape differs from `rails-service-objects`', used as is and extended additively; a Minitest suite) - is named at the design gate with the substitute you intend. Never silently skipped, never treated as blocking: the project's own conventions win over this workflow's defaults wherever the two differ - except a convention an atomic's Rules forbid (controller specs, fixtures, noun-named services), where new code follows the atomic, shared config stays untouched, and the divergence is named at the gate - and a generated file's missing parent (`ApplicationController`-style base class, routes file, factory, `rails_helper` / test helper) is generated with it; a collaborator the feature calls but does not own that is absent (a referenced job, an authentication mechanism) is named at the gate, never scaffolded silently.
+Anything the design assumes but the project does differently or lacks - a gem (Pundit, a serializer, advisory locks), a base class (`ApplicationMailer`), or a convention (a project `Result` whose shape differs from `rails-service-objects`', used as is and extended additively; a Minitest suite) - is named at the design gate with the substitute you intend - as a `Divergences:` list under `## Design`, whether or not the gate is pre-approved. Never silently skipped, never treated as blocking: the project's own conventions win over this workflow's defaults wherever the two differ - except a convention an atomic's Rules forbid (controller specs, fixtures, noun-named services), where new code follows the atomic, shared config stays untouched, and the divergence is named at the gate - and a generated file's missing parent (`ApplicationController`-style base class, routes file, factory, `rails_helper` / test helper) is generated with it (a broken one is repaired, the repair listed under Files Generated); a collaborator the feature calls but does not own that is absent (a referenced job, an authentication mechanism, the inbound confirmation an asynchronous partner sends) is named at the gate, never scaffolded silently.
 
 Ask-vs-infer threshold: when the domain has one defensible conventional shape, infer it and confirm at the design gate - the gate is the round trip. Ask first only when a missing decision changes the schema or endpoints *and* has no conventional default (who approves what, novel entities, custom business rules). Edge cases:
 - Referenced model doesn't exist - generate it with the feature when it has one conventional shape, naming the assumption at the gate; otherwise ask whether to generate or assume
+- No schema in evidence (`db/schema.rb` absent) - design the existing table from the model's code and name the assumption at the gate
 - Partial input - ask for entity fields, relationships, operations before design
 
 ### Step 4 - Design (Approval Gate)
@@ -52,11 +53,11 @@ Present:
 - Entity model: fields, types, constraints, enum integer mapping
 - Status transitions: allowed edges per stateful entity (from Step 3 item 6)
 - Associations + `dependent:` options
-- Service methods, transaction boundaries (claim-then-finalize when a contended resource - stock, seat, slot - is charged, with its stale-claim sweep job), job dispatch points
-- External integrations: each call placed before the transaction (gating) or after commit (deferrable) per Step 7, the inbound webhook endpoint (Step 8.5), the scheduler cadence (Step 7)
+- Service methods, transaction boundaries (claim-then-finalize when an external call - a charge, a reservation - sits between claiming a contended quantity and finalizing it, with its stale-claim sweep job; one transaction under `FOR UPDATE` otherwise), job dispatch points
+- External integrations: each call placed before the transaction (gating) or after commit (deferrable) per Step 7, the inbound webhook endpoint (Step 8.5, under `app/controllers/webhooks/` outside the authenticated namespace), the scheduler cadence (Step 7)
 - Endpoints (method, URI, status, request/response shapes)
 - Authorization rules per action
-- Attachments, if any: Use skill: `rails-active-storage-patterns` here so it shapes the migration (Step 5), the model declarations (Step 6) and the upload surface - the form (Step 11) when server-rendered; API-only clients drive Rails' mounted `/rails/active_storage/direct_uploads` and submit the `signed_id` in the JSON body (Step 9)
+- Attachments, if any: Use skill: `rails-active-storage-patterns` here so it shapes the migration (Step 5), the model declarations (Step 6) and the upload surface - the form (Step 11) when server-rendered; API-only clients drive the direct-upload route through an app subclass of `ActiveStorage::DirectUploadsController` that skips forgery protection and authenticates the caller (the engine controller inherits `ActionController::Base` with forgery protection on), then submit the `signed_id` in the JSON body (Step 9)
 - File tree (only files this feature touches - generated ones, and existing files it modifies, each marked)
 
 Example tree:
@@ -84,7 +85,7 @@ spec/factories/orders.rb
 db/migrate/<ts>_create_orders.rb
 ```
 
-**Generate code only after user approves.** When the run cannot reach the user, present the design and stop there - state that the gate is unmet and what approval it needs. Explicit approval written into the request itself meets the gate; never infer approval.
+**Generate code only after user approves.** When the run cannot reach the user, present the design and stop there - state that the gate is unmet and what approval it needs. Explicit approval written into the request itself meets the gate; never infer approval. The design is written from the atomics Steps 2-4 load; the atomics of Steps 5-13 load once the gate is met, so an unmet-gate design names the rules it will apply (signature verification, dedupe, scheduler) without loading them. A provider whose signing scheme the request does not state is named at the gate as an assumption (the default: HMAC-SHA256 over the raw body in the signature header, the timestamp header checked for freshness).
 
 ### Step 5 - Migrations
 
@@ -92,17 +93,17 @@ Use skill: `rails-migration-safety`. One structural change per migration (a new 
 
 ### Step 6 - Models
 
-Use skill: `rails-activerecord-patterns`. Apply its rules: explicit `dependent:` on every owning `has_many`/`has_one` (a bare `has_many :through` is compliant when the direct `has_many` to the join model carries `dependent:`), `enum` with integer mapping, chainable scopes, `counter_cache` where count queries appear, no `default_scope`.
+Use skill: `rails-activerecord-patterns`. Apply its rules: explicit `dependent:` on every owning `has_many`/`has_one` (a bare `has_many :through` is compliant when the direct `has_many` to the join model carries `dependent:`), `enum` with integer mapping on new columns (an existing string status column keeps its strings - a string-valued `enum` or plain scopes), chainable scopes, `counter_cache` where count queries appear, no `default_scope`.
 
 File uploads: decided at the Step 4 design (`rails-active-storage-patterns` loaded there), including Active Storage's own tables in Step 5 when not yet installed; declare the attachments here.
 
 ### Step 7 - Services
 
-Use skill: `rails-service-objects`. Use skill: `rails-transaction-patterns` for boundary discipline (`after_commit` dispatch, nested transactions). If a background job is needed: Use skill: `rails-sidekiq-patterns` - a Solid Queue app applies its idempotency, IDs-only and post-commit rules, retries through `retry_on` / `discard_on`, and puts terminal failure in the `retry_on` block. If a rake/backfill task is needed: Use skill: `rails-rake-task-patterns`. A mutation meeting neither limb of `rails-service-objects`' extraction bar takes no service - the atomic forbids the hollow wrapper; it stays in the model or controller (a single AR write: the controller calls it directly).
+Use skill: `rails-service-objects`. Use skill: `rails-transaction-patterns` for boundary discipline (`after_commit` dispatch, nested transactions). If a background job is needed: Use skill: `rails-sidekiq-patterns` - a Solid Queue app applies its idempotency, IDs-only and post-commit rules, retries through `retry_on` / `discard_on`, and puts terminal failure in the `retry_on` block. If a rake/backfill task is needed: Use skill: `rails-rake-task-patterns`. A mutation meeting neither limb of `rails-service-objects`' extraction bar takes no service - the atomic forbids the hollow wrapper; it stays in the model or controller (a single AR write: the controller calls it directly); a domain-state denial inside such a model method raises an `ApplicationError` subclass the Step 12 ladder already maps - never a controller-local `rescue_from`.
 
 Canonical shape: `rails-service-objects`' `FulfillOrder` - the replay guard and the full precondition checked after `lock!` inside `transaction(requires_new: true)`, and dispatch through `ActiveRecord.after_all_transactions_commit` (it waits for a caller's transaction and runs at once when none is open). A replay skips the work, not the dispatch, so every dispatched job - and any mail it sends - is idempotent on its own guard.
 
-When externals enter the flow, `rails-service-objects`' ordering arbitrates. Discriminator, the atomic's one question - *if this call fails, is the local write still correct?* No means it gates (charging at checkout, a third-party inventory reservation) - call *before* the transaction with an idempotency key; yes means it is deferrable (notification, ERP sync, search indexing, retryable carrier booking) - post-commit job whose own service applies the same call-before-txn rule internally. Money movement gates either way: a charge **and a refund** both go before the transaction with an idempotency key - `rails-service-objects` lists refund among the calls whose failure makes the local write wrong. A deferred-external job owns its terminal failure: `sidekiq_retries_exhausted` (Active Job: the `retry_on` block) flips the domain status to its failure state - name that terminal state in the Step 4 transitions; reporting is the reporter gem's (sentry-sidekiq with `report_after_job_retries`, sentry-rails for Active Job); where none is wired, name the gap at the design gate - `Rails.error.report` alone reaches nobody without a subscriber (`rails-exception-handling`).
+When externals enter the flow, `rails-service-objects`' ordering arbitrates. Discriminator, the atomic's one question - *if this call fails, is the local write still correct?* No means it gates (charging at checkout, a third-party inventory reservation) - call *before* the transaction with an idempotency key; yes means it is deferrable (notification, ERP sync, search indexing, retryable carrier booking) - post-commit job whose own service applies the same call-before-txn rule internally. Money movement gates either way: a charge **and a refund** both go before the transaction with an idempotency key - `rails-service-objects` lists refund among the calls whose failure makes the local write wrong. A deferred-external job owns its terminal failure: `sidekiq_retries_exhausted` (Active Job: the `retry_on` block) flips the domain status to its failure state - name that terminal state in the Step 4 transitions; reporting is the reporter gem's (sentry-sidekiq with `report_after_job_retries` on the Sidekiq adapter, sentry-rails' Active Job integration on other adapters); where none is wired, name the gap at the design gate - `Rails.error.report` alone reaches nobody without a subscriber (`rails-exception-handling`).
 
 Cross-row invariants (per-user caps, quotas): enforce in the service under a row lock (Use skill: `rails-db-locking-patterns`), with a DB backstop where declaratively expressible (a CHECK on a parent-row counter column, `used_count <= cap` - MySQL CHECKs see one row; a unique or functional unique index for an at-most-one rule - not triggers) - a model validation alone races.
 
@@ -110,11 +111,11 @@ Domain-state denials (locked / archived / expired target): service `Result` fail
 
 Mailers: generate under `app/mailers`; from a request or service dispatch with `deliver_later` post-commit, exactly like jobs - never inside the transaction; inside a job use `deliver_now` (the job is already the async boundary). Templates live in `app/views/<mailer_name>/` even in API-only apps - the Step 11 skip does not cover mailer views.
 
-Time-based behavior (expiry, eligibility windows, retention): owned here. If the deadline is only checked at request time, a predicate on the timestamp (guard or scope) is the whole design - no scheduler. Add a cron-invoked rake task (`rails-rake-task-patterns`) or scheduled job only when something must happen at the deadline without a request (notify, purge, flip visible state); name the trigger in the design. Register the cadence in the scheduler the app already runs (`sidekiq-cron` schedule file, `whenever`'s `config/schedule.rb`, Solid Queue's `config/recurring.yml`; none present - cron-invoked rake task) and list that config file in Files Generated.
+Time-based behavior (expiry, eligibility windows, retention): owned here. If the deadline is only checked at request time, a predicate on the timestamp (guard or scope) is the whole design - no scheduler. Add a cron-invoked rake task (`rails-rake-task-patterns`) or scheduled job only when something must happen at the deadline without a request (notify, purge, flip visible state); name the trigger in the design. A recurring task that executes due rows states its catch-up rule (every missed occurrence, or only the latest) and claims each row - `FOR UPDATE SKIP LOCKED`, or a status flip under the row lock per `rails-db-locking-patterns` - before any external call; the scheduled task enqueues one job per claimed row rather than calling the partner inside its own loop. Register the cadence in the scheduler the app already runs (`sidekiq-cron` schedule file, `whenever`'s `config/schedule.rb`, Solid Queue's `config/recurring.yml`; none present - cron-invoked rake task) and list that config file in Files Generated.
 
 ### Step 8 - External HTTP Clients
 
-Skip if no external APIs. Otherwise: Use skill: `rails-http-client-patterns`. Generate a dedicated `app/clients/<name>_client.rb` with explicit timeouts, JSON middleware + `:raise_error`, idempotency-aware retries (cap 2-3; Sidekiq handles longer waits), a domain error taxonomy translated from Faraday/HTTP errors. Provider ships an official Ruby SDK (`stripe`, `aws-sdk-*`): the client class wraps the SDK instead of Faraday - configure timeouts/retries through the SDK and translate its errors into the same domain taxonomy. Services rescue **domain** errors only; tests stub at the boundary (WebMock unit / VCR integration).
+Skip if no external APIs. Otherwise: Use skill: `rails-http-client-patterns`. Reuse and extend an existing client for the same provider (its defects on the feature's call path go to Pre-existing Issues, fixed only when the feature cannot work without the fix, the fix listed under Files Generated); otherwise generate a dedicated `app/clients/<name>_client.rb` with explicit timeouts, JSON middleware + `:raise_error`, idempotency-aware retries (2-3 attempts - Faraday `max:` 1-2, since `max` counts retries; Sidekiq handles longer waits), a domain error taxonomy translated from Faraday/HTTP errors. Provider ships an official Ruby SDK (`stripe`, `aws-sdk-*`): the client class wraps the SDK instead of Faraday - configure timeouts/retries through the SDK (its global config in an initializer, listed under Files Generated) and translate its errors into the same domain taxonomy. Services rescue **domain** errors only; tests stub at the boundary (WebMock unit / VCR integration).
 
 If the feature fans out across two or more external services on the same request or job, Use skill: `rails-concurrency-patterns` to pick the primitive (`Concurrent::Promises`, the `async` gem, or Sidekiq fan-out - `load_async` is not one, it only runs ActiveRecord queries on the async executor and cannot dispatch HTTP).
 
@@ -124,7 +125,7 @@ Skip if the feature receives no provider callback. Otherwise the endpoint verifi
 
 ### Step 9 - Controllers
 
-Strong params; pagination on list endpoints (match the project's paginator; none - `pagy`); delegate business logic to services. Authentication: wire the app's existing mechanism (`before_action :authenticate_user!` or equivalent) on new controllers - scaffolding auth itself is out of scope; an app with none gets the gap named at the design gate. Domain error -> HTTP:
+Strong params; pagination on list endpoints (match the project's paginator; none present - add `pagy`, named at the gate as an added gem); delegate business logic to services. Authentication: wire the app's existing mechanism (`before_action :authenticate_user!` or equivalent) on new controllers - scaffolding auth itself is out of scope; an app with none gets the gap named at the design gate. Domain error -> HTTP:
 
 | Domain Error                          | HTTP |
 | ------------------------------------- | ---- |
@@ -138,6 +139,8 @@ Strong params; pagination on list endpoints (match the project's paginator; none
 | Upstream dependency down / timed out  | 503  |
 | Unauthenticated                       | 401  |
 | Forbidden                             | 403  |
+
+A decline is 402 whether it arrives as a `Result` code or as `BillingError::Declined` through the Step 12 ladder.
 
 **API versioning:** new APIs under `/api/v1/...`; for existing apps, match the convention.
 
@@ -155,14 +158,14 @@ Skip for API-only. Use skill: `rails-view-templates`. **Match the existing engin
 
 Use skill: `rails-security-patterns` (Pundit policies per resource; `verify_authorized` / `verify_policy_scoped` on the base class per its shape when every controller authorizes, else on the new controllers with the gap named at the design gate; strong params). Use skill: `rails-exception-handling` for the `ApplicationController#rescue_from` ladder and domain error taxonomy.
 
-Public/token endpoints (shared links): the token *is* the capability - use Rails signed ids, `record.signed_id(expires_in:, purpose:)` and `Model.find_signed!(token, purpose:)`, so the token expires and is scoped to one purpose - it stays replayable until expiry, so a one-shot action also records its use (a `has_secure_token` column does neither); route by token outside the authenticated resource namespace, serve through a read-only serializer, and skip Pundit with an explicit `skip_after_action :verify_authorized` (and `:verify_policy_scoped` on a collection) + stated rationale.
+Public/token endpoints (shared links): the token *is* the capability - use Rails signed ids, `record.signed_id(expires_in:, purpose:)` and `Model.find_signed!(token, purpose:)`, so the token expires and is scoped to one purpose - it stays replayable until expiry, so a one-shot action also records its use (a `has_secure_token` column does neither); route by token outside the authenticated resource namespace, serve through a read-only serializer, and skip Pundit's enforcement with `skip_authorization` (and `skip_policy_scope` on a collection) inside the action - never `skip_after_action` on a callback the base class did not register (`rails-security-patterns`' base registers `verify_pundit_authorization`, not `verify_authorized`) - plus stated rationale.
 
 - File uploads: `rails-active-storage-patterns` was loaded at the Step 4 design; apply its serving/security rules here
-- Custom ActionCable channels / connection auth: Use skill: `rails-actioncable-patterns` here (Step 11 loaded it for Turbo broadcast scoping on server-rendered runs; API-only runs load it here)
+- Custom ActionCable channels / connection auth: Use skill: `rails-actioncable-patterns` here (when Step 11 did not already load it)
 
 ### Step 13 - Tests
 
-Use skill: `rails-testing-patterns`. A Minitest suite (`test/`) is the project's convention: the same rows as Minitest tests under `test/` (request spec -> integration test), each in the atomic's per-file block with `File:` under `test/`, records built per its FactoryBot rule (adding `factory_bot_rails` to the test group, named at the gate; existing fixtures untouched). Minimum coverage - add rows the feature's behavior demands beyond this list:
+Use skill: `rails-testing-patterns`. A Minitest suite (`test/`) is the project's convention: the same rows as Minitest tests under `test/` (request spec -> `test/integration`, job -> `test/jobs`, service / policy / client -> `test/services` / `test/policies` / `test/clients`), each in the atomic's per-file block with `File:` under `test/`, records built per its FactoryBot rule (adding `factory_bot_rails` to the test group, named at the gate; existing fixtures untouched). Minimum coverage - add rows the feature's behavior demands beyond this list:
 - Model: associations, validations, scopes, enums
 - Service: one example per `Result` outcome; side effects asserted
 - Policy: every action, one example per distinct outcome, plus the `Scope`
@@ -179,27 +182,27 @@ Use skill: `rails-testing-patterns`. A Minitest suite (`test/`) is the project's
 
 ### Step 14 - Validate
 
-Run `bundle exec rspec` (a Minitest suite: `bin/rails test`) and `bundle exec rubocop`. Fix failures before presenting output. If the environment can't execute them, say so explicitly, list the commands for the user to run, and report spec counts as "written, not executed" - never claim passes.
+Run `bundle exec rspec` (a Minitest suite: `bin/rails test:all` - `bin/rails test` alone skips `test/system`) and `bundle exec rubocop`. Fix failures before presenting output. If the environment can't execute them, say so explicitly, list the commands for the user to run, and report spec counts as "written, not executed" - never claim passes.
 
 ## Output Format
 
-When the Step 4 gate is unmet, the deliverable is the design itself - the `Present:` list, filled, endpoints in the `## Endpoints` table form - under `## Proposed Design`, followed by `## Blocked At` naming the gate, the approval it needs, and each question the run could not ask. The blocks below it, except `## Pre-existing Issues`, describe what was built and are omitted entirely; do not restate the design in them. Every atomic's output block informs the code and is not emitted, with two exceptions the template carries: `rails-testing-patterns`' per-file blocks under `## Tests`, and each migration's `Safety:` value under `## Migrations`. Server-rendered endpoints fill the Response column with the view rendered (200) or the redirect target (302; 303 after a Turbo `DELETE`); a failed form re-renders with 422. When Step 14 could not execute, `## Tests` reads `[N] specs written, not executed`.
+`## Design` opens every deliverable: the Step 4 `Present:` list, filled, with the endpoints under the `## Endpoints` heading that follows it rather than repeated inside the list. When the gate is unmet, `## Blocked At` comes next, naming the gate, the approval it needs, and each question the run could not ask; the built sections below it, except `## Pre-existing Issues`, are omitted entirely. When the gate is met, `## Blocked At` is omitted and the built sections follow; `## Files Generated` carries each generated or modified file's path followed by its content in a fenced block (a modified file over ~60 lines: the changed hunks with context), grouped by layer. Every atomic's output block informs the code and is not emitted, with two exceptions the template carries: `rails-testing-patterns`' per-file blocks under `## Tests`, and each migration's `Safety:` value under `## Migrations`. Server-rendered endpoints fill the Response column with the view rendered (200) or the redirect target (302; 303 after a Turbo `DELETE`); a failed form re-renders with 422. When Step 14 could not execute, `## Tests` reads `[N] specs written, not executed`.
 
 ```markdown
-## Proposed Design   {gate unmet: the Step 4 Present list, filled; the sections below, except Pre-existing Issues, are then omitted}
+## Design   {the Step 4 Present list, filled - every run}
 
-## Blocked At   {gate unmet: the gate, the approval it needs, each question the run could not ask}
-
-## Pre-existing Issues   {when code the feature touches or depends on carries a defect the feature does not fix: `file:line` - the defect - why left}
-
-## Files Generated
-{grouped by layer: migrations, models, services, controllers, serializers/views (incl. Stimulus controllers, helpers, locales), policies, jobs, mailers, clients, errors, channels, rake tasks, view components, routes, scheduler config, tests}
-
-## Endpoints
+## Endpoints   {every run}
 | Method | Path                       | Request      | Response                   | Status |
 | ------ | -------------------------- | ------------ | -------------------------- | ------ |
 | POST   | /api/v1/orders             | OrderParams  | OrderSerializer            | 201    |
 | POST   | /api/v1/orders/:id/fulfill | -            | OrderSerializer            | 200    |
+
+## Blocked At   {gate unmet only: the gate, the approval it needs, each question the run could not ask; the sections below, except Pre-existing Issues, are then omitted}
+
+## Pre-existing Issues   {when code the feature touches or depends on - not the repo at large - carries a defect the feature does not fix: `file:line` - the defect - why left}
+
+## Files Generated
+{grouped by layer: migrations, models, services, controllers, serializers/views (incl. Stimulus controllers, helpers, locales), policies, jobs, mailers, clients, errors, channels, rake tasks, view components, routes, scheduler config, tests; each path followed by the file's content in a fenced block}
 
 ## Background Jobs   {when at least one job; Retry = retries after the first run: `sidekiq_options retry:`, or `retry_on` attempts minus 1}
 | Job                     | Queue   | Trigger               | Retry |
@@ -231,7 +234,7 @@ When the Step 4 gate is unmet, the deliverable is the design itself - the `Prese
 - [ ] Step 11: views in existing engine via `rails-view-templates` (or skipped for API)
 - [ ] Step 12: Pundit policies + `rescue_from` ladder; Active Storage serving rules and custom ActionCable channels when applicable
 - [ ] Step 13: model + service + policy (with Scope) + request + job + mailer + client + component + channel + rake + broadcast + system specs as applicable; factory traits
-- [ ] Step 14: `rspec` (or `bin/rails test`) and `rubocop` pass (or reported "written, not executed" when the environment can't run them)
+- [ ] Step 14: `rspec` (or `bin/rails test:all`) and `rubocop` pass (or reported "written, not executed" when the environment can't run them)
 
 ## Avoid
 

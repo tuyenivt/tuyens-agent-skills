@@ -26,7 +26,7 @@ user-invocable: false
 - Every Pundit policy spec covers every role and the `Scope`; roles that resolve identically for an action share one example (or a shared example group) rather than repeating it.
 - Mock at boundaries (HTTP, third-party SDKs); never mock internal code
 - `travel` / `freeze_time`, never `Time.now =` stubs
-- One canonical `auth_headers` helper per surface - a JWT API and a Devise web app each get one; never both on one endpoint
+- One canonical `auth_headers` helper per suite, shaped for its surface (Devise session or JWT bearer); a project with both surfaces names them apart (`session_headers`, `bearer_headers`) and never uses both on one endpoint
 
 ## Patterns
 
@@ -39,8 +39,11 @@ user-invocable: false
 | Policy specs  | Fast    | Pundit rules per role                    |
 | Request specs | Medium  | Endpoints, status, response bodies, authz|
 | Job specs     | Fast    | Job behavior + idempotency               |
+| Client specs  | Fast    | HTTP wrapper translation (WebMock)       |
 | Rake specs    | Fast    | Wiring (ENV, args, exit, delegation)     |
 | System specs  | Slowest | Critical user flows (Capybara)           |
+
+System specs: `driven_by :rack_test` by default (no JS), `driven_by :selenium, using: :headless_chrome` only for the flows that need it, in a `before` of that file; one example per critical flow, asserting on visible text and the URL, never on markup structure.
 
 ### Model Specs
 
@@ -117,11 +120,24 @@ RSpec.describe OrderPolicy do
     it { is_expected.to permit_action(:fulfill) }
   end
 
+  context "another user" do
+    let(:user) { build_stubbed(:user) }
+    it { is_expected.to forbid_actions(%i[show fulfill]) }
+  end
+
   describe OrderPolicy::Scope do
     it "admin sees all orders" do  # Scope resolution queries the DB - create required
       admin = create(:user, :admin)
       own, other = create(:order, user: admin), create(:order)
       expect(described_class.new(admin, Order).resolve).to include(own, other)
+    end
+
+    it "owner sees only their own" do   # the case the Scope exists to enforce
+      owner = create(:user)
+      own, other = create(:order, user: owner), create(:order)
+      resolved = described_class.new(owner, Order).resolve
+      expect(resolved).to include(own)
+      expect(resolved).not_to include(other)
     end
   end
 end
@@ -198,7 +214,7 @@ build_stubbed(:order)
 create(:order, :confirmed, :with_order_items)
 ```
 
-Factory defaults must satisfy the model's callbacks - a `before_save` that recomputes from an association needs the association present before save (`after(:build) { |o| o.order_items << build(:order_item, order: o) }`, not `after(:create)`), or the default is overwritten and the record fails validation.
+Factory defaults must satisfy the model's callbacks - a `before_validation` that recomputes from an association needs the association present before save (`after(:build) { |o| o.order_items << build(:order_item) }`, not `after(:create)`), or the default is overwritten and the record fails validation; under `before_save` the same recompute runs after validation, so the record persists with the overwritten value and nothing raises.
 
 ### Sidekiq
 
@@ -218,7 +234,8 @@ RSpec.describe ShipmentNotificationJob, type: :job do
   # The negative assertion needs the positive control beside it: alone it passes if
   # `perform` is deleted, if the job never mails, or if the mailer uses deliver_later.
   # The job mails with deliver_now (a Sidekiq::Job is already the async boundary);
-  # a job that uses deliver_later is asserted with have_enqueued_mail instead.
+  # a job that uses deliver_later is asserted with have_enqueued_mail instead (needs the :test
+  # Active Job adapter in test.rb, which the generator sets - a :sidekiq test adapter makes it raise).
   it "is idempotent - a second run on the same order does not mail again" do
     expect { described_class.new.perform(order.id) }
       .to change { ActionMailer::Base.deliveries.count }.by(1)
@@ -276,13 +293,15 @@ Use transactional fixtures, not `database_cleaner`. System specs share the conne
 RSpec.configure { |c| c.use_transactional_fixtures = true }
 ```
 
-Transactional fixtures roll back the database, and nothing else. State living outside it leaks between examples in random order and produces the classic "passes alone, fails in suite": Sidekiq's `fake!` job array (`Sidekiq::Job.clear_all` in a `before`), any `Singleton` or class-level memo the app fills lazily (reset it, or freeze it at boot), `Rails.cache`, and constants mutated by hand (`const_set`; rspec-mocks' `stub_const` resets itself). Put the resets in `rails_helper.rb` once rather than per file.
+Transactional fixtures roll back the database, and nothing else. State living outside it leaks between examples in random order and produces the classic "passes alone, fails in suite": Sidekiq's `fake!` job array (`Sidekiq::Job.clear_all` in a `before`), any `Singleton` or class-level memo the app fills lazily (reset it through its own API, or `instance_variable_set(:@memo, nil)` when it has none, or freeze it at boot), `Rails.cache` (only when test.rb overrides the generated `:null_store` with a real store - then `Rails.cache.clear`), constants mutated by hand (`const_set`; rspec-mocks' `stub_const` resets itself), and Active Storage blobs on the disk service (`tmp/storage` - clear it in an `after(:suite)`). Put the resets in `rails_helper.rb` once rather than per file.
 
-`database_cleaner-active_record` with `:truncation` only for cross-connection state (e.g., a separate analytics DB).
+Attachments: upload with `fixture_file_upload("spec/fixtures/files/contract.pdf", "application/pdf")` (the `test` service in `config/storage.yml` is Disk), assert `record.files.attached?` and `blob.content_type`, and stub nothing - the magic-byte sniff and URL rules are `rails-active-storage-patterns`'. Greenfield suites first run `bin/rails g rspec:install` (`.rspec`, `spec_helper.rb`, `rails_helper.rb`) and add the `:test` gems before any spec is written.
+
+`database_cleaner-active_record` with `:truncation` only for writes from a connection the test process does not own (a separate process, a pool built outside the handler) - a second database in `database.yml` is already rolled back, since transactional fixtures open a transaction on every pool in the handler.
 
 ### Request Auth Helpers
 
-Pick one shape per project. Devise session:
+Pick one shape per surface (one helper name per shape). Devise session:
 
 ```ruby
 module RequestHelpers
@@ -314,7 +333,7 @@ module RequestHelpers
 end
 ```
 
-Mixing both in one suite hides which path the endpoint actually exercises.
+Mixing both behind one helper name hides which path the endpoint actually exercises.
 
 ### Time Helpers
 
@@ -328,7 +347,7 @@ it "expires after 7 days" do
 end
 ```
 
-Built-in - no `timecop` needed; auto-resets after each example.
+Built-in - no `timecop` needed; auto-resets after each example in Rails-typed groups (`type: :model`, `:request`, ...) - an untyped service spec adds `config.after { travel_back }` or gets a type.
 
 ### N+1 Assertions
 
@@ -386,7 +405,7 @@ Job specs follow the same boundary rule: the HTTP client wrapper (`app/clients/`
 
 ## Output Format
 
-One block per file written or reviewed, each followed by that file's code - including the support files, since a suite-wide rule (`Sidekiq::Testing.fake!`, the Devise include, leak resets) is unenforceable if `rails_helper.rb` and the factories have nowhere to land. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Blocks describe the rewritten specs, so target state lives there; a finding fixed inside a block is still numbered. A finding with no single target file - suite runtime, a leak that spans examples - is a numbered finding with no block. In either mode, a bug in the code under test found while writing or reviewing the spec is a numbered finding too, and the spec pins the fixed behaviour. A file that moves (controller spec to request spec) is one block keyed on the target path, naming the old one. `Examples:` counts examples actually written.
+One block per file written or reviewed, each followed by that file's code - including the support files, since a suite-wide rule (`Sidekiq::Testing.fake!`, the Devise include, leak resets) is unenforceable if `rails_helper.rb` and the factories have nowhere to land. A Gemfile change (a missing `pundit-matchers`, a `timecop` to drop) is a numbered finding with no block. On a spec block `Factories:` names the factories the spec uses, with traits; on Factory and Support blocks it is `n/a`. A gem that does I/O or detection (Marcel, an SDK) is a boundary: stub it, or feed it a real fixture file. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: blocks hold corrected values only, and a pre-existing violation the change touches is still a numbered finding. A finding with no single target file - suite runtime, a leak that spans examples - is a numbered finding with no block. In either mode, a bug in the code under test found while writing or reviewing the spec is a numbered finding too, and the spec pins the fixed behaviour. A file that moves (controller spec to request spec) is one block keyed on the target path, naming the old one. `Examples:` counts examples actually written.
 
 ```
 Test Type: {Model | Service | Policy | Request | Job | Client (HTTP wrapper unit spec) | System | Rake | Support (rails_helper, shared contexts) | Factory}
@@ -395,7 +414,7 @@ File: {spec/{type}/{path}_spec.rb | spec/factories/{name}.rb | spec/rails_helper
 
 Contexts: {happy path, not found, forbidden, validation failure, ... | n/a (Factory, Support)}
 
-Factories: {name with traits | none defined yet - list the ones this spec needs | model absent - GAP | n/a (Factory, Support)}
+Factories: {name with traits | none defined yet - the ones this run writes, by name | model absent - GAP | n/a (Factory, Support)}
 
 Examples: {count | n/a (Factory, Support)}
 ```

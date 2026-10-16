@@ -21,7 +21,7 @@ user-invocable: false
 
 - Each AR-calling thread checks out one connection - count threads, not pods.
 - Per-process `pool == max_threads_in_that_process` (+ executor/Cable extras when `load_async` / ActionCable share the process - see Headroom; a Solid Queue worker adds 2).
-- Deployment-wide sum stays under DB `max_connections` with headroom: 15% only when the deploy peak is bounded and has been observed (a surge knob exists and someone measured the overlap); 25% otherwise - unmeasured, no surge knob (Capistrano, ASG), or an instance shared with analytics. `available_for_app = max_connections * (1 - headroom) - reserved_for_cli - reserved_for_ops`, and both steady state *and* deploy peak must fit under it.
+- Deployment-wide sum stays under DB `max_connections` with headroom: 15% only when the deploy peak is bounded and has been observed (a surge knob exists - `maxSurge`, Kamal `boot: limit:` - and someone measured the overlap); 25% otherwise - unmeasured, no surge knob (Capistrano, ASG), or an instance shared with analytics or another application. A neighbouring application on the same server is subtracted explicitly: its budget (or its measured draw) comes off `max_connections` before the headroom, not out of it. `available_for_app = max_connections * (1 - headroom) - reserved_for_cli - reserved_for_ops`, and both steady state *and* deploy peak must fit under it.
 - Rolling deploys hold old + new pool simultaneously - size for the peak.
 - A long-running query holds the connection for its full duration.
 - Never tune `pool` without re-deriving the deployment-wide total.
@@ -98,7 +98,7 @@ Mitigations, ordered for large fleets ("backend process" = OS process holding di
 
 1. **Connection multiplexer** in front of the DB - essentially mandatory above ~200 backend processes: **RDS Proxy** (managed) or **ProxySQL** (self-hosted)
 2. **Lower per-process thread counts** - `threads=5` to `threads=3` cuts pool footprint by 40%
-3. **`maxSurge=0`** in Kubernetes (with `maxUnavailable >= 1`, which Kubernetes requires) - pods are replaced one at a time, so overlap is bounded to about `maxUnavailable` pods' connections while they drain; trades serving capacity during the rollout for connection budget
+3. **`maxSurge=0`** in Kubernetes (with `maxUnavailable >= 1`, which Kubernetes requires) - pods are replaced `maxUnavailable` at a time, so overlap is bounded to about that many pods' connections while they drain; trades serving capacity during the rollout for connection budget
 4. **Kamal**: it boots the new container before stopping the old one on each host, so overlap is bounded by how many hosts deploy at once - cap it with `boot: limit:` (and `boot: wait:`) in `config/deploy.yml`
 5. **Size the DB instance class for peak**, not steady-state
 
@@ -167,7 +167,7 @@ Active Record discards parent connections in forked children automatically (Rail
 
 ## Output Format
 
-A question the request asks ("is it safe?", "do we need a proxy?") gets a one-line answer above the blocks. `Available for app` gates steady state and deploy peak alike. In `Executor / Cable extras`, provisioned equal to required is correct, provisioned below required is the GAP that causes timeouts, provisioned above required is a mis-sized pool. `Worker tier` names any job that holds a connection for minutes. `Cron / rake` counts schedules that overlap in time together; ad-hoc console and ops live in Reserved. `Deploy peak` is ~2x when the rollout has no surge knob (Capistrano, ASG, Kamal) or no manifest is in scope. In `Result`, the mis-sized-pool value combines with any outcome, and the multiplexer threshold is ~200 backend processes at peak. One block per database server (a read replica on its own host is its own budget; a documented replica no process connects to gets one line, no block); logical databases sharing a server (queue, cable, cache) fold into its block, each tier line summing every pool that tier's processes hold on it. A proposal (N pods -> M) gets one block per state, the as-configured state first when its pools are mis-sized. Two independent symptoms get two `Result:` lines. A field whose evidence is outside the reviewed files is `not in evidence` plus the file to read.
+A question the request asks ("is it safe?", "do we need a proxy?") gets a one-line answer above the blocks. The Gemfile decides the worker tier's shape (`sidekiq` or `solid_queue`); a README that says otherwise is a one-line contradiction above the blocks. A build request with no `config/puma.rb` or `config/database.yml` yet assumes the generator defaults (`threads 3`, `WEB_CONCURRENCY` 2 per pod), states the assumption, and follows the blocks with the `puma.rb` and `database.yml` lines the sizing implies in one fenced block. `Available for app` gates steady state and deploy peak alike. In `Executor / Cable extras`, provisioned equal to required is correct, provisioned below required is the GAP that causes timeouts, provisioned above required is a mis-sized pool. `Worker tier` names any job that holds a connection for minutes. `Cron / rake` counts schedules that overlap in time together; ad-hoc console and ops live in Reserved. `Deploy peak` is ~2x when the rollout has no surge knob (Capistrano, ASG, Kamal without `boot: limit:`) or no manifest is in scope - a proposed tier with no manifest takes ~2x on its own while existing tiers keep the surge form. In `Result`, the mis-sized-pool value combines with any outcome, and the multiplexer threshold is ~200 backend processes at peak; a connection held across an external call (an HTTP request inside a transaction or `lock!`) is its own `Result` value, since every stalled thread holds one connection for the partner's timeout. One block per database server (a read replica on its own host is its own budget; a documented replica no process connects to gets one line, no block); logical databases sharing a server (queue, cable, cache) fold into its block, each tier line summing every pool that tier's processes hold on it. A proposal (N pods -> M) gets one block per state, the as-configured state first when its pools are mis-sized. Two independent symptoms get two `Result:` lines. A field whose evidence is outside the reviewed files is `not in evidence` plus the file to read.
 
 ```
 Database: MySQL on {RDS / Aurora / self-hosted, instance class}
@@ -178,21 +178,21 @@ Headroom target: {15% bounded and measured deploy peak | 25% unmeasured, unbound
 
 Reserved (CLI + ops): {N}
 
-Available for app: {max_connections x (1 - headroom) - reserved} = {value}
+Available for app: {(max_connections - neighbour) x (1 - headroom) - reserved} = {value}; neighbour = {0 - no other application or schema on this server | N - its budget or measured draw (`performance_schema.threads` by user or schema) | not in evidence - name where to measure, and state the break-even draw}
 
 Web tier: {pods} x {max(workers, 1)} x {threads} = {total}, pool = {N}{ + {N} per other logical database on this server}
 
 Executor / Cable extras: per process {pool - threads} provisioned vs {executor_concurrency + Cable threads} required; fleet {pods x max(workers, 1) x required}
 
-Worker tier: {pods} x {processes} x {concurrency} = {total}, pool = {N}{ + {N} per other logical database on this server}{ + Solid Queue supervisor / dispatcher connections}
+Worker tier: {pods} x {processes} x {concurrency | threads + 2 (Solid Queue)} = {total}, pool = {N}{ + {N} per other logical database on this server}{ + Solid Queue supervisor / dispatcher connections}
 
 Cron / rake: {peak parallel scheduled app processes} = {total}
 
 Steady-state total: {web + extras fleet + worker + cron}
 
-Deploy peak (rolling): {steady x (1 + maxSurge) | steady x (1 + maxSurge) + draining pods | ~2x full overlap | measured}
+Deploy peak (rolling): {steady x (1 + maxSurge) | steady x (1 + maxSurge) + draining pods | steady + booting hosts' share (Kamal boot: limit) | ~2x full overlap | measured} - computed per tier when tiers differ in surge, then summed
 
-Result: {within budget | within budget, multiplexer not yet warranted | within budget on paper, symptom unexplained - suspects in check order | a per-process pool is mis-sized - {tier} pool {N} -> {N} | exceeds by {N} - mitigation: {raise max_connections or larger instance | multiplexer (RDS Proxy / ProxySQL) | reduce threads | maxSurge=0}}
+Result: {within budget | within budget, multiplexer not yet warranted | within budget on paper, symptom unexplained - suspects in check order | within budget, connections held across an external call - {call site}; fix: move the call out of the transaction / lock and bound its timeout (`rails-http-client-patterns`) | a per-process pool is mis-sized - {tier} pool {N} -> {N} | exceeds by {N} - mitigation: {raise max_connections or larger instance | multiplexer (RDS Proxy / ProxySQL) | reduce threads | maxSurge=0 | Kamal boot: limit}}
 ```
 
 ## Avoid

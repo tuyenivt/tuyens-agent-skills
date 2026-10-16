@@ -9,7 +9,7 @@ user-invocable: false
 
 > Load `Use skill: stack-detect` first to determine the project stack.
 
-For template-layer XSS (`sanitize` allowlists, engine escape operators), see `rails-view-templates`. For upload validation / magic-byte sniffing, see `rails-active-storage-patterns`.
+For template-layer XSS (`sanitize` allowlists, engine escape operators), see `rails-view-templates`. For upload validation / magic-byte sniffing and blob URL exposure or expiry, see `rails-active-storage-patterns`. A friendly-500 `rescue_from StandardError` that hides bugs is `rails-exception-handling`'s.
 
 ## When to Use
 
@@ -48,7 +48,7 @@ current_user.orders.new(order_params)
 
 Arrays need explicit brackets; omitting them silently drops input. When the client must reference a FK (e.g., `:product_id`), validate via `policy_scope` before save.
 
-`params.expect` (Rails 8.0+) raises 400 on type mismatch and resists hash-confusion; prefer on new code:
+`params.expect` (Rails 8.0+ - gate on the detected Rails version; `permit` below) raises 400 on type mismatch and resists hash-confusion; prefer on new code:
 
 ```ruby
 params.expect(order: [:total, :status, items: [[:product_id, :quantity]]])
@@ -75,7 +75,7 @@ JWT for APIs: default to Devise + `:jwt_authenticatable` with a revocation strat
 class OrderPolicy < ApplicationPolicy
   def show?    = user.admin? || record.user_id == user.id
   def fulfill? = user.admin?
-  def update?  = record.user_id == user.id && record.pending?
+  def update?  = record.user_id == user.id
 
   class Scope < Scope
     def resolve
@@ -86,12 +86,18 @@ end
 
 class ApplicationController < ActionController::API   # ActionController::Base for server-rendered apps
   include Pundit::Authorization
-  after_action :verify_authorized,    except: :index  # index authorizes via policy_scope instead
-  after_action :verify_policy_scoped, only:   :index
+  # one callback branching on action_name: `except: :index` / `only: :index` on the base class raise
+  # AbstractController::ActionNotFound in every subclass without an index action once
+  # raise_on_missing_callback_actions is on (true in generated dev/test since 7.1)
+  after_action :verify_pundit_authorization
 
   rescue_from Pundit::NotAuthorizedError do
     render json: { error: "Forbidden" }, status: :forbidden
   end
+
+  private
+
+  def verify_pundit_authorization = action_name == "index" ? verify_policy_scoped : verify_authorized
 end
 ```
 
@@ -99,7 +105,7 @@ Policies that only check `user.admin?` (no owner clause) silently lock owners ou
 
 IDOR: lookups on user-supplied IDs go through `policy_scope(Model).find(params[:id])` (404 on foreign records) or `find` + `authorize` (403). Never bare `Model.find(params[:id])` followed by render. Response exposure is part of authorization: render through a serializer field allowlist, never `render json: @record` raw.
 
-The same rule governs an ActionCable `subscribed` block, which is a lookup on a client-supplied identifier by another name - stream from an authorized object, never from a raw `params[:id]`. Channel actions (`receive`, custom methods) are unauthenticated RPC unless you check them individually; `subscribed` authorizes the subscription, not what the socket may then ask for.
+The same rule governs an ActionCable `subscribed` block, which is a lookup on a client-supplied identifier by another name - stream from an authorized object, never from a raw `params[:id]`. Channel actions (`receive`, custom methods) are unauthenticated RPC unless you check them individually; `subscribed` authorizes the subscription, not what the socket may then ask for. An over-broad `allowed_request_origins` (`/.*/`, an unanchored regexp, a wildcard list) or `disable_request_forgery_protection = true` is the same `Channel Authorization` pattern, risk `cross-site request forgery`; left unset, Action Cable accepts same-origin only (`allow_same_origin_as_host`), which is compliant.
 
 When the credential *is* the link - an emailed tracking URL, a document download, any anonymous holder-of-token access - use Rails' own signed ids rather than inventing a scheme: `record.signed_id(expires_in: 7.days, purpose: :tracking)` and `Model.find_signed!(token, purpose: :tracking)`. The purpose scopes the token to one use case (a `:tracking` token is refused by `find_signed!` for any other purpose), the expiry bounds forwarding, and the signature makes ids unguessable without a lookup table; the token stays replayable until it expires - single use needs your own nonce table. Authorization for such a request is the token verification itself - there is no `current_user` to `authorize` against, and that is the one legitimate exception to the rule above.
 
@@ -126,7 +132,7 @@ Rack::Attack.throttle("api/ip", limit: 300, period: 5.minutes) { |req| req.ip if
 Rack::Attack.throttle("logins/email_ip", limit: 5, period: 20.seconds) do |req|
   next unless req.path == "/api/v1/login" && req.post?
   parsed = (JSON.parse(req.body.read) rescue nil)   # req.params is blind to a JSON body
-  req.body.rewind
+  req.body&.rewind                                   # Rack 3.1 allows a nil input
   email = parsed.is_a?(Hash) ? parsed["email"].to_s.downcase : ""
   "#{req.ip}:#{email}"
 end
@@ -134,7 +140,7 @@ end
 
 Login throttles must key on IP **and** submitted email - IP-only is bypassed by credential stuffing via rotating proxies. The body parse above is not optional on a JSON endpoint: `Rack::Request#params` merges query string and form-encoded body only, so with `req.params['email']` the discriminator silently collapses to `"#{ip}:"` and you are back to the IP-only throttle this rule exists to prevent.
 
-Counters are only as shared as the cache behind them. Inside Rails, Rack::Attack defaults its store to `Rails.cache`, so the failure is subtler than "per-process": a file store does not span hosts and `:memory_store` does not span processes. Point it somewhere genuinely shared, and pass an *instance* - `Rack::Attack.cache.store = Redis` assigns the class, which `StoreProxy` does not recognise, and the first request raises `NoMethodError` and takes throttling down with it:
+Counters are only as shared as the cache behind them. Inside Rails, Rack::Attack defaults its store to `Rails.cache`, so the failure is subtler than "per-process": a file store does not span hosts and `:memory_store` does not span processes. Point it somewhere genuinely shared, and pass an *instance* - `Rack::Attack.cache.store = Redis` assigns the class, which responds to none of the counter methods, so every throttled request raises `Rack::Attack::MisconfiguredStoreError` (a 500 across the app, not just a lost throttle):
 
 ```ruby
 Rack::Attack.cache.store = ActiveSupport::Cache::RedisCacheStore.new(url: ENV["REDIS_URL"])
@@ -153,7 +159,7 @@ def safe_return_to
 end
 ```
 
-Dynamic in-app targets (`/orders/42`) that no enumerable list can express: require an app-relative path - `to.match?(%r{\A/[^/\\]})` (single leading `/`; rejecting a second `/` or `\` kills the protocol-relative `//evil.com` and browser-normalized `/\evil.com` bypasses).
+Dynamic in-app targets (`/orders/42`) that no enumerable list can express: require an app-relative path - `to.match?(%r{\A/(?![/\\])[^\x00-\x20\\]*\z})` (single leading `/`; rejecting a second `/` or `\` kills the protocol-relative `//evil.com` and browser-normalized `/\evil.com` bypasses, and rejecting control and whitespace characters anywhere kills `/\t/evil.com`, which browsers strip to `//evil.com`).
 
 ### Host Authorization and Transport
 
@@ -164,7 +170,27 @@ config.hosts << ".example.com"        # leading dot = this host and its subdomai
 
 Rails anchors both forms and tolerates a port on both: `".example.com"` becomes `/\A(.+\.)?example\.com(?::\d+)?\z/i` (a bare `"app.example.com"` matches that host only), and a Regexp is wrapped by `sanitize_regexp` into `/\A...(?::\d+)?\z/` - case-sensitive unless you add `/i` yourself. So a trailing-garbage `Host: www.example.com.evil.com` is rejected either way. The trap runs the other direction - because the anchoring is automatic, a Regexp must match the *whole* hostname (`/example\.com/` will not match `www.example.com`; write `/.*\.example\.com/`), and one left open in the middle still matches too much: `/.*example\.com/` accepts `evilexample.com`. Prefer the String form for that reason, not for anchoring.
 
-Blocks Host header injection; mismatched requests get 403. `config.hosts.clear` disables the protection entirely - it is never the fix for a host mismatch.
+Blocks Host header injection; mismatched requests get 403. `config.hosts.clear` disables the protection entirely - it is never the fix for a host mismatch. `config.hosts` absent from `production.rb` means every Host is accepted (Medium); take the hostname from a deploy manifest or ingress, or write `Not in evidence:` naming it, and exclude the health path (`config.host_authorization = { exclude: ->(req) { req.path == "/up" } }`) so the load balancer's probe is not 403'd.
+
+### Secrets in Client Payloads and Outbound Authentication
+
+```erb
+<%# Bad - a server-side key rendered into the page %>
+<script>window.stripeSecret = "<%= Rails.application.credentials.dig(:stripe, :secret_key) %>"</script>
+
+<%# Good - only the publishable key, and only on the page that needs it %>
+<meta name="stripe-key" content="<%= Rails.application.credentials.dig(:stripe, :publishable_key) %>">
+```
+
+```ruby
+# Bad - an unauthenticated outbound call to a partner, host from user input
+Faraday.get("#{params[:callback_url]}/status")
+
+# Good - pinned host, bearer from credentials, HMAC over the body when the partner verifies one
+PartnerClient.new.status(ref)   # Faraday.new(url: PARTNER_HOST) + Authorization: Bearer <credentials.partner_token>
+```
+
+Grep `credentials` / `ENV[` in `app/views`, `app/javascript` and serializers for the first; grep `Faraday`, `Net::HTTP`, `URI(` outside `app/clients/` for the second.
 
 `config.force_ssl = true` in production (HTTPS redirect + HSTS + `secure` cookie flag). Disabling it for a proxy issue is solved with `config.assume_ssl`/forwarded headers, not by turning TLS enforcement off.
 
@@ -185,7 +211,7 @@ EDITOR=vim rails credentials:edit --environment production
 Rails.application.credentials.api_key!       # raises if missing
 ```
 
-A secret found hardcoded is already leaked (git history) - moving it into credentials is half the fix; rotate it at the provider.
+A secret found hardcoded - in code or in a config file such as `storage.yml` or `database.yml` - is already leaked (git history) - moving it into credentials is half the fix; rotate it at the provider.
 
 ### Webhook Signature Verification
 
@@ -224,12 +250,12 @@ Existing inline scripts: migrate via nonces (`javascript_tag nonce: true`) rathe
 
 ## Output Format
 
-One block per finding (reviews and audits emit several) or per pattern applied (build mode). Both modes fill every field; only two shift meaning. `Severity` in build mode rates the risk the change closes, not a current exposure. `Change` is the applied diff in build mode and the recommended remediation in review or audit mode - which is where target state lives, so no separate section is written. An audit walks a whole surface and opens with the `Posture:` line; a review takes the named files, and everything in a named file is in scope. A named surface with no finding gets one line - `Clean: <surface> - <what was checked>` - and no block. One block per distinct code-level fix - findings sharing one root cause (a missing `verify_authorized`) merge into one block listing the affected actions; `IDOR` is the unscoped lookup, `Pundit` the policy or scope wiring, one block each when both are missing. An observation owned by a sibling skill (template escaping, upload validation) gets one line naming the skill and no block; a fact outside the read set is `not in evidence` plus the file.
+One block per finding (reviews and audits emit several) or per pattern applied (build mode). Both modes fill every field; only two shift meaning. `Severity` in build mode rates the risk the change closes, not a current exposure. `Change` is the applied diff in build mode and the recommended remediation in review or audit mode - which is where target state lives, so no separate section is written. An audit walks a whole surface and opens with the `Posture:` line; a review takes the named files, and everything in a named file is in scope. A named surface with no finding gets one line - `Clean: <surface> - <what was checked>` - and no block. One block per distinct code-level fix - findings sharing one root cause (a missing `verify_authorized`) merge into one block listing the affected actions; `IDOR` is the unscoped lookup, `Pundit` the policy or scope wiring, one block each when both are missing. An observation owned by a sibling skill (template escaping, upload validation, blob URL expiry) gets one line naming the skill and no block; a fact outside the read set gets one line, `Not in evidence: <fact> - read <file>`, and no block. Blocks run Critical first; `Clean:` lines follow the blocks.
 
 ```
 Posture: {one line, audit mode only, once before the blocks}
 
-Pattern: {Strong Params | Authentication | Pundit | CSRF | Rate Limit | Credentials | SQLi | IDOR | Open Redirect | Cookies | CSP | Host Auth | Transport | Webhook Signature | Channel Authorization | Secret in Client Payload | Signed URL / Object Storage | Outbound Call Authentication | Error Response Leakage}
+Pattern: {Strong Params | Authentication | Pundit | CSRF | Rate Limit | Credentials (code or any config file) | SQLi | IDOR (unscoped lookup, or a raw-record render that leaks columns) | Open Redirect | Cookies | CSP | Host Auth | Transport | Webhook Signature | Channel Authorization (subscribed, actions, origins) | Secret in Client Payload | Signed ID / Holder-of-Token Link | Outbound Call Authentication | Error Response Leakage}
 
 Severity: {Critical - exploitable now | High - exploitable with effort | Medium - hardening, including fail-closed misconfiguration (a too-narrow host regexp, a nonce directive that breaks styles) | Low - defense in depth}
 

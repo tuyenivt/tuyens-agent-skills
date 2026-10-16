@@ -25,7 +25,7 @@ Depth (`standard` (default) | `deep`) and scope (`Core` | `+Perf` | `+Sec` | `+O
 
 **Auto-escalate scope on Rails signals:**
 
-- **+Sec**: file upload (Active Storage/Shrine/CarrierWave), Devise/Pundit/CanCanCan config, `params.permit` changes, raw SQL, secrets, Sidekiq taking user input
+- **+Sec**: file upload (Active Storage/Shrine/CarrierWave), Devise/Pundit/CanCanCan config, `params.permit` changes, raw SQL, secrets, Sidekiq taking user input, a new action with no authentication filter
 - **+Perf**: `db/migrate/`, `add_index`, new `.where`/`.order`/scopes, new payload endpoints, loops hitting DB or HTTP
 - **+Obs**: log/notifications/tracer config, a new external dependency, or a new service / ActiveJob / Sidekiq class whose diff adds no instrumentation (no structured log or event)
 - **+Rel**: new Faraday/`Net::HTTP` client without timeout, `stoplight`/`retriable` config, Sidekiq job without an idempotency guard, external call or `.perform_async` inside a transaction, unbounded `.all.each`, missing `after_commit` dispatch
@@ -47,7 +47,7 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect`. Accept pre-detected from parent. If not Rails, redirect to `/task-code-review`. Versions: `stack-detect` carries them only when `## Tech Stack` declares them - otherwise read Ruby / Rails from `.ruby-version` / `Gemfile.lock` and the MySQL patch level from ops docs or the server, else `unknown`; `rails-migration-safety`'s INSTANT / functional-index / CHECK gates read that patch level.
+Use skill: `stack-detect`. Accept pre-detected from parent. Where the project's declared stack and its code disagree, record what the code does and note the divergence. If not Rails, redirect to `/task-code-review`. Versions: `stack-detect` carries them only when `## Tech Stack` declares them - otherwise read Ruby / Rails from `.ruby-version` / `Gemfile.lock` and the MySQL patch level from ops docs or the server, else `unknown`; `rails-migration-safety`'s INSTANT / functional-index / CHECK gates read that patch level.
 
 ### Step 3 - Resolve the Diff
 
@@ -79,7 +79,7 @@ Otherwise (valid prior checkpoint present):
 **Step 3.5a - Auto-fetch the head branch.** Only when a valid prior checkpoint exists, refresh the remote-tracking ref for the reader's reference:
 
 ```bash
-upstream=$(git rev-parse --abbrev-ref --symbolic-full-name "<head_ref>@{u}" 2>/dev/null)
+upstream=$(git rev-parse --abbrev-ref --symbolic-full-name "<branch>@{u}" 2>/dev/null)
 ```
 
 If `upstream` resolves to `<remote>/<branch>` form, split and run:
@@ -94,7 +94,7 @@ No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, 
 
 | Condition                                                              | Decision                                                                                                                            |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `prior_checkpoint.head_sha == current_head_sha` and `prior_checkpoint.base_sha == current_base_sha`, and the checkpoint's `scope` / `depth` cover the invocation's (covering = superset: `full` covers every scope, any scope covers `core-only`, `deep` covers `standard`; a `core-only` checkpoint covers an unflagged invocation - an unflagged run with no firing signal writes `core-only` too, so re-covering suppressed signals takes the lens flags; map the invocation's flags to the writer enum per Step 10 before comparing) | **No-op.** Print `No new commits on <branch> since prior review at <sha_short>. Prior report unchanged.` (`<sha_short>` = the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
+| `prior_checkpoint.head_sha == current_head_sha`, `prior_checkpoint.base_ref == base_ref` and `prior_checkpoint.base_sha == current_base_sha`, and the checkpoint's `scope` / `depth` cover the invocation's (covering = superset: `full` covers every scope, any scope covers `core-only`, `deep` covers `standard`; a `core-only` checkpoint covers an unflagged invocation - an unflagged run with no firing signal writes `core-only` too, so re-covering suppressed signals takes the lens flags; map the invocation's flags to the writer enum per Step 10 before comparing) | **No-op.** Print `No new commits on <branch> since prior review at <sha_short>. Prior report unchanged.` (`<sha_short>` = the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
 | `prior_checkpoint.head_sha == current_head_sha`, but the invocation's scope or depth is not covered | `round = prior.round + 1`. Note in Summary: `Same head as round <prior.round>; re-review for expanded <scope\|depth>.` |
 | `git merge-base --is-ancestor <prior_checkpoint.head_sha> <current_head_sha>` fails (prior SHA unreachable) | `round = prior.round + 1`. Note in Summary: `Prior checkpoint unreachable - history rewritten.`      |
 | `prior_checkpoint.base_sha != current_base_sha`                        | `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round>.`       |
@@ -105,7 +105,7 @@ Apply the first matching row's decision; when several rows match, emit every mat
 
 **Step 3.5c - Scope expansion handling.**
 
-If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `core-only`, round 2 is `full`), the newly-added scopes have no prior findings to reconcile. Record in Summary: `Scope expanded round <N>: +<list>.`
+If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `core-only`, round 2 is `full`), the newly-added scopes have no prior findings to reconcile. Record in Summary, once Step 4 has resolved this round's scope: `Scope expanded round <N>: +<list>.`
 
 The reconciliation table (when emitted) only covers findings whose scope was active in the prior round.
 
@@ -126,7 +126,7 @@ Use skills: `review-pr-risk`, `review-blast-radius`. State **Risk Level** and **
 | Observed                              | Annotation                                         |
 | ------------------------------------- | -------------------------------------------------- |
 | No user flag, signals fired           | `auto-escalated from Core; signals: <list>`        |
-| User flag, further categories fired   | `user-flagged; signals also firing: <list>`        |
+| User flag, further categories fired   | `user-flagged; signals also firing: <list>` (the categories beyond the flagged ones) |
 | `core-only`, signals fired            | `core-only; suppressed signals: <list>`            |
 | Otherwise                             | none                                               |
 
@@ -136,7 +136,7 @@ Every suppressed signal also emits a `[Delegate]` Next Step tagged `[+<Lens>]` n
 
 ### Step 5 - Rails Correctness
 
-Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (strong params, authz, IDOR, mass assignment, AR-in-API leakage) belong to `task-rails-review-security`; an inbound `Idempotency-Key` gap is the API contract gate's (below, via `backend-api-guidelines`), never deferred. When +Sec IS in scope, core stays silent on the security idioms - the subagent owns them. When +Sec is not in scope, raise only the most severe as one finding ending "verify via `/task-rails-review-security`", labelled per Feedback Labels (an exploitable hole on a changed path is `[Must]`) - one finding for the whole deferred lens, not one per checklist family; the rest are not written; the lens owns them. Job idempotency guards, retries, timeouts, unbounded iteration, and pool/queue saturation follow the same pattern with +Rel: the reliability subagent owns them when +Rel is in scope; otherwise raise only the most severe as one finding + "verify via `/task-rails-review-reliability`", labelled per Feedback Labels. Dual-natured findings (a TOCTOU balance check is both a race and an authz-adjacent hole) are filed by core for the correctness dimension; the merge unifies.
+Logical correctness, state-integrity, transaction boundaries, backward compat. Scope strictly to **Rails-specific correctness** - security idioms (authentication wiring, strong params, authz, IDOR, mass assignment, AR-in-API leakage) belong to `task-rails-review-security`; an inbound `Idempotency-Key` gap is the API contract gate's (below, via `backend-api-guidelines`), never deferred. When +Sec IS in scope, core stays silent on the security idioms - the subagent owns them. When +Sec is not in scope, raise only the most severe as one finding ending "verify via `/task-rails-review-security`", labelled per Feedback Labels (an exploitable hole on a changed path is `[Must]`) - one finding for the whole deferred lens, not one per checklist family; the rest are not written; the lens owns them. Job idempotency guards, retries, timeouts, unbounded iteration, and pool/queue saturation follow the same pattern with +Rel: the reliability subagent owns them when +Rel is in scope; otherwise raise only the most severe as one finding + "verify via `/task-rails-review-reliability`", labelled per Feedback Labels. Dual-natured findings (a TOCTOU balance check is both a race and an authz-adjacent hole) are filed by core for the correctness dimension; the merge unifies.
 
 Atomic skills - load with `Use skill:` each one whose area the PR touches:
 
@@ -149,7 +149,7 @@ Atomic skills - load with `Use skill:` each one whose area the PR touches:
 - `rails-exception-handling` (rescue logic, new error classes, Sidekiq error flow)
 - `rails-view-templates` (diffed `.erb`/`.haml`/`.slim` templates)
 
-`deep` depth in core steps: read every listed atomic skill (not only touched-area ones) and each touched file in full plus the code the diff calls into before judging; apply each atomic where that reading finds its surface, and drop one with none silently, without a consulted-clean note - the review stays PR-shaped, never a repo sweep.
+`deep` depth in core steps: read every atomic skill listed above (not only touched-area ones; each lens keeps its own load gates) and each touched file in full plus the code the diff calls into before judging; apply each atomic where that reading finds its surface, and drop one with none silently, without a consulted-clean note - the review stays PR-shaped, never a repo sweep.
 
 Checks:
 
@@ -159,7 +159,7 @@ Checks:
 - [ ] **Bulk operations**: partial-failure path defined; transaction wraps one chunk, not whole run or single row
 - [ ] **Concurrency**: no class-level mutable state; a per-request zone set with `Time.use_zone` in an `around_action`, not a bare `Time.zone=` that leaks into the thread's next request; race-prone updates use row-level lock or `with_advisory_lock`
 
-**Test coverage** (named finding, not buried): logic added without RSpec coverage -> `[Recommend]`; escalate to `[Must]` on critical paths: auth, authz, money/billing, multi-record transactions, state machines, data-mutating Sidekiq jobs, migrations changing column semantics.
+**Test coverage** (named finding, not buried): logic added without spec or Minitest coverage -> `[Recommend]`; escalate to `[Must]` on critical paths: auth, authz, money/billing, multi-record transactions, state machines, data-mutating Sidekiq jobs, migrations changing column semantics.
 
 **Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
 
@@ -174,7 +174,7 @@ Checks:
 
 **API contract PRs** - run when the diff carries a contract-change signal: a removed / renamed / retyped serializer attribute, a changed rendered status code, a newly `permit`-ted required field or tightened validation, a new public route in a `/v1/`-versioned or external API namespace, a `render json:` on a raw AR model with no serializer, or an rswag / `openapi.yaml` edit. Use skills: `backend-api-guidelines`, `ops-backward-compatibility`:
 
-- [ ] Breaking change (removed/renamed/retyped attribute, tightened validation, newly required param, changed status or error shape) carries a version bump or expand-contract plan; "no external callers" backed by a search; when consumption is unknown, treat a `/v1/`-versioned or spec-published surface as externally consumed
+- [ ] Breaking change (removed/renamed/retyped attribute, tightened validation, newly required param, changed status or error shape) carries a version bump or expand-contract plan; "no external callers" backed by a search; when consumption is unknown, treat a `/v1/`-versioned or spec-published surface as externally consumed and an unversioned, unpublished `/api/` namespace as internal unless the request or commits say otherwise; a repo-wide convention of rendering raw models does not lower the tier
 - [ ] Responses rendered through serializers, never a raw AR model; errors follow RFC 9457; collections paginated
 - [ ] rswag / `openapi.yaml` matches the code - changed endpoints, schemas, status codes, and error shapes present and accurate
 - [ ] Each finding names who breaks and how (for a leaked AR model: what it exposes and who couples to it). These tiers replace `backend-api-guidelines`' own: High -> `[Must]` = unversioned breaking change to an externally consumed contract, a raw AR model rendered on an externally consumed or versioned surface, a write endpoint whose effect duplicates on retry with no `Idempotency-Key` support, or missing input validation on an external surface - a contract-shape finding this gate files itself (the Step 9.3 merge dedups with +Sec, per the dual-natured rule); Medium -> `[Recommend]` = internal breaking change with no coordinated-deploy note, inconsistent status/error envelope, unpaginated unbounded collection, rswag / `openapi.yaml` out of sync with the code; Low = naming drift with no consumer impact - below the reporting bar, write nothing, except an atomic-rated Low that names a consumer harm (a deprecated endpoint with no `Deprecation`/`Sunset` header), which publishes as `[Recommend]`. A raw AR model on an internal-only, unversioned surface follows the Step 5 security carve-out instead (the single deferred finding + verify note when +Sec is absent; core silent when +Sec runs); one finding per `file:line` either way
@@ -184,7 +184,7 @@ Checks:
 Use skill: `architecture-guardrail`.
 
 - [ ] **Layering**: presentation -> service/domain -> data. No business logic in controllers; no `Net::HTTP` in models; no view rendering in services
-- [ ] **Service discipline**: controller actions > 5 orchestration lines extracted; services follow `rails-service-objects` (instance `#call`; `Result` where the caller branches on an expected failure) - a service wrapping trivial logic is Step 7's finding, not a missing one here
+- [ ] **Service discipline**: extraction follows `rails-service-objects`' bar (2+ models or an external API plus a transaction boundary, or 3+ call sites - never line count); services follow its shape (instance `#call`; `Result` where the caller branches on an expected failure) - a service below that bar is Step 7's finding, not a missing one here
 - [ ] **Concern hygiene**: `app/**/concerns/*.rb` role-based (`Sluggable`, `SoftDeletable`), not grab-bags
 - [ ] **Zeitwerk**: file paths match constant names; no `require_relative` inside `app/`
 - [ ] **Namespace / engine boundaries**: cross-namespace access via service objects, not direct model reach-in
@@ -195,8 +195,8 @@ For multi-service PRs, also Use skill: `ops-backward-compatibility` for API cont
 
 ### Step 7 - Code Hygiene
 
-- Use skill: `complexity-review` - cyclomatic/cognitive complexity; redundant mapping layers (`User -> Decorator -> Presenter -> Serializer`)
-- Use skill: `rails-overengineering-review` - validations duplicating DB constraints, defensive guards on impossible states, services/`Result`/base classes wrapping trivial logic; its findings join the set (Feedback Labels), its per-category `Considered, not flagged` footer lines go to `## Maintainability Notes`
+- Use skill: `complexity-review` - cyclomatic/cognitive complexity, method length, nesting
+- Use skill: `rails-overengineering-review` - validations duplicating DB constraints, defensive guards on impossible states, services/`Result`/base classes wrapping trivial logic, redundant indirection (`User -> Decorator -> Presenter -> Serializer`); its findings join the set (Feedback Labels), its per-category `Considered, not flagged` footer lines go to `## Maintainability Notes`
 - [ ] **Test verbosity**: setup > 30 lines per example; `let!` chains replaceable by a FactoryBot trait; matchers reimplemented when shoulda-matchers exist
 
 ### Step 8 - Maintainability
@@ -204,7 +204,7 @@ For multi-service PRs, also Use skill: `ops-backward-compatibility` for API cont
 - [ ] **Naming**: classes are nouns; services describe an action (`FulfillOrder`); scopes are queries (`active`, `completed_after`)
 - [ ] **Magic numbers/strings** extracted to constants or `Rails.application.config.x.*`
 - [ ] **Credentials/URLs**: `Rails.application.credentials` or env config, never inline - filed here even when +Sec runs; Step 9.3 dedups
-- [ ] **Method length**: > 15 lines reviewed; > 30 flagged unless `.call` orchestrating clearly named steps
+- [ ] **Method length**: `complexity-review`'s thresholds (Step 7) govern, not re-flagged here; a `.call` orchestrating clearly named steps lowers that finding's severity (this workflow's exemption, applied when the row is filed)
 - [ ] **Duplicated query logic**: same `.where(...).order(...)` in 3+ places extracted to a scope or query object
 - [ ] **Logging hygiene**: correct levels; structured fields when `lograge`/`semantic_logger` is configured (depth owned by observability subagent)
 
@@ -212,7 +212,7 @@ Use skill: `backend-coding-standards` when new naming/structure patterns are int
 
 ### Step 9 - Delegate Extra Scopes in Parallel
 
-Skip if `core-only`. For each selected scope, spawn one independent subagent in parallel. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `rails-tech-lead` spawn:
+Skip when the resolved scope is `Core` (`core-only` suppresses signals; a user flag beside it still runs its lens). For each selected scope, spawn one independent subagent in parallel. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `rails-tech-lead` spawn:
 
 | Scope | Skill                             | Subagent (`subagent_type`)     |
 | ----- | --------------------------------- | ------------------------------ |
@@ -225,11 +225,11 @@ Skip if `core-only`. For each selected scope, spawn one independent subagent in 
 
 Each scope's skill in that table is loaded with `Use skill:` and returns its `## Findings`; the table names it rather than repeating the directive per row.
 
-**Subagent prompt contract:** resolved `base_ref`/`head_ref` + pre-read diff and commit log; depth level; pre-confirmed stack (the full stack-detect output); the lens returns its `## Findings` - tier sections plus any `out of lens` lines - and no Summary, Next Steps, or report.
+**Subagent prompt contract:** resolved `base_ref`/`head_ref` + pre-read diff and commit log; depth level; pre-confirmed stack (the full stack-detect output); the lens returns its `## Findings` - tier sections plus any `out of lens` lines, with reliability's Failure-Mode and Blast-Radius Map after them at `deep` and security's `## Axes Skipped` - and no Summary, Next Steps, or report.
 
 **Failure isolation:** if a subagent fails or times out, continue with remaining results; note `Scope incomplete: <scope>` under Summary.
 
-**No-spawn fallback:** when the environment can't spawn subagents, run each selected scope's checks inline and sequentially using the same `task-rails-review-*` skills, label the findings per scope, and note `Scopes run inline` in Summary. Each lens applies its own atomic-load gates unchanged - an inline run consults the same atomics a spawned one would, and skips the ones its gates skip. Each inline scope produces its own skill's `## Findings` first, then Step 9.3 projects and merges it - do not synthesise straight into the merged shape, or the projection step has nothing to dedup against. Inline runs behave as subagent runs: their stack detection and diff resolution are pre-satisfied - each lens still makes its Step 2 recordings (auth / authz flavors; logger, tracing, error tracker; DB and versions; background runtime) from the artifacts - and their report writers are skipped; this workflow owns the report. Depth propagates to delegates (the security lens ignores the depth knob by its own contract - it always runs every check).
+**No-spawn fallback:** when the environment can't spawn subagents, run each selected scope's checks inline and sequentially using the same `task-rails-review-*` skills, label the findings per scope, and note `Scopes run inline` in Summary. Each lens applies its own atomic-load gates unchanged - an inline run consults the same atomics a spawned one would, and skips the ones its gates skip. Each inline scope produces its own skill's `## Findings` first, then Step 9.3 projects and merges it - do not synthesise straight into the merged shape, or the projection step has nothing to dedup against. That per-lens `## Findings` is working material, not a report section; the lens's own verify, reconcile and writer steps do not run - Step 9.4 verifies and Step 9.5 reconciles the merged set once. Inline runs behave as subagent runs: their stack detection and diff resolution are pre-satisfied - each lens still makes its Step 2 recordings (auth / authz flavors; logger, tracing, error tracker; DB and versions; background runtime) from the artifacts - and their report writers are skipped; this workflow owns the report. Depth propagates to delegates (the security lens ignores the depth knob by its own contract - it always runs every check).
 
 Scopes added by *firing signals* and by *user flag* alike review the full range; Step 3.5c records the expansion for the reconciliation table.
 
@@ -239,14 +239,14 @@ Runs once Step 9 has returned (with no lens in scope, on core's findings alone).
 
 1. **Project each lens's findings onto this report's shape.** Match tiers on the severity word, not the heading string - perf, observability, and reliability head tiers `High` / `Medium` / `Low` (`Impact` or `Severity`), security `Critical` / `High` / `Medium` / `Low`. A `Quick Wins` heading carries no severity word - treat its findings as `Low`. Every lens block carries a `Label:` line - use it; with none, Critical / High -> `[Must]`, Medium / Low -> `[Recommend]`. Re-file each as `### [Label] file:line` (the `file:line` prefix of its Location line; a Location with none takes: `Controller#a, #b` -> the controller file at the first named action's line; a route -> `config/routes.rb` at the route's line; a file named without a line -> the line of the construct named; an absent file -> the bare path) with `Issue` (the lens's `Issue`, or observability's `Missing`), `Impact` (its `Impact`, security's `Attack scenario`, or reliability's `Failure Mode` and `Blast Radius` joined in one line), `Fix`, plus `System Risk` on a `[Must]`, written here from the Step 4 lines and the lens's stated exposure. Nothing downstream reads lens headings - `review-prior-findings-reconcile` sees only `## High-Impact Findings`. Core, Step 3.7, and atomic-shaped findings (`- [Label] file:line - claim`, Category / Cost / Recommendation, Signal / Simplification, Issue / Impact / Drift, table rows) take the same shape: the claim -> `Issue`, its cost or impact -> `Impact`, its recommendation -> `Fix`, each drafted here when the source carries none.
 2. **Merge.** Core (Steps 5-8), Step 3.7, and lens findings that make the same claim about the same defect collapse to one entry: strongest label wins (`Must` > `Recommend`), one `file:line`, and when two or more sources raised it, `raised by: <sources>` appended to the Issue line using the tokens `core`, `+Perf`, `+Sec`, `+Obs`, `+Rel` (Step 3.7 findings count as `core`). Distinct claims at one `file:line` stay separate entries - never re-anchor one to a neighbouring line to make room. The merged entry takes the prose of the source that states the mechanism most specifically, not the strongest label's source and not the first read. When sources disagree on a fact (one lens calls a timeout infinite, another says 60 s), pick neither: Step 9.4's evidence settles it. A Step 3.7 criterion finding and a defect finding on the same gap merge the same way, the Issue line naming the criterion.
-3. **Non-finding lens lines.** A lens `out of lens` line is drafted here as a finding (label per Feedback Labels, Fix written here from the defect it names) before Step 9.4. Lenses return nothing else except reliability's `Failure-Mode and Blast-Radius Map` at `deep`, preserved verbatim as its own section after Next Steps, and security's `## Axes Skipped`, which is not rendered. `## Architecture Notes` carries the `Drift:` lines of `architecture-guardrail`'s violations (omitted on its `No Violations Found`) and `## Maintainability Notes` the Step 7 simplification and `Considered, not flagged` lines; the labelled findings those atomics raise join the set in item 2.
-4. **Next Steps.** One entry per published finding, `[Implement]` when the fix is localized to the PR, `[Delegate]` with a `[scope: <owner>]` token when it leaves the PR's scope; Step 10 orders it.
+3. **Non-finding lens lines.** A lens `out of lens` line is drafted here as a finding (label per Feedback Labels, Fix written here from the defect it names) before Step 9.4. Lenses return nothing else except reliability's `Failure-Mode and Blast-Radius Map` at `deep`, preserved verbatim as its own section after Next Steps, and security's `## Axes Skipped`, which is not rendered. `## Architecture Notes` carries the `Drift:` lines of `architecture-guardrail`'s violations (omitted on its `No Violations Found`) and `## Maintainability Notes` the `Considered, not flagged` lines; `complexity-review`'s rows (a row's `Simplification:` is its Fix) and `rails-overengineering-review`'s labelled findings join the set in item 2.
+4. **Next Steps.** One entry per published finding (two findings at one `file:line` are two entries), `[Implement]` when the fix is localized to the PR, `[Delegate]` with a `[scope: <owner>]` token when it leaves the PR's scope; Step 10 orders it. `[scope: <owner>]` names who owns the work - platform, schema, dependencies, infra, load-test, a team - never a lens.
 
 ### Step 9.4 - Verify Findings (second pass)
 
 Use skill: `review-finding-verify` with the Step 9.3 set, the diff already read, and `base_ref` / `head_ref`. One row per assembled entry - a merged entry is one row, so the tally counts each defect once, not once per source that raised it.
 
-Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` and `Annotation` columns; the annotation sits on the `### [Label] file:line` heading, each its own `_(...)_` group - the combined `_(pre-existing; newly reachable via ...)_` is written as `_(pre-existing)_ _(newly reachable via ...)_`, since `review-prior-findings-reconcile` matches `_(pre-existing)_` exactly and a merged group marks an untouched prior finding `Addressed`. A finding anchored in a file the diff does not touch carries `_(pre-existing)_` even when verify attached no such group (an `Unverified` row carries only `_(unverified: ...)_`) - without it, reconcile marks such a finding `Addressed` (reverted to base state) without reading the file. Fill Summary's `Findings verified:` slot in the atomic's Summary form, `<N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}`.
+Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` and `Annotation` columns; the annotation sits on the `### [Label] file:line` heading, each its own `_(...)_` group - the combined `_(pre-existing; newly reachable via ...)_` is written as `_(pre-existing)_ _(newly reachable via ...)_`, since `review-prior-findings-reconcile` matches `_(pre-existing)_` exactly and a merged group marks an untouched prior finding `Addressed`. A finding anchored in a file the diff does not touch carries `_(pre-existing)_` even when verify attached no such group (an `Unverified` row carries both groups) - without it, reconcile marks such a finding `Addressed` (reverted to base state) without reading the file. The verify table itself is working material, never a report section - only its labels, annotations and tally reach the report. A Step 3.7 requirement finding in an untouched file carries the group too, although verify's own Annotation for it is `-`. Fill Summary's `Findings verified:` slot in the atomic's Summary form, `<N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}`.
 
 ### Step 9.5 - Reconcile Prior Findings (round 2+ only)
 
@@ -256,11 +256,11 @@ Skip on round 1. Otherwise Use skill: `review-prior-findings-reconcile` with:
 - `diff`: the full-range diff from Step 3
 - `name_status`: the full-range `git diff --name-status <base_ref>...<head_ref>` from Step 3
 - `head_sha`: `current_head_sha`
-- `head_files`: the file list at `current_head_sha` (`git ls-tree -r --name-only <current_head_sha>`), when `name_status` contains any `D` entry - it disambiguates undetected moves; otherwise omit
+- `head_files`: the file list at `current_head_sha` (`git ls-tree -r --name-only <current_head_sha>`) - reconcile probes it for a prior path that `name_status` does not list
 
 The reconcile skill returns a Markdown table, a note line when one applies, and a tally line. Insert all of it under `## Prior Round Reconciliation` in the report (see Output Format).
 
-Fold any `Still open` or `Needs re-check` rows into `## Next Steps` as `(open since round <prior.round>)`-suffixed entries, ordered by label alongside this round's new findings (ties at the same label: carryover first). Do not emit a standalone "Carry-Over Open Items" section. A `Still open` row this round re-derived renders once in High-Impact Findings at this round's label, once as the reconciliation row (prior label verbatim), and once in Next Steps with the suffix at this round's label - never twice in the findings list. A `Still open` or `Needs re-check` row this round did not re-derive is still unresolved: publish it in `## High-Impact Findings` at its prior label with `_(carried from round <prior.round>)_` as its own group after the provenance groups, as well as in the reconciliation table and Next Steps. A prior label outside this workflow's vocabulary (`[Blocker]`, `[High]`, `[Suggestion]`, `[Question]`) stays verbatim in the table and maps before publication: `[Blocker]`, `[High]`, `[Critical]` -> `[Must]`; anything else -> `[Recommend]`; `[Praise]` rows are never carried. A carried finding this round re-derived at a different label publishes at this round's label, the change noted in the reconciliation row's Notes. `review-prior-findings-reconcile` parses only that section, so a row kept out of it is invisible to round 3.
+Fold any `Still open` or `Needs re-check` rows into `## Next Steps` as `(open since round <prior.round>)`-suffixed entries, ordered by label alongside this round's new findings (ties at the same label: carryover first). Do not emit a standalone "Carry-Over Open Items" section. A `Still open` row this round re-derived renders once in High-Impact Findings at this round's label, once as the reconciliation row (prior label verbatim), and once in Next Steps with the suffix at this round's label - never twice in the findings list. A `Still open` or `Needs re-check` row this round did not re-derive is still unresolved: publish it in `## High-Impact Findings` at its prior label with `_(carried from round <prior.round>)_` as its own group after the provenance groups, as well as in the reconciliation table and Next Steps. A prior row joining two smells with one fixed is `Still open`, its Notes naming the fixed half; a carried finding cites its current `file:line` when the site moved (the table row keeps the prior one verbatim). A prior label outside this workflow's vocabulary (`[Blocker]`, `[High]`, `[Suggestion]`, `[Question]`) stays verbatim in the table and maps before publication: `[Blocker]`, `[High]`, `[Critical]` -> `[Must]`; anything else -> `[Recommend]`; `[Praise]` rows are never carried. A carried finding this round re-derived at a different label publishes at this round's label, the change noted in the reconciliation row's Notes. `review-prior-findings-reconcile` parses only that section, so a row kept out of it is invisible to round 3.
 
 ### Step 10 - Report
 
@@ -274,9 +274,9 @@ Use skill: `review-report-writer` with `report_type: review` and these checkpoin
 
 - `report_body` (the assembled report), `branch` (Step 3), `base_ref` and `head_ref` as the handle emitted them, plus `base_sha = current_base_sha`, `head_sha = current_head_sha`
 - `mode: full` (the writer's only accepted value), `round` (from Step 3.5), `prior_head_sha = prior_checkpoint.head_sha` (omit on round 1), `pr_url` when the request carried a PR/MR URL, else copied from `prior_checkpoint.pr_url` (omitted when neither)
-- `scope` (resolved in Step 4; frontmatter uses the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full`), `depth` (resolved/auto-promoted), `stack = ruby-rails`
+- `scope` (resolved in Step 4; frontmatter uses the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full`), `depth` (resolved/auto-promoted), `stack = ruby-rails` (this plugin's fixed identifier - `stack-detect` emits none)
 
-Print confirmation line.
+Emit the report body in chat, then the writer's confirmation line.
 
 ## Feedback Labels
 
@@ -315,7 +315,7 @@ The fence below delimits the template for display only - it is not part of the r
 
 | Criterion | Status | Implementation | Proof |
 | --------- | ------ | -------------- | ----- |
-| <id or quoted outcome> | Met \| Partial \| Unmet \| Deferred \| Untraceable | <file:line, or `-`> | <file:line or verification note, or `-`> |
+| <id or quoted outcome> | Met \| Partial \| Unmet \| Deferred \| Untraceable | <file:line, `file:line (pre-existing)`, or `-`> | <file:line or verification note, optionally `(pre-existing)`, or `-`> |
 
 ## Prior Round Reconciliation   {round 2+ only}
 
@@ -344,7 +344,7 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 - Drift detected - one line per `architecture-guardrail` violation's `Drift:`
 
 ## Maintainability Notes
-- Over-engineering detected / Simplification opportunities / `Considered, not flagged` lines (Step 7)
+- `rails-overengineering-review`'s per-category `Considered, not flagged` lines (Step 7)
 
 ## Key Takeaways
 - 2-4 bullets on systemic impact
@@ -389,4 +389,4 @@ _Omit empty sections. Omit Next Steps only when there are no published findings,
 - Reviewing without reading the full diff and log first
 - Applying generic backend conventions where a Rails idiom exists
 - Nitpicking style
-- Running extra-scope subagents sequentially or when `core-only` was passed
+- Running extra-scope subagents sequentially or when the resolved scope is `Core`

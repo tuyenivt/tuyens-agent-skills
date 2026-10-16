@@ -20,7 +20,7 @@ user-invocable: false
 
 ## Rules
 
-- One application-wide rescue ladder in `ApplicationController#rescue_from`; controllers don't catch their own.
+- One application-wide rescue ladder - `rescue_from` (a class method) declared in `ApplicationController`; controllers don't catch their own.
 - Domain errors inherit from one app-level base (`ApplicationError`) so they rescue as a group.
 - Services: `Result` for expected failures (validation, not-found, policy denial); raise for programmer errors and unexpected state.
 - Sidekiq: rescue domain errors that should not retry; let everything else propagate so Sidekiq retries.
@@ -36,7 +36,7 @@ user-invocable: false
 ```ruby
 class ApplicationController < ActionController::API
   rescue_from ActionController::ParameterMissing,        with: :bad_request
-  rescue_from ActiveRecord::RecordNotFound,              with: :not_found
+  rescue_from ActiveRecord::RecordNotFound,              with: :not_found            # optional - rescue_responses already answers 404; keep only for the JSON envelope
   rescue_from ActiveRecord::RecordInvalid,               with: :unprocessable
   rescue_from Pundit::NotAuthorizedError,                with: :forbidden   # only gems actually present
   rescue_from ApplicationError::Unauthenticated,         with: :unauthorized         # 401 - no/!valid credential or signature
@@ -47,6 +47,7 @@ class ApplicationController < ActionController::API
   rescue_from ApplicationError::ExternalUnavailable,     with: :service_unavailable  # 503 (502 if proxying the upstream's failure verbatim)
   rescue_from BillingError::Unavailable,                 with: :service_unavailable  # client-local vocabulary maps onto the same statuses;
   rescue_from BillingError::NotFound,                    with: :not_found            # BillingError::Unexpected stays unrescued - it is a bug
+  rescue_from BillingError::Declined,                    with: :payment_required     # 402 - the status a Result :payment_declined code maps to
 
   private
 
@@ -55,10 +56,11 @@ class ApplicationController < ActionController::API
   def conflict(e)             = render_error(e, :conflict)
   def not_found(e)            = render_error(e, :not_found)
   def forbidden(e)            = render_error(e, :forbidden)
+  def payment_required(e)     = render_error(e, :payment_required)
   def service_unavailable(e)  = (Rails.error.report(e); render_error(e, :service_unavailable))   # a 503 is reported; needs config.rails.register_error_subscriber = true (Single-Source Reporting)
   def unprocessable(e)        = render json: { error: e.message, request_id: request.request_id,
                                                details: e.try(:record)&.errors || e.try(:details) },
-                                       status: :unprocessable_content
+                                       status: :unprocessable_content   # Rack 3.1+ name; Rack 2.2 / 3.0 (still allowed by Rails 7.2-8.x) know only :unprocessable_entity - use the integer 422 to serve both
   def render_error(e, status) = render json: { error: e.message, request_id: request.request_id }, status: status
 end
 ```
@@ -101,6 +103,8 @@ Group by **how the caller responds**, not where the error originated. `BillingEr
 
 ```ruby
 class FulfillOrder
+  def initialize(order_id:) = @order = Order.find_by(id: order_id)
+
   def call
     return Result.failure(["order not found"], code: :not_found)       unless @order
     return Result.failure(["already shipped"], code: :already_shipped) if @order.shipped?
@@ -110,6 +114,8 @@ class FulfillOrder
     Result.success(@order)
   rescue BillingError::Declined => e
     Result.failure([e.message], code: :payment_declined)
+  rescue BillingError::NotFound => e                      # a permanent 404 - a Result, or Sidekiq retries it five times
+    Result.failure([e.message], code: :charge_not_found)
   end
 end
 ```
@@ -130,7 +136,7 @@ class FulfillOrderJob
     return if result.success?
 
     case result.code
-    when :not_found, :already_shipped
+    when :not_found, :already_shipped, :charge_not_found
       # idempotent skip - do not retry
     when :payment_declined
       OrderMailer.payment_failed(order_id).deliver_later
@@ -142,7 +148,7 @@ class FulfillOrderJob
 end
 ```
 
-`rescue => e; logger.error(...)` in a job prevents retry and hides incidents. So do unbounded `retry`/`sleep` loops inside service code - retry belongs to Sidekiq, bounded and observable. A `rescue` inside `perform` for a class the retry channel owns (ActiveJob `retry_on`, or Sidekiq's `sidekiq_options retry:` + `sidekiq_retry_in`) wins and silently disables the retry - one channel per class. Batch re-entry after an all-failed raise reprocesses succeeded rows unless the job checkpoints (`rails-batch-processing-patterns`). If you swallow, document why and call the reporter explicitly. For per-item batch work, don't swallow per item silently: collect failures, report one aggregate `Rails.error.report` with counts and sample rows in context (not one report per item - 10k failing rows must not page 10k times), raise if everything failed (`ExternalUnavailable` when a retry can help, a plain error when the data is bad).
+`rescue => e; logger.error(...)` in a job prevents retry and hides incidents. So do unbounded `retry`/`sleep` loops inside service code - retry belongs to Sidekiq, bounded and observable. Batch re-entry after a raise on partial failure (or a crash mid-batch) reprocesses the rows that already succeeded unless the job checkpoints (`rails-batch-processing-patterns`). If you swallow, document why and call the reporter explicitly. For per-item batch work, don't swallow per item silently: collect failures, report one aggregate `Rails.error.report` with counts and sample rows in context (not one report per item - 10k failing rows must not page 10k times), raise if everything failed (`ExternalUnavailable` when a retry can help, a plain error when the data is bad).
 
 ### Boundary Translation
 
@@ -150,23 +156,30 @@ The client owns the SDK exception vocabulary; service code never names Faraday o
 
 ```ruby
 class BillingClient
+  # `connection` registers `f.response :raise_error` - without it Faraday 2 returns 4xx/5xx
+  # responses instead of raising, and none of the rescues below ever fire
   def capture!(charge_id)
     connection.post("/charges/#{charge_id}/capture").body
-  rescue Faraday::TimeoutError, Faraday::ConnectionFailed, Faraday::ServerError => e
-    raise BillingError::Unavailable, e.message          # ServerError = 5xx, not a ClientError
-  rescue Faraday::SSLError, Faraday::ParsingError => e
-    raise BillingError::Unexpected, e.message           # neither inherits from ClientError
+  rescue Faraday::TimeoutError, Faraday::ConnectionFailed, Faraday::SSLError, Faraday::ServerError => e
+    raise BillingError::Unavailable, e.message          # ServerError = 5xx, not a ClientError; TLS failures are transient too
+  rescue Faraday::ParsingError => e
+    raise BillingError::Unexpected, e.message           # a malformed body is a bug on one side - not a ClientError
   rescue Faraday::ClientError => e
     case e.response&.dig(:status)
-    when 402 then raise BillingError::Declined,  dig_message(e)
-    when 404 then raise BillingError::NotFound,  dig_message(e)
-    else          raise BillingError::Unexpected, dig_message(e)
+    when 401, 403 then raise BillingError::Unavailable, dig_message(e)   # our credential - after the one refresh retry
+    when 402      then raise BillingError::Declined,    dig_message(e)
+    when 404      then raise BillingError::NotFound,    dig_message(e)
+    else               raise BillingError::Unexpected,  dig_message(e)
     end
   end
+
+  private
+
+  def dig_message(e) = e.response&.dig(:body).to_s.presence || e.message
 end
 ```
 
-Swapping Faraday for HTTPX or Stripe for Adyen does not ripple. A client-local namespace (`BillingError::Declined`) is fine - it is boundary vocabulary, named for the *capability*, not the vendor or SDK; each class still maps onto one caller-response category from the taxonomy. SDKs that raise one class for everything: branch on the error's `code`/`status` attribute the same way this example branches on HTTP status. Auth-expiry belongs to the client too - refresh and retry once inside the client, then translate to `Unavailable` if it still fails. For client structure, see `rails-http-client-patterns`.
+Swapping Faraday for HTTPX or Stripe for Adyen does not ripple. A client-local namespace (`BillingError::Declined`) is boundary vocabulary named for the *capability*, not the vendor; each class still maps onto one caller-response category from the taxonomy. SDKs that raise one class for everything: branch on the error's `code`/`status` attribute the same way this example branches on HTTP status. A `Net::HTTP` client translates `Net::OpenTimeout`, `Net::ReadTimeout`, `SocketError`, `Errno::ECONNREFUSED` and `OpenSSL::SSL::SSLError` to `Unavailable`, and branches on `response.code` for the rest (it raises on status only through `response.value`). A 401/403 from the partner on our own credential is `Unavailable`-shaped after one refresh - an ops failure, never a caller fault. Auth-expiry belongs to the client too - refresh and retry once inside the client, then translate to `Unavailable` if it still fails. For client structure, see `rails-http-client-patterns`.
 
 ### Single-Source Reporting
 
@@ -178,22 +191,24 @@ Modern reporter gems self-wire, but through two independent mechanisms - conflat
 
 ## Output Format
 
-One block per layer touched (a feature spanning client + service + job emits three). Fields that don't apply to a layer take `N/A`. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Blocks describe the post-fix state. In build mode, a pre-existing violation the change touches (an unclassed `raise`, an unbounded `retry`) is a numbered finding too. One controller block per base class when `ActionController::Base` and `ActionController::API` carry separate ladders:
+One block per layer per file (a feature spanning client + service + job emits three; two jobs under review are two job blocks); one controller block per base class when `ActionController::Base` and `ActionController::API` carry separate ladders, one block for the shared concern when they do not. Fields that don't apply to a layer take `N/A`. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: blocks hold corrected values only, and a pre-existing violation the change touches is still a numbered finding.
+
+The job backend comes from the Gemfile (`sidekiq` or `solid_queue`), not from stack-detect. An Active Job class (`ApplicationJob`, any backend) retries through `retry_on` / `discard_on` and enqueues with `perform_later`; a `Sidekiq::Job` retries through `sidekiq_options retry:` + `sidekiq_retry_in` and enqueues with `perform_async`. A slot named for Sidekiq (`Sidekiq retry`, `sidekiq only`) takes the channel of whichever backend runs the job. A `rescue` inside `perform` for a class the retry channel owns wins and silently disables that retry - one channel per class.
 
 ```
 Layer: <controller | service | job | client | rake | middleware / config (rescue_responses, reporter initializer)>
 
-Rescue strategy: <rescue_from ladder (controller) | Result on expected | raise on unexpected | boundary translation (client: catch vendor, raise domain) | per-item isolation (batch: collect failures, raise only if all failed) | none - unhandled (GAP) | mixed (justified - say which path takes which) | mixed - unjustified (GAP)>
+Rescue strategy: <rescue_from ladder (controller) | Result on expected | raise on unexpected | boundary translation (client: catch vendor, raise domain) | per-item isolation (batch: collect failures, raise only if all failed) | none - unhandled (GAP) | rescue Exception / Interrupt - swallows signals and Sidekiq::Shutdown (GAP) | mixed (justified - say which path takes which) | mixed - unjustified (GAP)>
 
-Domain errors: <ApplicationError::X | client-local boundary vocabulary (BillingError::Declined) | framework only>
+Domain errors: <ApplicationError::X | client-local boundary vocabulary (BillingError::Declined) | framework only | none yet - the taxonomy this block introduces>
 
-SDK translation: <at boundary | at boundary but undifferentiated - one class for timeout, 4xx and 5xx (FIX) | leaked into service (FIX) | N/A>
+SDK translation: <at boundary | at boundary but undifferentiated - one class for timeout, 4xx and 5xx (FIX) | leaked into service (FIX) | leaked into a controller or job (FIX) | N/A - the layer makes no SDK call>
 
 rescue_from coverage: <listed classes; missing: ...>
 
-Sidekiq retry: <propagate | swallow with reason | per-item: swallow partial failures, propagate when all failed | bounded local retry then propagate (transient DB only) | N/A>
+Sidekiq retry: <propagate | propagate via retry_on / discard_on (Active Job, any backend) | swallow with reason | per-item: swallow partial failures, propagate when all failed | bounded local retry then propagate (transient DB only) | N/A>
 
-Reporter call: <Rails.error / reporter notifier at <layer> | none (auto middleware reports) | none - rescue_from-handled 4xx (intended) | swallowed before the middleware saw it (FIX) | Rails.error.report with register_error_subscriber off - reaches nobody (FIX) | integration gem absent - under-reported (FIX) | every-retry, should be retries-exhausted (FIX) | double-reported (FIX)>
+Reporter call: <Rails.error / reporter notifier at <layer> | none (auto middleware reports) | none - rescue_from-handled 4xx (intended) | swallowed before the middleware saw it (FIX) | Rails.error.report with register_error_subscriber off - reaches nobody (FIX) | hand-written Rails.error.subscribe or capture beside the gem's own wiring - double-reported (FIX) | integration gem absent - under-reported (FIX) | every-retry, should be retries-exhausted (FIX)>
 ```
 
 An app with both `ActionController::Base` and `ActionController::API` bases keeps one ladder in a concern included by both; handlers branch on `request.format` (the API base has no view renderer, so its branch renders JSON only). `ExternalUnavailable` (503) reports like a 5xx, not like the 4xx handlers - the no-report rule covers client-fault statuses only. A transient `ActiveRecord::Deadlocked` inside a job may take a bounded local retry (2-3, backed off) *when the work is idempotent*; otherwise let it propagate and let Sidekiq own the retry - never both.

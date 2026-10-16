@@ -29,7 +29,7 @@ Not for: test failure debugging, general code review (`task-code-review`).
 Use skill: `behavioral-principles`.
 
 ### Step 2 - Stack Detect
-Use skill: `stack-detect`. Accept pre-confirmed stack. If not Rails, stop and name the detected stack so the user can invoke that stack's test workflow.
+Use skill: `stack-detect`. Accept pre-confirmed stack. Where the project's declared stack and its code disagree, record what the code does and note the divergence. If not Rails, stop and name the detected stack so the user can invoke that stack's test workflow. Versions: `stack-detect` carries them only when `## Tech Stack` declares them - otherwise read Ruby / Rails from `.ruby-version` / `Gemfile.lock`, else `unknown`.
 
 ### Step 3 - Pyramid
 
@@ -39,19 +39,19 @@ Use skill: `stack-detect`. Accept pre-confirmed stack. If not Rails, stop and na
 | Integration | request, system (subset)                             | Controller -> service -> model -> DB; authorization end-to-end                |
 | E2E         | system specs with a JS driver (`driven_by :cuprite` / `:selenium`; `driven_by :rack_test` opts out) | Critical journeys only - checkout, signup, payment, data export |
 
-Default pyramid target (by example count): ~70% unit / ~25% request / ~5% system - system specs with JS are slow and brittle. Adjust to app shape - API-only apps fold the system share into request; JS-heavy UIs may need more system. State the adjustment when you deviate.
+Default pyramid target (by example count): ~70% unit / ~25% request / ~5% system - system specs with JS are slow and brittle. Adjust to app shape - API-only apps fold the system share into request (70 / 30 / 0); JS-heavy UIs shift toward system (60 / 30 / 10). State the adjustment when you deviate.
 
 ### Step 4 - Strategy per Spec Type
 
-Use skill: `rails-testing-patterns` for recipes (FactoryBot traits, shoulda-matchers, Pundit/Sidekiq idioms). Strategy rules on top:
+Use skill: `rails-testing-patterns` for recipes (FactoryBot traits, shoulda-matchers, Pundit/Sidekiq idioms). A Minitest suite (`test/`) is the project's convention: every rule in this workflow applies with Minitest tests under `test/` - request spec -> integration test, no `type:` lines, `test/test_helper.rb` in place of `rails_helper.rb`, `use_transactional_tests` for DB isolation, FactoryBot per the atomic's rule (this workflow's own Minitest rule: an existing fixtures suite stays as is, named under Infra To Confirm), boundary stubbing through WebMock (or `Minitest::Mock` / `Module#stub` where Mocha is absent), `test/{type}/{path}_test.rb` paths, `bin/rails test <files>` as the run command, Rails' `parallelize` as the parallel runner, the pyramid split unchanged by framework; `no controller specs` reads as `no functional tests for actions`. Strategy rules on top:
 
 - **Model**: real FactoryBot records, no AR mocking; behavior-focused names
 - **Service**: one example per outcome (Result codes; return values and raised errors when the service has no Result); stub HTTP at the boundary, never AR
 - **Client** (`app/clients`): one example per outcome incl. timeout / error -> domain-error translation; WebMock at the HTTP boundary
 - **Request**: one example per `(action, role, outcome)`; "rejects unpermitted attributes" for any `permit`; assert key fields + status (Content-Type on API surfaces), not full body. Signed webhooks: invalid/missing signature is the unauthorized example, malformed payload the validation-error one
 - **Policy**: one example per distinct policy *outcome* per action, plus the `Scope` - cover every action, no implicit allows; roles that resolve identically share one example or a shared example group
-- **Job**: idempotency (call `perform` twice, side effect once); retry policy asserted on the class's `sidekiq_options` (`retry:` / `dead:` values - the atomic ships no retry recipe), not on Sidekiq's retry loop
-- **System**: one per critical journey; Cuprite over Selenium (registered via `Capybara.register_driver`); query by label/text (role with `enable_aria_role`), not CSS
+- **Job**: idempotency (call `perform` twice, side effect once); retry policy asserted on the class's declared options (`sidekiq_options` `retry:` / `dead:` values, or the `retry_on` / `discard_on` declarations on an Active Job class - the atomic ships no retry recipe), never on the backend's retry loop
+- **System**: one per critical journey; `driven_by :rack_test` by default and `:selenium, using: :headless_chrome` only for JS flows, per `rails-testing-patterns` (Cuprite only where the `cuprite` gem is already present); query by label / text, not CSS
 - **Mailer / Component / Channel / Rake**: per action or state; `render_inline` per component state; subscription + broadcast per channel; a wiring spec per rake task
 
 ### Step 5 - Boundaries
@@ -64,10 +64,10 @@ Assert each behavior at the lowest layer that can catch it; upper layers verify 
 
 ### Step 6 - Prioritize by Risk (coverage < 50%, or unknown)
 
-Run **before scaffolding**. Coverage for this trigger: SimpleCov's line-coverage figure when configured; otherwise the per-layer ratio of specced to total units - files for models, services, clients, policies and jobs, actions for controllers, a unit counted as specced when any spec file targets it - summed into one figure across the layers, and scoped to the surface the request named (an app-wide SimpleCov figure stands in only for an app-wide request); the scope is part of the `Basis:` value; when neither is computable from the evidence, state `none available` and apply the risk order to the gaps that are in evidence. Always state which basis was used. Alphabetical is wrong when authorization holes go unspec'd while plumbing gets full coverage.
+Run **before scaffolding**. Coverage for this trigger: SimpleCov's line-coverage figure when configured; otherwise the per-layer ratio of specced to total units - files for models, services, clients, policies, jobs, mailers, components and channels, routed actions for controllers (a routed action with no method is still a unit; a method no route reaches is not; an unrouted controller is one `## Infra To Confirm` line), a unit counted as specced when any spec file targets it - a failing or unrunnable spec still counts, and is named - summed into one figure across the layers, and scoped to the surface the request named (an app-wide SimpleCov figure stands in only for an app-wide request); the scope is part of the `Basis:` value; when neither is computable from the evidence, state `none available` and apply the risk order to the gaps that are in evidence. Always state which basis was used. Alphabetical is wrong when authorization holes go unspec'd while plumbing gets full coverage.
 
 1. **Authorization/authentication** - Pundit policy specs for every API-exposed model; request specs asserting 403/404 on every protected action; Devise/JWT flow specs; inbound webhook signature verification (invalid/missing signature -> 401)
-2. **Data integrity** - model validations + unique-constraint enforcement; write services (one happy + one failure); Sidekiq mutating jobs (idempotency + retry)
+2. **Data integrity** - model validations + unique-constraint enforcement; write services (one happy + one failure); Sidekiq mutating jobs (idempotency + retry options)
 3. **Business-critical flows** - revenue (checkout, billing, subscription transitions); multi-step state machines (AASM, `state_machines`); public/partner API contract drift (covered by the Step 7 tool)
 4. **High-churn code** - frequent recent commits (`git log --since="3 months ago"`); bug-fix history (`git log --grep=fix`); `N/A - no history in evidence` when git carries none
 5. **Plumbing** - pass-through controllers, simple CRUD - lower risk, can wait
@@ -80,20 +80,20 @@ Plain request specs don't catch drift (renamed key, status 200->204, new require
 | ----------- | ------------------------------------------------------------------------------ |
 | `rswag`     | Declare OpenAPI inline; `rake rswag:specs:swaggerize` exports `swagger.yaml`   |
 | `committee` | Validate request/response against existing OpenAPI schema                      |
-| Hand-rolled | `match_schema(...)` with `json-schema`                                         |
+| Hand-rolled | `json_matchers`' `match_json_schema`, or a project matcher over `JSON::Validator`  |
 
-Skip for internal/admin apps with a single frontend consumer where drift is caught by frontend tests.
+Skip for internal/admin apps with a single frontend consumer where drift is caught by frontend tests; consumer count not in evidence - pick a tool and state `assumed external`.
 
 ### Step 8 - Infrastructure Hygiene
 
-Judge evidence per item, not per file set: an item whose config file is in evidence is verified - present and wrong, or absent from a file read in full, files a finding; an item whose file is not in evidence goes to the confirm-checklist - never claimed verified. The checklist lands in the deliverable's `## Infra To Confirm` section (Output Format).
+Judge evidence per item, not per file set: an item whose config file is in evidence is verified - present and wrong, or absent from a file read in full, files a finding; an item whose file is not in evidence goes to the confirm-checklist - never claimed verified. The checklist lands in the deliverable's `## Infra To Confirm` section (Output Format). Evidence that contradicts itself (a CI profile counting more examples than the spec files hold) is one `## Infra To Confirm` line naming both facts, the absence itself filed once as an Infra Finding; a fixture or factory the existing suite references but does not define is an Infra Finding too.
 
 - [ ] DB isolation: transactional fixtures (default; matches `rails-testing-patterns`) or `database_cleaner-active_record` truncation only for cross-connection state
-- [ ] `Sidekiq::Testing` defaults to `:fake`; `:inline` per-spec when end-to-end needed. A global `inline!` is a finding, not a pass
+- [ ] A row or slot naming Sidekiq reads as the app's job backend (the Gemfile's `sidekiq` or `solid_queue`): `Sidekiq::Testing` defaults to `:fake`, `:inline` per-spec when end-to-end needed, a global `inline!` a finding, not a pass; on Solid Queue the `:test` adapter with `perform_enqueued_jobs` / `have_enqueued_job` per-spec is the equivalent, a global `queue_adapter.perform_enqueued_jobs = true` (or `:inline` in `test.rb`) the same finding
 - [ ] `WebMock.disable_net_connect!(allow_localhost: true)` in `rails_helper.rb`; existing live third-party calls migrate to boundary stubs (WebMock on the client) or VCR cassettes
 - [ ] **Verify HTTP stubs intercept.** WebMock hooks `Net::HTTP` and the major adapters (Typhoeus, Patron, em-http, Excon, http.rb, Curb) - Faraday on those adapters is intercepted. What bypasses it silently: gRPC, raw sockets, shell-outs (`curl`), SDKs with custom non-Ruby transports, and WebMock simply not required in `rails_helper.rb`. Write one stubbed test, assert `expect(stub).to have_been_requested` - if unmatched, wire WebMock in or stub at the SDK client boundary. Silent passthrough leaks production credentials into CI. No runnable environment: the one-test recipe becomes an `## Infra To Confirm` item, not an emitted scaffold
 - [ ] `example_status_persistence_file_path` for `--only-failures`
-- [ ] `--order random` - tests pass in any order; `rails_helper.rb` resets out-of-transaction state (`Sidekiq::Job.clear_all`, `Rails.cache.clear`, memoized singletons)
+- [ ] `--order random` - tests pass in any order; `rails_helper.rb` resets out-of-transaction state (`Sidekiq::Job.clear_all`, `Rails.cache.clear` only when `test.rb` overrides the generated `:null_store`, memoized singletons)
 - [ ] CI runs full suite; local default runs fast unit + request (use `slow:`/`system:` tags)
 - [ ] Parallelism for suites > 5 minutes: `parallel_tests` or `turbo_tests` - rspec-core ships no parallel runner, and Rails' `parallelize` is Minitest-only
 
@@ -106,9 +106,9 @@ Judge evidence per item, not per file set: an item whose config file is in evide
 | "Test strategy" / "test plan" / coverage < 50%       | Strategy Doc (+ Assessment)  |
 | Reviewing existing specs                             | Review (existing specs)      |
 
-When several rows match, emit the union of the matched rows' outputs - the requested deliverable is always among them, never replaced (a scaffold request at low coverage matches the Scaffolds row and the Strategy row, so it emits scaffolds, the Strategy Doc and the Assessment). Merging rule: `Strategy Doc (+ Assessment)` means both blocks, carrying **one** prioritized gap list - it lives in the Strategy Doc's `Gaps to close`, and the Assessment's `Close first` block is omitted. A `coverage < 50%` row matches only on an established figure - `none available` does not escalate the mode, though the risk order still applies to the gaps in evidence. Review mode emits checklist findings + Step 8 infra findings; add an Assessment block when the `coverage < 50%` row also matches or the evidence shows coverage gaps beyond those already filed as findings. Any other request whose evidence shows checklist defects in the existing specs also matches the Review row: its numbered findings ship after the requested blocks under `## Existing Spec Findings`, Step 8 items staying in `## Infra Findings`.
+When several rows match, emit the union of the matched rows' outputs - the requested deliverable is always among them, never replaced (a scaffold request at low coverage matches the Scaffolds row and the Strategy row, so it emits scaffolds, the Strategy Doc and the Assessment). Merging rule: `Strategy Doc (+ Assessment)` means both blocks, carrying **one** prioritized gap list - it lives in the Strategy Doc's `Gaps to close`, and the Assessment's `Close first` block is omitted. A `coverage < 50%` row matches only on an established figure - `none available` does not escalate the mode, though the risk order still applies to the gaps in evidence. Review mode emits checklist findings + Step 8 infra findings; add an Assessment block when the `coverage < 50%` row also matches or the evidence shows coverage gaps beyond those already filed as findings. Any other request whose evidence shows checklist defects in the existing specs also matches the Review row: its numbered findings ship after the requested blocks and before the trailing sections, under `## Existing Spec Findings` in the Review envelope (`[Critical | High | Medium]`), Step 8 items staying in `## Infra Findings`.
 
-**Any mode, unseen source:** a file shown to be absent from a fully listed repo is evidence, not an unknown - treat it as verified-missing and file it. When a policy or source file simply isn't shown, work from the roles and actions in evidence plus the conventional set (`guest`/`member`/`admin`), mark unknowns `# TODO: confirm role`, and label invented file or example names as placeholders.
+**Any mode, unseen source:** a file shown to be absent from a fully listed repo is evidence, not an unknown - treat it as verified-missing and file it. When a policy or source file simply isn't shown, work from the roles and actions in evidence plus the conventional set (`guest`/`member`/`admin`), mark unknowns `# TODO: confirm role`, and label invented file or example names as placeholders; an auth secret not in evidence is stubbed in the helper (`Rails.application.credentials` or ENV), marked the same way. A request naming a feature the code does not yet contain lists that feature's specs as `absent` gaps in the risk order and never scaffolds them.
 
 **Review Checklist (existing specs):**
 
@@ -119,19 +119,19 @@ When several rows match, emit the union of the matched rows' outputs - the reque
 - [ ] FactoryBot uses state traits (not inline attribute overrides or duplicated factories); default builds a valid record with minimum attributes
 - [ ] `build_stubbed` for unit (fake id from 1001, `persisted?` true, and factory-declared associations resolved DB-free; it raises on the persistence methods - `save`, `update`, `reload`, `destroy`, `touch` - but a `has_many` load or a scope on a stubbed record still issues real SQL silently), `build` when the test needs a genuine unsaved record, `create` when the code reads the DB (scopes, `reload`, uniqueness), performs real writes, in request specs, and for policy `Scope` resolution
 - [ ] No `allow(SomeModel).to receive(:find)...` - mocking AR is a smell
-- [ ] One canonical `auth_headers` helper per surface (session or bearer, never both on one endpoint)
+- [ ] One canonical `auth_headers` helper per suite; a suite with both surfaces names them apart (`session_headers`, `bearer_headers`) and never sends both on one endpoint
 - [ ] No `it { should ... }` chains > 5 deep (split into describes)
 - [ ] System specs minimal; critical journeys only
 
 ## Output Format
 
-Every deliverable opens with one `- **Stack:**` bullet, then the mode blocks, then these trailing sections in this order (the per-mode templates do not repeat them):
+Every deliverable opens with one `- **Stack:**` bullet (`Ruby <v> / Rails <v> / <test framework>`, versions per Step 2), then the mode blocks, then these trailing sections in this order - `## Infra Findings`, `## Infra To Confirm`, `## Blocking Defects` (the per-mode templates do not repeat them):
 
 `## Infra Findings` - Step 8 items that **are** in evidence and are broken (a global `Sidekiq::Testing.inline!`, WebMock absent from `rails_helper.rb`), one line each, `file:line` (or `suite-wide` for runtime, CI or parallelism items) + what breaks. Omit when none; in Review mode they are the first group of the numbered list instead.
 
 `## Infra To Confirm` - Step 8 items **not** in evidence, plus any step skip rationale and, when the Strategy Doc does not ship, the Step 7 decision as `API contract: <tool | skipped - reason>`. Omit when there are none.
 
-A code defect that is not a Step 8 item but blocks the specs being written - a scope referencing a column the schema lacks, a body read twice, an auth hole the coverage analysis walked into - is reported, never dropped and never silently designed around: one line under `## Blocking Defects`, giving `file:line`, what it breaks, and the workflow that owns the fix (`task-rails-implement` for a code change, `task-rails-review-security` for a security hole). Scaffold against the corrected behaviour and say so. An evidenced defect the specs will pin but that does not block them (a job enqueued inside a transaction) is one line under the same heading, marked `non-blocking`; code the request names that does not exist is one line marked `absent`. In Review mode the defect is a numbered finding and the `## Blocking Defects` line only cross-references it.
+A code defect that is not a Step 8 item but blocks the specs being written (no spec can pass against the code as it is) - a scope referencing a column the schema lacks, a body read twice, an auth hole the coverage analysis walked into - is reported, never dropped and never silently designed around: one line under `## Blocking Defects`, giving `file:line`, what it breaks, and the workflow that owns the fix (`task-rails-implement` for a code change, `task-rails-review-security` for a security hole). Scaffold against the corrected behaviour and say so. An evidenced defect the specs will pin but that does not block them (a job enqueued inside a transaction) is one line under the same heading, marked `non-blocking`; code the request names that does not exist is one line marked `absent`. In Review mode the defect is a numbered finding and the `## Blocking Defects` line only cross-references it.
 
 The Step 7 API-contract decision - the tool chosen, or `skipped - <reason>` - is stated exactly once: in the Strategy Doc's `**API contract:**` slot when that block ships, otherwise as one line under `## Infra To Confirm`.
 Assessment or Strategy rows with no matching surface fill as `N/A (<reason>)` - never dropped; a folded pyramid share renders as `0%`.
@@ -143,7 +143,7 @@ Assessment or Strategy rows with no matching surface fill as `N/A (<reason>)` - 
 
 **Framework:** <test gems present, versions where stated; absent ones named>
 
-**Basis:** {SimpleCov line coverage <n>% - app-wide | unit ratio <n>/<n> summed across layers (files; controller actions) - app-wide | the named surface | none available}
+**Basis:** {SimpleCov line coverage <n>% | unit ratio <n>/<n> summed across layers (files; controller actions)} - {app-wide | <the named surface>}   {or `none available`}
 
 **Gaps:**
 - **Model:** [uncovered models]
@@ -162,19 +162,19 @@ Assessment or Strategy rows with no matching surface fill as `N/A (<reason>)` - 
 **Pyramid target:** Unit {x}% / Request {y}% / System {z}%   {omitted when the Strategy Doc ships its Pyramid}
 ```
 
-**Review (existing specs):** opens with `## Rails Test Review` and a `- **Basis:**` bullet (the Assessment's contract), then numbered findings tagged `[Critical | High | Medium]`, each citing `file:line` (file alone when the line isn't in evidence); this workflow owns the finding envelope - the atomic's `[Must]` / `[Recommend]` labels are not written. A whole missing spec layer is one finding anchored to the layer's directory. Assign by consequence: Critical = tests can pass while auth or data-integrity is broken (missing policy or unauthorized-example coverage, HTTP stubs not intercepting); High = green-but-broken risk outside auth (global `Sidekiq::Testing.inline!`, missing validation-error/edge examples, mocked AR); Medium = maintainability (duplicated factories, deep chains, wrong layer). A happy-path-only protected action files two findings: its missing-unauthorized facet at Critical, its missing-validation-error facet at High. Infra findings (Step 8) first, spec findings (checklist) after, severity-ordered within each group; when the user reported a symptom ("CI green, staging breaks"), open with one line tying the top findings to it. The Assessment block appends per the Step 9 rule; a gap already filed as a finding is cross-referenced there, not restated.
+**Review (existing specs):** opens with `## Rails Test Review` and a `- **Basis:**` bullet (the Assessment's contract), then numbered findings tagged `[Critical | High | Medium]`, each citing `file:line` (file alone when the line isn't in evidence); this workflow owns the finding envelope - the atomic's `[Must]` / `[Recommend]` labels are not written. A whole missing spec layer is one finding anchored to the layer's directory. Assign by consequence: Critical = tests can pass while auth or data-integrity is broken (missing policy or unauthorized-example coverage, HTTP stubs not intercepting); High = green-but-broken risk outside auth (global `Sidekiq::Testing.inline!`, missing validation-error/edge examples, mocked AR); Medium = maintainability (duplicated factories, deep chains, wrong layer). A happy-path-only protected action files two findings: its missing-unauthorized facet at Critical, its missing-validation-error facet at High. One spec with several defects files one finding per facet (a controller spec that also mocks AR: wrong layer at Medium, mocked AR at High). Infra findings (Step 8) first, spec findings (checklist) after, severity-ordered within each group; when the user reported a symptom ("CI green, staging breaks"), open with one line tying the top findings to it. The Assessment block appends per the Step 9 rule; a gap already filed as a finding is cross-referenced there, not restated.
 
 **Test Scaffolds:** a `- **Basis:**` bullet, then `- **Executed:** {N specs passing | N specs written, not executed}` - here **Basis** names the evidence the scaffolds derive from - a different contract from the Assessment's coverage-figure `Basis`; when the union rule ships both blocks, each keeps its own `Basis` inside its own block and neither is hoisted (source files shown; inventions labeled placeholders per the unseen-source rule); the per-file blocks are emitted in this mode only - then, per file written (support files and factories included), `rails-testing-patterns`' per-file block (`Test Type` / `File` / `Contexts` / `Factories` / `Examples`; Mailer, Component and Channel named plainly where its enum lacks them) followed by the ready-to-run file in project conventions. Each scaffold:
 
-- Correct spec type (`type: :model | :request | :job | :mailer | :channel | :component | :system`; policy, service, client and rake specs carry no rspec-rails `type:`)
+- Correct spec type (`type: :model | :request | :job | :mailer | :channel | :system`; policy, service, client and rake specs carry no rspec-rails `type:`; a component spec uses `type: :component` only with `config.include ViewComponent::TestHelpers, type: :component` in `rails_helper.rb`, shipped alongside when absent)
 - FactoryBot with state traits (not inline overrides or `Model.new`); missing factories ship as files alongside the specs
 - Model: shoulda-matchers for validations and associations
 - Request: happy + unauthorized + validation-error
 - Policy: every action, one example per distinct outcome, plus the `Scope`
-- Job: idempotency + retry behavior
+- Job: idempotency + the class's declared retry options (`sidekiq_options` retry / dead, or `retry_on` / `discard_on`; never the backend's retry loop)
 - Inline comments only for non-obvious setup
 
-Run `bundle exec rspec <scaffolded files>` and fix failures before presenting. If the environment can't execute, say so, list the command for the user, and fill `Executed:` with `written, not executed` - never claim passes.
+Run `bundle exec rspec <scaffolded files>` (Minitest: `bin/rails test <files>`) and fix failures before presenting. If the environment can't execute, say so, list the command for the user, and fill `Executed:` with `written, not executed` - never claim passes.
 
 **Strategy Doc:**
 
@@ -185,15 +185,15 @@ Run `bundle exec rspec <scaffolded files>` and fix failures before presenting. I
 
 **Pyramid:** Unit {x}% / Request {y}% / System {z}%
 
-**Tooling:** {RSpec, FactoryBot (traits), shoulda-matchers, plus what the app shape needs: pundit-matchers | WebMock | VCR | Cuprite (system specs only)}
+**Tooling:** {RSpec | Minitest, FactoryBot (traits), shoulda-matchers, plus what the app shape needs: pundit-matchers | WebMock | VCR | Selenium headless_chrome (system specs with JS; Cuprite where its gem exists)}
 
-**API contract:** [rswag | committee | hand-rolled match_schema | skipped - <reason>]
+**API contract:** [rswag | committee | hand-rolled match_json_schema | skipped - <reason>]
 
-**Sidekiq:** default `:fake`, `:inline` per-spec for end-to-end
+**Jobs:** [Sidekiq - default `:fake`, `:inline` per-spec | Solid Queue - `:test` adapter, `perform_enqueued_jobs` per-spec]
 
 **DB isolation:** [transactional fixtures | database_cleaner truncation]
 
-**Parallelism:** [parallel_tests | none]
+**Parallelism:** [parallel_tests | turbo_tests | Rails parallelize (Minitest) | none]
 
 **Gaps to close (prioritized):**
 1. [Highest risk - typically authorization or data integrity]

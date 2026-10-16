@@ -25,8 +25,8 @@ user-invocable: false
 - Validate `content_type` and `byte_size` in the model (or via `active_storage_validations`) - Active Storage does no validation itself. `attach` on a persisted record with no unsaved changes calls plain `record.save`, so validations *do* run - but it returns `nil` instead of raising, so a rejected attach looks like success and leaves the blob (already a row and an object, on the direct-upload path) orphaned. Check the return value or `record.errors`, and purge on rejection. The genuinely unvalidated case is the other branch: when the record has unsaved attribute changes, `attach` defers to the next save and validates nothing at attach time
 - Re-detect content type via magic bytes for sensitive uploads. Rails already re-identifies on attach (`identify_without_saving` sniffs the first 4 KB with Marcel), so the stored `content_type` is not simply the client's - but Marcel falls back to the client-declared type when the magic bytes are unrecognized, and that fallback is the hole. Run the check in the attach-time background job using `blob.open { |f| Marcel::MimeType.for(f) }` - streaming, not `blob.download` (loads the whole file into memory). Gate visibility on the result: a quarantine flag in `blob.metadata` (per-file, so it works for `has_many_attached`) holds the file from viewers until the sniff passes; purge on confirmed mismatch
 - libvips is already the processor under `load_defaults 7.0`+ (`variant_processor = :vips`) - an app that never sets it is compliant, not a GAP. Only flag an explicit `:mini_magick`, or a missing `libvips` / `image_processing` install
-- Variants are lazy by default; warm them in a background job for high-traffic paths
-- Signed URLs only (`rails_blob_url` / `url_for`); never expose raw blob keys. Note the two knobs differ: `ActiveStorage.urls_expire_in` defaults to `nil`, so `rails_blob_url` signed ids never expire until you set it, and it is app-wide; the 5-minute default belongs to `service_urls_expire_in` on the redirect target. For a per-viewer window use `blob.url(expires_in: 5.minutes)` at the call site
+- Variants are lazy by default; on hot paths declare them `preprocessed: true` (7.1+ - `ActiveStorage::TransformJob` runs on attach) or warm them in the job that attaches
+- Signed URLs only (`rails_blob_url` / `url_for` / `blob.url`); never expose raw blob keys. `service_url` was deprecated in 6.1 and is gone from 7.x - a call site still using it raises `NoMethodError`. Note the two knobs differ: `ActiveStorage.urls_expire_in` defaults to `nil`, so `rails_blob_url` signed ids never expire until you set it, and it is app-wide; the 5-minute default belongs to `service_urls_expire_in` on the redirect target. For a per-viewer window use `blob.url(expires_in: 5.minutes)` at the call site
 - One service per environment in `config/storage.yml`; reference by symbol in `config.active_storage.service`; never hardcode bucket names or keys (credentials via `credentials.dig`)
 
 ## Patterns
@@ -49,7 +49,7 @@ amazon:
 <%= form.file_field :avatar, direct_upload: true %>
 ```
 
-The form POSTs metadata to `/rails/active_storage/direct_uploads`, receives a signed PUT URL, uploads directly to S3, then submits with the resulting `signed_id`. Puma sees only the small metadata roundtrip. API-only apps drive the same endpoint from the client (`DirectUpload` in `@rails/activestorage`) and submit the `signed_id` in the JSON body.
+The form POSTs metadata to `/rails/active_storage/direct_uploads`, receives a signed PUT URL, uploads directly to S3, then submits with the resulting `signed_id`. Puma sees only the small metadata roundtrip. API-only apps drive the same flow from the client (`DirectUpload` in `@rails/activestorage`) through an app subclass of `ActiveStorage::DirectUploadsController` that skips forgery protection and authenticates the caller - the engine controller inherits `ActionController::Base` with forgery protection on - and submit the `signed_id` in the JSON body.
 
 Bucket CORS for browser PUT:
 
@@ -120,7 +120,8 @@ class ProcessUploadJob
     blob   = ActiveStorage::Blob.find_signed!(blob_signed_id)
     unless record.avatar.attach(blob)   # nil on a validation rejection - never silent
       blob.purge_later
-      raise ActiveRecord::RecordInvalid, record
+      Rails.error.report(ActiveRecord::RecordInvalid.new(record))   # report and return: a raise would retry against a purged blob
+      return
     end
     record.avatar.variant(:thumb).processed
     record.avatar.variant(:medium).processed
@@ -141,12 +142,14 @@ Non-image previews (PDF first page, video frame): `attachment.preview(resize_to_
 | `dependent: :purge_later`    | On parent destroy, enqueue purge jobs      | All model attachments (the default)   |
 | `dependent: false`           | On parent destroy, **nothing is purged**   | Never - the blob is orphaned and needs the unattached sweep |
 
-Replacing a `has_one_attached` file destroys the old attachment and purges its blob via `purge_later` automatically - no manual cleanup on re-attach.
+Replacing a `has_one_attached` file destroys the old attachment and, under the default `dependent:`, purges its blob via `purge_later` - no manual cleanup on re-attach (`dependent: false` orphans it).
 
 Orphan cleanup - direct uploads abandoned before form submit accumulate as unattached blobs:
 
 ```ruby
-ActiveStorage::Blob.unattached.where("created_at < ?", 1.day.ago).find_each(&:purge_later)
+# hash form: `unattached` LEFT JOINs active_storage_attachments, which also has created_at,
+# so a bare string condition is "Column 'created_at' in where clause is ambiguous"
+ActiveStorage::Blob.unattached.where(created_at: ..1.day.ago).find_each(&:purge_later)
 ```
 
 Business retention (purge N days after an event) is its own scheduled job, distinct from orphan cleanup:
@@ -158,8 +161,8 @@ LoanApplication.decided.where(decided_at: ..90.days.ago)
 
 ### Migrating from CarrierWave / Paperclip (or disk -> S3)
 
-1. `bin/rails active_storage:install` + migrate.
-2. Keep the old uploader; add `has_one_attached :new_<name>` on the model.
+1. `bin/rails active_storage:install` + migrate; add the service gem (`aws-sdk-s3`, `google-cloud-storage`) and `image_processing` + `ruby-vips` - a Gemfile missing them is a finding.
+2. Keep the old uploader; add `has_one_attached :new_<name>` on the model. CarrierWave keeps its `<name>` string column and `store_dir` keys, Active Storage keys are random, so a shared bucket cannot collide; each CarrierWave `version` becomes a named variant of the same geometry.
 3. Backfill rake: for each record, attach from the old storage. When source and target are the same S3 account (CW on S3), skip download-reupload: S3 server-side copy into the Active Storage key, then create the `ActiveStorage::Blob` row from the object's metadata (`ActiveStorage::Blob.create!(key:, filename:, byte_size:, checksum:, content_type:, service_name:)`; the `checksum` is base64-MD5 - multipart ETags aren't MD5, so compute it once per object or copy single-part), then `attach` that blob to the record - an unattached blob row is an orphan the cleanup rake will purge. Disk or cross-provider sources stream (`File.open` / `blob.open`) into `attach` - no copy shortcut. At millions of records, run as a sharded resumable backfill (`rails-work-splitter-patterns`).
 4. Warm variants inside the backfill job (before reads flip), not lazily after.
 5. Dual-read during transition (one helper/presenter owns it): `record.new_<name>.attached? ? record.new_<name> : record.<name>`.
@@ -173,30 +176,30 @@ Already on Active Storage and only changing services (disk -> S3, bucket move)? 
 - `blob.mirror_later` no-ops on exactly the blobs you are targeting. It is guarded by `service.respond_to?(:mirror)`, and `Blob#service` resolves from the row's own `service_name`, which still holds the pre-switch service. Enqueue the job directly: `ActiveStorage::MirrorJob.perform_later(blob.key, checksum: blob.checksum)`.
 - Blobs written while Mirror was configured carry `service_name: "mirror"`. `Blob#service` is `services.fetch(service_name)`, so deleting the `mirror:` entry raises `KeyError` on every one of them. Before dropping it: `ActiveStorage::Blob.where(service_name: "mirror").update_all(service_name: "amazon")`.
 
-No model or dual-read changes are needed beyond those two.
+No model or dual-read changes are needed beyond those two. Order of the cutover: verify first (count bucket objects against blob rows, by prefix sample above a few hundred thousand blobs), then repoint every row - the pre-switch service name (`local`) as well as `mirror` - with `ActiveStorage::Blob.where(service_name: %w[local mirror]).update_all(service_name: "amazon")`, then flip `config.active_storage.service` to the target, then drop the `mirror:` entry.
 
 ## Output Format
 
-One block per attachment declaration - a model with both a `has_one_attached` and a `has_many_attached` emits two. In review or diagnosis mode, precede the blocks with numbered findings, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. The block describes the corrected attachment, so target state lives there. Mark non-compliant fields `- GAP`, and any field whose evidence is outside the reviewed files `not in evidence` plus the file to read. A blob served from an unscoped lookup (`Document.find(params[:id])` with no ownership check) is an `Access` GAP here and its authorization fix belongs to `rails-security-patterns`; a hardcoded key in `storage.yml` is a numbered finding with no block. A migration plan reviews the current declarations the same way, then emits the target blocks.
+One block per attachment declaration - a model with both a `has_one_attached` and a `has_many_attached` emits two. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: blocks hold corrected values only, and a pre-existing violation the change touches is still a numbered finding. A blob served from an unscoped lookup (`Document.find(params[:id])` with no ownership check) is an `Access` GAP here and its authorization fix belongs to `rails-security-patterns`; a hardcoded key in `storage.yml` is a numbered finding with no block. A migration plan reviews the current declarations the same way, then emits the target blocks.
 
 ```
 Attachment: <model>.<has_one_attached | has_many_attached :name>
 
-Service: <amazon | google | azure | disk - reason | mirror (service move in progress)>
+Service: <amazon | google | azure (deprecated 8.0, removed 8.1 - the azure-blob gem's AzureBlob service replaces it) | disk - reason | mirror (service move in progress)>
 
-Direct upload: <Yes (>1 MB expected) | No (small files only) | not in evidence>
+Direct upload: <Yes (>1 MB expected) | No (small files only) | No - server-side attach from params - GAP when files exceed 1 MB | not in evidence>
 
-Validation: <content_type allowlist | size limit | magic-byte sniff | post-attach valid? + purge - list all that apply>
+Validation: <content_type allowlist | size limit | magic-byte sniff | attach return checked + purge on rejection - list all that apply>
 
-Variants: <list with sizes | none | conditional on blob.image?, previews guarded by previewable? (mixed-type attachment; name the system dependency)>
+Variants: <list with sizes | none | conditional on blob.variable? (image? is true for SVG, on which variant raises InvariableError), previews guarded by previewable? (mixed-type attachment; name the system dependency)>
 
-Variant warming: <lazy | background job | n/a - no variants | not in evidence>
+Variant warming: <lazy | preprocessed: true (7.1+) | background job (the attach point) | n/a - no variants | not in evidence>
 
-Processor: <vips (default, 7.0+) | mini_magick - reason | not configured - compliant (load_defaults 7.0+) | vips configured, libvips or image_processing missing - GAP | pre-7.0 defaults with no backend installed - GAP | not in evidence>
+Processor: <vips (default, 7.0+) | mini_magick - reason | mini_magick by pre-7.0 defaults - GAP (set :vips, install libvips) | not configured - compliant (load_defaults 7.0+) | vips configured, libvips or image_processing missing - GAP | pre-7.0 defaults with no backend installed - GAP | not in evidence>
 
 Purge: <purge_later (default) | purge method in a rake/admin script | dependent: false - GAP | dependent: :purge or any other value - GAP (Rails honours none of them; the blob orphans)>
 
-Orphan cleanup: <scheduled rake | none - GAP when direct upload is Yes, dependent: false exists, or a backfill creates blobs | n/a (none of those) | not in evidence>
+Orphan cleanup: <scheduled rake | none - GAP when direct upload is Yes, dependent: false exists, or a backfill creates blob rows (a MirrorService copy creates none) | n/a (none of those) | not in evidence>
 
 Retention: <business rule + the state-transition timestamp it keys on + scheduled job | indefinite (stated) | none (GAP for regulated data - anything a law or contract obliges you to keep or delete: KYC, financial, medical)>
 
