@@ -41,15 +41,15 @@ Only the workflow that owns the report invokes this skill. Sub-agents spawned fo
 - Validate every input before anything else runs, and report all failures at once - one line per bad field (the first matching check below wins), in the input table's row order, so the caller fixes them in a single pass:
   - Missing or empty required field -> `Missing required input: <field>`
   - `branch` equal to `HEAD` or starting with `refs/` -> `Invalid input: branch: <value>` (stripping a remote prefix is `review-precondition-check`'s job, done before this skill runs)
-  - `base_sha`, `head_sha`, or `prior_head_sha` not matching `[0-9a-f]{40}` (`[0-9a-f]{64}` in a SHA-256 repo) -> `Invalid input: <field>: <value>` - an abbreviated SHA defeats the next round's same-SHA equality check
+  - `base_sha`, `head_sha`, or `prior_head_sha` not matching `[0-9a-f]{40}` or `[0-9a-f]{64}` (SHA-1 or SHA-256), or a well-formed `head_sha` or `prior_head_sha` whose length differs from a well-formed `base_sha` -> `Invalid input: <field>: <value>` for that field - an abbreviated SHA defeats the next round's same-SHA equality check
   - Value-set field (`report_type`, `mode`, `depth`) holding a value outside its set, or `scope` not matching the grammar above -> `Invalid input: <field>: <value>`
   - `round` not a positive integer -> `Invalid input: round: <value>` - a malformed round writes clean today and breaks the next round's checkpoint parse into legacy, losing the chain
   - `round` valid and greater than 1 with no `prior_head_sha` -> `Missing required input: prior_head_sha` (this check is skipped when `round` itself is invalid)
 - On any failure: emit the failure lines and stop. Do not write a partial file, invent a default, or blank a field. Value sets are matched exactly, case included: `Core` and `Deep` are invalid, not variants of `core-only` and `deep` - mapping display values to enum values is the caller's job.
-- **`report_body` is raw Markdown, never fenced.** The consuming workflow's Output Format section shows its template inside a fence for display only; that fence is not part of the report. When the body's first line is a fence opener (three or more backticks or tildes) and its last non-blank line is a fence of the same character with at least the opener's count, those two lines are the workflow's display wrapper: strip both and write what is between them. Otherwise the body is not wrapped and every fence in it (a code sample on a Fix line) is content - keep it.
+- **`report_body` is raw Markdown, never fenced.** The consuming workflow's Output Format section shows its template inside a fence for display only; that fence is not part of the report. When the body's first non-blank line is a fence opener (three or more backticks or tildes) whose info string is `markdown` or `md` - the opener every review workflow's Output Format uses - and its last non-blank line is a bare fence of the same character with at least the opener's count, those two lines are the display wrapper: strip both and write what is between them. Every other fence is content - keep it, including a body that opens and closes with code samples.
 - Sanitize `branch` for the filename: replace `/` and any character outside `[A-Za-z0-9_-]` with `-`, collapse consecutive `-`, lowercase, cut to 100 characters, then strip leading/trailing `-`; an empty result becomes `unnamed`. The frontmatter `branch` field keeps the raw value; only the filename is sanitized. `review-precondition-check` applies the same function on the next round.
-- Build the filename as `<report_type>-<sanitized branch>.md` (`review-feature-x.md`, `review-perf-feature-x.md`). The scheme is many-to-one: a `review` report on a branch that starts with `perf-` shares a filename with a `review-perf` report on the rest of the name, and `feature/x` shares one with `Feature-X`; the `report_type` and raw `branch` frontmatter fields let the next round detect either mismatch.
-- Write the file in the repository root (the workflow runs there; next round's `review-precondition-check` looks for it there): the frontmatter (below), then `report_body` starting on the line after the closing `---` (no blank line inserted; the body's own leading blank lines are kept). Write UTF-8 with LF line endings.
+- Build the filename as `<report_type>-<sanitized branch>.md` (`review-feature-x.md`, `review-perf-feature-x.md`). The scheme is many-to-one (`feature/x` and `Feature-X` share a file, as do a `review` report on `perf-x` and a `review-perf` report on `x`); the raw `branch` and `report_type` fields let the next round detect either mismatch.
+- Write the file in the repository root (the workflow runs there; next round's `review-precondition-check` looks for it there): the frontmatter (below), then `report_body` (after any wrapper strip above) starting on the line after the closing `---` (no blank line inserted; leading blank lines of the written body are kept). Write UTF-8 with LF line endings, ending in exactly one newline.
 - Overwrite without prompting - the file is a rolling checkpoint, not an archive. Round history lives inside the report body.
 - Run no git command (the workflow already captured `base_sha` and `head_sha`).
 - Print one confirmation line after writing:
@@ -60,7 +60,7 @@ Only the workflow that owns the report invokes this skill. Sub-agents spawned fo
 
 ## Frontmatter Contract
 
-Emit exactly this block at the top of the file, one field per line, no comments; the brace annotations on the two conditional lines are authoring notes, never emitted. Every field except the enums (`report_type`, `mode`, `scope`, `depth`, `stack`) and `round` is double-quoted, because a bare value could parse as a YAML timestamp, number, or boolean; a `"` or `\` inside a quoted value is escaped with a preceding `\`. Emit `prior_head_sha` only when `round > 1`; emit `pr_url` only when the caller passed a non-empty value (never write `pr_url:` with a blank value). `generated_at` is the writer's current UTC time (`date -u +%Y-%m-%dT%H:%M:%SZ`) as `YYYY-MM-DDTHH:MM:SSZ`; the workflow does not pass it.
+Emit exactly this block at the top of the file, one field per line, no comments; the brace annotations on the two conditional lines are authoring notes, never emitted. Every field except the enums (`report_type`, `mode`, `scope`, `depth`) and `round` is double-quoted, because a bare value could parse as a YAML timestamp, number, or boolean; a `"` or `\` inside a quoted value is escaped with a preceding `\`. Emit `prior_head_sha` only when `round > 1`; emit `pr_url` only when the caller passed a non-empty value (never write `pr_url:` with a blank value). `generated_at` is the writer's current UTC time (`date -u +%Y-%m-%dT%H:%M:%SZ`) as `YYYY-MM-DDTHH:MM:SSZ`; the workflow does not pass it.
 
 ```yaml
 ---
@@ -75,7 +75,7 @@ round: {N}
 prior_head_sha: "{full SHA from prior round}"   {only when round > 1}
 scope: {scope}
 depth: {depth}
-stack: {stack identifier}
+stack: "{stack identifier}"
 pr_url: "{PR/MR URL}"   {only when a non-empty pr_url was passed}
 generated_at: "{YYYY-MM-DDTHH:MM:SSZ}"
 ---
@@ -95,9 +95,4 @@ On validation failure, the output is the failure lines from Rules (one per bad f
 
 ## Avoid
 
-- Writing a partial or summarized report
-- Wrapping the report body in an outer code fence (renders the whole report as fixed-width text instead of Markdown)
-- Emitting frontmatter without the trailing `---` delimiter (breaks the next round's parse)
-- Creating subdirectories or archiving prior rounds to separate files
-- Running git commands - the workflow supplies all SHAs
-- Inventing fields not in the contract or renaming existing ones
+- Summarizing or trimming `report_body` - the file is the full report the next round reconciles against.

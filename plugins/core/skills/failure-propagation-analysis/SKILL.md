@@ -15,19 +15,18 @@ user-invocable: false
 - Multiple services report errors simultaneously and the origin is unclear
 - Distinguishing a primary failure from downstream consequences
 - Blast radius is moderate or wider during an incident
-- What-if analysis of a hypothetical failure ("what happens if X dies?") - trace forward from the assumed failure; phrase Containment as what would stop propagation. Mode is `what-if` when the failure is assumed and nothing has been observed; symptoms reported as having occurred, however the request is framed, are `incident`
+- What-if analysis of a hypothetical failure ("what happens if X dies?") - trace forward from the assumed failure; phrase Containment as what would stop propagation. Mode is `what-if` when the failure is assumed and nothing has been observed; symptoms reported as having occurred, however the request is framed, are `incident`, including a question about whether an observed incident would recur
 
 ## Rules
 
 - Investigate backward from the earliest observable symptom to the origin; present the path forward from the origin.
 - Distinguish primary failures from cascading consequences. Temporal correlation is not causation. A scheduled job or traffic shift can be the primary - it need not be a component fault.
 - Two conditions are co-primary (`A + B`) only when both changed at incident time and removing either would have prevented the incident. A standing weakness that the trigger exposed (a design flaw, a missing breaker) is not co-primary: it belongs in Containment as what would have stopped propagation.
-- Identify every shared resource on the propagation path, whether it amplified or absorbed the failure - these are the containment points. Quantify one with the numbers the topology gives (pool sizes, connection ceilings), marked `(unverified)` when no metric confirms them.
+- Identify every shared resource on the propagation path, whether it amplified or absorbed the failure - these are the containment points. Quantify each on its Shared Resources line with the numbers the topology gives (pool sizes, connection ceilings), marked `(unverified)` when no metric confirms them.
 - When components degrade together with no call-graph edge between them, suspect a hidden shared resource (database instance, connection pool, broker, executor, host) - the call graph understates coupling.
 - Map both synchronous and asynchronous channels, and check for cycles.
-- Mark hops you cannot verify `(unverified)` rather than guessing or omitting them - including a hop whose mechanism is plausible but not the one the incident record states, and any hop resting on a brief fact the repository contradicts.
 - Components are named at the granularity the topology names them (services, pools, brokers), not files; when one component's endpoints fail differently, the component stays the name and the endpoint goes in the impact text.
-- A branch or hop is included only when the record, the topology, or the code puts the failure on that path; a mechanism that is merely possible (a rate limiter that never engaged, a queue nothing in the timeline touched) is omitted, not marked `(unverified)`.
+- A branch or hop is included only when the record, the topology, or the code puts the failure on that path; a mechanism that is merely possible (a rate limiter that never engaged, a queue nothing in the timeline touched) is omitted. In incident mode, an included hop whose mechanism no evidence confirms is marked `(unverified)` - including one plausible but not the mechanism the record states, and one resting on a brief fact the repository contradicts; in what-if mode the marker follows the predicate under Output Format.
 
 ## Patterns
 
@@ -64,6 +63,8 @@ Propagation can be circular and prevent self-healing:
 
 When a cycle exists, containment must break the loop (circuit breaker, retry budget, load shedding), not just mitigate a single link. A response action that made things worse (a scale-up that hit the connection ceiling) is a path step annotated `(response action)`.
 
+Bad - "errors seen in order-, cart-, checkout- and payment-service; all have issues": a list of failing services, with no origin, no mechanism per hop, and no shared resource.
+
 ### Good
 
 ```
@@ -77,28 +78,21 @@ When a cycle exists, containment must break the loop (circuit breaker, retry bud
 
 ### Propagation Path
 
-1. payment-gateway - timeout 30s, baseline 500ms
+1. payment-gateway - p99 latency 30s, baseline 500ms
 2. -> Synchronous call: order-service - threads blocked on the payment call
 3. -> Connection pool: order-service HikariCP - handlers hold their JDBC connection across the payment call (open transaction), 40/40 checked out, requests wait
 4a. -> Synchronous call: cart-service and checkout-service - connection timeouts from order-service, 503 to users
 4b. -> Cache: search-service - catalog refresh times out, serves stale (degraded)
-5. -> Infrastructure feedback: order-service - liveness probe opens a connection, fails, the container restarts -> loops to step 3
+4c. -> Infrastructure feedback: order-service - liveness probe opens a connection, fails, the container restarts -> loops to step 3
 
 ### Shared Resources on Path
 
-- order-service HikariCP: one slow dependency consumed every connection, so requests with no payment dependency failed too
+- order-service HikariCP (40 connections): one slow dependency consumed every connection, so requests with no payment dependency failed too
 - search-service catalog cache: absorbed the failure - served stale rather than failing
 
 ### Containment Assessment
 
-Nothing stopped it; the loop at step 5 kept it going until the gateway recovered. A circuit breaker on the payment client (none configured) would have failed fast at step 2; a bulkhead pool for gateway calls would have kept step 3 from reaching cart and checkout; a liveness probe that does not open a connection would break the loop.
-```
-
-### Bad
-
-```
-Errors seen in: order-service, cart-service, checkout-service, payment-service.
-All services have issues.
+Nothing stopped it; the loop at step 4c kept it going until the gateway recovered. A circuit breaker on the payment client (none configured) would have failed fast at step 2; a bulkhead pool for gateway calls would have kept step 3 from reaching cart and checkout; a liveness probe that does not open a connection would break the loop.
 ```
 
 ## Output Format
@@ -110,19 +104,19 @@ All services have issues.
 
 **Primary failure:** {component and failure type; `A + B` when two conditions are co-primary; suffixed (assumed) in what-if mode}
 
-**Cascading components:** {each component with (failed) or (degraded: <fallback or what still works>), prefixed `predicted` in what-if mode, suffixed (branch Nb only) when it exists on one branch, or (exposed, not reported) when the topology puts it on the shared resource but the record does not name it; or "none - failure is contained"}
+**Cascading components:** {each component with (failed), (failed: wrong output - <what it served>) when it kept answering with incorrect data, or (degraded: <fallback or what still works>), prefixed `predicted` in what-if mode, suffixed (branch Nb only) when it exists on only one outcome of a configuration-decided branch (fan-out branches, where both outcomes happen, take no suffix), or (exposed, not reported) when the topology puts it on the shared resource but the record does not name it; or "none - failure is contained"}
 
 ### Propagation Path
 
-1. {origin} - {mechanism, e.g., "timeout 30s, baseline 500ms"}
+1. {origin} - {mechanism, e.g., "p99 latency 30s, baseline 500ms"}
 2. -> {channel}: {affected component} - {impact}{ (unverified)}{ (response action)}
-3a. -> {channel}: {component on one branch} - {impact}
-3b. -> {channel}: {component on the other branch} - {impact}
-N. -> {channel}: {component} - {impact} -> loops to step {M}
+3a. -> {channel}: {component on one branch} - {impact}{ (unverified)}{ (response action)}
+3b. -> {channel}: {component on the other branch} - {impact}{ (unverified)}{ (response action)}
+N. -> {channel}: {component} - {impact}{ (unverified)}{ (response action)} -> loops to step {M}
 
 ### Shared Resources on Path
 
-- {resource}{ (suspected - <evidence>)}{ (branch Nb only)}: {how it amplified or absorbed propagation}
+- {resource}{ (<size or ceiling>)}{ (unverified)}{ (suspected - <evidence>)}{ (branch Nb only)}: {how it amplified or absorbed propagation}
 
 {or the single line `none on path - failure did not cross a shared resource`}
 
@@ -131,15 +125,12 @@ N. -> {channel}: {component} - {impact} -> loops to step {M}
 {What stopped propagation, or what would have stopped it earlier; for a what-if, what would stop it. When a cycle was found, name the loop-breaker. When Primary is `A + B`, name which condition is the actionable one. When a branch depends on a configuration you cannot read, one line per branch naming the config that decides it.}
 ```
 
-Always produce all sections; the loop step appears only when a cycle exists. Branch steps as `2a`/`2b` when the failure fans out or when an unreadable configuration (a rate limiter's fail-open setting, a retry budget) decides which way it goes - both outcomes are real, and a single path would assert a fact you do not have. In what-if mode every hop is a prediction; mark only hops with no evidence at all `(unverified)`.
+Always produce all sections; the loop step appears only when a cycle exists. Number branch steps `<N>a`/`<N>b`/`<N>c`, N being the step after the fork, one letter per branch kept on that branch's later steps (`5a`, `6a`), and give a step every branch reaches the next whole number. Branch when the failure fans out or when an unreadable configuration (a rate limiter's fail-open setting, a retry budget) decides which way it goes - both outcomes are real, and a single path would assert a fact you do not have. In what-if mode every hop is a prediction; mark `(unverified)` only a hop whose mechanism neither the topology nor the code states.
 
 Components that absorbed the failure through a working fallback are listed and annotated `(degraded: <fallback>)` - containment is visible in the annotations, not in an empty list. Reserve `none - failure is contained` for a failure no other component observed, or in what-if mode would observe, at all.
 
-Shared Resources lists every shared resource on the path, amplifying or absorbing; a resource the no-call-graph-edge rule makes you suspect but no record confirms carries `(suspected - <evidence>)`. Write `none on path - failure did not cross a shared resource` when there is genuinely none, since that absence is itself the finding: the failure had no amplification lever. A control that was never configured or never activated (a breaker that never opened) is not a shared resource; it is a missing containment lever and belongs in Containment.
+Shared Resources lists every shared resource on the path, amplifying or absorbing, its size or ceiling suffixed `(unverified)` when no metric confirms it, and suffixed `(branch Nb only)` when it sits on one outcome of a configuration-decided branch; a resource the no-call-graph-edge rule makes you suspect but no record confirms carries `(suspected - <evidence>)`. Write `none on path - failure did not cross a shared resource` when there is genuinely none, since that absence is itself the finding: the failure had no amplification lever. A control that was never configured or never activated (a breaker that never opened) is not a shared resource; it is a missing containment lever and belongs in Containment.
 
 ## Avoid
 
 - Listing affected components without tracing the mechanism between them
-- Treating temporal correlation as causation
-- Ignoring asynchronous propagation (events, queues, back-pressure)
-- Treating every error as a primary failure rather than a consequence

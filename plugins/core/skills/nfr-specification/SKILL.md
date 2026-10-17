@@ -18,11 +18,11 @@ user-invocable: false
 ## Rules
 
 - Every quantitative NFR produces at least one measurable threshold - never "must be fast". Security, scaling model, and consistency are categorical choices; each still names the specific mechanism or standard, never a generic category.
-- Each SLO states the measurement method, not just the target value; in the bullet sections the method follows the value after a comma (`- MTTR target: 30 min, alert to resolved, from the paging tool`). A cadence word ("monthly") fixes the window as the calendar month unless the contract says otherwise
+- Each SLO states the measurement method, not just the target value; in the bullet sections the method follows the value after a comma (`- MTTR target: 30 min, alert to resolved, measured from the paging tool`). A cadence word ("monthly") fixes the window as the calendar month unless the contract says otherwise
 - Surface conflicts between stated NFRs with resolution options, and infeasible targets with the achievable frontier - never silently pick one or write down an impossible target. A conflict may pit a target against a proposed mechanism (a latency target against synchronous dual-write); mechanisms count
 - Surface gaps explicitly - unstated NFRs become hidden assumptions
-- When business context implies a regulated domain (payments, healthcare, personal data), name every standard the signals implicate (privacy and card data together name GDPR and PCI DSS), tag each `(assumed: <basis>)`, and add its confirmation question to Gaps
-- The predicate runs per field, not per category: a field with topical signal but no stated value ("handle Black Friday", "payments" with no auth mechanism named) gets a defensible default tagged `(assumed: basis)` plus a confirmation question in Gaps; a field with no signal at all reads `not specified` and is listed in Gaps, and a sibling's number licenses nothing (a p99 does not imply a p95). Never present an invented number as confirmed; with no baseline figure anywhere, an assumed default is relative (a multiplier of the baseline), never an absolute. Reuse one assumption identically wherever it applies on the same basis (a peak multiplier across Performance and Scalability's peak, not across growth projections), and one assumption reused across sections gets one Gaps question
+- When business context implies a regulated domain (payments, healthcare, personal data), name every standard or statute the signals implicate (privacy and card data together name GDPR and PCI DSS; bookkeeping retention names the statute, HGB or Code de commerce, with the provision as a Gaps question when unknown), tag each `(assumed: <basis>)`, and add its confirmation question to Gaps
+- The predicate runs per field, not per category: a field with topical signal but no stated value ("handle Black Friday", "payments" with no auth mechanism named) gets a defensible default tagged `(assumed: basis)` plus a confirmation question in Gaps; a field with no signal at all reads `not specified` and is listed in Gaps, and a sibling's number licenses nothing (a p99 does not imply a p95). Never present an invented number as confirmed; with no baseline figure anywhere, an assumed throughput or volume default is relative (a multiplier of the baseline), never an absolute, while an assumed latency default is an absolute taken from the domain norm its tag names. Reuse one assumption identically wherever it applies on the same basis (a peak multiplier across Performance's Peak throughput and Scalability's Current rate, not across growth projections), and one assumption reused across sections gets one Gaps question
 - A conflict may be raised between two assumed defaults; say so in the entry, since answering the Gaps questions may dissolve it
 - Team size, incident history, and existing contracts are business context and may ground a default; incident history of a system that shares the new system's database, on-call, or request path counts
 
@@ -37,6 +37,7 @@ Elicit across all six. For each, extract from context or ask the requester. When
 - Latency: p50 / p95 / p99 per operation class (read / write / batch) - one row per percentile and class the context supports
 - Throughput: requests per second sustained (baseline) and at peak, plus burst when a shorter spike is expected - one row each
 - Response budget: breakdown across layers if multi-service
+- Batch completion: a job that must finish by a clock time (statements by 06:00, reconciliation by 08:00) is a Performance row whose target is the deadline and whose measurement is the job's completion timestamp
 
 **Availability**
 
@@ -61,19 +62,19 @@ Elicit across all six. For each, extract from context or ask the requester. When
 
 - Deployment model: zero-downtime / canary / blue-green / maintenance window
 - Observability: log retention, metrics granularity, tracing coverage
-- On-call: MTTR target (alert to resolved), alert response SLA
+- On-call: MTTR target (alert to resolved), alert acknowledgement target
 
 **Data**
 
-- Consistency model per operation class (strong / eventual / mixed)
-- Retention: duration, archival vs deletion; a retention floor and a deletion ceiling on the same data are a conflict
+- Consistency model per operation class (strong / eventual / mixed), with how it is verified (a read-your-writes test, a replication-lag metric)
+- Retention: duration, archival vs deletion; a retention floor longer than a deletion ceiling on the same data is a conflict
 - Volume growth rate and storage budget
 
 ### Distinguish SLO from SLA
 
 SLOs are internal targets that drive design and alerting. SLAs are contractual obligations to customers with penalties. Record them as separate rows when both exist, labelled `Uptime SLO` and `Uptime SLA (contractual)` so the contractual one is identifiable.
 
-An SLO must be at least as strict as the SLA it sits behind - the gap is the margin that lets you detect and fix a breach before it costs money. An SLO looser than its SLA is a conflict; record it as one.
+An SLO must be at least as strict as the SLA it sits behind - the gap is the margin that lets you detect and fix a breach before it costs money. An SLO looser than its SLA is a conflict; record it as one. A dependency's contractual availability (a payments partner's 99.9%) is its own row, `Upstream <name> SLA (contractual)`, and an SLO stricter than a hard dependency's SLA is a conflict unless the design names what absorbs the gap.
 
 ## Output Format
 
@@ -89,7 +90,7 @@ An SLO must be at least as strict as the SLA it sits behind - the gap is the mar
 | p99 write latency   | < 500ms  | API gateway percentile | Includes DB write              |
 | Sustained throughput| 400 RPS  | p95 of 1-minute averages, non-peak days | Stated baseline         |
 | Peak throughput     | 1000 RPS | 1-minute average held over 5 min | (assumed: Black Friday 2.5x multiplier) |
-| Response budget     | 200ms = gateway 10 + service 40 + DB 150 | Per-layer traces | n/a - single service when there is one layer |
+| Response budget     | 200ms = gateway 10 + service 40 + DB 150 | Per-layer traces | Sums to the p99 read target    |
 
 ### Availability
 
@@ -105,21 +106,21 @@ An SLO must be at least as strict as the SLA it sits behind - the gap is the mar
 
 - Current: {users / RPS / data volume}
 - 12-month target: {projected growth}
-- 3-year target: {projected growth, or "not specified"}
+- 3-year target: {projected growth}
 - Scaling model: {horizontal / vertical / mixed}, {stateless / stateful: <what holds state>}
 
 ### Security
 
-- Authentication: {mechanism | not specified}
-- Authorization: {model | not specified}
-- Data classification: {PII / cardholder data / PHI / none | not specified}
-- Compliance: {standards | none identified - <why nothing applies> | not specified}
+- Authentication: {mechanism}
+- Authorization: {model}
+- Data classification: {PII / cardholder data / PHI / none}
+- Compliance: {standards | none identified - <why nothing applies>}{; not implicated: <nearby standard the system touches> - <why>}
 
 ### Operability
 
-- Deployment: {zero-downtime / maintenance window allowed}
+- Deployment: {zero-downtime / canary / blue-green / maintenance window allowed}
 - MTTR target: {minutes, alert to resolved, measured from <source>}
-- Alert response SLA: {minutes to acknowledge, measured from <source>}
+- Alert response target: {minutes to acknowledge, measured from <source>}
 - Log retention: {days}
 - Tracing coverage: {percentage of requests or specific services}
 - Metrics granularity: {per-second / per-minute / per-5-minute}
@@ -129,7 +130,7 @@ An SLO must be at least as strict as the SLA it sits behind - the gap is the mar
 - Consistency: {strong / eventual / mixed - specify which operations, verified by <how>}
 - Retention: {policy}
 - Volume growth: {estimate}
-- Storage budget: {amount or "not specified"}
+- Storage budget: {amount}
 
 ## NFR Conflicts
 
@@ -142,16 +143,12 @@ An SLO must be at least as strict as the SLA it sits behind - the gap is the mar
 - {confirmation question for each `(assumed)` target}
 ```
 
-Always produce all six sections plus Conflicts and Gaps. A field with no business signal reads `not specified` and is listed in Gaps. An empty Conflicts or Gaps section is the single bullet `- none identified`. The table rows above are the illustrative shape; emit the rows the context supports, and omit the SLA row when no SLA exists.
+Always produce all six sections plus Conflicts and Gaps. Every field accepts `not specified`: a field with no business signal reads it and is listed in Gaps, and its Notes cell stays empty. When there is one layer, the Response budget row's Target reads `n/a - single service` and its Measurement and Notes are empty. A stated rate or availability figure keeps its stated window in Measurement (`held for 3 min`); with no window stated, Measurement reads `<method>, window not specified` and Gaps asks for it. An empty Conflicts or Gaps section is the single bullet `- none identified`. The table rows above are the illustrative shape; emit the rows the context supports. Omit the `Uptime SLA (contractual)` row when the context states there is no customer SLA; when it is silent, the row reads `not specified` and Gaps asks whether one exists. An `Upstream <name> SLA (contractual)` row exists only for a named hard dependency.
 
-`(assumed: basis)` goes in the Notes column where a table has one, and directly after the value everywhere else (`- MTTR target: 30 min, alert to resolved (assumed: no on-call target stated)`). Every tag anywhere gets its confirmation question in Gaps.
+`(assumed: basis)` goes in the Notes column where a table has one, and directly after the value everywhere else (`- MTTR target: 30 min, alert to resolved, measured from the paging tool (assumed: 24/7 on-call stated, no MTTR given)`). Every tag anywhere gets its confirmation question in Gaps.
 
-An infeasible target is not a conflict between two stated NFRs - no choice between them makes it attainable. Record it in Conflicts with the achievable frontier: "p99 50ms with strong consistency across US-East and EU is below the cross-continent round trip (~70-90ms): the floor is one round trip plus commit, ~90-100ms, for a US-East/EU quorum committed from the leader's region, about double for a client in the far region, higher only when a third region is farther than the existing peer, or 50ms per-region with eventual cross-region convergence."
+An infeasible target is not a conflict between two stated NFRs - no choice between them makes it attainable. Record it in Conflicts with the achievable frontier: "p99 50ms with strong consistency across US-East and EU is below the cross-continent round trip (~70-90ms): the floor is one round trip plus commit, ~75-100ms, for a US-East/EU quorum committed from the leader's region, about double for a client in the far region; under a majority quorum a third region never raises it and lowers it when nearer than the existing peer - or 50ms per-region with eventual cross-region convergence."
 
 ## Avoid
 
-- Accepting "as fast as possible" or "always available" - push for numbers
 - Treating NFRs as a checklist - each must connect to a design decision
-- Omitting the Gaps section - unstated NFRs become hidden assumptions
-- Conflating SLOs with SLAs
-- Inventing precision the business context does not support - propose defaults only with the `(assumed)` tag

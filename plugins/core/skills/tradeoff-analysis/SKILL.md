@@ -40,35 +40,25 @@ For each decision, capture:
 7. **Risk** - the conditions under which this decision becomes wrong
 8. **Review Trigger** - an observable signal that says revisit now
 
-In the Output Format, the chosen option is the first Alternatives row (for a phased decision, the phase rows in order, then the rejected rows); every row carries items 3, 5, 6, and 7. Every risk in a chosen row gets one Revisit line that makes it observable, sitting on the earlier-warning side of the risk threshold (below it for a metric where higher is worse, above it where higher is better) - the trigger is the leading indicator. A trigger whose threshold the record does not establish (the metric is an `Unknown:`, or the risk names no number) carries a provisional threshold marked `(provisional until <fact> is known)`; a trigger never cites a threshold the record does not contain.
+In the Output Format, the chosen option is the first Alternatives row (for a phased decision, the phase rows in order, then the rejected rows); every row carries items 3, 5, 6, and 7. Every risk in a non-phased chosen row gets one Revisit line that makes it observable, sitting on the earlier-warning side of the risk threshold (below it for a metric where higher is worse, above it where higher is better) - the trigger is the leading indicator. A trigger whose threshold the record does not establish (the metric is an `Unknown:`, or the risk names no number) carries a provisional threshold marked `(provisional until <fact> is known)` - a round figure when no baseline exists to scale from; a trigger never cites an unmarked threshold the record does not establish. A phased decision instead gets one `Revisit Phase {N} if:` line per phase, as Hybrid and Phased Decisions defines; the last phase's line sits on the earlier-warning side of that phase's risk threshold, like a non-phased Revisit line.
 
 `Status` is `proposed` while the record awaits approval, `accepted` once approved or already shipped (a decision written up after the fact is `accepted`), `trigger fired on {date} - {what was found}` once a Revisit condition has been met, and `superseded by {record}` once any later record replaces this one.
 
 ### Hybrid and Phased Decisions
 
-When the answer is phased, record each phase as its own Alternatives row (`Phase 1: {option} (chosen)`, `Phase 2: {option} (chosen)`), each with its own reversibility and risk, plus at least one rejected row - every option the request named keeps its row even when a phase absorbs it - and one Revisit line per phase: the trigger that ends Phase 1 is usually what starts Phase 2, and the last phase's trigger is the condition that would make that phase wrong, since nothing follows it. A phase not yet due is not disqualified; only a hard constraint is. A disqualified-now option that a later phase would adopt is that phase's row, with the constraint's lifting (as an observable) as the trigger that starts it.
+When the answer is phased, record each phase as its own Alternatives row (`Phase 1: {option} (chosen)`, `Phase 2: {option} (chosen)`), each with its own reversibility and risk, plus at least one rejected row - every option the request named keeps its row even when a phase absorbs it - and one Revisit line per phase: the trigger that ends Phase 1 is usually what starts Phase 2, and the last phase's trigger is the leading indicator of the condition that would make that phase wrong, since nothing follows it. A phase not yet due is not disqualified; only a hard constraint is. A disqualified-now option that a later phase would adopt is that phase's row, with the constraint's lifting (as an observable) as the trigger that starts it.
 
 ### Hard Constraints and Incomplete Inputs
 
 - **Hard constraint disqualifies an option:** keep the option in the Alternatives table, lead its Risk cell with `Disqualified: {constraint}; ` and follow it with the risk the option would carry if adopted, and fill its remaining cells like any evaluated option - the completed row is the evidence of evaluation.
-- **Decision already made ("write it up"):** analyze as if open, with the chosen row plus one to three rejected rows (include the status quo or simplest option), documenting genuine costs and risks. The chosen row records the decision as made; when the analysis favors a rejected option, or an option that was never on the table, that option gets a row marked `(recommended, not decided)` and the mismatch is stated in Rationale instead of justified backwards; when the decision stands but its implementation must change, Rationale says which change and the chosen row's cells reflect the hardened form with `(as hardened)` after the values that changed.
-- **Materialized risk:** when a recorded risk has fired or a trigger condition is already met, the record carries `**Status:** trigger fired on {date} - {what was found}`, the revisit's conclusion goes in Rationale, and a decision that changes gets a new record that this one names in `**Status:** superseded by {record}`; the original rows are never rewritten to look right in hindsight.
+- **Decision already made ("write it up"; a proposal awaiting approval is an open decision, not this case):** analyze as if open, with the chosen row, a row for every other option the request named, and one to three further rejected rows (include the status quo or simplest option) when it named no option besides the chosen one, documenting genuine costs and risks. The chosen row records the decision as made; when the analysis favors a rejected option, or an option that was never on the table, that option gets a row marked `(recommended, not decided)` and the mismatch is stated in Rationale instead of justified backwards; when the decision stands but its implementation must change, Rationale says which change and the chosen row's cells reflect the hardened form, each changed cell ending with `(as hardened)`.
+- **Materialized risk:** when a recorded risk has fired or a trigger condition is already met, the record carries `**Status:** trigger fired on {date} - {what was found}`, the revisit's conclusion goes in Rationale, and a decision that changes gets a new record that this one names in `**Status:** superseded by {record}` - until that record exists the Status stays `trigger fired`; the Decision section and the original rows keep the decision as made, never rewritten to look right in hindsight.
 - **Options not yet known:** derive candidates from the constraints before analyzing; include at least one simple option and one hybrid or phased option. For an open decision, a hybrid the request did not name may be the chosen row.
 - **Missing context (volume, team, constraints):** ask for the facts that drive the decision, or record `Unknown: {fact}` in Context. Never fabricate numbers to make the Rationale look evidence-based.
 
-### Common Trade-Off Dimensions
+Bad - `Decision: use events` / `Reason: events are better than REST`: no alternative, no cost accepted, no trigger to revisit.
 
-| Dimension      | One End               | Other End           |
-| -------------- | --------------------- | ------------------- |
-| Consistency    | Strong (simple)       | Eventual (scalable) |
-| Coupling       | Tight (simple)        | Loose (flexible)    |
-| Complexity     | Simple now            | Flexible later      |
-| Performance    | Optimized (brittle)   | General (adaptable) |
-| Cost           | Cheap (limited)       | Expensive (capable) |
-| Time to market | Fast (technical debt) | Thorough (slower)   |
-| Build vs buy   | Build (control)       | Buy (speed)         |
-
-### Good
+### Example
 
 ```markdown
 ## Trade-Off Record
@@ -77,7 +67,7 @@ When the answer is phased, record each phase as its own Alternatives row (`Phase
 
 ### Context
 
-Order processing needs payment confirmation before fulfillment. The last two checkout outages (INC-1987, INC-2104) were payment-provider latency spikes propagating through the synchronous chain.
+Order processing needs payment confirmation before fulfillment. The last two checkout outages (INC-1987, INC-2104) were payment-provider latency spikes propagating through the synchronous chain. Payment capture is the only compensatable step; its refund already lives in the payment service.
 
 Unknown: payment provider p99 under Black Friday load
 
@@ -93,11 +83,11 @@ Async event flow (OrderCreated -> PaymentProcessed or PaymentFailed -> Fulfillme
 | ------ | ---------------- | ------------- | ------------- | ---- |
 | Async event flow | Independent scaling and deploy per service; checkout responds before payment completes | Eventual consistency (the order shows "processing" until payment completes); a broker, event contracts, idempotent consumers, a FulfillmentFailed compensation path, event monitoring | Hard - switching to sync redesigns three services and their data models | Broker unavailability stalls every order; order confirmation is delayed by payment latency |
 | Synchronous REST chain | One request, immediate answer | Fulfillment latency bound to payment latency; one slow provider blocks all | Hard - moving to events needs the broker, contracts, and consumer idempotency the async row lists | Payment provider slowness becomes a checkout outage (INC-1987, INC-2104) |
-| Saga with central orchestrator | Central sequencing of compensations, with timeout and retry handling | Everything the async row costs, plus an orchestrator service with its own state store and one compensating transaction per participant | Hard - participants' command handlers become event publishers and subscribers, and compensation ordering redistributes into each | Disqualified: platform team has no capacity for a new service while its committed project count is above 3; a second stateful dependency (the saga store) to operate and back up |
+| Saga with central orchestrator | Central sequencing of compensations, with timeout and retry handling | Everything the async row costs, plus an orchestrator service with its own state store that sequences every step and commands the single payment refund | Hard - participants' command handlers become event publishers and subscribers, and the orchestrator's sequencing and timeout handling redistribute into each | Disqualified: platform team has no capacity for a new service while its committed project count is above 3; a second stateful dependency (the saga store) to operate and back up |
 
 ### Rationale
 
-Async decouples checkout from payment latency, which INC-1987 and INC-2104 show is the dominant failure. Only one step, payment capture, is compensatable, and its refund lives in the payment service under either option; with no multi-step compensation ordering to own, the orchestrator adds a service without adding a guarantee.
+Async decouples checkout from payment latency, which INC-1987 and INC-2104 show is the dominant failure. Payment capture is the only compensatable step, and its refund stays in the payment service under both the async and the orchestrated option; with no multi-step compensation ordering to own, the orchestrator adds a service without adding a guarantee.
 
 ### Trade-Off Accepted
 
@@ -110,16 +100,9 @@ Revisit this decision if: broker-caused order stalls exceed 5 minutes in a month
 Revisit this decision if: order confirmation p99 exceeds 10s (provisional until payment provider p99 under Black Friday load is known)
 ```
 
-Bad - no trade-off, no alternative:
-
-```
-Decision: Use events for order processing
-Reason: Events are better than REST for this
-```
-
 ## Output Format
 
-The rejected-row form below is used as written; for a disqualified option its Risk cell is `Disqualified: {constraint}; {what makes it wrong}`. `Unknown:` lines are one per missing driver, blank-line separated, omitted when none. Revisit lines are one per risk in the chosen row, blank-line separated; for a phased decision they are `Revisit Phase {N} if:` lines, one per phase. A phase row's Option cell is `Phase {N}: {option} (chosen)`; a chosen row hardened after the fact ends its changed cells with `(as hardened)`.
+The rejected-row form below is used as written; for a disqualified option its Risk cell is `Disqualified: {constraint}; {what makes it wrong}`. `Unknown:` lines are one per missing driver, blank-line separated, omitted when none. Revisit lines are one per risk in a non-phased chosen row, blank-line separated; for a phased decision they are `Revisit Phase {N} if:` lines, one per phase (the transition trigger, or for the last phase the leading indicator of the condition that makes it wrong). A phase row's Option cell is `Phase {N}: {option} (chosen)`; a chosen row hardened after the fact ends its changed cells with `(as hardened)`.
 
 ```markdown
 ## Trade-Off Record
@@ -158,9 +141,4 @@ Revisit this decision if: {specific observable condition}{ (provisional until <f
 
 ## Avoid
 
-- Decisions with no stated alternative
-- Trade-offs that list only benefits
-- "No alternative exists" without evidence of evaluation
-- Conflating preference with technical justification
-- Skipping reversibility - some decisions are one-way doors
 - Recording trivial choices that do not affect system structure

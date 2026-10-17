@@ -9,7 +9,7 @@ user-invocable: false
 
 # DB Migration Safety
 
-> Load `Use skill: stack-detect` first to identify the database engine and migration tool.
+> Load `Use skill: stack-detect` first to identify the database engine. The engine version and migration tool come from its `Database` value, an `Additional` line, or the repository's migration layout (`alembic.ini` or a `<dir>/versions/` beside `env.py` Alembic, `db/migrate/` Rails, `db/migration/` Flyway, `<app>/migrations/` Django); a value none of them names is `unknown`.
 
 ## When to Use
 
@@ -25,7 +25,9 @@ user-invocable: false
 - Rollback plan is designed before the migration runs.
 - Never deploy a migration and the code that depends on it in the same release - rolling deploys leave old instances running against the new schema.
 - Flag any migration requiring a database restore to roll back - those are go/no-go decisions. Before accepting one, try to demote it: copying the data to an archive table in the expand phase turns a restore into a re-copy, and a drop whose data exists nowhere else is rarely worth its irreversibility.
-- Lock risk is stated for every phase that runs DDL.
+- Lock risk is stated for every phase that runs DDL, and every such phase sets a lock timeout (PostgreSQL `lock_timeout`, MySQL `lock_wait_timeout`, SQL Server `SET LOCK_TIMEOUT`) and retries on expiry: even a catalog-only DDL queues behind any open transaction on the table, and every query on the table queues behind it. The phase's Lock risk line names the timeout and retry.
+- An ORM that syncs the schema on startup (TypeORM `synchronize`, Hibernate `hbm2ddl.auto=update`) is turned off in a release before the plan's first phase: it applies DDL outside the plan.
+- Readers outside the codebase - CDC or logical-replication subscribers, a warehouse table fed from the database, BI queries, another team's job on a replica - are readers: each is named, and its cutover is a pre-condition of the step that breaks it.
 - Engine or version unknown: assume worst-case locking (table rewrite, exclusive lock) and record the assumption in the output. Major version known and minor unknown: keep the engine's syntax and assume the worst case for every minor-gated feature. Replica topology unknown: assume replicas exist and throttle.
 - A submitted migration file that mixes changes of different types, or bundles a fast DDL with a backfill, is split into one file per block below; the first block's `Submitted as` line names the split.
 
@@ -37,14 +39,14 @@ Lock risk is the strength and duration of the lock that blocks concurrent traffi
 
 | Change                              | Lock risk | Compatibility | Strategy                                  |
 | ----------------------------------- | --------- | ------------- | ----------------------------------------- |
-| Add nullable column (no default)    | Low where metadata-only: PostgreSQL, SQL Server, MySQL 8.0.12+ (`INSTANT`, same limits as the next row); an `INPLACE` rebuild on earlier InnoDB | Additive | single-phase; set a lock timeout (PostgreSQL `lock_timeout`, MySQL `lock_wait_timeout`, SQL Server `SET LOCK_TIMEOUT`) so the DDL does not queue behind an open transaction |
-| Add column with constant default    | Low where metadata-only: PostgreSQL 11+, MySQL 8.0.12+ (`ALGORITHM=INSTANT`, appended position only before 8.0.29), SQL Server (nullable on any edition; NOT NULL with a runtime-constant default 2012+ Enterprise). Elsewhere or with a volatile default: a rewrite - Very High on PostgreSQL, Low but long with 2x disk on InnoDB 5.6/5.7 (`INPLACE`, concurrent DML) | Additive | single-phase where metadata-only; otherwise expand-contract without a Contract: add nullable, backfill in batches, then promote the default |
+| Add nullable column (no default)    | Low where metadata-only: PostgreSQL, SQL Server, MySQL 8.0.12+ (`INSTANT`, same limits as the next row); an `INPLACE` rebuild on earlier InnoDB | Additive | single-phase |
+| Add column with constant default    | Low where metadata-only: PostgreSQL 11+ (any non-volatile default, `now()` included), MySQL 8.0.12+ (`ALGORITHM=INSTANT`, appended position only before 8.0.29), SQL Server 2012+ Enterprise (NOT NULL with a runtime-constant default, or nullable `WITH VALUES`; a nullable default without `WITH VALUES` leaves existing rows NULL). Elsewhere or with a volatile default (`random()`): a rewrite - Very High on PostgreSQL, Low but long with 2x disk on InnoDB 5.6/5.7 (`INPLACE`, concurrent DML) | Additive | single-phase where metadata-only; otherwise expand-contract without a Contract: add nullable, backfill in batches, then promote the default |
 | Create index                        | High on PostgreSQL (`SHARE` lock blocks writes) and SQL Server offline builds; Low on InnoDB (online by default); Low on a table created empty in the same migration | Additive | single-phase: online build (`CONCURRENTLY` / `LOCK=NONE` / `ONLINE=ON`) as its own deploy step; a unique index needs a duplicate check by query first |
-| Add NOT NULL                        | Low via the recipe below (PostgreSQL 12+); High as a direct `SET NOT NULL` (full scan under `ACCESS EXCLUSIVE`) | Breaks writers that omit the column | expand-contract: writers first, then the recipe below |
-| Add unique constraint / foreign key | Low via online unique index + `USING INDEX`, or `NOT VALID` + `VALIDATE`; High direct | Breaks writers producing violations | single-phase: validate existing rows by query first, then the online index or `NOT VALID` path |
+| Add NOT NULL                        | Low via the recipe below (PostgreSQL 12+); High as a direct `SET NOT NULL` (full scan under `ACCESS EXCLUSIVE`); MySQL 8.0 `MODIFY ... NOT NULL, ALGORITHM=INPLACE, LOCK=NONE` is a rebuild with concurrent DML (Low lock, long, 2x disk, strict SQL mode; fails on any NULL row - backfill first) | Breaks writers that omit the column | expand-contract: writers first, then the recipe below |
+| Add unique constraint / foreign key | Low on PostgreSQL via online unique index + `USING INDEX`, or `NOT VALID` + `VALIDATE`; Low for a unique key on InnoDB (`ADD UNIQUE INDEX, ALGORITHM=INPLACE, LOCK=NONE`) and SQL Server Enterprise (`ADD CONSTRAINT ... UNIQUE ... WITH (ONLINE = ON)`); High direct, and High for a foreign key's validation on MySQL (`ALGORITHM=COPY`) and SQL Server (`WITH CHECK CHECK CONSTRAINT`) | Breaks writers producing violations | expand-contract without a Contract: writers stop producing violations, repair existing rows by query, then the online index or `NOT VALID` path as Promote |
 | Rename column                       | Low - catalog-only | Breaks readers and writers | expand-contract |
 | Change column type                  | Very High - table rewrite, except binary-coercible widenings (PostgreSQL `varchar(50)` -> `varchar(100)`, InnoDB `VARCHAR` within the same length-prefix size) and SQL Server 2016+ Enterprise `ALTER COLUMN ... WITH (ONLINE = ON)` | Breaks readers and writers | expand-contract |
-| Drop column / table                 | Low - a column is catalog-only on PostgreSQL and SQL Server, `INSTANT` on MySQL 8.0.29+, an `INPLACE` rebuild (long, 2x disk, concurrent DML) on earlier InnoDB; a table is a dictionary update plus file removal on every engine | Breaks readers (a column only read) or breaks readers and writers | contract-only, after zero references (reads and writes) are verified |
+| Drop column / table                 | Low - a column is catalog-only on PostgreSQL and SQL Server, `INSTANT` on MySQL 8.0.29+, an `INPLACE` rebuild (long, 2x disk, concurrent DML) on earlier InnoDB; a table is a dictionary update plus file removal on every engine | Breaks readers (a column only read) or breaks readers and writers | contract-only, after zero references (reads and writes) are verified; a dropped index likewise, after its reads are gone (MySQL 8.0+: `ALTER TABLE ... ALTER INDEX ... INVISIBLE` first) |
 
 Any operation that rewrites or scans a table above ~1M rows under a lock that blocks traffic is high risk by default; catalog-only operations are not, whatever the row count.
 
@@ -81,7 +83,7 @@ ALTER TABLE orders ALTER COLUMN tenant_id SET NOT NULL;
 ALTER TABLE orders DROP CONSTRAINT orders_tenant_id_not_null;
 ```
 
-`NOT VALID` + `VALIDATE CONSTRAINT` is the PostgreSQL path for CHECK and FOREIGN KEY constraints on large tables; NOT NULL rides on a CHECK as above.
+`NOT VALID` + `VALIDATE CONSTRAINT` is the PostgreSQL path for CHECK and FOREIGN KEY constraints on large tables; NOT NULL rides on a CHECK as above. PostgreSQL 18+ can instead add the NOT NULL constraint itself `NOT VALID`, so steps 4-6 can become `ALTER TABLE orders ADD CONSTRAINT orders_tenant_id_nn NOT NULL tenant_id NOT VALID;` then `ALTER TABLE orders VALIDATE CONSTRAINT orders_tenant_id_nn;` (`ShareUpdateExclusiveLock`).
 
 ### Engine equivalents
 
@@ -90,9 +92,9 @@ The phasing above is engine-independent; only the mechanism changes. Examples el
 | Technique                  | PostgreSQL                          | MySQL 8.0+                                              | SQL Server                              |
 | -------------------------- | ----------------------------------- | ------------------------------------------------------- | --------------------------------------- |
 | Non-blocking index build   | `CREATE INDEX CONCURRENTLY`         | `ALTER TABLE ... ADD INDEX, ALGORITHM=INPLACE, LOCK=NONE` (the default) | `CREATE INDEX ... WITH (ONLINE = ON)` (Enterprise edition) |
-| Add defaulted column       | metadata-only (11+, constant default) | `ALGORITHM=INSTANT` (8.0.12+, appended position only until 8.0.29; not for `ROW_FORMAT=COMPRESSED` or tables with a FULLTEXT index; from 8.0.29, 64 instant changes before a rebuild is forced) | metadata-only (nullable: any edition; NOT NULL with runtime-constant default: 2012+ Enterprise) |
-| Constraint without rewrite | `NOT VALID` then `VALIDATE CONSTRAINT` | none: `NOT ENFORCED` (CHECK, 8.0.16+) disables the constraint for new rows too, so verify and repair by query, then add it enforced (`INPLACE`, no rebuild, but DML is blocked for the validation scan - High on a large table); FK likewise has no deferred validation (`foreign_key_checks=0` for the session permits INPLACE but skips the check for all DML in that session; reset it immediately) | `WITH NOCHECK ADD CONSTRAINT`, then `WITH CHECK CHECK CONSTRAINT` (validates; a bare `CHECK CONSTRAINT` leaves it untrusted) |
-| Online table rewrite       | none in-core - expand-contract, or logical replication to a rebuilt table | InnoDB `ALGORITHM=INPLACE, LOCK=NONE` rebuilds natively for most operations; `pt-online-schema-change` / `gh-ost` for `COPY`-only operations (most type changes, dropping a PK, charset conversion) and for throttling (both need a PK or unique NOT NULL key; gh-ost needs `binlog_format=ROW` and refuses tables with foreign keys or triggers) | online index rebuild (resumable 2017+); column type change online on 2016+ Enterprise for most types, offline before or on other editions |
+| Add defaulted column       | metadata-only (11+, non-volatile default) | `ALGORITHM=INSTANT` (8.0.12+, appended position only until 8.0.29; not for `ROW_FORMAT=COMPRESSED` or tables with a FULLTEXT index; from 8.0.29, 64 instant changes before a rebuild is forced) | metadata-only on 2012+ Enterprise (NOT NULL with runtime-constant default, or nullable `WITH VALUES`) |
+| Constraint without rewrite | `NOT VALID` then `VALIDATE CONSTRAINT` | none: `NOT ENFORCED` (CHECK, 8.0.16+) disables the constraint for new rows too, so verify and repair by query, then add it enforced (`ALGORITHM=COPY` only - a full rebuild under `LOCK=SHARED`, reads allowed and writes blocked for the copy, High on a large table; use `pt-online-schema-change` instead); FK likewise has no deferred validation (`foreign_key_checks=0` for the session permits INPLACE but skips the check for all DML in that session; reset it immediately) | `WITH NOCHECK ADD CONSTRAINT`, then `WITH CHECK CHECK CONSTRAINT` (validates under `Sch-M` - all traffic blocked for the scan, High on a large table; a bare `CHECK CONSTRAINT` leaves it untrusted) |
+| Online table rewrite       | none in-core - expand-contract, or logical replication to a rebuilt table | InnoDB `ALGORITHM=INPLACE, LOCK=NONE` rebuilds natively for most operations; `pt-online-schema-change` / `gh-ost` for `COPY`-only operations (most type changes, dropping a PK, charset conversion) and for throttling (both need a PK or unique NOT NULL key; gh-ost needs `binlog_format=ROW`, refuses tables with foreign keys, and needs `--include-triggers` for tables with triggers) | online index rebuild (resumable 2017+); column type change online on 2016+ Enterprise for most types, offline before or on other editions |
 
 Verify the operation is online for the exact engine version and edition before recommending it. When the version is unknown, the unknown-engine rule applies: assume a rewrite and say so.
 
@@ -108,7 +110,7 @@ UPDATE large_table SET new_col = old_col WHERE new_col IS NULL;
 UPDATE large_table SET new_col = old_col
 WHERE id IN (SELECT id FROM large_table WHERE id > :last_id AND new_col IS DISTINCT FROM old_col ORDER BY id LIMIT :n)
 RETURNING id;   -- :last_id = max(id) returned
--- MySQL (error 1093 forbids the self-referencing subquery; SQL Server: TOP (:n) and OUTPUT INSERTED.id)
+-- MySQL (error 1235 forbids LIMIT in an IN subquery, 1093 the self-referencing subquery; SQL Server: TOP (:n) and OUTPUT INSERTED.id)
 SELECT id FROM large_table WHERE id > :last_id AND NOT (new_col <=> old_col) ORDER BY id LIMIT :n;   -- then
 UPDATE large_table SET new_col = old_col WHERE id IN (:ids) AND NOT (new_col <=> old_col);   -- repeat the predicate: a dual-written row must not be reverted
 ```
@@ -126,7 +128,7 @@ CREATE UNIQUE INDEX CONCURRENTLY idx_users_email ON users(email);
 ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE USING INDEX idx_users_email;
 ```
 
-`CREATE INDEX CONCURRENTLY` cannot run inside a transaction block: migration tools that wrap each migration in one (Rails, Django on PostgreSQL, Flyway) must opt that migration out (`disable_ddl_transaction!`, `atomic = False`). A cancelled or failed concurrent build leaves an INVALID index that still costs writes - `DROP INDEX CONCURRENTLY` it before retrying.
+`CREATE INDEX CONCURRENTLY` cannot run inside a transaction block. Rails and Django wrap each PostgreSQL migration in one - opt that migration out (`disable_ddl_transaction!`, `atomic = False`); Alembic runs the statement inside `with op.get_context().autocommit_block():`; Flyway runs a migration containing it non-transactionally on its own, but its default PostgreSQL schema-history lock holds a transaction open that the build waits on forever - set `postgresql.transactional.lock=false`. A cancelled or failed concurrent build leaves an INVALID index that still costs writes - `DROP INDEX CONCURRENTLY` it before retrying.
 
 ### Deploy ordering
 
@@ -140,15 +142,15 @@ ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE USING INDEX idx_users
 1. Deploy migration adding the new structure (additive, safe)
 2. Deploy code that reads the old schema and writes both (expand)
 3. Run backfill
-4. Deploy code that uses only the new schema
-5. Deploy migration dropping the old (contract)
+4. Deploy code that reads the new schema and still writes both
+5. Deploy code that stops writing the old (make an old NOT NULL column nullable first); verify zero reads and writes of the old
+6. Deploy migration dropping the old (contract)
 
 ### Ordering multiple migrations in one release
 
 - Additive, fast operations first
 - Long-running (backfill, online index build) as separate, independently deployable steps
-- Destructive operations last, after a verification period
-- Never bundle a fast DDL with a slow backfill in one file
+- Destructive operations last, after a verification period (MySQL 8.0+: `ALTER TABLE ... ALTER INDEX ... INVISIBLE` before dropping an index)
 
 ## Output Format
 
@@ -159,7 +161,7 @@ One block per change, ordered by the release in which each block's first phase s
 
 **Engine**: {database / version, migration tool | unknown}
 
-**Submitted as**: {what the migration file does today and the rule it breaks | as planned - nothing submitted yet}
+**Submitted as**: {what the migration file does today and the rule it breaks | already applied - <what it did> | as planned - nothing submitted yet}
 
 **Change type**: {additive | non-additive | destructive}
 
@@ -182,27 +184,28 @@ One block per change, ordered by the release in which each block's first phase s
 ### Phase N: {Expand | Apply}                    {Expand for expand-contract and destination; Apply for single-phase and scheduled downtime}
 
 - Action: {what to run}
-- Lock risk: {Low | High | Very High} - {type and estimated duration}
+- Pre-condition: {each external reader's tolerance of the new structure confirmed (a CDC subscriber's schema handling)}       {only when an external reader sees this phase}
+- Lock risk: {Low | High | Very High} - {type and estimated duration}; lock timeout {value}, retry {count / backoff}
 - Rollback: {how to undo}
 
-### Phase N: Migrate                              {when Backfill required is Yes}
+### Phase N: Migrate                              {when Backfill required is Yes, including existing rows repaired by query}
 
 - Backfill: {batch size, estimated duration or "unknown - time one batch first", idempotent: yes/no}
-- Throttle: {pause condition and resume threshold | "no replicas - pace by batch duration" | "assumed replicas - pause above N s lag"}
+- Throttle: {pause condition and resume threshold (replica lag, and replication-slot lag when CDC reads the table) | "no replicas - pace by batch duration" | "assumed replicas - pause above N s lag"}
 - Lock risk: {None - DML only | Low | High} - {reason}
 - Rollback: {how to undo}
 
 ### Phase N: Promote                              {when post-backfill DDL remains: validate, set default, SET NOT NULL, cutover}
 
 - Action: {what to run}
-- Lock risk: {Low | High | Very High} - {type and estimated duration}
+- Lock risk: {Low | High | Very High} - {type and estimated duration}; lock timeout {value}, retry {count / backoff}
 - Rollback: {how to undo}
 
-### Phase N: Contract                             {when Strategy is expand-contract or contract-only}
+### Phase N: Contract                             {when an old structure is dropped: contract-only, or expand-contract replacing a structure}
 
 - Action: {what to drop}
-- Pre-condition: {readers and writers removed and verified | unverifiable - <why> - go/no-go}
-- Lock risk: {Low | High | Very High} - {reason}
+- Pre-condition: {readers and writers removed and verified, external readers' cutover named | unverifiable - <why> - go/no-go}
+- Lock risk: {Low | High | Very High} - {reason}; lock timeout {value}, retry {count / backoff}
 - Rollback: {reverse copy from new structure | archive copy | restore from backup - go/no-go | not needed}
 
 ## Risks
@@ -210,14 +213,8 @@ One block per change, ordered by the release in which each block's first phase s
 - {high-risk operations called out explicitly; any restore-only rollback or unverifiable pre-condition is repeated here as a go/no-go}
 ```
 
-`destructive` means the change removes data that exists nowhere else (drop, truncate, lossy type change); a drop of a structure whose data was copied and verified elsewhere stays `non-additive`, whether it came from a rename or not. `contract-only` is a drop whose expand and migrate happened in earlier releases. The header `Lock risk` is the maximum across all phases, DDL or DML, `None` when no phase holds a blocking lock. A single-phase change with a backfill emits `Apply`, `Migrate`, and `Promote` when DDL follows the backfill; a scheduled-downtime change emits one `Apply` phase.
+`destructive` means the change removes data that exists nowhere else (drop, truncate, lossy type change); a drop of a structure whose data was copied and verified elsewhere stays `non-additive`, whether it came from a rename or not. `contract-only` is a drop whose expand and migrate happened in earlier releases. The header `Lock risk` is the maximum across the plan's phases, DDL or DML, `None` when no phase holds a blocking lock; the submitted file's own risk goes in `Submitted as`, which for a migration already applied reads `already applied - <what it did>` and the phases become the corrective plan. An expand-contract change without a Contract (defaulted column on a rewrite path, constraint addition) emits `Expand`, `Migrate`, and `Promote`; a scheduled-downtime change emits one `Apply` phase.
 
 ## Avoid
 
-- Exclusive-lock ALTER TABLE on large tables during peak traffic
-- Deploying a migration and dependent code in the same release
-- Unbounded UPDATE or DELETE on production tables
-- Skipping expand-contract for renames or type changes ("just a rename")
-- Direct `SET NOT NULL` on large PostgreSQL tables (use the CHECK NOT VALID recipe)
-- Assuming `CREATE INDEX` is fast on large tables (use `CONCURRENTLY` or online DDL)
-- Destructive migrations before confirming zero traffic to the old structure
+- Exclusive-lock ALTER TABLE on large tables during peak traffic, even when a lock timeout bounds the wait

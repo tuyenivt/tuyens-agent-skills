@@ -11,7 +11,7 @@ user-invocable: false
 
 > Load `Use skill: stack-detect` first to determine the project stack.
 
-Owns the transaction **boundary** contract: what may run inside an open transaction, how side effects dispatch relative to commit, and how write transactions are bounded. Coordination *between* concurrent actors is `architecture-concurrency`'s (an in-process lock that fails to prevent a lost update is reported here as `LostUpdate`, since the missing guard is a boundary construct); dedup keys, replay semantics, and consumer idempotency are `backend-idempotency`'s findings, never reported here.
+Owns the transaction **boundary** contract: what may run inside an open transaction, how side effects dispatch relative to commit, and how write transactions are bounded. Coordination *between* concurrent actors is `architecture-concurrency`'s (an in-process lock that fails to prevent a lost update is reported here as `LostUpdate`, since the missing guard is a boundary construct); dedup keys, replay semantics, and consumer idempotency are `backend-idempotency`'s findings, and a job worker retrying without bound is `ops-resiliency`'s - never reported here (the outbox relay's attempts and claims caps are this skill's `MissingPoisonMessageCap`).
 
 ## When to Use
 
@@ -22,9 +22,9 @@ Owns the transaction **boundary** contract: what may run inside an open transact
 
 ## Rules
 
-- **No I/O inside an open transaction.** No HTTP, no queue enqueue, no mailer, no third-party SDK. The connection is held for the duration of the network call, and a rollback cannot un-send what already left. I/O performed after commit but before the session is released still holds the connection: release first (`IoInSessionScope`).
+- **No I/O inside an open transaction.** No HTTP, no queue enqueue, no mailer, no third-party SDK. The connection is held for the duration of the network call, and a rollback cannot un-send what already left. A transaction is open from its first statement - an ORM session's autobegin counts - until commit or rollback. I/O performed after commit but before the session is released still holds the connection: release first (`IoInSessionScope`); an enqueue or schedule from an after-commit hook is Post-Commit Dispatch, not this.
 - **Capture scalars inside, dispatch outside.** Return the IDs you need from the transaction, then perform side effects after commit returns. Never carry an ORM entity out and rely on its lazy relations.
-- Single-statement reads run outside transactions - wrapping one buys no atomicity and costs pool pressure. A read-only transaction is justified only when several reads must see one consistent snapshot: `REPEATABLE READ` or `SERIALIZABLE` on PostgreSQL and InnoDB (PostgreSQL's default `READ COMMITTED` takes a snapshot per statement), `SNAPSHOT` isolation on SQL Server (its `REPEATABLE READ` is lock-based and still admits phantoms).
+- Single-statement reads run outside transactions - wrapping one buys no atomicity and costs pool pressure. A read-only transaction is justified only when several reads must see one consistent snapshot: `REPEATABLE READ` or `SERIALIZABLE` on PostgreSQL (its default `READ COMMITTED` takes a snapshot per statement), `REPEATABLE READ` on InnoDB (its default; InnoDB `SERIALIZABLE` turns every read into a shared-locking read that blocks writers), `SNAPSHOT` isolation on SQL Server (its `REPEATABLE READ` is lock-based and still admits phantoms).
 - One atomic unit is one transaction. Two sequential transactions have a non-atomic gap between them.
 - Every write transaction is bounded three ways: a lock timeout, a statement timeout, and an idle-in-transaction timeout. The first two bound one wait and one statement; only the third catches a transaction sitting idle between statements while it holds locks - which is exactly what an I/O call inside a transaction produces.
 - Lock-then-write when the new value depends on the current one (counters, balances, state machines). Skip the lock when a unique constraint or a conditional update already catches the conflict.
@@ -77,6 +77,9 @@ transaction:
 
 -- relay, running separately; the claim commits before any dispatch
 claimed = transaction:
+    UPDATE outbox SET dead_lettered_at = now(), last_error = 'claim cap reached'   -- crash-looping rows
+     WHERE processed_at IS NULL AND dead_lettered_at IS NULL
+       AND claims >= :max_claims AND claimed_at < now() - interval '5 minutes'
     UPDATE outbox
        SET claimed_at = now(), claimed_by = :relay_id, claims = claims + 1
      WHERE id IN (
@@ -99,7 +102,7 @@ for message in claimed:
     except DispatchError as e:                               -- record, continue the batch
         UPDATE outbox SET attempts = attempts + 1, last_error = :e,
                dead_lettered_at = CASE WHEN attempts + 1 >= :max_attempts THEN now() END
-         WHERE id = message.id AND claimed_by = :relay_id
+         WHERE id = message.id AND claimed_by = :relay_id AND processed_at IS NULL
 ```
 
 The details that carry the guarantee:
@@ -110,7 +113,7 @@ The details that carry the guarantee:
 - **Attempts count failed dispatches; claims count crashes.** `attempts` increments only when `dispatch` fails politely, so a crash at the head of a batch never burns an attempt for the rows behind it; `claims` increments at every claim with a higher cap (`:max_claims`) so a payload that crashes the relay is still dead-lettered. Past either cap the row is dead-lettered explicitly (`dead_lettered_at`, `last_error`) and a monitor alerts on it; a row that merely stops matching the claim predicate is parked silently, which is a dropped message with a delay.
 - **`FOR UPDATE SKIP LOCKED`** lets multiple relay instances cooperate: without it a second relay blocks on the first's rows and the relays serialize (they do not double-dispatch; the row lock prevents that). PostgreSQL applies the locking clause before `LIMIT`, so each relay gets a full batch while enough unlocked rows exist.
 
-`SKIP LOCKED`, `interval '5 minutes'`, and `RETURNING` above are PostgreSQL syntax; SQL Server uses `WITH (UPDLOCK, READPAST)` and the `OUTPUT` clause; MySQL 8.0+ has `SKIP LOCKED`, spells the interval `INTERVAL 5 MINUTE`, has no `RETURNING`, and rejects an `UPDATE` whose subquery reads the same table (error 1093) unless the subquery is a derived table that materializes (a `LIMIT` inside it, or a `NO_MERGE` hint - 8.0.14+ merges plain derived tables); SQLite has no row locks. On an unknown engine, state the claim as a requirement and name the mechanism engine-specific.
+`SKIP LOCKED`, `interval '5 minutes'`, and `RETURNING` above are PostgreSQL syntax; SQL Server uses `WITH (UPDLOCK, READPAST)` and the `OUTPUT` clause; MySQL 8.0+ has `SKIP LOCKED` but no `RETURNING`, spells the interval `INTERVAL 5 MINUTE`, evaluates single-table `SET` assignments left to right (so the failure update's dead-letter test reads the incremented value: write `attempts >= :max_attempts` there), and rejects `LIMIT` inside an `IN` subquery (error 1235); a single `UPDATE ... WHERE id IN (SELECT id FROM (SELECT ... LIMIT 20 FOR UPDATE SKIP LOCKED) d)` runs but waits on locked rows instead of skipping them, so the claim is two statements in one transaction - `SELECT * ... ORDER BY created_at LIMIT 20 FOR UPDATE SKIP LOCKED` (the rows the relay dispatches, standing in for `RETURNING *`), then `UPDATE outbox SET claimed_at = NOW(), ... WHERE id IN (<selected ids>)`, then `COMMIT`; SQLite has no row locks. On an unknown engine, state the claim as a requirement and name the mechanism engine-specific.
 
 ### Lock-Then-Write vs Atomic Guard
 
@@ -148,7 +151,7 @@ COMMIT
 
 The idle timeout terminates the whole session, not just the transaction: locks and the pool slot are released and the driver sees a closed connection, which is the intended outcome for a transaction stuck behind an I/O call. Without a lock timeout, a transaction queued behind a row lock waits forever while holding its connection (PostgreSQL `lock_timeout` and SQL Server `LOCK_TIMEOUT` default to unbounded; InnoDB defaults to 50 s): pool exhaustion presents as a total outage with no slow query to blame. Do not apply a global statement timeout to the role that runs migrations; it will kill them mid-DDL. PostgreSQL 17 adds `transaction_timeout` for the whole transaction.
 
-`SET LOCAL` is PostgreSQL. MySQL: the row-lock bound is `innodb_lock_wait_timeout` and the metadata-lock bound is `lock_wait_timeout` (both session-scoped: setting and resetting them around the transaction is required, and a bound left set on the session is `MissingTransactionBounds` - a leaked setting bounds the wrong transactions); there is no server-side statement timeout for writes (`max_execution_time` covers SELECT only) - bound writes with the driver's query timeout. On an unknown engine, state the bounds as requirements and name the mechanism engine-specific rather than emitting Postgres syntax.
+`SET LOCAL` is PostgreSQL. MySQL: the row-lock bound `innodb_lock_wait_timeout` is session-scoped and not settable by `SET_VAR` - set and reset it around the transaction, and a bound left set on the session is `MissingTransactionBounds` (a leaked setting bounds the wrong transactions); the metadata-lock bound `lock_wait_timeout` takes a per-statement `/*+ SET_VAR(lock_wait_timeout=N) */` hint; there is no server-side statement timeout for writes (`max_execution_time` covers SELECT only) - bound writes with the driver's query timeout. On an unknown engine, state the bounds as requirements and name the mechanism engine-specific rather than emitting Postgres syntax.
 
 ### Savepoints
 
@@ -161,7 +164,7 @@ When authoring, apply Rules as constraints and emit the code plus one `Dispatch`
 ```
 ## Transaction Assessment
 
-**Stack:** {language / framework | unknown}
+**Stack:** {language / framework | <language> (no framework detected) | unknown}
 
 **Engine:** {database / version | unknown - bounds and claims stated as requirements}
 
@@ -179,17 +182,19 @@ When authoring, apply Rules as constraints and emit the code plus one `Dispatch`
 - {side effect}: {post-commit | outbox + relay | call-then-record}, {best-effort | at-least-once | outcome-unknown pending reconciliation}; crash between commit and dispatch: {what happens}; consumer idempotency: {required - assessed by backend-idempotency | not needed}
 ```
 
+Write `<language> (no framework detected)` when stack-detect reports a known `Language` and `Framework: unknown`. An item with no side effect (a read, a counter) gets no `Dispatch` entry; a deferred state change (an expiry timer) is a scheduled job running its own transaction, the enqueue that schedules it gets an entry when the write schedules it (a periodic sweep needs none), and the side effects that job dispatches get their own.
+
+The four dispatch-timing values are distinct: `IoInTransaction` is a blocking network call made while the transaction is open (HTTP, SDK, mailer); `IoInSessionScope` is a blocking network call (HTTP, SDK, mailer) made after commit while the session or connection is still held - an enqueue or schedule from an after-commit hook is the Post-Commit Dispatch pattern, not this value - reported as a second finding at the same site with `BestEffortOnDurableSideEffect` when the side effect is also durable without an outbox; `PreCommitDispatch` is work handed to another process before commit (an enqueue, a publish, a before-commit hook) - the receiver can act before the commit is visible or after a rollback, and a hand-off is this value even when the call also blocks; `BestEffortOnDurableSideEffect` is a financial or contractual side effect dispatched post-commit without an outbox.
+
 Severity:
 
 - **High**: I/O inside an open transaction; a side effect dispatched before commit; a lost update with no lock and no atomic guard; an outbox that marks completion at claim time; a financial or contractual side effect on best-effort dispatch (`BestEffortOnDurableSideEffect`).
 - **Medium**: missing or session-leaked transaction bounds on a write path (pool exhaustion under contention, rated Medium because the outage needs a second fault to trigger it); I/O after commit with the session still held; one atomic unit split across two transactions; a relay whose completion updates are not lease-owned or renewed (`UnownedLease`, duplicated side effect); a relay claiming without a skip-locked mechanism on an engine that has one (`SKIP LOCKED`, `READPAST`); no attempts or claims cap, or no dead-letter, on the relay; a lazy-loading entity carried out of the transaction; a design that names a side effect but not its dispatch (`DispatchUnspecified`).
 - **Low**: read-only query wrapped in a transaction (pool pressure); a savepoint used where one transaction would do.
 
-In design mode with no code yet, list the risks the proposed design leaves open as Findings, omit `{file:line}`, and fill `Dispatch` for every side effect the design names. A construct outside the reviewed files that a finding depends on (the only caller of an outbox insert, the relay a design's "at-least-once" claim rests on) may be read to confirm the finding and is anchored at its own file when it is what breaks the reviewed write's guarantee; it is not otherwise a source of new findings.
+In design mode, list the risks the proposed design leaves open as Findings, anchored at the existing code's `{file:line}` when the design changes that code and with `{file:line}` omitted otherwise, and fill `Dispatch` for every side effect the design names. A construct outside the reviewed files that a finding depends on (the only caller of an outbox insert, the relay a design's "at-least-once" claim rests on) may be read to confirm the finding and is anchored at its own file when it is what breaks the reviewed write's guarantee; it is not otherwise a source of new findings.
 
 ## Avoid
 
-- Returning a lazy-loading ORM entity out of a transaction and touching its relations afterwards; ORMs that return plain objects (Prisma) are exempt
 - Lifecycle hooks that fire before or during commit (`afterInsert`, `after_save`, `BEFORE_COMMIT` listeners) for side effects; they race the commit. After-commit hooks (`after_commit`, `transaction.on_commit`, `AFTER_COMMIT`) run with the transaction's connection still bound and cannot release it themselves: use them to enqueue or schedule, and let the I/O run once the connection is returned - the Post-Commit Dispatch pattern
-- An outbox relay without a skip-locked claim on an engine that has one; relay instances serialize on each other's rows
 - Raising the pool acquisition timeout to "fix" exhaustion; it hides the shortage and lets requests pile up

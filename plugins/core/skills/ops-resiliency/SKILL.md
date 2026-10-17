@@ -17,7 +17,9 @@ user-invocable: false
 - Designing fault-tolerant service-to-service communication
 - Protecting internal services from cascading failures
 
-Incident history counts as evidence: a timeout that looks bounded in isolation but exhausted a pool in production is rated by what happened.
+Incident history counts as evidence: a timeout that looks bounded in isolation but exhausted a pool in production is rated by what happened. The gap's description cites the incident by its identifier; when two sources disagree on a caller's behaviour (two incident records, a document and the code), rate by the worse and name both.
+
+An external call made inside an open database transaction, a job enqueued before commit, and missing lock or statement timeouts are `backend-transaction-patterns`' findings; this skill still reports that call's own timeout, retry, and breaker gaps.
 
 ## Rules
 
@@ -27,7 +29,8 @@ Incident history counts as evidence: a timeout that looks bounded in isolation b
 - A `Retry-After` header (seconds, or an HTTP-date) replaces computed backoff, capped at the remaining deadline: a value beyond the deadline means abandon, not wait.
 - One circuit breaker per external dependency, with explicit thresholds (failure rate, open duration, half-open probes) and monitoring - a silent or shared breaker is useless.
 - Independent failure domains use bulkhead isolation (separate pools per downstream).
-- Each external dependency has exactly one client module owning its timeout, retry, breaker, and fallback configuration. Settings spread across call sites cannot be reviewed or changed coherently. A configuration knob the code never reads is a gap, not a setting.
+- A dependency with a published rate limit gets a client-side limiter below it; without one, a burst becomes a `429` storm that `Retry-After` handling only slows.
+- Each external dependency has exactly one client module owning its timeout, retry, breaker, bulkhead, rate limit, and fallback configuration. Settings spread across call sites cannot be reviewed or changed coherently. A configuration knob the code never reads is reported as that pattern missing (an unread `timeoutMs` is `Missing: timeout`), not as a setting.
 - Every dependency has a defined fallback. Every fallback logs the original failure at WARN; silent fallbacks hide degradation until it compounds.
 
 ## Patterns
@@ -44,12 +47,11 @@ Configure: failure-rate threshold over a sliding window (e.g., 50%), open durati
 
 - Start backoff at ~500 ms, multiply by 2, cap at a reasonable maximum.
 - Add jitter to prevent thundering herd.
-- Non-idempotent ops need an idempotency key before retry is safe.
 
 ### Timeout
 
 - External calls: 3-5 s typical. Internal calls: 1-2 s typical. Typical values yield to the budget below.
-- The caller's deadline (its SLA or its own client's timeout) sets the total budget; downstream timeouts are allocated from it, never summed into it. With several callers on one endpoint the tightest deadline governs, unless the endpoint can tell them apart (a header, a separate route).
+- The caller's deadline (its SLA or its own client's timeout) sets the total budget; downstream timeouts are allocated from it, never summed into it. With several callers on one endpoint the tightest deadline governs, unless the endpoint can tell them apart (a header, a separate route). With no deadline stated, size the budget from the caller's client timeout when the code shows it, else assume one and mark it: `deadline <ms> (assumed: <basis>)`.
 - Propagate timeout context (deadline / request context) to downstream calls.
 
 ### Timeout Budget
@@ -74,8 +76,6 @@ Retries amplify load. Three services chained with 3 attempts each turn one faile
 
 ### Per-Dependency Client Wrapper
 
-One module per external dependency is the unit that owns resilience configuration. Scattering timeout and retry settings across call sites makes them impossible to audit, and guarantees the third caller added later has none.
-
 Bad - each call site decides for itself, and two of the three deviate, each in its own way:
 
 ```
@@ -84,14 +84,15 @@ refundCard()    -> http.post(url, { timeoutMs: 3000 })
 lookupCard(id)  -> http.get(url + "/cards/" + id)
 ```
 
-Good - one wrapper owns the policy; retries are per operation, and a write without a key is never retried:
+Good - one wrapper owns the policy, per-operation retry included, and a write without a key is never retried:
 
 ```
-paymentClient = client({ baseUrl, timeoutMs: 3000, deadlineFrom: ctx, retry: { backoff: exponentialJitter, baseMs: 500 },
-                         breaker: perDependency("payments", { failureRate: 0.5, openMs: 30000, halfOpenProbes: 5 }), fallback: failFast, onFallback: warnWithCause })
-chargeCard()    -> paymentClient.post('/charges', body, { idempotencyKey, attempts: 3 })
-refundCard()    -> paymentClient.post('/refunds', body, { idempotencyKey, attempts: 3 })
-lookupCard(id)  -> paymentClient.get('/cards/' + id, { attempts: 3 })   // safe method
+paymentClient = client({ baseUrl, timeoutMs: 3000, retry: { backoff: exponentialJitter, baseMs: 500 },
+                         bulkhead: { maxConcurrent: 20 }, breaker: perDependency("payments", { failureRate: 0.5, openMs: 30000, halfOpenProbes: 5 }), fallback: failFast, onFallback: warnWithCause,
+                         operations: { charge: { attempts: 3, requiresKey: true }, refund: { attempts: 3, requiresKey: true }, lookup: { attempts: 3 } } })
+chargeCard()    -> paymentClient.call(ctx, 'charge', body, { idempotencyKey })   // ctx carries the caller's deadline
+refundCard()    -> paymentClient.call(ctx, 'refund', body, { idempotencyKey })
+lookupCard(id)  -> paymentClient.call(ctx, 'lookup', { id })   // safe method
 ```
 
 The wrapper is also where the breaker instance lives, which is what makes "one breaker per dependency" enforceable rather than aspirational.
@@ -114,62 +115,49 @@ Separate thread / connection pools per downstream dependency. In single-threaded
 
 ### Fallback Patterns
 
-| Pattern           | Use When                                     | Example                                                       |
-| ----------------- | -------------------------------------------- | ------------------------------------------------------------- |
-| Cached fallback   | Stale data is acceptable                     | Cached product catalog when catalog-service is down           |
-| Default value     | A reasonable default exists                  | Default shipping estimate when shipping-service times out     |
-| Partial response  | Some data is better than none                | Order without recommendations when reco-service fails         |
-| Queue for later   | Operation can be deferred                    | Queue notification for retry instead of failing the order     |
-| Provider failover | Multiple providers for same capability       | Route to secondary payment gateway when primary's circuit opens |
-| Fail fast         | No safe degradation                          | Return 503 immediately rather than waiting for a timeout      |
-
-For provider failover, run a per-provider circuit breaker and try providers in order (primary -> secondary -> tertiary -> fail fast) - for reads and reconcilable operations, or once the primary's outcome is settled; an idempotency key is provider-scoped, so a charge that timed out on the primary is never re-issued to the secondary.
+Cached data (stale is acceptable), a default value, a partial response, queue for later (the operation can be deferred), provider failover, or fail fast (no safe degradation: `503` now rather than after a timeout). For provider failover, run a per-provider circuit breaker and try providers in order (primary -> secondary -> fail fast) - for reads and reconcilable operations, or once the primary's outcome is settled; an idempotency key is provider-scoped, so a charge that timed out on the primary is never re-issued to the secondary. A dependency's scheduled maintenance window is known in advance: switch to the fallback on the schedule rather than letting the breaker learn it from failures; a published window with no scheduled switch is `fallback (misconfigured)`.
 
 ### Parallel vs Sequential Calls
 
 | Shape                          | Total time                                  | Use For                                  |
 | ------------------------------ | ------------------------------------------- | ---------------------------------------- |
-| Sequential                     | Sum of timeouts (worst case)                | Calls that depend on each other          |
+| Sequential                     | Sum of timeouts, capped at the caller's deadline when the remaining budget is propagated (worst case) | Calls that depend on each other |
 | Parallel, all-must-succeed     | Slowest call (worst case)                   | All results required                     |
-| Parallel, first-success        | Fastest successful call; slowest call or the timeout when all fail | Provider failover with speed priority |
+| Parallel, first-success        | Fastest successful call; slowest call or the timeout when all fail | Hedged reads across providers or replicas (writes fail over in order, per Fallback Patterns) |
 
 ### Stack Adaptation
 
-After `stack-detect`, apply the patterns with the ecosystem's usual third-party libraries - none of these is a standard library, and most cover one pattern: Resilience4j (Java/Kotlin - all patterns), Polly (.NET - all), cockatiel (Node - all; opossum is breaker, timeout, and fallback - no retry or bulkhead), tenacity (Python - retry only; pybreaker for the breaker, the HTTP client's own timeouts), gobreaker (Go - breaker only; `context.WithTimeout` for timeouts, cenkalti/backoff or retry-go for jittered retry, a semaphore for the bulkhead), retriable plus stoplight (Ruby - retry plus breaker), Guzzle retry middleware (PHP - retry, with a custom delay for jitter; ganesha for the breaker), tower (Rust - timeout, retry plumbing, concurrency limit; failsafe-rs for the breaker). Use the framework's decorator, middleware, or annotation mechanism; rely on background-job retry-with-backoff where built in. When `Language` is `unknown`, apply the rules above and recommend the user verify against their ecosystem's resilience library docs.
+After `stack-detect`, apply the patterns with the ecosystem's usual third-party libraries - none of these is a standard library, and most cover one pattern: Resilience4j (Java/Kotlin - all patterns), Polly (.NET - all), cockatiel (Node - retry, breaker, timeout, bulkhead, fallback; opossum is breaker, timeout, fallback, and a concurrency cap via `capacity` - no retry), tenacity (Python - retry only; pybreaker for the breaker, the HTTP client's own timeouts), gobreaker (Go - breaker only; `context.WithTimeout` for timeouts, cenkalti/backoff or retry-go for jittered retry, a semaphore for the bulkhead), retriable plus stoplight (Ruby - retry plus breaker), Guzzle retry middleware (PHP - retry, with a custom delay for jitter; ganesha for the breaker), tower (Rust - timeout, retry plumbing, concurrency limit; failsafe-rs for the breaker). Client rate limit: Resilience4j RateLimiter, Polly's rate limiter, bottleneck (Node), aiolimiter (Python), `golang.org/x/time/rate` (Go; v0.15.0 is the last release that builds on Go 1.25), tower's `RateLimitLayer` (Rust); elsewhere a token bucket in front of the client. Use the framework's decorator, middleware, or annotation mechanism; rely on background-job retry-with-backoff where built in. When `Language` is `unknown`, apply the rules above and recommend the user verify against their ecosystem's resilience library docs. Write `<language> (no framework detected)` when stack-detect reports a known `Language` and `Framework: unknown`.
 
 ## Output Format
 
-Consuming workflow skills parse this structure to surface resilience gaps. One gap per integration point or per chain: an operation is its own integration point when its policy differs from its siblings (a write without a key beside a safe read), otherwise the dependency's client is the point; a `client ownership` gap is one per dependency, naming the call sites; a budget or retry-ownership defect that spans several hops is one gap keyed to the chain, naming the hops. A caller outside the repository is cited with its source (its code, or the document that states its behaviour). Order gaps by severity, High first.
+Consuming workflow skills parse this structure to surface resilience gaps. One gap per integration point or per chain: an operation is its own integration point when its policy differs from its siblings (a write without a key beside a safe read), otherwise the dependency's client is the point; a `client ownership` gap is one per dependency, naming the call sites; a budget or retry-ownership defect that spans several hops is one gap keyed to the chain, naming the hops. A chain gap and an integration-point gap on the same hop coexist when their `Missing` values differ; one `Missing` value is reported once. A caller outside the repository is cited with its source (its code, or the document that states its behaviour). Order gaps by severity, High first.
 
 ```
 ## Resiliency Assessment
 
-**Stack:** {language / framework | unknown}{; other services in the chain: <name> (detected | from <document> | assumed)}
+**Stack:** {language / framework | <language> (no framework detected) | unknown}{; other services in the chain: <name> (detected | from <document> | assumed)}
 
 ### Gaps                                        {when at least one gap}
 
 - [Severity: High | Medium | Low] {integration point, component, or chain; in design mode the proposed hop} - {description of gap}
-  - Missing: {one or more, comma-separated, each optionally `(misconfigured)`: timeout, retry, circuit breaker, breaker monitoring, bulkhead, fallback, fallback logging, timeout budget, retry budget, retry owner, retry-after handling, client ownership, idempotency key}
+  - Missing: {one or more, comma-separated, each optionally `(misconfigured)`: timeout, retry, circuit breaker, breaker monitoring, bulkhead, fallback, fallback logging, timeout budget, retry budget, retry owner, retry-after handling, client rate limit, client ownership, idempotency key}
   - Risk: {failure mode this gap enables}
   - Recommendation: {concrete pattern and library for the detected stack, or the docs to verify against when unknown}
 
 ### No Gaps Found                               {instead, when none: one sentence stating resilience is adequate}
 ```
 
-A pattern that is present but misconfigured is listed with the `(misconfigured)` qualifier: `retry (misconfigured)` for no cap, no backoff or jitter, or retrying non-transient errors; `circuit breaker (misconfigured)` for a shared breaker or one with no thresholds; `timeout (misconfigured)` for a fixed value that ignores the caller's deadline. Rate it by what the configuration actually permits, not by the value written down: a 5s budget whose downstream timeouts sum to 12s permits 12s of downstream work and held resources against a 5s promise.
+A pattern that is present but misconfigured is listed with the `(misconfigured)` qualifier: `retry (misconfigured)` for no cap, more than 3 in-process attempts without budget room, no backoff or jitter, or retrying non-transient errors; `circuit breaker (misconfigured)` for a shared breaker or one with no thresholds; `timeout (misconfigured)` for a fixed value that ignores the caller's deadline. Rate it by what the configuration actually permits, not by the value written down: a 5s budget whose downstream timeouts sum to 12s permits 12s of downstream work and held resources against a 5s promise.
 
 **Severity** - by the worst plausible failure mode the gap enables; the tiers below name typical cases, and a gap escalates to High when the failure it permits is unbounded or financial or irreversible - the gap whose failure permits that outcome, not every gap on the same hop:
 
-- **High**: unbounded blocking or load (missing timeout, uncapped retry, a missing or exceeded budget on a chained path), or unsafe retry of a non-idempotent op without a key when the duplicate is financial or irreversible (a recoverable database write is Medium, as `backend-idempotency` rates it).
-- **Medium**: failure is bounded but recovery or containment is impaired - retry without jitter, breaker absent or unmonitored where a timeout exists, no fallback for a critical dependency, a fallback that does not log the original failure, `Retry-After` ignored.
+- **High**: unbounded blocking or load (missing timeout, uncapped retry, a missing or exceeded budget on a chained path, including a retry-owner product that exceeds it), or unsafe retry of a non-idempotent op without a key when the duplicate is financial or irreversible (a recoverable database write is Medium, as `backend-idempotency` rates it).
+- **Medium**: failure is bounded but recovery or containment is impaired - retry without jitter, breaker absent or unmonitored where a timeout exists, no fallback for a critical dependency, a fallback that does not log the original failure, `Retry-After` ignored, no client-side limiter under a published rate limit, dependency settings spread across call sites (`client ownership`), two retry owners on one operation whose product stays within the budget (`retry owner`).
 - **Low**: hardening gaps with no immediate failure path - missing bulkhead isolation where every call is bounded, fallback that fails fast where stale data would serve.
 
-For design tasks (no implementation yet), use the same format: list the proposed design's unaddressed failure modes as Gaps, naming the proposed hop as the integration point; the timeout budget goes in the chain gap's Recommendation as `deadline <ms>: <hop> <ms>, <hop> <ms>, buffer <ms>`.
+For design tasks (no implementation yet), use the same format: list the proposed design's unaddressed failure modes as Gaps, naming the proposed hop as the integration point; the timeout budget goes in the chain gap's Recommendation as `deadline <ms>{ (assumed: <basis>)}: <hop> <ms>, <hop> <ms>, buffer <ms>`.
 
 ## Avoid
 
-- Retrying non-idempotent ops without idempotency keys.
-- Retrying client-error 4xx (won't succeed on retry) - 429, 408, 425, and a 409 carrying `Retry-After` are the exceptions.
-- Circuit breakers with no monitoring - you cannot react to a trip you cannot see.
-- Fallbacks that swallow errors silently.
-- Chained retries with no per-request retry budget (amplification).
+- Retrying a non-idempotent operation that carries no idempotency key.

@@ -20,9 +20,9 @@ user-invocable: false
 ## Rules
 
 - Flag strictly above thresholds; a unit at or under every threshold is not a finding. Context can justify exceeding a threshold, which lowers severity, never the other way round.
-- Report cognitive complexity alongside cyclomatic: a cyclomatic or cognitive Signal group's Measured line carries both numbers. Cyclomatic counts decision points; cognitive captures reading difficulty.
-- Calibrate thresholds to the detected stack's norms (Ruby methods are shorter than Java). When the stack's standard linter ships a stricter default (RuboCop `Metrics/MethodLength` 10), that default is the calibrated threshold and overrides the range.
-- Order rows by severity, High first; within one unit with multiple signals, order the Signal groups in Refactor Priority order.
+- Cyclomatic and cognitive complexity report together: when either fires, the unit carries one Signal group, `Signal: Cyclomatic / cognitive complexity`, whose Measured line carries both numbers and whose Simplification is the Fix of each row that exceeds its threshold, cyclomatic's first when both do. Cyclomatic counts decision points; cognitive captures reading difficulty.
+- Calibrate thresholds to the detected stack's norms (Ruby methods are shorter than Java). A stricter limit the stack's standard linter enforces under the project's default config (plain RuboCop: `Metrics/MethodLength` 10, `Metrics/CyclomaticComplexity` 7) is the calibrated threshold and overrides the Signal Table default, ranged or fixed; a rule the linter or its shipped preset disables (ESLint `max-params`; every `Metrics/*` cop under `rubocop-rails-omakase`, the Rails 7.2+ default) does not.
+- Order rows by severity, High first; within one unit, order the Signal groups by Refactor Priority.
 - Ranged thresholds (e.g., 20-40 lines): pick the point in the range matching stack norms (Ruby and Python toward the lower end, Java, Go, and TypeScript toward the upper); use the upper bound when the stack is unknown.
 - Only the Signal Table is in scope, in every mode: a dead variable, an unclosed client, or absent error handling is another skill's finding, not a row here.
 
@@ -41,10 +41,13 @@ user-invocable: false
 | Branch chain (switch / if-else)   | > 10 branches          | Map lookup, strategy, or polymorphism                      |
 | Inheritance/mixin depth           | > 3-4 levels           | Composition over inheritance                               |
 | Indirection depth                 | > 3 pass-through delegation hops | Collapse layers that add no logic; inline single-use wrappers |
+| Speculative abstraction           | qualitative: an interface, factory, registry, or strategy layer with one implementation or one caller, or stub implementations nothing calls | Inline into the single implementation; add the layer when a second implementation exists |
 | External calls per method         | > 3 call statements (network, IPC, or database; three DB statements are three), or one call inside a loop over an unbounded collection | Extract orchestration layer; batch the per-item call; explicit error handling per call |
 | Error-handling complexity         | qualitative: broad catch-all, empty catch, try nested more than 2 deep | Specific exception types, Result/Either, error handler delegation |
 
 Cyclomatic complexity: decision points plus one; each binary `&&` / `||` operator is a decision point (`if (a && b)` is 1 + 1 + 1 = 3). Cognitive complexity (SonarSource rules): +1 for each `if`, `else`/`else if`, ternary, `switch`/`match` (one increment for the whole statement, whatever the case count), loop, `catch`, labeled jump, and each method in a recursion cycle (once per method, not per call site); a further +1 per nesting level for `if`, ternary, `switch`, loops, and `catch` (none for `else`/`else if`; nested functions and lambdas raise the nesting level but receive no increment); +1 per sequence of like binary logical operators (`a && b && c` is one sequence; `a && b || c` is two).
+
+Nesting depth counts control structures nested inside one another (`if`, loop, `switch`/`match`, `try`); `else`/`else if` stay at their `if`'s level, and a ternary adds none.
 
 Indirection depth: follow the call chain from the entry point until a hop does real work (a branch, a transform, an I/O call), counting only hops that forward arguments. More than 3 such hops is the finding; stop counting at 5 or at a repository/client boundary. Anchor the row at the chain's entry point and name the hops.
 
@@ -54,15 +57,15 @@ Indirection depth: follow the call chain from the entry point until a hop does r
 - **Medium**: over the threshold but below ~1.5x, or a qualitative signal that does not block comprehension
 - **Low**: over the threshold where context justifies it - a flat exhaustive mapping, or stable and tested code the team has chosen not to touch
 
-Downgrade rule: a flat exhaustive mapping (uniform one-line branches, no shared mutable state) caps the branch-chain and cyclomatic signals at Low regardless of branch count; suggest a data table only when branches duplicate logic. Drop those Signal lines when the downgrade leaves nothing to act on; the row survives only if another signal fires - a readable lookup table reported as Low is an invitation to a refactor that makes the code worse.
+Downgrade rule: a flat exhaustive mapping (uniform one-line branches, no shared mutable state) caps the `Branch chain (switch / if-else)` and `Cyclomatic / cognitive complexity` Signal groups at Low regardless of branch count; suggest a data table only when branches duplicate logic. Drop those Signal groups when the downgrade leaves nothing to act on; the row survives only if another signal fires - a readable lookup table reported as Low is an invitation to a refactor that makes the code worse.
 
 ### Refactor Priority
 
-When several signals fire together, address in order: (1) externalize service calls, (2) flatten nesting with guard clauses, (3) extract by responsibility, (4) any remaining signal in Signal Table order. Each step often removes downstream signals; a signal a preceding step resolves still gets its own Signal group, noting which step resolves it.
+When several signals fire on one unit, address them in order: (1) External calls per method, (2) Nesting depth, then Cyclomatic / cognitive complexity, (3) Method/function length, File/class/module size, Branch chain, (4) any remaining signal in Signal Table order. Each step often removes later signals; a signal an earlier step resolves still gets its own Signal group, noting which step resolves it.
 
 ### Stack Calibration
 
-After `stack-detect`, adjust thresholds to ecosystem norms and prefer the stack's standard linting/analysis tool for measured metrics. When `Language` is `unknown`, use universal thresholds at the upper bound and write the `Measured by` line's unknown-language value.
+After `stack-detect`, adjust thresholds to ecosystem norms and prefer the stack's standard linting/analysis tool for measured metrics (Python: radon or ruff `C901`; TypeScript/JavaScript: ESLint `complexity`; Go: gocyclo; Java: PMD or Checkstyle; Ruby: RuboCop `Metrics/*`). The Stack line keeps the version stack-detect reports (`Python 3.12 / FastAPI`). Write `<language> (no framework detected)` when stack-detect reports a known `Language` and `Framework: unknown`. When `Language` is `unknown`, use universal thresholds at the upper bound and write the `Measured by` line's unknown-language value. When the language is known but has no standard complexity tool, append ` - unfamiliar stack` to the Stack line, use the upper bounds, and write `manual count - no calibrated tool (<language>)`.
 
 ## Output Format
 
@@ -71,14 +74,14 @@ One row per unit, not per signal - a unit firing three signals is one row carryi
 ```
 ## Complexity Assessment
 
-**Stack:** {language / framework | unknown}{ - <qualifiers, comma-joined: library or CLI with no framework, unfamiliar stack>}
+**Stack:** {language / framework | <language> (no framework detected) | unknown}{ - unfamiliar stack}
 
-**Measured by:** {tool and version | "manual count - <stack's tool> not run" | "manual count - no calibrated tool (language unknown)" | "design evaluation - counts from the proposal"}
+**Measured by:** {tool and version | "manual count - <stack's tool> not run" | "manual count - no calibrated tool (<language> or language unknown)" | "design evaluation - counts from the proposal"}
 
 ### Issues                                    {when at least one issue}
 
-- [Severity: High | Medium | Low] {file:line or symbol; in design mode the proposed construct} - {one-line description}
-  - Signal: {signal name from table}
+- [Severity: High | Medium | Low] {file:line of the unit's declaration, the first when the row spans several, or symbol; in design mode the proposed construct} - {one-line description}
+  - Signal: {signal name from table, or `Cyclomatic / cognitive complexity` for that pair}
   - Measured: {value and threshold, e.g., "cyclomatic 18 / cognitive 24, thresholds 10 / 15" | "n/a - qualitative: <what was observed>"}
   - Simplification: {concrete fix from Patterns}
   - Signal: {next signal on the same unit, in Refactor Priority order}
@@ -92,7 +95,4 @@ When evaluating a design rather than code, anchor each row at the proposed const
 
 ## Avoid
 
-- Treating thresholds as absolutes; well-tested stable code may exceed them
-- Premature abstraction that trades branch complexity for indirection complexity
-- Reporting cyclomatic complexity without cognitive complexity
-- Refactoring solely to satisfy metrics
+- Recommending a refactor whose only effect is moving a number below its threshold

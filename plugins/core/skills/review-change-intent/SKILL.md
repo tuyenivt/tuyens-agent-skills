@@ -27,13 +27,13 @@ Not for single-lens reviews (`*-review-perf` / `-security` / `-observability` / 
 | `requirement_source` | no       | `--req <path>` forwarded by the workflow, or requirement text already in context |
 | `prior_report_path`  | no       | `review-target.report_path` from the precondition handle, when round > 1     |
 
-Repository context outside these inputs (deploy plans, architecture docs) may inform Watch points and may be cited there by path; it becomes a traceability source only when the change names it (source row 3).
+Repository context outside these inputs (deploy plans, architecture docs) may inform Watch points and may be cited there by path; it becomes a traceability source only when the diff, commit log, or context names it (source row 3).
 
 ## Rules
 
 - **Never derive criteria from the diff.** Reading requirements off the change is circular and always concludes the change meets them. With no qualifying source, emit the Change Brief and omit the traceability block entirely.
 - **A source qualifies only when it enumerates at least one criterion stating an observable outcome.** A commit subject (`fix pagination`), a branch name, or prose with no sentence stating an observable outcome is Brief material, not traceability material - without this bar the commit log makes every review look sourced. In a qualifying prose source, each sentence stating one observable outcome is one criterion, two sentences stating the same outcome are one criterion quoted at the more precise wording, and sentences stating no outcome are Brief material (the `Untraceable` status is for enumerated criteria only).
-- **`Met` requires two anchors: an implementation `file:line` and a proof.** Exactly one anchor is `Partial`. The implementation is never its own proof.
+- **`Met` requires two anchors: an implementation `file:line` and a proof.** Exactly one anchor is `Partial`, unless the implementation contradicts the stated outcome (`Unmet`). The implementation is never its own proof.
 - **Anchors may cite unchanged code**, annotated `(pre-existing)`. A criterion the system already satisfied is `Met`, and the annotation tells the reader this change is not what satisfied it.
 - **Disclose source authority, never infer it.** `Specified` = written independently of the change. `Self-attested` = written by the author alongside it (pasted PR body, commit messages). Self-attested criteria still gate - a change that does not do what its own description claims is a defect - but the reader is told which kind they are reading. A self-attested statement never changes the status of a Specified criterion: a PR body deferring a criterion the spec still requires leaves it `Unmet`, with the claimed deferral recorded under Watch points.
 - **Describe in the Brief, judge in the findings.** Every unrequested change is a finding (the label depends on its risk); the Brief's author decisions carry only the choices that are not unrequested scope. Never both.
@@ -45,20 +45,20 @@ Repository context outside these inputs (deploy plans, architecture docs) may in
 
 | Order | Source                                                                                     | Authority     |
 | ----- | ------------------------------------------------------------------------------------------ | ------------- |
-| 1     | The file at `--req <path>`                                                                  | Specified     |
+| 1     | The file at `--req <path>`                                                                  | Specified; Self-attested when the diff adds or edits it, or it is the change's own PR description |
 | 2     | Requirement text or file already in context and written independently of the change (pasted ticket, PRD, spec) - author-written text is row 5 | Specified     |
-| 3     | An in-tree spec the change names - a path or ticket ID appearing in the diff, commit log, or context. Follow the reference; never guess a likely path. A referenced document that enumerates no criterion does not resolve this row | Specified     |
+| 3     | An in-tree spec the change names - a path or ticket ID appearing in the diff, commit log, or context. Follow the reference; never guess a likely path. A referenced document with no criterion stating an observable outcome does not resolve this row | Specified; Self-attested when the diff adds or edits it |
 | 4     | The `Requirement Source` recorded in the prior report at `prior_report_path`, re-read at its path and evaluated at its current content; a recorded source with no re-readable path (pasted text, PR body) does not resolve | carry the prior authority |
-| 5     | Pasted PR/MR body, or commit messages in the range, when either enumerates criteria - an unfetched PR body leaves the commit messages half of this row live | Self-attested |
+| 5     | Pasted PR/MR body, or commit messages in the range, when either enumerates at least one criterion stating an observable outcome - an unfetched PR body leaves the commit messages half of this row live | Self-attested |
 | 6     | Nothing resolves                                                                            | omit the block |
 
 ### Criterion status
 
 | Status        | Fill when                                                                                     |
 | ------------- | ---------------------------------------------------------------------------------------------- |
-| `Met`         | An implementation anchor and a proof anchor both resolve                                       |
-| `Partial`     | Exactly one anchor resolves, or the implementation covers part of the stated outcome           |
-| `Unmet`       | Neither anchor resolves, in the change or in the existing tree                                 |
+| `Met`         | An implementation anchor and a proof anchor both resolve and together cover the full stated outcome |
+| `Partial`     | Exactly one anchor resolves, or the anchors together cover part of the stated outcome          |
+| `Unmet`       | Neither anchor resolves, in the change or in the existing tree, or the implementation contradicts the stated outcome (a flag shipped on where the criterion says off) - a contradiction is `Unmet` whichever anchors resolve |
 | `Deferred`    | The source itself places the criterion outside this change (`part 1 of 3`, `follow-up`, a criterion marked out of scope) |
 | `Untraceable` | An enumerated criterion states no observable outcome (`improve UX`, `clean this up`) - no anchor is possible either way |
 
@@ -80,9 +80,9 @@ A proof must assert the criterion's stated outcome, not just a mechanism compone
 
 Counts: a new or major-bumped dependency, a schema or migration change, a changed or added public contract (a new externally reachable endpoint counts), an auth/authz surface change, a new or changed default or config value (a flag key added with no code reading it still counts), a behavior change to a feature no criterion names, a refactor outside the criteria's footprint.
 
-Does not count: renames and formatting inside files the work already touched, added tests, comments and docs, a dependency a criterion names or implies, and edits mechanically forced by the requested work (call sites updated for a changed signature). Implying a dependency implies adding it at whatever version satisfies the criterion - it never implies a major bump of a dependency the project already had, which stays on the counts list.
+Does not count: renames and formatting inside files the work already touched, added tests, comments and docs, a dependency a criterion names or implies, and edits mechanically forced by the requested work (call sites updated for a changed signature). Implying a dependency implies adding it at whatever version satisfies the criterion; a major bump of a dependency the project already had is implied only when the criterion names that major version or a feature only it ships, and otherwise stays on the counts list. Scope is judged on the net `base...head` diff: a change added and reverted inside the range is not unrequested scope. With no source, the change the commit log states as its intent is the inferred request, not unrequested scope.
 
-High-risk unrequested scope: a destructive migration (drop, rename, type change, or backfill against an existing table), an auth/authz surface change, a public contract change, a new or major-bumped dependency, a changed shared default.
+High-risk unrequested scope: a destructive migration (drop, rename, type change, or backfill against an existing table), an auth/authz surface change, a changed or added public contract (including a new externally reachable endpoint), a new or major-bumped dependency, a changed shared default.
 
 ### Findings raised
 
@@ -95,7 +95,7 @@ High-risk unrequested scope: a destructive migration (drop, rename, type change,
 | Any other unrequested scope                                                                  | `[Recommend]` |
 | `Deferred` or `Untraceable` criterion                                                        | none - table row only |
 
-Anchor every finding to a production `file:line`, never to the requirement document. An `Unmet` criterion has no implementation to cite: anchor it to the construct that would hold the missing behavior - the handler, module, or config the criterion concerns - and name the criterion in the claim. One finding per unrequested change; the same kind of change repeated across files (a restructure, a sweeping rename, two unpaginated list endpoints) is one finding anchored to one representative changed `file:line`, stating the extent in the claim (`part of a 14-file email-module restructure`), while two changes of different kinds in one file (a rename and a backfill in one migration) are two findings. Order findings `[Must]` first.
+Every round derives this phase's findings from the full current range; prior-round findings carry forward through `review-prior-findings-reconcile`, never through this phase. Anchor every finding to a production `file:line`, never to the requirement document. An `Unmet` criterion with no implementation is anchored to the construct that would hold the missing behavior - the handler, module, or config the criterion concerns; a contradicted criterion is anchored to the contradicting `file:line`; either way the claim names the criterion. One finding per unrequested change; the same kind of change repeated across files (a restructure, a sweeping rename, two unpaginated list endpoints) is one finding anchored to one representative changed `file:line`, stating the extent in the claim (`part of a 14-file email-module restructure`), while two changes of different kinds in one file (a rename and a backfill in one migration) are two findings. Order findings `[Must]` first.
 
 ## Output Format
 
@@ -133,9 +133,4 @@ Exactly one of the two `###` headings is emitted - the consuming workflow uses i
 
 ## Avoid
 
-- Concluding `Met` from the implementation alone
-- Reverse-engineering criteria from the change, then reporting that the change satisfies them
-- Treating a one-line commit subject or a branch name as a criteria list
-- Reporting the same author decision as both a Brief line and a finding
 - Judging whether the requirement was a good idea - that is design review, not fit
-- Anchoring a finding to the ticket, the PR body, or the requirement file

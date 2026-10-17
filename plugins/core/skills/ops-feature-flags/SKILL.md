@@ -18,21 +18,21 @@ user-invocable: false
 
 ## Rules
 
-- Every flag has a single named owner (a person, with their team); when no person is named yet, the owner slot reads `unassigned - <role to assign>`. Release and user-targeting flags get a cleanup target set at creation; permanent flags (kill switch, ops, permission) get documented valid states and a review date instead - quarterly unless the owner sets otherwise.
+- Every flag has a single named owner (a person, with their team; a team alone is not an owner); when no person is named yet, the owner slot reads `unassigned - <role to assign>`. Release and user-targeting flags get a cleanup target set at creation; permanent flags (kill switch, ops, permission) get documented valid states and a review date instead - quarterly unless the owner sets otherwise.
 - Name flags positively for the new behavior (`pricing_v2_enabled`); never negations or double negatives (`disable_legacy_pricing_off`). A kill switch names the thing it stops, with `true` meaning stopped (`payments_v2_killed`) - the rule bans names that require a double negative to read, not the kill switch's inherent polarity.
 - Every high-risk feature can be disabled without a redeploy. While a release flag exists, turning it off is the kill switch - no second flag. A separate, permanent kill switch is designed only when the risky path must be disabled independently of the release flag's state, or after the release flag is cleaned up.
-- A flag takes effect within the provider's propagation bound, which the design measures and records rather than assumes: a streaming SDK in about a second; a polling client on its next poll (tens of seconds for server SDKs, minutes in the foreground and up to an hour in the background for mobile SDKs, by vendor default); plus any local cache TTL. It takes effect only when evaluated per request or per unit of work - a flag read once at process start is a deploy-time switch, not a flag. When the provider is unreachable, the SDK keeps serving its last known values for as long as the process lives; the coded default is served only when no value was ever fetched (cold start with no cache) or the key is unknown, so the coded default is the safe state (off for a release flag, running for a kill switch).
+- A flag takes effect within the provider's propagation bound, which the design records as measured, or as computed until it is measured in staging before rollout: a streaming SDK in about a second; a polling client on its next poll (tens of seconds for server SDKs, minutes in the foreground and up to an hour in the background for mobile SDKs, by vendor default); plus any local cache TTL. It takes effect only when evaluated per request or per unit of work - a flag read once at process start is a deploy-time switch, not a flag. When the provider is unreachable, the SDK keeps serving its last known values for as long as the process lives; the coded default is served when no value was ever fetched (cold start with no cache), the key is unknown, or evaluation fails (wrong value type, a context without a valid key), so the coded default is the safe state (off for a release flag, running for a kill switch; a kill switch whose path must stay stopped through a cold start during a provider outage codes `true` and names that cost).
 - Promotion to the next stage requires every promotion criterion green; rollback fires on any breach of a rollback trigger.
-- One flag controls one behavior. Flags that gate multiple behaviors cannot be rolled back cleanly; a new flag never reuses the name of a non-compliant one - redesign that flag or add a new one.
+- One flag controls one behavior - the unit one rollback undoes: steps that are only safe together (a lock and its extend) are one behavior, steps that can be rolled back alone get their own flag. Flags that gate multiple behaviors cannot be rolled back cleanly; a new flag never reuses the name of a non-compliant one - redesign that flag or add a new one.
 - Flags never bypass auth or security checks.
-- Reaching 100% rollout starts the cleanup clock; record the date and remove flag and dead branches within one sprint.
+- Reaching 100% rollout starts the cleanup clock; record the date and remove flag and dead branches within one sprint. A flag already at 100% when the plan is written skips the Rollout Plan, and `Reached 100% on` carries that date (`before <date>` when unrecorded).
 - A flag declared in config but read by no code is dead: implement it or delete it. Dead means no code outside the declaration reads its key - search the whole service, not one module.
 
 ## Patterns
 
 ### Flag Lifecycle
 
-Release and user-targeting flags pass through four stages; skipping any creates technical debt. Permanent flags have no progression and no end state.
+Release and user-targeting flags pass through four stages; permanent flags have no progression and no end state.
 
 1. **Introduction** - flag created, feature hidden behind it, default off.
 2. **Gradual Rollout** - enabled for widening cohorts.
@@ -45,7 +45,7 @@ Release and user-targeting flags pass through four stages; skipping any creates 
 | -------------- | ---------------------------------------------------------------- | -------------------------------------- |
 | release        | default false; cohorts are percentage buckets from the Gradual Rollout ladder | Simple toggles, gradual rollouts |
 | user-targeting | default off; cohorts are named targets (internal-users, beta-group, tenant-id-X) widened in order | Internal testing, beta, a tenant-by-tenant rollout that ends at every tenant (one that never will is `permission`) |
-| kill-switch    | permanent; default false (feature runs); true disables           | Emergency disable for high-risk paths  |
+| kill-switch    | permanent; default false (feature runs), or true when the path must stay stopped through a cold start; true disables | Emergency disable for high-risk paths  |
 | ops            | permanent; documented valid states, no rollout progression       | Throttles, maintenance mode            |
 | permission     | permanent; documented valid states, no rollout progression       | Entitlements                           |
 
@@ -62,16 +62,16 @@ Cohorts are bucketed on a stable key and stay in treatment across stages (a user
 | High     | 1% (1 h) -> 5% (2 h) -> 25% (4 h) -> 100%                                     |
 | Critical | internal (4 h) -> 1% (4 h) -> 5% (4 h) -> 25% (one full traffic cycle, 24 h minimum, extended until every criterion holds) -> 100% |
 
-**Promotion criteria** (all green before advancing), measured on the treatment cohort against the baseline - the control cohort, the traffic still on the old path at that stage; on the final row, the pre-rollout measurement:
+**Promotion criteria** (all green before advancing), measured on the treatment cohort against the baseline - the control cohort, the traffic still on the old path at that stage:
 
 - Error rate not above 1.1x baseline (relative, never percentage points)
 - p99 latency not above 1.2x baseline
 - No unexpected exceptions in logs
 - Business metrics not degraded
 
-A rate comparison needs enough events in both arms to see the gap: a 10% relative change in a 1% error rate takes on the order of 10^5 requests per arm, a p99 comparison about 10^4 - at ordinary traffic no early stage reaches that inside its soak. A stage that cannot reach the sample in a soak it can afford replaces the rate criteria and the rate triggers with absolute counts (`0 unexpected errors in the stage`, `no request over <p99 ceiling>`) and records the extended soak and why.
+A rate comparison needs enough events in both arms to see the gap: a 10% relative change in a 1% error rate takes on the order of 10^5 requests per arm, a p99 comparison about 10^4 - at ordinary traffic no early stage reaches that inside its soak. A stage that cannot reach the sample in a soak it can afford replaces the rate criteria and the rate triggers with absolute counts (promote on `0 unexpected errors in the stage` and `no request over <p99 ceiling>`; roll back on `>= 3 unexpected errors in the stage` unless the owner records another count) and records the extended soak and why.
 
-**Rollback triggers** (any one fires immediate disable), recorded with their numbers before rollout:
+**Rollback triggers** (any one fires immediate disable), recorded with their numbers before rollout, measured against the same baseline - on the final row (`100%`, or the full target set for a user-targeting flag), where no control cohort remains, the pre-rollout measurement:
 
 - Error rate above the recorded threshold in the cohort, relative to baseline (1.5x unless recorded otherwise), or the absolute count for a small sample
 - p99 latency above 1.5x baseline sustained 5 min, or the absolute ceiling for a small sample
@@ -95,23 +95,19 @@ For `n` boolean flags in one code path, combinations grow as `2^n`. Limit concur
 
 ### Code Placement
 
-Evaluate the flag once per request at the boundary, with the evaluation context the rollout needs, and pass the chosen strategy down; never scatter the check through business logic.
+Evaluate the flag once per request at the boundary, with the evaluation context the rollout needs (the cohort key as its targeting key) and a coded default, and pass the chosen strategy down; never scatter the check through business logic.
 
 ```
-// Bad - flag scattered through downstream code, and read without context
-if (flags.isEnabled("recommendations_v2_enabled")) { ... }   // cart
-if (flags.isEnabled("recommendations_v2_enabled")) { ... }   // checkout
+# Bad - read inside business logic: re-evaluated per call, no context, no default
+def compute_tax(order): return v2_tax(order) if flags.enabled("pricing_v2") else v1_tax(order)
 
-// Good - one evaluation per request, cohort key supplied, coded default, strategy swapped at the boundary
-const engine = flags.isEnabled("recommendations_v2_enabled", { userId: req.user.id }, false)
-  ? new NewRecommendationEngine()
-  : new LegacyRecommendationEngine()
-// Downstream code uses the engine interface, unaware of the flag
+# Good - one evaluation at the handler, strategy passed down
+pricing = PricingV2() if flags.get_boolean("pricing_v2_enabled", False, ctx) else PricingV1()
 ```
 
 ### Cleanup
 
-A flag at 100% that is not cleaned within a sprint becomes invisible technical debt: the dead branch stays in production as cognitive overhead and a future failure surface. The Cleanup Checklist in the Output Format is the record; branches are deleted, not commented out.
+A flag left at 100% keeps a dead branch in production as a future failure surface. The Cleanup Checklist in the Output Format is the record; branches are deleted, not commented out.
 
 ## Output Format
 
@@ -132,19 +128,19 @@ Release and user-targeting flags use this template. The Rollout Plan has one row
 
 **Kill switch**: {this flag - off fully reverts | separate kill-switch `<name>` - why the path must be disabled independently}
 
-**Evaluation**: {where the flag is read per request, the cohort key, the control cohort the criteria compare against, and the measured propagation bound}
+**Evaluation**: {where the flag is read per request, the cohort key, the control cohort the criteria compare against, and the measured propagation bound, or `computed: <bound> - measure in staging before rollout`}
 
 **Interacting flags**: {other flags on the same path and the combinations tested, or "none"}
 
 **Cleanup target**: {date, or "within 1 sprint of 100% rollout"}
 
-**Reached 100% on**: {date, or "not yet"}
+**Reached 100% on**: {date | before <date> - when unrecorded | not yet}
 
-## Rollout Plan
+## Rollout Plan                                {when the flag is below 100% when the plan is written}
 
 | Stage | Cohort | Promotion Criteria | Rollback Trigger | Soak |
 | ----- | ------ | ------------------ | ---------------- | ---- |
-| {1..n} | {internal \| 1% \| 5% \| 25% \| 100% \| <target name>} | {error rate <= 1.1x baseline, p99 <= 1.2x baseline, no unexpected exceptions, business metrics held; or the absolute counts for a small sample} | {error rate > 1.5x baseline or >= N errors, p99 > 1.5x baseline for 5 min or > ceiling, corruption} | {ladder soak, or the extended soak and why} |
+| {1..n} | {internal \| 1% \| 5% \| 25% \| 100% \| <target name>} | {error rate <= 1.1x baseline, p99 <= 1.2x baseline, no unexpected exceptions, business metrics held; or the absolute counts for a small sample} | {error rate > 1.5x baseline or >= N unexpected errors, p99 > 1.5x baseline for 5 min or > ceiling, corruption} | {ladder soak, or the extended soak and why} |
 
 ## Rollback Procedure
 
@@ -164,7 +160,7 @@ Rehearsed in staging on: {date, or "pending"}
 - [ ] Changelog updated if user-visible behavior changed
 ```
 
-A permanent flag (kill-switch, ops, permission) has no rollout progression and no end state, so it drops `Risk`, the Rollout Plan, and the Cleanup Checklist, keeps the Rollback Procedure as the path back to its default state, and replaces `Cleanup target` and `Reached 100% on` with the states it is allowed to hold and its review date. `Default` is `false - feature runs` for a kill switch; ops and permission flags state the value and its meaning:
+A permanent flag (kill-switch, ops, permission) has no rollout progression and no end state, so it drops `Risk`, the Rollout Plan, and the Cleanup Checklist, keeps the Rollback Procedure as the path back to its rollback state (the default for ops and permission flags; `true` - path stopped - for a kill switch; a kill switch is boolean, so a gradual resume after it is lifted goes through the path's release flag or a rate cap, named in step 4), and replaces `Cleanup target` and `Reached 100% on` with the states it is allowed to hold and its review date. `Default` is `false - feature runs` for a kill switch, or `true - path stopped - <the cost>` when its path must stay stopped through a cold start; ops and permission flags state the value and its meaning:
 
 ```
 ## Feature Flag Design
@@ -179,7 +175,7 @@ A permanent flag (kill-switch, ops, permission) has no rollout progression and n
 
 **Kill switch**: {this flag | how the path it gates is disabled without a redeploy | n/a - not a high-risk path}
 
-**Evaluation**: {where the flag is read per request, and the measured propagation bound}
+**Evaluation**: {where the flag is read per request, and the measured propagation bound, or `computed: <bound> - measure in staging`}
 
 **Interacting flags**: {as above}
 
@@ -189,10 +185,10 @@ A permanent flag (kill-switch, ops, permission) has no rollout progression and n
 
 ## Rollback Procedure
 
-1. {step that returns the flag to its default state, and the bound}
-2. {signal that confirms the default path is served}
-3. {reconciliation of writes made in the non-default state, or "none"}
-4. {root-cause gate before leaving the default state again}
+1. {step that sets the flag to its rollback state, and the bound}
+2. {signal that confirms the rollback state is served}
+3. {reconciliation of writes the faulty path made before the flag reached its rollback state (for a kill switch, since the incident began), or "none"}
+4. {root-cause gate before leaving the rollback state again; for a kill switch the gate guards re-enabling the path, never engaging the stop, and names the gradual resume - the path's release flag or a rate cap}
 5. {code-rollback escalation condition}
 
 Rehearsed in staging on: {date, or "pending"}
@@ -203,17 +199,12 @@ When reviewing existing flags rather than designing one, output findings instead
 ```
 ## Flag Review Findings
 
-- [Severity: High | Medium | Low] {flag name} - {violations, comma-separated}
-  - Fix: {one or more of: rename, cleanup, split, assign owner, add kill switch, add dual-write so disable is reversible, remove auth/security bypass, define promotion criteria and triggers, implement or delete (dead flag), record 100% date, set cleanup target, set review date, document valid states, document interactions}
+- [Severity: High | Medium | Low] {flag name} ({file:line of its declaration}) - {violations, comma-separated}
+  - Fix: {one or more of: rename, cleanup, split, assign owner, add kill switch, add single-transaction dual-write or shadow column so disable is reversible, remove auth/security bypass, define promotion criteria and triggers, implement or delete (dead flag), evaluate per request from a runtime provider, set safe coded default, bucket on a stable key and salt, consolidate flag state to one source, record 100% date, set cleanup target, set review date, document valid states, document interactions}
 ```
 
-Severity: High = auth/security bypass, un-rollback-able data writes, or no working disable on a path that needs a kill switch (a dead flag there included); Medium = stale at 100%, multi-behavior flag, missing owner, missing promotion criteria or rollback triggers, a dead ops or permission flag, undocumented valid states on a permanent flag; Low = naming, missing cleanup target, review date, or 100% date, undocumented interactions, any other dead flag.
+Severity: High = auth/security bypass, un-rollback-able data writes, or no working disable on a path that needs a kill switch (a dead flag there included); Medium = stale at 100%, multi-behavior flag, missing owner, missing promotion criteria or rollback triggers, a flag read once at process start or changeable only by redeploy, a coded default that is not the safe state (an unknown key served as on), bucketing that is not stable across processes (a per-process hash salt), per-environment state without a single source of truth, a dead ops or permission flag, undocumented valid states on a permanent flag; Low = naming, missing cleanup target, review date, or 100% date, undocumented interactions, any other dead flag.
 
 ## Avoid
 
-- Flags without a cleanup plan (accumulate indefinitely).
 - DB writes inside a flag conditional with neither single-transaction dual-write nor a shadow column (disabling leaves new-shape rows the old path misreads).
-- Flags that bypass auth or security checks.
-- Per-environment flag state without a single source of truth (config drift).
-- One flag controlling multiple unrelated behaviors (cannot roll back cleanly).
-- More than 2-3 active flags in one code path without combination testing.

@@ -17,23 +17,23 @@ user-invocable: false
 - Reviewing API contracts for consistency
 - Planning backward-compatible API evolution
 
-For a GraphQL or gRPC API, the transport rules (paths, methods, status codes, pagination params) do not apply - reviewing against them manufactures violations from design choices the paradigm made. What carries over is boundary validation, error-shape consistency, no ORM entities on the wire, idempotency on non-idempotent mutations, bounded collections (paginated via the paradigm's own mechanism, e.g. GraphQL connections with `first`/`after`), and versioning on breaking change. Express fixes in the paradigm's idiom (a GraphQL breaking change gets a `@deprecated` cycle, not `/v2` paths). Review that subset and append the assessed paradigm to the **Stack:** line. In design mode for such a paradigm, the API Design table's columns become the paradigm's equivalents: operation or message in place of method and path, error shape in place of status codes, the paradigm's pagination mechanism, and the same Idempotency column.
+For a GraphQL or gRPC API, the transport rules (paths, methods, status codes, pagination params) do not apply - reviewing against them manufactures violations from design choices the paradigm made. What carries over is boundary validation, error-shape consistency (GraphQL `errors[]` entries carrying `extensions.code`; gRPC status codes with `google.rpc.Status` details), no ORM entities on the wire, idempotency on non-idempotent mutations (the key is a required mutation argument in GraphQL, request metadata in gRPC), bounded collections (paginated via the paradigm's own mechanism, e.g. GraphQL connections with `first`/`after`), and versioning on breaking change. Express fixes in the paradigm's idiom (a GraphQL breaking change gets a `@deprecated` cycle, not `/v2` paths). Review that subset and append the assessed paradigm to the **Stack:** line. In design mode for such a paradigm, the API Design table's columns become the paradigm's equivalents: operation or message in place of method and path, error shape in place of status codes, the paradigm's pagination mechanism, and the same Idempotency column, where `Idempotency-Key required` means the required mutation argument or metadata key.
 
 ## Rules
 
-- Resource paths are plural nouns, lowercase, hyphen-separated (`/order-items`). No verbs in paths.
+- Resource paths are plural nouns, lowercase, hyphen-separated (`/order-items`). No verbs in paths. A read-only aggregate a parent has exactly one of is a singular noun sub-resource (`GET /events/{id}/waitlist-summary`).
 - Methods: GET reads, POST creates, PUT replaces, PATCH partial-updates, DELETE removes.
-- Status codes: 200, 201, 202, 204, 400, 401, 403, 404, 409, 422, 429, 500. Used consistently. A filter query parameter naming a nonexistent parent returns `200` with an empty collection; a nonexistent path segment returns `404`.
+- Status codes: 200, 201, 202, 204, 400, 401, 403, 404, 409, 422, 429, 500. Used consistently. A filter query parameter naming a nonexistent parent returns `200` with an empty collection; a nonexistent path segment returns `404`; a body field naming a nonexistent resource returns `422`.
 - Errors follow RFC 9457 (Problem Details): media type `application/problem+json`, members `type`, `title`, `status`, `detail`, `instance`. Never leak stack traces or internal IDs.
-- Responses use DTOs / serializers / response structs, including a webhook acknowledgement body (or `204` with none). Never return ORM entities directly; an ad-hoc dict or map is not a DTO either, and a declared DTO whose serializer cannot read the entity (a missing ORM-mode setting) is a broken DTO, graded as a wrong status code, not as exposure.
+- Responses use DTOs / serializers / response structs, including a webhook acknowledgement body (or `204` with none). Never return ORM entities directly; an ad-hoc dict or map is not a DTO either, and a declared DTO whose serializer cannot read the entity (a direct Pydantic v2 `model_validate(entity)` without `from_attributes=True`; FastAPI's `response_model` reads attributes without it) is a broken DTO, graded as a wrong status code, not as exposure.
 - Resource IDs live in path segments (`/users/123`). Query params are for filtering, sorting, pagination on collections.
 - Nest sub-resources one level (`/orders/{id}/refunds`). A child that is addressed independently (fetched, updated, or reversed by its own ID) gets its own top-level collection (`/refunds?order_id=`) instead of nesting; each resource has one canonical path, never a nested and a top-level form side by side. A path a design document has already fixed is kept verbatim in design mode; a proposed change to it goes in the Conventions line.
 - Paginate every unbounded collection. Use cursor-based for large or write-heavy datasets; offset only for small, stable ones. A collection bounded by the domain itself (a shipment's events, an order's line items) may return whole with a documented maximum; a per-account history that grows for the life of the account is unbounded.
-- Version on breaking change (`/v1/`, `/v2/` or header); a new API starts at `/v1/`. Mark a deprecated version with the `Deprecation` header (RFC 9745) and, once its removal is scheduled, `Sunset` (RFC 8594) carrying the removal date.
-- Every non-idempotent POST or PATCH endpoint (payments, order creation, message sends are the common cases; a recompute whose repeat yields the same state is idempotent and exempt) requires an `Idempotency-Key` header - a request without one is rejected with `400`, not processed unprotected. The stored key binds to a fingerprint of the request body: same key and body replays the stored response for the dedup window (typically 24h), same key with a different body is `422`, a key whose first request is still in flight is `409`. Rules for the store itself are `backend-idempotency`'s.
+- Version on breaking change (`/v1/`, `/v2/` or header). A new API surface starts at `/v1/`; a new endpoint on an existing surface follows that surface's scheme, versioned or not. Mark a deprecated version with the `Deprecation` header (RFC 9745) and, once its removal is scheduled, `Sunset` (RFC 8594) carrying the removal date.
+- Every non-idempotent POST or PATCH endpoint (any POST that creates a resource or sends a message - a payment, an order, a hold; a recompute whose repeat yields the same state is idempotent and exempt; a webhook receiver deduplicates by the provider's event ID instead) requires an `Idempotency-Key` header - a request without one is rejected with `400`, not processed unprotected. The stored key binds to a fingerprint of the request body: same key and body replays the stored response for the dedup window (typically 24h), same key with a different body is `422`, a key whose first request is still in flight is `409`. Rules for the store itself are `backend-idempotency`'s. An obligation the handler delegates (the fingerprint, the in-flight `409`) is checked in the code it calls; when that code is outside the reviewed scope, the finding names it and ends `(unverified - <file> not read)`.
 - Validate input at the boundary using the framework's mechanism (annotations, struct tags, strong params, schema validators).
 - Rate limit at the gateway or middleware, never inside business logic. Return `429` with `Retry-After` and the `RateLimit` / `RateLimit-Policy` fields (IETF httpapi draft); `X-RateLimit-*` is the legacy vendor convention. Limit by API key or user, not IP.
-- Deliberate non-REST endpoints inside a REST surface (RPC-style actions, webhook receivers) follow the surface's versioning scheme and are not versioned separately; status codes, error format, and validation still apply, and resource naming is downgraded: an action modelled as a verb path is one Low finding proposing the resource form (`POST /balance-recalculations`, not `POST /recalculate-balances`). Webhook handlers deduplicate by the provider's event ID and acknowledge with `202` (`200` when processing completes synchronously) before heavy processing; signature verification is a security review's concern, not this skill's.
+- Deliberate non-REST endpoints inside a REST surface (RPC-style actions, webhook receivers) follow the surface's versioning scheme and are not versioned separately; status codes, error format, and validation still apply, and resource naming is downgraded: an action modelled as a verb path is one Low finding proposing the resource form (`POST /balance-recalculations`, not `POST /recalculate-balances`). Webhook handlers deduplicate by the provider's event ID and acknowledge with `202` (`200` when processing completes synchronously; `204` when the acknowledgement has no body) before heavy processing; signature verification is a security review's concern, not this skill's.
 
 ## Patterns
 
@@ -76,21 +76,9 @@ GET /events?cursor=eyJjcmVhdGVkX2F0IjoiMjAyNi0wOS0xMlQxMDowMDowMFoiLCJpZCI6MTIzN
 
 A cursor is correct only when it encodes the full sort key and that sort is total. Sorting by a non-unique column (`created_at DESC`) with a cursor on a different one (`id`) skips or repeats rows whenever values tie - append a unique tiebreaker and encode both (`ORDER BY created_at DESC, id DESC`, cursor `{created_at, id}`). A well-shaped cursor API with a partial sort key is the common silent defect here.
 
-### Idempotent POST
-
-```
-# Bad - retry creates duplicate charge
-POST /payments  { "amount": 100 }
-
-# Good - retry with the same key and body returns the stored response
-POST /payments
-Idempotency-Key: "550e8400-e29b-41d4-a716-446655440000"
-{ "amount": 100 }
-```
-
 ### Stack-specific application
 
-After stack-detect, apply these patterns using the detected ecosystem's idioms: standard controller/handler declaration, native validation mechanism, ecosystem pagination library, global error handler, and JSON field naming convention (camelCase vs snake_case). When `Language` is `unknown`, apply the universal rules and append ` - unfamiliar stack, verify against framework docs` to the Stack line.
+After stack-detect, apply these patterns using the detected ecosystem's idioms: standard controller/handler declaration, native validation mechanism, ecosystem pagination library, global error handler, and JSON field naming convention (camelCase vs snake_case). When `Language` is `unknown`, apply the universal rules and append ` - unfamiliar stack, verify against framework docs` to the Stack line. Write `<language> (no framework detected)` when stack-detect reports a known `Language` and `Framework: unknown`.
 
 ## Output Format
 
@@ -99,7 +87,7 @@ Consuming workflows parse this structure. Order violations by severity, High fir
 ```
 ## API Guidelines Assessment
 
-**Stack:** {language / framework | unknown}{ - <paradigm: GraphQL, gRPC>}{ - unfamiliar stack, verify against framework docs}
+**Stack:** {language / framework | <language> (no framework detected) | unknown}{ - <paradigm: GraphQL, gRPC>}{ - unfamiliar stack, verify against framework docs}
 
 ### Violations                                  {when at least one violation}
 
@@ -119,9 +107,11 @@ In design mode (no existing code to review), apply Rules as constraints and emit
 
 | Method | Path | Status codes | Pagination | Idempotency |
 | ------ | ---- | ------------ | ---------- | ----------- |
-| {GET \| POST \| PUT \| PATCH \| DELETE} | {path} | {the codes this endpoint can return; 500 is implied everywhere} | {cursor \| offset \| whole (bounded by <domain fact>) \| -} | {Idempotency-Key required \| natural (idempotent method: GET, PUT, DELETE, or a PATCH that only sets fields)} |
+| {GET \| POST \| PUT \| PATCH \| DELETE} | {path} | {the codes this endpoint can return; 500 is implied everywhere} | {cursor \| offset \| whole (bounded by <domain fact>) \| -} | {Idempotency-Key required \| natural (idempotent method: GET, PUT, DELETE, or a PATCH that only sets fields) \| natural (repeat yields the same state) \| provider event ID dedup} |
 
 Conventions: {error format, versioning scheme, rate-limit posture, field naming}
+
+Notes: {decisions the table cannot hold - ownership (403 vs 404), auth scheme, dedup window}       {only when one exists}
 ```
 
 **Severity:**
@@ -136,7 +126,4 @@ A convention the project has documented and built clients against (a response en
 
 ## Avoid
 
-- Verbs in paths (`/getOrder`, `/createOrder`)
 - Introducing a generic success envelope (`{status:"success", data:{...}}`) where none is documented - return the resource directly (a collection's `items` plus `next_cursor` wrapper is pagination metadata, not an envelope); reserve envelopes for errors (RFC 9457)
-- PUT for partial updates (PUT replaces; use PATCH)
-- Same-release deployment of a breaking API change without versioning
