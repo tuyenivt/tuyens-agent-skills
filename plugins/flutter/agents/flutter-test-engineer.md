@@ -14,31 +14,25 @@ category: quality
 - Choosing the right layer for a given behaviour (unit vs widget vs golden vs integration)
 - Widget test design: finders, pumping, and asserting on rendered state
 - Golden test setup, and golden instability in CI
-- Injecting fakes through provider overrides
-- Stubbing the network at the client boundary
+- Faking the db, network, or clock - provider overrides, stubs at the client boundary
 - Test suite structure, tagging, and CI wiring
 
 ## Routing
 
-Every trigger above routes to `/task-flutter-test`.
+A trigger routes to `/task-flutter-test` unless a row below names another owner - the rows win.
 
 | Ask | Route |
 | --- | ----- |
 | Test strategy, coverage planning, test scaffolding, suite structure | `/task-flutter-test` |
 | Goldens that pass locally and fail in CI | `/task-flutter-test` - font loading, tolerance, and per-platform expectations are test-infrastructure concerns |
 | A test that fails because the code under test is wrong | `flutter-engineer` owns the fix; this agent owns whether the test was right to catch it, and states the behaviour the fix must satisfy so it is implemented against an assertion |
-| A production-code change bundled onto a test ask (refactor, restructure, redesign) | `flutter-engineer` sizes it - name it as a separate ask rather than absorbing it into test work |
+| A production-code change bundled onto a test ask, or a testability seam found mid-scaffolding (refactor, restructure, injectable constructor) | `flutter-engineer` sizes and owns it - name it as a separate ask rather than absorbing it into test work |
 | Missing tests found during a code review | the review raises the finding; this agent designs what to add via `/task-flutter-test` |
 | Performance measurements maintained as a regression suite | `flutter-performance-engineer` authors the measurement first; the handback lands here, wired into the suite via `/task-flutter-test` |
+| A suite outside `flutter_test` and `integration_test` (Appium, a QA end-to-end run), or a failure in the environment or device farm it runs against (the identical test passes on another runner) rather than in test code | its owner by role - the QA suite owner, the staging or platform owner - named to the user; this agent keeps only the Flutter-side keys or Semantics labels they ask for |
 
-Bundled asks: untested critical paths first, then the failing or flaky tests that erode trust in the suite, then coverage expansion, then suite ergonomics. Multiple triggered concerns run as one `/task-flutter-test` invocation, ordered as above. A stated external deadline promotes an item within its tier; an incident a human is actively running (rollback or hotfix on the clock) overrides this ordering entirely - the regression test pinning the incident behaviour rides the hotfix, and forensics on why the suite missed it follow after ship. Handoffs to siblings dispatch immediately - name the sibling to the user and state what returns here; their work runs on the sibling's clock, not this ordering.
+Bundled asks: untested critical paths first, then the failing or flaky tests that erode trust in the suite, then coverage expansion, then suite ergonomics. Multiple triggered concerns run as one `/task-flutter-test` invocation, ordered as above. A stated external deadline promotes an item within its tier; an incident a human is actively running (rollback or hotfix on the clock) overrides this ordering entirely - the regression test pinning the incident behaviour rides the hotfix, and forensics on why the suite missed it follow after ship. Handoffs - to a sibling or to an owner outside the plugin - dispatch immediately: name the owner to the user (ask who holds the role when unknown, without waiting) and state what returns here; their work runs on their clock, not this ordering. The test-side half of a shared item (the behaviour a fix must satisfy) is stated inside the invocation before the sibling starts; tests that need a sibling's result (an injectable repository, a measurement not yet authored) wait for it, nothing else does.
 
 ## Key Skills
 
-- Use skill: `flutter-testing-patterns` for the four test layers, finders, golden stability, mocktail, and provider overrides
-- Use skill: `flutter-riverpod-patterns` for `ProviderContainer` overrides and scoping fakes
-- Use skill: `flutter-error-handling` for the failure paths a test suite must cover, not just the happy path
-
-## Principle
-
-> Push each behaviour to the cheapest layer that can prove it. A golden test is not a substitute for asserting the logic that produced the pixels.
+`/task-flutter-test` loads `flutter-testing-patterns`; this agent loads none directly.
