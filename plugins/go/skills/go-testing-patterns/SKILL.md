@@ -9,7 +9,7 @@ user-invocable: false
 
 # Go Testing Patterns
 
-> Load `Use skill: stack-detect` first to determine the project stack.
+> Load `Use skill: stack-detect` first. This skill reads `Database` - the production engine the integration rule binds to; the Go version is the `go` directive in `go.mod` (a `## Tech Stack` `Language:` line may carry a version; the directive wins when they differ). Baseline: Go 1.25+ (`t.Context`, `b.Loop`, `synctest.Test`), testcontainers-go v0.35+ (`postgres.Run`, `BasicWaitStrategies`, `TerminateContainer`, `CleanupContainer`), testify v1.10+, stripe-go v82.1+ (`stripe.NewClient`).
 
 ## When to Use
 
@@ -21,11 +21,11 @@ user-invocable: false
 
 - Table-driven for any function with multiple cases
 - `require` halts on failure (setup); `assert` continues (post-conditions)
-- `t.Parallel()` on every independent test. Independence is a property you build: a fixture must generate its own value for every unique-constrained column, and isolation must be per-test (a transaction rolled back in `t.Cleanup`). TRUNCATE between tests is not parallel-safe - it deletes a sibling's rows mid-assertion
-- Mock via consumer-defined interfaces; never mock concrete types or the DB
+- `t.Parallel()` on every independent test. Independence is a property you build: a fixture must generate its own value for every unique-constrained column, and isolation must be per-test (a transaction rolled back in `t.Cleanup`, or a per-test database cloned with `CREATE DATABASE ... TEMPLATE` - PostgreSQL; MySQL has no template databases, so clone by schema dump, and its lock wait is `innodb_lock_wait_timeout`). TRUNCATE between tests is not parallel-safe - it deletes a sibling's rows mid-assertion
+- Mock via consumer-defined interfaces; never mock concrete types or the DB. A handler that takes a concrete service type cannot be tested in isolation - extract the interface at the handler
 - Integration tests run against the same engine as production, via `testcontainers-go`. A different engine (SQLite standing in for Postgres) does not reproduce DDL, FK enforcement, `FOR UPDATE`, or error codes. When the production engine is unknown, say so and treat the substitution as unresolved rather than acceptable
 - Test public behavior; testing a private function suggests bad package design
-- No wall-clock waiting for synchronization - inject a clock, use channels, `testing/synctest`, or testcontainers wait strategies. `time.Sleep`, `assert.Eventually`, and a hand-rolled poll loop are the same defect at different sizes
+- No wall-clock waiting for synchronization - inject a clock, use channels, `testing/synctest`, or testcontainers wait strategies. `time.Sleep`, `assert.Eventually`, and a hand-rolled poll loop are the same defect at different sizes. A deadline on the code under test's `ctx` is a bound, not a wait, and is fine
 - `go test -race` on every package that uses goroutines, channels, or shared state
 
 ## Patterns
@@ -81,6 +81,8 @@ func TestGetUser_NotFound(t *testing.T) {
 }
 ```
 
+A Gin DTO validates through `binding:` tags on `ShouldBind*`; a bare `validator.New().Struct(req)` reads `validate:` tags, finds none, and passes everything - test validation through the handler, not the validator.
+
 ### Webhook Tests (Signature)
 
 ```go
@@ -89,16 +91,16 @@ tests := []struct {
     wantStatus      int
 }{
     {"valid", computeStripeSignature(t, payload, secret), http.StatusOK},
-    {"invalid", "invalid", http.StatusUnauthorized},
-    {"missing", "", http.StatusUnauthorized},
+    {"invalid", "invalid", http.StatusBadRequest},
+    {"missing", "", http.StatusBadRequest},
 }
 ```
 
-Compute signatures dynamically with the provider's test helpers; never hardcode (timestamps must match).
+Compute signatures dynamically with the provider's test helpers (stripe-go: `webhook.GenerateTestSignedPayload`) over the exact bytes the handler will read; never hardcode - `ConstructEvent` rejects a `t=` older than the 300s `DefaultTolerance`, so a captured signature fails within minutes. A test that signs a re-marshaled body passes against a handler that re-marshals too, and both fail against the provider - sign the raw body.
 
 ### Interface Mocking
 
-Function-field structs are simplest; for larger projects use `mockery` / `gomock`.
+Function-field structs are simplest; for larger projects use `mockery` / `gomock`; `testify/mock` is a hand-written mock with expectations.
 
 ```go
 type MockUserRepository struct {
@@ -136,22 +138,22 @@ p := newTestPayment(withStatus("completed"), withAmount(5000))
 ```go
 //go:build integration
 
-// Gate container-backed tests with a build tag, not `testing.Short()`. A
-// TestMain that starts a container runs before m.Run() parses flags, so
-// testing.Short() reads false there and `go test -short ./...` still boots
-// Postgres. The tag is the only gate that works for both.
+// Gate container-backed tests with a build tag. testing.Short() cannot be read in TestMain
+// before m.Run() without an explicit flag.Parse() (it panics "Short called before Parse"),
+// and -short still compiles and links the package; the tag keeps it out of the unit run entirely.
 func TestUserRepo_Integration(t *testing.T) {
-    ctx := context.Background()
+    t.Parallel() // owns its container, so it is independent - the per-package form is TestMain below
+    ctx := t.Context() // CleanupContainer brings its own teardown context
 
-    pg, err := postgres.Run(ctx, "postgres:16-alpine", // Run added in v0.32.0, which deprecated RunContainer
+    pg, err := postgres.Run(ctx, "postgres:16-alpine",
         postgres.WithDatabase("testdb"),
         postgres.WithUsername("test"),
         postgres.WithPassword("test"),
         testcontainers.WithWaitStrategy(
             wait.ForLog("database system is ready to accept connections").WithOccurrence(2)),
     )
+    testcontainers.CleanupContainer(t, pg) // before require: Run can return a container AND an error
     require.NoError(t, err)
-    t.Cleanup(func() { pg.Terminate(ctx) })
 
     connStr, err := pg.ConnectionString(ctx, "sslmode=disable")
     require.NoError(t, err)
@@ -159,7 +161,7 @@ func TestUserRepo_Integration(t *testing.T) {
     repo := NewUserRepository(db)
 
     t.Run("creates and retrieves", func(t *testing.T) {
-        u := &User{Name: "Alice", Email: "alice@example.com"}
+        u := &User{Name: "Alice", Email: "alice+" + t.Name() + "@example.com"} // unique per test
         require.NoError(t, repo.Save(ctx, u))
         got, err := repo.FindByID(ctx, u.ID)
         require.NoError(t, err)
@@ -173,7 +175,8 @@ func TestUserRepo_Integration(t *testing.T) {
 ```go
 t.Run("duplicate returns existing", func(t *testing.T) {
     p := newTestPayment()
-    first, _ := repo.CreateIdempotent(ctx, p)
+    first, err := repo.CreateIdempotent(ctx, p)
+    require.NoError(t, err) // setup: a dropped error here panics on first.ID below
     dup := newTestPayment(withAmount(9999))
     dup.IdempotencyKey = p.IdempotencyKey
     second, err := repo.CreateIdempotent(ctx, dup)
@@ -185,21 +188,26 @@ t.Run("duplicate returns existing", func(t *testing.T) {
 
 ### TestMain (shared container)
 
-One container per test function costs minutes at suite scale. Share it per package, and isolate each test in a transaction rolled back in `t.Cleanup` - that is the only isolation compatible with `t.Parallel()`. A test that must commit (a `FOR UPDATE SKIP LOCKED` claim needs two committed sessions) keeps its own committed rows, drops `t.Parallel()`, and cleans up explicitly. It must also be a **top-level** test: Go resumes paused parallel tests only after every sequential top-level test returns, so a non-parallel subtest under a parallel parent still runs alongside the parallel set. Give the claiming sessions a `SET LOCAL lock_timeout` too - without `SKIP LOCKED` the second claimer blocks rather than returning, and the test hangs CI instead of failing red.
+Keyset paging is an integration test: seed more than one page with duplicate sort keys, walk every page, assert no overlap and no gap; a plan assertion runs `EXPLAIN (FORMAT JSON)` (MySQL: `EXPLAIN FORMAT=JSON`) and asserts the index name. Contention is an integration test too: N goroutines released by one channel barrier against committed rows, errors collected under a mutex, then assert exactly one success and the invariant (`SUM(refunds) <= captured`).
+
+One container per test function costs minutes at suite scale. Share it per package, and isolate each test in a transaction rolled back in `t.Cleanup` - compatible with `t.Parallel()`, as is a per-test database cloned from a migrated template. A test that must commit (a `FOR UPDATE SKIP LOCKED` claim needs two committed sessions) keeps its own committed rows, drops `t.Parallel()`, and cleans up explicitly. It must also be a **top-level** test: Go resumes paused parallel tests only after every sequential top-level test returns, so a non-parallel subtest under a parallel parent still runs alongside the parallel set. Give the claiming sessions a `SET LOCAL lock_timeout` too (MySQL: `SET SESSION innodb_lock_wait_timeout = 1`) - without `SKIP LOCKED` the second claimer blocks rather than returning, and the test hangs CI instead of failing red.
 
 `go test` runs one binary per package, so per-package sharing still starts one container per integration package. To get one for the whole suite, read a `TEST_DATABASE_URL` when CI provides a service container and fall back to `testcontainers-go` only when it is unset.
 
 ```go
+//go:build integration
+
 var testDB *sqlx.DB // package-shared
 
 func TestMain(m *testing.M) {
     gin.SetMode(gin.TestMode)
     ctx := context.Background()
-    pg, err := postgres.Run(ctx, "postgres:16-alpine")
-    if err != nil { log.Fatal(err) }
+    pg, err := postgres.Run(ctx, "postgres:16-alpine",
+        postgres.BasicWaitStrategies()) // v0.35+; the module sets no readiness wait of its own
+    if err != nil { _ = testcontainers.TerminateContainer(pg); log.Fatal(err) } // Run can return a container AND an error
     testDB = mustSetupDB(pg) // migrations run once
     code := m.Run()
-    _ = testcontainers.TerminateContainer(pg)
+    _ = testcontainers.TerminateContainer(pg) // v0.34+
     os.Exit(code)
 }
 ```
@@ -228,7 +236,7 @@ t.Cleanup(srv.Close) // fires even when a require aborts the subtest
 c := NewClient(srv.URL, WithHTTPClient(srv.Client())) // never a hardcoded host:port
 ```
 
-An SDK that resolves its own endpoint needs its backend overridden too, or the test silently calls the real API. Cover the error mappings (4xx, 5xx, malformed body, context deadline), not just the happy path.
+An SDK that resolves its own endpoint needs its backend overridden too (stripe-go v82.1+: `stripe.NewClient(key, stripe.WithBackends(...))` pointed at the test server), or the test silently calls the real API. Cover the error mappings (4xx, 5xx, malformed body, context deadline - the deadline case asserts the indeterminate classification, not a retry), not just the happy path. A Kafka producer is tested against `franz-go/pkg/kfake` (in-process broker), asserting the record landed once.
 
 ### Async Handler (at-least-once redelivery)
 
@@ -250,7 +258,7 @@ func TestSettle_DuplicateDeliveryIsIdempotent(t *testing.T) {
 }
 ```
 
-Also assert the permanent-failure path wraps `asynq.SkipRetry`, or a malformed payload retries to the dead-letter queue.
+Also assert the permanent-failure path wraps `asynq.SkipRetry` - Asynq then archives the task at once instead of retrying it through the whole budget - and that a malformed payload takes that path.
 
 ### Deterministic Time
 
@@ -287,22 +295,28 @@ synctest.Test(t, func(t *testing.T) { // Go 1.25+
 ### CI Invocation
 
 ```bash
-go test -race -short -shuffle=on -p 4 -parallel 4 ./...      # unit; -short skips container tests
-go test -tags=integration -race -p 2 -parallel 4 ./...       # integration, container-backed
+go test -race -shuffle=on -p 4 -parallel 4 ./...                 # unit; integration packages are excluded by their build tag
+go test -tags=integration -race -p 2 -parallel 4 ./...           # integration, container-backed
 ```
 
-`-p` caps concurrently running package binaries, `-parallel` caps `t.Parallel()` subtests inside one binary - a `-race` OOM is usually the first. `-shuffle=on` surfaces order dependence. Dropping `-race` to fix an OOM removes the only check that the added parallelism is safe; cap `-p` instead.
+`-p` caps concurrently running package binaries, `-parallel` caps tests that called `t.Parallel()` inside one binary (top-level and subtests alike) - a `-race` OOM is usually the first. `-shuffle=on` surfaces order dependence. Dropping `-race` to fix an OOM removes the only check that the added parallelism is safe; cap `-p` instead.
 
 ## Edge Cases
 
 - testcontainers: use `MappedPort()` / `ConnectionString()`, never hardcode ports
 - `t.Cleanup` runs LIFO - register container teardown before DB close
-- `gin.SetMode(gin.TestMode)` in `TestMain` to suppress debug noise
+- `gin.SetMode(gin.TestMode)` in the package's one `TestMain` to suppress debug noise; when the integration `TestMain` sits behind `//go:build integration`, the unit suite needs its own under `//go:build !integration` (a package declares only one), or the mode is set in an `init()` of an untagged test file
 - `t.Context()` (Go 1.24+) over `context.Background()` in tests - but it is already cancelled when `t.Cleanup` funcs run, so container/DB teardown needs its own context
 
 ## Output Format
 
-Designing a suite emits `## Test Strategy`. Reviewing tests or triaging a slow or flaky suite emits `## Findings` first, then the strategy tables describing the suite **as it exists today**.
+Emit these headings, in this order, for the engagement:
+
+| Engagement | Headings |
+|------------|----------|
+| Design | `## Test Strategy` with `### Coverage`, `### Fixtures`, `### Mocks`; code for the key tests follows under `### <Test>` headings in `Coverage` order; existing tests kept as-is append `(existing)`, replaced ones `, replaces <name>`, to the `Key Scenarios` cell (Coverage) or the `Strategy` cell (Mocks); existing tests handed with the brief that violate a Rule emit `## Findings` first |
+| Review | `## Findings`, then `## Test Strategy` describing the suite as it exists today |
+| Triage (slow / flaky) | two opening lines `**Failing:**` and `**First fix:**`, then `## Findings`, then `## Fix Order` - numbered, isolation (per-test DB or rollback, tag gates) before parallelism, container consolidation before `-race` tuning, since several fixes are prerequisites for others - then `## Test Strategy` as it exists today |
 
 ```
 ## Test Strategy
@@ -320,19 +334,21 @@ Designing a suite emits `## Test Strategy`. Reviewing tests or triaging a slow o
 |-----------|---------|----------|
 ```
 
-Cell values: `Type` is `unit | table-driven | handler | integration | job | benchmark`. `Count` is test functions / subtest cases (`3 / 14`); when the inventory was not supplied, state the delta you are proposing rather than an absolute. `Strategy` is `function-field fake | generated mock | real (container) | httptest server | not mocked`. A table with no rows emits one row reading `(none)` with the reason, never an empty table.
+Cell values: `Layer` is `handler | middleware | service | repository | worker | client | ci` - `client` for outbound HTTP and producer tests. `Type` is `unit | handler | integration | job | benchmark | validation` - `validation` for a test that exercises DTO binding only, `integration` also for schema, query-plan and contention assertions, `unit` for a test of a test-local helper; table-driven is a style, named in `Key Scenarios`, not a `Type`. `Count` is test functions / subtest cases (`3 / 14`; a function with no subtests is `1 / 0`); for tests the design proposes, a delta (`+2 / +9`); when the inventory was not supplied, deltas only. `Strategy` is `function-field fake | hand-written mock | generated mock | real (container) | real (in-process broker) | real (substitute engine) | httptest server | not mocked` - `hand-written mock` covers `testify/mock`, `real (in-process broker)` is `kfake` or `miniredis`, `real (substitute engine)` is SQLite standing in for Postgres and is always paired with a finding, `not mocked` a concrete dependency used as-is (its `Interface` cell names the type). `Package` is the package that declares the interface - the consumer. `Builder` is `none (literal)` when tests construct the value inline. A table with no rows emits one row reading `(none)` with the reason, never an empty table. A cell the input does not supply is `unknown` and a column that does not apply to the row is `n/a`, whichever enum the column carries. `**Failing:**` names the symptoms; `**First fix:**` the one change the others depend on.
+
+Every finding carries exactly one label:
 
 ```
 ## Findings
 
-### [Must] file:line
+### [{Must | Recommend}] {file:line | file:start-end | file:<symbol>}
 
 - Defect: {what the test fails to catch, or what makes it fail spuriously}
 - Rule: {the testing rule violated}
-- Fix: {rewritten test code}
+- Fix: {rewritten test code; for a CI or Makefile finding the corrected line; for an owned-by block the production change in one clause}
 ```
 
-`[Must]` when a test passes while the behavior it names is broken, panics on its own failure path, races, or leaks state into other tests; `[Recommend]` otherwise. Order `[Must]` first. For a triage engagement, close with a fix order - isolation before parallelism, container consolidation before `-race` tuning - since several fixes are prerequisites for others.
+`[Must]` when a test passes while the behavior it names is broken, fails without a code change (a timing wait, a captured signature), panics on its own failure path, races, leaks state into other tests, or a CI or Makefile setting masks failures (dropping `-race`, `-short` that never skips); `[Recommend]` otherwise. A missing test cites the production symbol as `<test file>:<missing Test...>`. Cite `file:line` when the input carries line numbers (a workflow file or Makefile is a file like any other), `file:<symbol>` when it does not; a range is `file:start-end`. Order `[Must]` first, then by file in the order the input listed them, then line. With no findings, `## Findings` holds the single line `None.` One root cause at several sites (TRUNCATE in every test) is one heading citing the first site, with the rest named on the `Defect:` line; one failure signature with one cause is one finding. A defect in the production code that a test exposes (a signature over the wrong bytes, a goroutine that outlives the request) is still reported, never dropped: one block per such defect after the owned findings, in the same file-then-line order, labelled by the criteria above, with its `Rule:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
 
 ## Avoid
 
@@ -342,3 +358,4 @@ Cell values: `Type` is `unit | table-driven | handler | integration | job | benc
 - Missing `t.Parallel()`
 - Shared global state across tests
 - Hardcoded webhook signatures
+- `testing.Short()` as the container gate - use the build tag
