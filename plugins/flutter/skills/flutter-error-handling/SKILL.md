@@ -22,7 +22,7 @@ user-invocable: false
 
 - A caught error is handled, converted, or rethrown. `catch (_) {}` and `catch (e) { return null; }` are defects, not style.
 - The domain layer owns a `sealed` failure type. Foreign exceptions (`DioException`, `SocketException`, `FormatException`, storage errors) are converted at the repository boundary and never escape above it.
-- `switch` over failures is exhaustive with no `default` - adding a variant must break the build at every decision site.
+- `switch` over failures is exhaustive with no `default` - adding a variant must break the build at every decision site; the presentation switch over `AsyncValue`'s `Object` error keeps one `_` arm.
 - Catch by type with `on`. Bare `catch (e, st)` only at a boundary that must not crash, and it logs the stack trace.
 - Preserve stack traces: `rethrow`, or `Error.throwWithStackTrace(failure, st)` when rethrowing a converted error. Never `throw e` inside a `catch`.
 - Exceptions model expected failures; `Error` subclasses model programmer bugs. Never catch an `Error` for control flow; the one exception is deserializing an untrusted payload, where a bad shape surfaces as `TypeError` or `ArgumentError`.
@@ -54,7 +54,7 @@ final class TimeoutFailure extends AppFailure { const TimeoutFailure({super.caus
 final class CancelledFailure extends AppFailure { const CancelledFailure({super.cause, super.stackTrace}); }
 final class UnauthorizedFailure extends AppFailure { const UnauthorizedFailure({super.cause, super.stackTrace}); }
 final class ParseFailure extends AppFailure { const ParseFailure({super.cause, super.stackTrace}); }
-final class InsecureFailure extends AppFailure { const InsecureFailure({super.cause, super.stackTrace}); } // TLS or pinning rejection
+final class InsecureFailure extends AppFailure { const InsecureFailure({super.cause, super.stackTrace}); } // pinning / validateCertificate rejection, or a platform TLS failure (arrives as `unknown` with a HandshakeException)
 final class ServerFailure extends AppFailure {
   const ServerFailure(this.status, {super.cause, super.stackTrace});
   final int status;
@@ -65,7 +65,7 @@ final class ServerFailure extends AppFailure {
 
 freezed unions generate the same shape plus `copyWith` and value equality. Prefer them when failures carry several fields. The class-modifier syntax freezed expects differs across its major versions - follow the version pinned in `pubspec.yaml` rather than a remembered snippet.
 
-One shared failure type for cross-cutting variants every feature meets (network, timeout, auth, parse); a feature declares its own sealed type only when its variants are meaningless outside it (validation rules, domain states), and may embed the shared type as a variant's field rather than duplicating transport variants.
+One shared failure type for cross-cutting variants every feature meets (network, timeout, auth, parse); a feature declares its own sealed type when its variants are meaningless outside it (validation rules, domain states) or when their UI or retry decision differs from the shared variant's (a declined card, an idempotency conflict), embedding the shared type as a variant's field or implementing the same `isRetryable` contract rather than duplicating transport variants.
 
 ### Exhaustive switch, no `default`
 
@@ -118,6 +118,9 @@ Future<User> fetch(String id) async {
   } on CheckedFromJsonException catch (e, st) {
     // json_serializable with checked: true wraps the failure
     Error.throwWithStackTrace(ParseFailure(cause: e, stackTrace: st), st);
+  } on BadKeyException catch (e, st) {
+    // required: true, disallowNullValue, disallowUnrecognizedKeys violations (json_annotation)
+    Error.throwWithStackTrace(ParseFailure(cause: e, stackTrace: st), st);
   }
 }
 
@@ -133,15 +136,17 @@ AppFailure _toFailure(DioException e, StackTrace st) => switch (e.type) {
       DioExceptionType.badResponse =>
         ServerFailure(e.response?.statusCode ?? 0, cause: e, stackTrace: st),
       DioExceptionType.badCertificate => InsecureFailure(cause: e, stackTrace: st),
-      DioExceptionType.unknown when e.error is FormatException =>
-        ParseFailure(cause: e, stackTrace: st), // Dio's transformer failed to decode the body
+      DioExceptionType.unknown when e.error is FormatException || e.error is TypeError =>
+        ParseFailure(cause: e, stackTrace: st), // Dio could not decode the body, or it did not match the requested response type
+      DioExceptionType.unknown when e.error is HandshakeException =>
+        InsecureFailure(cause: e, stackTrace: st), // platform TLS rejection (dart:io)
       DioExceptionType.unknown => NetworkFailure(cause: e, stackTrace: st),
     };
 ```
 
-The mapper switch names every `DioExceptionType` member, so a new member is a compile error rather than a silent `NetworkFailure`. A parse boundary that catches only `FormatException` still crashes on a malformed payload: `json_serializable`'s generated casts throw `TypeError`, and an unknown enum value throws `ArgumentError`; with `checked: true` the generated code throws `CheckedFromJsonException` instead. This is the one place catching an `Error` subtype is correct: untrusted server data is input, not a local bug. A body Dio itself fails to decode arrives as `DioException` of type `unknown`, not `FormatException`.
+The mapper switch names every `DioExceptionType` member, so a new member is a compile error rather than a silent `NetworkFailure`. A parse boundary that catches only `FormatException` still crashes on a malformed payload: `json_serializable`'s generated casts throw `TypeError`, and an unknown enum value throws `ArgumentError`; with `checked: true` the generated code throws `CheckedFromJsonException` instead, and `required: true`, `disallowNullValue`, and `disallowUnrecognizedKeys` violations throw `BadKeyException` subclasses from `json_annotation`. This is the one place catching an `Error` subtype is correct: untrusted server data is input, not a local bug. A body Dio itself fails to decode arrives as `DioException` of type `unknown` with the `FormatException` in `error`; a body that does not match the requested response type arrives the same way with the `TypeError` in `error` - `fetch` wraps both.
 
-`DioException`/`DioExceptionType` exist from Dio 5.2; Dio 5.0-5.1 and Dio 4 expose `DioError`/`DioErrorType`.
+`DioException`/`DioExceptionType` exist from Dio 5.2; Dio 5.0-5.1 expose the same members as `DioError`/`DioErrorType`, while Dio 4's `DioErrorType` has a different member set (`connectTimeout`, `response`, `other`; no `badCertificate` or `connectionError`), so the mapper is rewritten there, not renamed.
 
 ### `Result` vs `throw`
 
@@ -174,7 +179,7 @@ ref.watch(userProvider(id)).when(
       loading: () => const LoadingView(),
       data: (user) => UserView(user),
       error: (e, st) {
-        final err = e; // Riverpod 3: e is ProviderException ? e.exception : e
+        final err = e is ProviderException ? e.exception : e; // Riverpod 3 wraps the thrown failure
         return switch (err) {
           CancelledFailure() => const SizedBox.shrink(), // cancellation renders nothing
           final AppFailure f => ErrorView(
@@ -249,14 +254,22 @@ When invoked from an implementation workflow, emit one row per boundary:
 | ImportBatchService | AppFailure per item | Result | partial success must survive one bad row |
 ```
 
-`Propagation: {Throw | Result | Degrade | Silent-Cancel | None}` - `Degrade` means a documented fallback value plus a report call; `Silent-Cancel` means cancellation mapped to `CancelledFailure`, rendered as nothing and never reported; `None` means by design no failure crosses this boundary, with the reason in Rationale. Rows are data, service, and state boundaries; presentation mapping is not a row. An open, server-defined reason code stays a `String` field, mapped to copy through a lookup with a generic fallback - exhaustiveness applies to the variant, not the code. A feature variant gets its own class when the UI or retry decision differs from the shared variant (a declined card, an idempotency conflict); server-supplied reason codes stay a field on that variant.
+`Propagation: {Throw | Result | Degrade | Silent-Cancel | None}` - `Degrade` means a documented fallback value plus a report call, and the Failure Type cell names the failure degraded; `Silent-Cancel` means the boundary throws `CancelledFailure` and every presentation switch renders nothing for it, never reporting it (the one row value that also prescribes presentation); `None` means by design no failure crosses this boundary, with the reason in Rationale. Rows are data, service, and state boundaries, plus one row for the app-level handlers (`FlutterError.onError` + `PlatformDispatcher.onError`, Propagation `None`, Rationale naming the reporter); presentation mapping is not a row. A boundary that produces several failure types is one row listing them. Device failures more than one feature meets (`PermissionDeniedFailure`, `StorageFullFailure`) are variants of the shared type; a feature declares its own sealed type under the rule in the Patterns section. An existing stringly-typed exception class the new boundaries would throw through is replaced by the sealed type (`Fixed in plan`); one the new code never touches is `Pre-existing`. An open, server-defined reason code stays a `String` field, mapped to copy through a lookup with a generic fallback - exhaustiveness applies to the variant, not the code. A feature variant gets its own class when the UI or retry decision differs from the shared variant (a declined card, an idempotency conflict); server-supplied reason codes stay a field on that variant.
 
-Implement mode ends with `Pre-existing: <file:line> - <defect>` for each defect in code the plan edits or depends on but does not fix, or `Pre-existing: none`. Code not yet written is cited as `<path> (new)`. A file the plan depends on that is absent or could not be read is listed as `Not read: <path> - <reason>`. A defect the change cannot ship on top of is fixed in the plan, not listed as `Pre-existing`.
+```
+Fixed in plan: {<file:line> - <defect> | none}
+
+Pre-existing: {<file:line> - <defect> | none}
+
+Not read: {<path> - <reason> | none}
+```
+
+Implement mode describes the state after the plan and ends with these lines, each on its own line with a blank line between: `Fixed in plan: <file:line> - <defect>` per defect in existing code the plan corrects, or `Fixed in plan: none`; `Pre-existing: <file:line> - <defect>` per defect left in place, or `Pre-existing: none`; `Not read: <path> - <reason>` per file the plan needs that is absent, could not be read, or was not read, or `Not read: none`. A defect is fixed in the plan when it sits in code the change edits, or when the new code would misbehave on first run on top of it; every other defect in code the new code calls or reads is `Pre-existing`; code the new code neither edits, calls, nor reads is not listed, except a defect that breaks the build, which is always `Fixed in plan`. Code not yet written is cited as `<path> (new)`.
 
 When invoked from a review workflow, emit one finding block per defect:
 
 ```
-### [Blocker | High | Medium | Low] lib/path/file.dart:LINE
+### [{Blocker | High | Medium | Low}] {file:line}
 
 - Code: {one-line citation}
 - Defect: {Swallowed | Untyped | Unmapped | Leaked | Stack-Lost | Raw-Message | Boundary-Config | Error-Caught | Double-Wrapped | Incomplete-Failure | Cancellation-Surfaced | Provider-Retry | Duplicated-Mapping}
@@ -266,27 +279,37 @@ When invoked from a review workflow, emit one finding block per defect:
 
 | Defect | Meaning |
 |--------|---------|
-| `Swallowed` | caught and discarded, or replaced by an empty/null value or a stored message with no report |
+| `Swallowed` | caught and discarded, replaced by an empty/null value or a stored message with no report, or an awaited mutation whose failure leaves a loading state with no handler |
 | `Untyped` | failures modelled as `Exception`/`String` instead of a sealed variant |
-| `Unmapped` | a `switch` over failures, or a mapper over a foreign error enum, uses `default`/`_`, so new variants fall through |
-| `Leaked` | a data-layer exception type is visible above the repository boundary |
+| `Unmapped` | a `switch` over failures, or a mapper over a foreign error enum, uses `default`/`_` outside the presentation `Object` guard, so new variants fall through |
+| `Leaked` | a data-layer exception type is visible above the repository boundary, or a failure reaches the zone handler instead of a boundary (an un-awaited call, a stream `listen` without `onError`) |
 | `Stack-Lost` | `throw e` inside `catch`, a conversion that drops the original stack, or a bare `catch (e)` that never captures the stack |
 | `Raw-Message` | `e.toString()` or an untranslated string rendered to the user |
 | `Boundary-Config` | app-level handlers misconfigured: split coverage (`runZonedGuarded` + `PlatformDispatcher.onError`), missing `FlutterError.onError`/`PlatformDispatcher.onError`, an `ErrorWidget.builder` that can throw |
 | `Error-Caught` | an `Error` subtype caught for control flow outside untrusted-payload decoding |
 | `Double-Wrapped` | `Result` returned into a Riverpod async provider |
 | `Incomplete-Failure` | a failure type missing a stable variant, retryability, or cause and stack |
-| `Cancellation-Surfaced` | cancellation shown to the user, reported as an error, or never modelled |
+| `Cancellation-Surfaced` | cancellation, or a completion after dispose, shown to the user, reported as an error, or never modelled |
 | `Provider-Retry` | Riverpod 3 `retry:` left at its default for non-retryable failures, or `ProviderException` not unwrapped before switching |
 | `Duplicated-Mapping` | the same error mapping repeated across data sources instead of one mapper per source |
 
-`Blocker` = failure invisible or app unable to report (Swallowed, Boundary-Config with no reporting path, an `ErrorWidget.builder` that can throw). `High` = wrong handling on a user-facing path (Leaked, Raw-Message, Unmapped, Cancellation-Surfaced, Error-Caught). `Medium` = degraded diagnostics or fragile typing (Stack-Lost, Untyped, Incomplete-Failure, Double-Wrapped, Boundary-Config that still reports - e.g. split coverage). `Medium` also covers Provider-Retry. `Low` = a finding whose only cost is readability (Duplicated-Mapping). When a finding matches two bands, the higher band wins. If there are no findings, emit exactly `No error-handling findings.` so the workflow knows the check ran.
+`Blocker` = failure invisible or app unable to report (Swallowed, Boundary-Config with no reporting path, an `ErrorWidget.builder` that can throw). `High` = wrong handling on a user-facing path (Leaked, Raw-Message, Unmapped, Cancellation-Surfaced, Error-Caught). `Medium` = degraded diagnostics or fragile typing (Stack-Lost, Untyped, Incomplete-Failure, Double-Wrapped, Boundary-Config that still reports - split coverage, or one of the two app-level handlers missing while the other reports). `Medium` also covers Provider-Retry, emitted even when the failure is currently swallowed. `Low` = a finding whose only cost is readability (Duplicated-Mapping). When a finding matches two bands, the higher band wins.
 
-Blocks are one per defect, ordered by severity, then file and line, then enum order. Each site of a repeated rule is its own defect; a single defect that needs edits in several places anchors on the line to edit and names the others as `also <file:line>` on its citation line.
+Blocks are one per defect, ordered by severity, then file path (repository-relative, byte order), then line, then enum order. A defect is one rule at one fix site: the same rule broken at N sites that each need their own edit is N blocks; the same rule broken at N sites that one edit fixes (a declaration, a shared helper, a config key) is one block anchored on the line to edit, naming the other sites as `also <file:line>` on its citation line (the block's `Code:` line); one line breaking two rules with two different fixes is two blocks, with one fix it is one block under the rule naming the worse failure (on a tie, the earlier enum value).
 
-A finding that depends on code outside the files read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to the line describing its effect. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of dart-language-patterns, flutter-widget-patterns, flutter-riverpod-patterns, flutter-navigation-patterns, flutter-networking, flutter-data-persistence, flutter-local-db-migration, flutter-adaptive-responsive, flutter-accessibility, flutter-i18n, flutter-performance, flutter-security-patterns, flutter-platform-channels, flutter-testing-patterns, flutter-build-release, flutter-overengineering-review covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's `Defect` values, or the path of a file that could not be read) when any check could not be exercised, then `No error-handling findings.` when there are no blocks. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean; the sentinel is emitted only when there are no blocks, `Not checked` lines or not. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its `Impact:` line, and does not move its check to `Not checked`. Invoked directly, a request to write or change code takes the implement shape and a request to review, audit, or explain a failure takes the review shape.
 
-On a non-Riverpod stack (Bloc, Provider), a caught failure lands in the framework's error state as the typed failure, never as `e.toString()`; `Leaked` and `Raw-Message` apply unchanged. On `package:http`, the boundary maps `ClientException`, `SocketException`, `TimeoutException`, and non-2xx status codes into the sealed type.
+The closing lines - `Also seen` and `Not checked` only when they have content, the sentinel only when there are no blocks:
+
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+
+No error-handling findings.
+```
+
+On a non-Riverpod stack (Bloc, Provider), a caught failure lands in the framework's error state as the typed failure, never as `e.toString()`; `Leaked` and `Raw-Message` apply unchanged, while `Double-Wrapped` and `Provider-Retry` are Riverpod-only and are neither reported nor counted. On `package:http`, the boundary maps `ClientException`, `SocketException`, `TimeoutException`, and non-2xx status codes into the sealed type; with no cancellation mechanism in the stack, `Cancellation-Surfaced` is clean. `PlatformException` and `MissingPluginException` map at the same repository boundary (see `flutter-platform-channels`).
 
 ## Avoid
 

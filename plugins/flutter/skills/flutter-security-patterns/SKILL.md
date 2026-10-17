@@ -23,7 +23,7 @@ user-invocable: false
 ## Rules
 
 - Tokens, credentials, and keys live in platform secure storage (Keychain / Keystore). Never `shared_preferences`, a plain file, or a plain database column. Moving them out migrates existing installs on first launch: copy to secure storage, then delete the old entry
-- **A secret compiled into the app is a published secret.** No API keys in source, `pubspec.yaml`, bundled asset files, or `--dart-define` values, committed or not - those values are baked into the binary and readable from it
+- **A secret compiled into the app is a published secret.** No key whose secrecy is the control goes into source, `pubspec.yaml`, bundled asset files, or `--dart-define` values, committed or not - those values are baked into the binary and readable from it. A vendor key the vendor restricts to this app's id and signing certificate is configuration, not a secret, and ships that way
 - Every value crossing an app boundary is untrusted: deep links, platform-channel arguments, WebView messages, notification payloads, clipboard, imported files. Parse, validate against an allowlist, then use
 - Authorization is a server decision. The client hides UI; the server decides access
 - Obfuscation, root detection, and integrity checks raise cost. Never gate a security-critical branch on their result alone
@@ -46,7 +46,7 @@ await secureStorage.write(key: 'access_token', value: token);
 
 - iOS Keychain items **survive app uninstall**. Delete them on logout, and on first run after install, or the next installer inherits a live session
 - Set the Keychain accessibility class so items are unavailable before first unlock and never sync to iCloud (the `AfterFirstUnlockThisDeviceOnly` family). On Android, Keystore keys never leave the device; exclude the secure-storage ciphertext file from backup, or a restored install cannot decrypt it
-- Secure storage is small and slow: it holds keys and tokens, not datasets. Encrypt the dataset at rest and keep only its key there
+- Secure storage is small and slow: it holds keys and tokens, not datasets. Encrypt the dataset at rest - SQLCipher for rows, a per-file AES-GCM key for photos and documents - and keep only its key there. Captured photos carry EXIF location and device data: strip metadata before upload and before writing to any shared location. A queued upload runs only under a live session: it pauses when refresh fails and is purged on sign-out. Keychain classes apply on macOS too; its App Sandbox entitlements are `flutter-adaptive-responsive`'s. Analytics events carry ids, never names, emails, amounts, or free text (`Privacy`)
 - No browser store offers secure-storage guarantees - do not persist secrets on web
 
 ### A shipped secret is a public secret
@@ -69,7 +69,7 @@ final res = await api.post('/v1/geocode', data: {'q': q});
 - Ship at least one backup pin for a key you are not yet serving. Without it, renewal bricks every installed app - and a bricked client cannot be fixed by a server deploy
 - Pair pinning with a server-driven off-switch and a forced-update path so a mis-rotation is recoverable
 - Pinning defeats a network attacker with a user-installed CA. It does **not** defeat an attacker who owns the device; hooking frameworks patch the check. Scope the claim accordingly
-- Android already distrusts user-added CAs for apps targeting modern API levels, so much of the casual-proxy threat is covered without pinning. Weigh the operational cost against that baseline
+- Dart's `HttpClient` on Android never trusts user-added CAs (it reads only the system store; the API 24+ network-security default applies to platform-stack clients), so much of the casual-proxy threat is covered there without pinning; iOS trusts a user-installed profile CA once the user enables it, so it has no such baseline. Weigh the operational cost per platform
 - Where the check lives depends on the HTTP stack. Dart's `HttpClient`, and Dio's default adapter, run their own TLS and ignore the Android network security config and iOS `NSPinnedDomains`; pin there with a `SecurityContext(withTrustedRoots: false)` that trusts only the issuing CA certificates you pin (a certificate pin, so ship the backup CA with it), or a package that checks the SPKI hash. Dio's `IOHttpClientAdapter(validateCertificate: ...)` runs after the request, headers included, has been sent, so it detects a mismatch rather than preventing the leak. `badCertificateCallback` runs only after validation has failed and receives the certificate where it failed, which varies by platform, so it is not a dependable pin. Platform config pins apply only to a platform-stack client (`cupertino_http`, `cronet_http`). Implement it once in the client factory, never per call site
 
 ### Obfuscation and its limits
@@ -167,7 +167,7 @@ Sensitive screens: Android `FLAG_SECURE` blocks screenshots and the task-switche
 When invoked from a review workflow, emit one block per finding:
 
 ```
-### [Severity] file:line
+### [{Critical | High | Medium | Low}] {file:line}
 
 - Category: {Storage | Secrets | Transport | UntrustedInput | WebView | AuthN | PlatformConfig | Integrity | Privacy}
 - MASVS Area: {STORAGE | CRYPTO | AUTH | NETWORK | PLATFORM | CODE | RESILIENCE | PRIVACY}
@@ -178,34 +178,50 @@ When invoked from a review workflow, emit one block per finding:
 - Server-side dependency: {none | what the backend must also enforce}
 ```
 
-`Severity: {Critical | High | Medium | Low}` - Critical = credentials or user data recoverable with realistic access, or a security control the backend relies on that exists only on the client. High = a concrete path to sensitive data or action given one plausible precondition, or an extractable vendor key the vendor does not restrict to this app. Medium = exposure requiring an unlikely precondition. Low = hardening with no exploitable path in this app. When a finding matches anchors in two bands, the higher band wins. Default Category to Area mapping: Storage and Secrets -> STORAGE (a hardcoded cryptographic key -> CRYPTO), Transport -> NETWORK, UntrustedInput -> PLATFORM when it arrives from another app (deep links, intents) and CODE otherwise (platform channels, clipboard, imported files), WebView -> PLATFORM, PlatformConfig -> STORAGE for backup flags, NETWORK for cleartext flags, RESILIENCE for a debuggable flag, PLATFORM otherwise, AuthN -> AUTH, Integrity -> RESILIENCE, Privacy (collecting or sending more personal data than the feature needs) -> PRIVACY. Logged tokens or PII are Secrets, STORAGE. An unchecked cast on a boundary value is UntrustedInput.
+The heading severity is one of Critical, High, Medium, Low. Critical = user credentials or user data recoverable with realistic access (a rooted device, a device backup, a malicious app on the same device), a privileged action reachable from an app boundary with no precondition (a deep link that acts on arrival), or a security control the backend relies on that exists only on the client. High = a concrete path to sensitive data or action given one plausible precondition, or a compiled-in key - first-party or vendor, as source or as a CI build argument - that grants access on its own and is not restricted to this app (Critical when it grants access to user data). Medium = exposure requiring an unlikely precondition, or two or more plausible ones. Low = hardening with no exploitable path in this app, including a compiled-in key that only identifies the app to a first-party backend behind a user session. When a finding matches anchors in two bands, the higher band wins. Default Category to Area mapping: Storage and Secrets -> STORAGE (a hardcoded cryptographic key -> CRYPTO), Transport -> NETWORK, UntrustedInput -> PLATFORM when it arrives from another app (deep links, intents) and CODE otherwise (platform channels, clipboard, imported files), WebView -> PLATFORM, PlatformConfig -> STORAGE for backup flags, NETWORK for cleartext flags, RESILIENCE for a debuggable flag, PLATFORM otherwise, AuthN -> AUTH, Integrity -> RESILIENCE, Privacy (collecting or sending more personal data than the feature needs) -> PRIVACY. Logged tokens or PII are Secrets, STORAGE. An unchecked cast on a boundary value is UntrustedInput; data from the app's own server is a boundary value. An absent manifest attribute (`allowBackup`, `exported`) anchors on the element that should carry it. A session secret held only in memory is not a finding, and pinning absent on a stack that never pinned is not a finding unless the product requires it. `Platform` is `all` when the attack needs no platform feature (a rooted device reading plaintext), and the artifact's target for a CI workflow finding; platform configuration absent from the read set (no `android/` or `ios/` directory) puts `PlatformConfig` on `Not checked`.
 
 **Unknown platform targets:** emit the finding with `Platform: unconfirmed: <target>`. Do not drop it.
 
-Blocks are one per defect, ordered by severity, then file and line, then enum order. Each site of a repeated rule is its own defect; a single defect that needs edits in several places anchors on the line to edit and names the others as `also <file:line>` on its citation line.
+Blocks are one per defect, ordered by severity, then file path (repository-relative, byte order), then line, then enum order. A defect is one rule at one fix site: the same rule broken at N sites that each need their own edit is N blocks; the same rule broken at N sites that one edit fixes (a declaration, a shared helper, a config key) is one block anchored on the line to edit, naming the other sites as `also <file:line>` on its citation line (the block's `Code:` line); one line breaking two rules with two different fixes is two blocks, with one fix it is one block under the rule naming the worse failure (on a tie, the earlier enum value).
 
-A finding that depends on code outside the files read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to the line describing its effect. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of dart-language-patterns, flutter-widget-patterns, flutter-riverpod-patterns, flutter-navigation-patterns, flutter-networking, flutter-data-persistence, flutter-local-db-migration, flutter-adaptive-responsive, flutter-accessibility, flutter-i18n, flutter-performance, flutter-error-handling, flutter-platform-channels, flutter-testing-patterns, flutter-build-release, flutter-overengineering-review covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's `Category` values, or the path of a file that could not be read) when any check could not be exercised, then `No security findings.` when there are no blocks. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean; the sentinel is emitted only when there are no blocks, `Not checked` lines or not. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its `Attack scenario:` line, and does not move its check to `Not checked`. Invoked directly, a request to write or change code takes the implement shape and a request to review, audit, or explain a failure takes the review shape.
 
-If there are no findings, emit exactly `No security findings.` so the workflow knows the check ran.
+The closing lines - `Also seen` and `Not checked` only when they have content, the sentinel only when there are no blocks:
+
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+
+No security findings.
+```
+
+
 
 When invoked from an implementation workflow, emit a decision table:
 
 ```
 | Concern | Decision | Rationale | Server-side dependency |
 |---------|----------|-----------|------------------------|
-| Refresh token | secure storage, deleted on logout and first run | Keychain survives uninstall | rotation and revocation |
-| Vendor map key | server proxy | shipped binary is extractable | proxy endpoint, per-user quota |
-| Card data | vendor SDK hosted fields; never touches app code | keeps PCI scope with the vendor | payment confirmation by webhook, not by the client |
-| Pinning | not pinned | no rotation owner; platform CA baseline accepted | none |
-| Deep-link `next` param | route allowlist | attacker-supplied navigation target | authorization on the fetched resource |
+| {asset, input, or control} | {where it lives, what validates it, or what is deliberately not done} | {threat it answers} | {what the backend must also enforce \| none} |
 ```
 
-Implement mode ends with `Pre-existing: <file:line> - <defect>` for each defect in code the plan edits or depends on but does not fix, or `Pre-existing: none`. Code not yet written is cited as `<path> (new)`. A file the plan depends on that is absent or could not be read is listed as `Not read: <path> - <reason>`. A defect the change cannot ship on top of is fixed in the plan, not listed as `Pre-existing`.
+One row per concern the change touches or the brief names; an unchanged decision (not pinning) gets a row only when the change relies on it. For example: `Refresh token | secure storage, deleted on logout and first run | Keychain survives uninstall | rotation and revocation`, `Vendor map key | server proxy | shipped binary is extractable | proxy endpoint, per-user quota`, `Card data | vendor SDK hosted fields; never touches app code | keeps PCI scope with the vendor | payment confirmation by webhook, not by the client`, `Pinning | not pinned | no rotation owner; Android CA baseline accepted, iOS risk accepted | none`, `Deep-link next param | route allowlist | attacker-supplied navigation target | authorization on the fetched resource`.
+
+```
+Fixed in plan: {<file:line> - <defect> | none}
+
+Pre-existing: {<file:line> - <defect> | none}
+
+Not read: {<path> - <reason> | none}
+```
+
+Implement mode describes the state after the plan and ends with these lines, each on its own line with a blank line between: `Fixed in plan: <file:line> - <defect>` per defect in existing code the plan corrects, or `Fixed in plan: none`; `Pre-existing: <file:line> - <defect>` per defect left in place, or `Pre-existing: none`; `Not read: <path> - <reason>` per file the plan needs that is absent, could not be read, or was not read, or `Not read: none`. A defect is fixed in the plan when it sits in code the change edits, or when the new code would misbehave on first run on top of it; every other defect in code the new code calls or reads is `Pre-existing`; code the new code neither edits, calls, nor reads is not listed, except a defect that breaks the build, which is always `Fixed in plan`. Code not yet written is cited as `<path> (new)`.
 
 ## Avoid
 
 - Tokens, credentials, or keys in `shared_preferences`, a file, a plain column, or any web store
-- API keys in source, `pubspec.yaml`, assets, or `--dart-define` values
+- Keys whose secrecy is the control in source, `pubspec.yaml`, assets, or `--dart-define` values
 - Treating `--obfuscate` as protection for an embedded secret, or shipping without keeping the symbol directory
 - Pinning without backup pins, a rotation owner, and a remote off-switch
 - Deep links or notification payloads used unvalidated, or performing a privileged action on arrival

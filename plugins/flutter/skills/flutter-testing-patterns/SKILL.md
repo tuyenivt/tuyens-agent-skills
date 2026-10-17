@@ -23,7 +23,7 @@ user-invocable: false
 - Test at the cheapest layer that can observe the behavior: pure logic as unit, anything needing `BuildContext`/layout/gestures as widget, pixel appearance as golden, real engine and platform plugins as `integration_test`.
 - Widget tests are the default layer for UI. Goldens supplement behavioral assertions; they never replace them.
 - No live backend in unit, widget, or golden tests: stub at the HTTP client boundary, or inject a fake repository. Integration tests use a stubbed or seeded backend, never a shared environment.
-- Doubles enter through the seam production uses - a Riverpod override or a constructor argument. Never a mutable global swapped in `setUp`.
+- Doubles enter through the seam production uses - a Riverpod override or a constructor argument. Never a mutable global swapped in `setUp`, except the platform-interface or messenger swap the Output Format sanctions.
 - `pumpAndSettle` only when pending frames are finite. Continuous animation, or a timer that schedules a frame on each tick, requires `pump(Duration)`; a timer still pending when the test ends fails it, so cancel it or advance past it.
 - Goldens are generated and verified on one pinned platform and Flutter version. A golden written on a developer machine and checked in a different CI image is a broken test, not a real diff.
 - Fonts are loaded explicitly before any golden renders. The default test font draws every glyph as a box.
@@ -80,7 +80,7 @@ Use `find.text` when the copy itself is the assertion, `find.bySemanticsLabel` w
 
 This is where Flutter test suites break most often. Address all four causes up front.
 
-**1. Load fonts once for the whole suite.** A file named `flutter_test_config.dart` at the root of `test/` wraps every test in that directory tree:
+**1. Load fonts once for the whole suite.** A file named `flutter_test_config.dart` at the root of `test/` wraps every test below it that no nearer `flutter_test_config.dart` claims - the runner walks up from the test's directory and uses the first one it finds:
 
 ```dart
 // test/flutter_test_config.dart
@@ -141,7 +141,7 @@ goldenFileComparator = _Tolerant(existing.basedir.resolve('placeholder_test.dart
 
 Keep the threshold as low as CI tolerates - a generous tolerance silently accepts real regressions, which is worse than a brittle test.
 
-A golden test, with the surface fixed and the capture scoped to the component rather than the whole app. `matchesGoldenFile` on a finder captures the nearest enclosing `RepaintBoundary`, so the component is wrapped in one, centred so the route's tight constraints do not stretch it to the screen, under a `Scaffold` so its text has a `Material` ancestor:
+A golden test, with the surface fixed and the capture scoped to the component rather than the whole app. `matchesGoldenFile` on a finder captures the nearest enclosing `RepaintBoundary`, so the component is wrapped in one, centred so it sizes to its content, under a `Scaffold` so its text has a `Material` ancestor:
 
 ```dart
 testWidgets('renders in dark theme', (tester) async {
@@ -150,7 +150,7 @@ testWidgets('renders in dark theme', (tester) async {
   addTearDown(tester.view.reset);
 
   await tester.pumpWidget(MediaQuery(
-    data: const MediaQueryData(textScaler: TextScaler.linear(1.0)),
+    data: MediaQueryData.fromView(tester.view).copyWith(textScaler: TextScaler.noScaling), // keeps the pinned size and ratio
     child: MaterialApp(
       theme: darkTheme,
       home: const Scaffold(body: Center(child: RepaintBoundary(child: PriceTag(amount: 1299)))),
@@ -258,7 +258,8 @@ Override the dependency, not the thing under test. Overriding `userProvider` its
 final repo = UserRepo(Dio());
 
 // Good - swap the transport, keep the repository under test
-final dio = Dio()..httpClientAdapter = stubAdapter; // e.g. http_mock_adapter
+final dio = Dio();
+final adapter = DioAdapter(dio: dio); // http_mock_adapter installs itself as the adapter
 final repo = UserRepo(dio);
 ```
 
@@ -278,7 +279,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('email')), 'ada@example.com');
     await tester.tap(find.byKey(const Key('submit')));
-    await tester.pumpAndSettle();
+    await tester.pumpAndSettle(); // finite here: the stub backend replies synchronously
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 }
@@ -288,7 +289,7 @@ Reserve this layer for a handful of flows that are worthless if broken: launch, 
 
 ## Output Format
 
-When invoked from a test-strategy or implementation workflow (this skill's implement mode), emit the plan as one row per target:
+When invoked from a test-strategy or implementation workflow with no symptom to explain (this skill's implement mode), emit the plan as one row per target:
 
 ```
 | Target | Layer | Doubles | Determinism | Rationale |
@@ -301,8 +302,8 @@ When invoked from a test-strategy or implementation workflow (this skill's imple
 
 - `Target` is one row per test file you would write, not per assertion; success and failure of one unit share its row. Variants that share a file collapse into one row (`PriceTag variants`, `PaymentSheet light/dark @1.0/1.3/2.0`); a behavior needing its own file gets its own row.
 - `Layer: {Unit | Widget | Golden | Integration}`
-- `Doubles: {None | Fake | Mock | Stubbed-Transport}`
-- `Determinism: {Deterministic | Needs-Pinning | At-Risk}` - `Needs-Pinning` means it is stable once fonts, surface, tolerance, and platform are fixed; `At-Risk` means a residual source of flake remains and is named in the rationale.
+- `Doubles: {None | Fake | Mock | Stubbed-Transport}`, comma-separated when a row needs more than one
+- `Determinism: {Deterministic | Needs-Pinning | At-Risk}` - `Needs-Pinning` means it is stable once the pinning rules' sources (fonts, surface, pixel ratio, text scale, clock, randomness, animation state, image sources, tolerance, platform) are fixed; `At-Risk` means a residual source of flake remains and is named in the rationale. A timer-driven behavior under `testWidgets`' fake-async zone, or under `fakeAsync`, is `Deterministic`; a fake clock is `Fake`. A locale variant is a golden variant row. A package the plan needs but pubspec lacks goes in the row's Rationale, not on a closing line. Plugin-backed seams (camera, connectivity, permissions) are stubbed at non-integration layers through the plugin's platform interface or `TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler`, reset in `addTearDown`, recorded as `Fake` - the one sanctioned global swap.
 
 Follow the table with gaps, omitting the section when there are none:
 
@@ -312,12 +313,22 @@ Follow the table with gaps, omitting the section when there are none:
 - {target} - Missing Layer: {Unit | Widget | Golden | Integration} - Risk: {High | Medium | Low} - {why it matters}
 ```
 
-Implement mode ends with `Pre-existing: <file:line> - <defect>` for each defect in code the plan edits or depends on but does not fix, or `Pre-existing: none`. Code not yet written is cited as `<path> (new)`. A file the plan depends on that is absent or could not be read is listed as `Not read: <path> - <reason>`. A defect the change cannot ship on top of is fixed in the plan, not listed as `Pre-existing`. A production defect that blocks a planned test (a state the code can never reach) goes on a `Pre-existing` line, not in Coverage Gaps; the test plan does not fix production code.
-
-When invoked from a review workflow or directly to diagnose a flaky test, emit one finding block per defect:
+`Risk: High` = a required flow or a data-loss path has no test; `Medium` = a user-visible state has none; `Low` = cosmetic.
 
 ```
-### [Blocker | High | Medium | Low] test/path/file_test.dart:LINE
+Fixed in plan: {<file:line> - <defect> | none}
+
+Pre-existing: {<file:line> - <defect> | none}
+
+Not read: {<path> - <reason> | none}
+```
+
+Implement mode describes the state after the plan and ends with these lines, each on its own line with a blank line between: `Fixed in plan: <file:line> - <defect>` per defect in existing code the plan corrects, or `Fixed in plan: none`; `Pre-existing: <file:line> - <defect>` per defect left in place, or `Pre-existing: none`; `Not read: <path> - <reason>` per file the plan needs that is absent, could not be read, or was not read, or `Not read: none`. A defect is fixed in the plan when it sits in code the change edits, or when the new code would misbehave on first run on top of it; every other defect in code the new code calls or reads is `Pre-existing`; code the new code neither edits, calls, nor reads is not listed, except a defect that breaks the build, which is always `Fixed in plan`. Code not yet written is cited as `<path> (new)`. A production defect that blocks a planned test (a state the code can never reach) goes on a `Pre-existing` line, not in Coverage Gaps; the test plan does not fix production code.
+
+When invoked from a review workflow, or to diagnose a failing or flaky test (directly, or by a workflow passing the symptom), emit one finding block per defect:
+
+```
+### [{Blocker | High | Medium | Low}] {file:line}
 
 - Test: {test name}
 - Defect: {Wrong-Layer | Flaky-Pump | Sleep-Wait | Unstable-Golden | Unreviewed-Golden | Golden-Only | Live-Dependency | Leaky-Double | Self-Override | Weak-Assertion | Multi-Behavior | Fragile-Finder}
@@ -330,25 +341,37 @@ When invoked from a review workflow or directly to diagnose a flaky test, emit o
 | `Wrong-Layer` | tested at a slower layer than the behavior requires |
 | `Flaky-Pump` | `pumpAndSettle` on unbounded animation, or a missing pump before an assertion |
 | `Sleep-Wait` | `Future.delayed` or `sleep` used to wait for a rebuild |
-| `Unstable-Golden` | a nondeterminism source the pinning rules name (fonts, surface, pixel ratio, text scale, clock, randomness, animation state, image sources, tolerance, platform) left unpinned |
+| `Unstable-Golden` | a nondeterminism source the pinning rules name (fonts, surface, pixel ratio, text scale, clock, randomness, animation state, image sources, tolerance, platform) left unpinned, an unpinned Flutter version in CI, or a baseline directory that does not exist |
 | `Unreviewed-Golden` | golden regenerated, or tolerance raised, to turn CI green without an image review |
 | `Golden-Only` | goldens are a screen's only coverage |
 | `Live-Dependency` | real network, real clock, real filesystem, or shared backend |
-| `Leaky-Double` | global or static swapped in `setUp` (including one no test wires in), or an undisposed `ProviderContainer` |
+| `Leaky-Double` | global or static swapped in `setUp` (including one no test wires in) other than a plugin platform-interface or messenger mock reset in `addTearDown`, or an undisposed `ProviderContainer` |
 | `Self-Override` | the provider whose logic the test asserts is overridden instead of its dependency; in a test of a screen, overriding the provider the screen reads is the correct seam |
-| `Weak-Assertion` | asserts the double was configured, only that the widget tree built, or a state the code under test never produces |
+| `Weak-Assertion` | asserts the double was configured, only that the widget tree built, or a state the code under test never produces; also a test that cannot execute, or a pipeline that never runs the suite |
 | `Multi-Behavior` | one test asserts several behaviors |
 | `Fragile-Finder` | finder coupled to editable copy or incidental structure (`find.text` on copy localization will change) |
 
-`Blocker` = the test lies or cannot catch the break it exists for (Weak-Assertion on the only coverage, whether it passes or fails today, Unreviewed-Golden). `High` = flaky, environment-dependent, or testing the wrong thing (Flaky-Pump, Sleep-Wait, Unstable-Golden, Live-Dependency, Self-Override). `Medium` = order-dependence or maintenance drag (Leaky-Double, Wrong-Layer, Fragile-Finder, Golden-Only, Weak-Assertion where other coverage exists). `Low` = style (Multi-Behavior). When a finding matches two bands, the higher band wins. If there are no findings, emit exactly `No testing findings.` so the workflow knows the check ran.
+`Blocker` = the test lies or cannot catch the break it exists for (Weak-Assertion on the only coverage, whether it passes or fails today, Unreviewed-Golden). `High` = flaky, environment-dependent, or testing the wrong thing (Flaky-Pump, Sleep-Wait, Unstable-Golden, Live-Dependency, Self-Override). `Medium` = order-dependence or maintenance drag (Leaky-Double, Wrong-Layer, Fragile-Finder, Golden-Only, Weak-Assertion where other coverage exists). `Low` = style (Multi-Behavior). When a finding matches two bands, the higher band wins. A test that cannot execute (setup throws before `expect`, `any()` on a custom type with no `registerFallbackValue`) is `Weak-Assertion`, Blocker; a pipeline that never runs `flutter test` is one `Weak-Assertion` block anchored on the workflow, Blocker; a platform pin with no CI file in the repository anchors on `<workflow path> (missing)`; an unpinned Flutter version in CI, or a golden path whose baseline directory does not exist, is `Unstable-Golden`. When other coverage is unknown, a `Weak-Assertion` is Blocker with `(unconfirmed: depends on <test dir>)`; the suffix may name a symbol when no path exists. `Unreviewed-Golden` may rest on a bug report's own account. `find.text` on fixture data is not `Fragile-Finder`. A missing dev dependency is part of the Fix, not a finding. A `Production:` line is emitted only when there is a production defect.
 
-One block per defect, not per test - a test with three defects emits three blocks, and a defect in `setUp` that affects every test emits one block naming `setUp` as the Test. A defect in shared setup or CI configuration anchors to that file instead of a test file, or to `<path> (missing)` when the file the fix needs does not exist, and its Test names the setup function or CI job. A production defect a test exposes (a timer never cancelled that fails teardown) follows the blocks as `Production: <file:line> - <defect>`; its fix belongs to the production code's owner.
+One block per defect, not per test - a test with three defects emits three blocks, and a defect in `setUp` that affects every test emits one block naming `setUp` as the Test. A defect in shared setup or CI configuration anchors to that file instead of a test file, or to `<path> (missing)` when the file the fix needs does not exist, and its Test names the setup function or CI job. A production defect a test exposes (a timer never cancelled that fails teardown) follows the `Also seen` and `Not checked` lines as `Production: <file:line> - <defect>`; its fix belongs to the production code's owner.
 
-Blocks are one per defect, ordered by severity, then file and line, then enum order. Each site of a repeated rule is its own defect; a single defect that needs edits in several places anchors on the line to edit and names the others as `also <file:line>` on its citation line.
+Blocks are one per defect, ordered by severity, then file path (repository-relative, byte order), then line, then enum order. A defect is one rule at one fix site: the same rule broken at N sites that each need their own edit is N blocks; the same rule broken at N sites that one edit fixes (a declaration, a shared helper, a config key) is one block anchored on the line to edit, naming the other sites as `also <file:line>` on its citation line (the block's `Test:` line); one line breaking two rules with two different fixes is two blocks, with one fix it is one block under the rule naming the worse failure (on a tie, the earlier enum value).
 
-A finding that depends on code outside the files read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to the line describing its effect. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of dart-language-patterns, flutter-widget-patterns, flutter-riverpod-patterns, flutter-navigation-patterns, flutter-networking, flutter-data-persistence, flutter-local-db-migration, flutter-adaptive-responsive, flutter-accessibility, flutter-i18n, flutter-performance, flutter-security-patterns, flutter-error-handling, flutter-platform-channels, flutter-build-release, flutter-overengineering-review covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's `Defect` values, or the path of a file that could not be read) when any check could not be exercised, then the `Production:` lines and `No testing findings.` when there are no blocks. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean; the sentinel is emitted only when there are no blocks, `Not checked` lines or not. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its `Impact:` line, and does not move its check to `Not checked`. A request to write or change code takes the implement shape and a request to review or audit takes the review shape; a supplied symptom or bug report takes diagnose mode whoever supplies it, the user directly or the calling workflow.
 
-In diagnose mode, blocks for defects that cause the reported symptoms come first, in the order the symptoms were reported; every other defect seen in the files read follows at its own severity.
+The closing lines - `Also seen` and `Not checked` only when they have content, the sentinel only when there are no blocks:
+
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+
+{Production: <file:line> - <defect>}
+
+No testing findings.
+```
+
+Diagnose mode opens with one line per reported symptom, `Symptom <n>: <the report's title or first sentence>`, a title that lists two symptoms is two lines, naming on each any premise the files read contradict (a flag the report says is on, a version it names) - the diagnosis then proceeds on what the code shows - and stating when the files read cannot cause the symptom. Blocks for the causes of the reported symptoms come first, grouped by symptom in reported order and within a group by severity, each such block's `Impact:` line opening with `Symptom <n>:`; a cause shared by two symptoms is one block opening `Symptom 1, 2:`, placed with the lower-numbered symptom; every other defect seen in the files read follows, ordered as in review mode. The sentinel is omitted in diagnose mode; `Also seen` and `Not checked` lines are kept.
 
 ## Avoid
 

@@ -26,7 +26,7 @@ user-invocable: false
 - Rebuild the smallest subtree that changed; keep state as close to the widget that reads it as possible
 - Any list or grid that can exceed one screen uses a `builder` constructor
 - Images decode at display resolution, not source resolution. Decoded bytes, not file bytes, are what memory holds
-- CPU-bound work beyond a few milliseconds moves off the UI isolate
+- CPU-bound work beyond a few milliseconds moves off the UI isolate on native targets; on web it is reduced, since nothing can leave the UI isolate there
 - Every controller, subscription, ticker, timer, and listener has a matching release on the same lifecycle
 - A fix without a before/after number is a guess. Report the number or report that you have none
 
@@ -117,14 +117,14 @@ ListView.builder(itemCount: items.length, itemBuilder: (_, i) => RowTile(items[i
 ### Image decode and cache
 
 ```dart
-// Bad - a 4000x3000 photo decodes to ~48 MB of RGBA to fill a 120px slot
+// Bad - a 4000x3000 photo decodes to ~48 MB of RGBA to fill a 120 logical-px slot
 Image.network(url)
 
-// Good - decode at the size actually painted (device pixels, not logical)
-Image.network(url, cacheWidth: 240)
+// Good - decode at the size actually painted: cacheWidth is in device pixels
+Image.network(url, cacheWidth: (120 * MediaQuery.devicePixelRatioOf(context)).round())
 ```
 
-- Decoded size is `width * height * 4` bytes and is independent of JPEG/PNG compression: a 300 KB file can be a 48 MB decode
+- Decoded size is `width * height * 4` bytes and is independent of JPEG/PNG compression: a 300 KB file can be a 48 MB decode. `cacheWidth`/`cacheHeight` take device pixels (slot size times `MediaQuery.devicePixelRatioOf`); when the ratio is unknown, estimate Cost at 3.0
 - The in-memory cache is `PaintingBinding.instance.imageCache`, bounded by `maximumSize` (entry count) and `maximumSizeBytes` (decoded bytes). Defaults are tuned for a general app; on an image-heavy screen the fix is decoding smaller and evicting under memory pressure, not raising the ceiling
 - That cache is per-process and dies with the app. Network images that should survive a restart need a disk-caching image package
 - `precacheImage` removes a first-paint pop for an image you know is next; precaching a whole list undoes the virtualization win
@@ -196,41 +196,61 @@ The leak is rarely unfreed memory - it is a live object graph rooted in a still-
 When invoked from a review workflow or directly for a jank/memory investigation, emit one block per finding:
 
 ```
-### [Severity] file:line
+### [{Critical | High | Medium | Low}] {file:line}
 
 - Category: {Rebuild | Raster | ListBuild | ImageDecode | IsolateBlock | PlatformCall | Startup | AppSize | Leak}
-- Thread: {UI | Raster | Both | N/A} - a remount forced by a new `Key` each build is `Rebuild`; Leak and AppSize are `N/A`; ImageDecode and PlatformCall are `N/A` unless the decode or call blocks the UI isolate
+- Thread: {UI | Raster | Both | N/A}
 - Code: {one-line citation}
 - Cost: {with units - "48 MB decode per tile", "sorts 5k items per frame", "~2 MB parse on the UI isolate"}
-- Evidence: {measured (profile mode, device) | estimated (no profile)}
+- Evidence: {measured (profile mode, device) | estimated (no profile) | estimated (profile confirms the symptom)}
 - Fix: {concrete Dart or Flutter change}
 - Verify: {what to re-measure - frame chart, --analyze-size delta, retained count}
 ```
 
-`Severity: {Critical | High | Medium | Low}` - Critical = sustained dropped frames or unbounded growth on a primary path. High = a regression on a common path, measured or evident from source. Medium = cost on a rare path or only at unlikely data sizes. A cause whose link to a reported symptom is unconfirmed is graded by its own cost. Low = a cheap win whose cost is small even at realistic sizes. When a finding matches two bands, the higher band wins.
+Leak and AppSize take `Thread: N/A`; ImageDecode and PlatformCall take `N/A` unless the decode or call blocks the UI isolate; a remount forced by a new `Key` each build, and a request issued from `build`, are `Rebuild`.
 
-**No profile data:** emit `Evidence: estimated (no profile)` and cap severity at High. Never report a timing or memory reading you did not measure; arithmetic derivable from source (decoded bytes = width x height x 4, items-per-frame from `itemCount`) still belongs in `Cost:`, marked estimated.
+The heading severity is one of Critical, High, Medium, Low. Critical = sustained dropped frames or unbounded growth on a primary path. High = a cost that misses the budget on a common path at realistic sizes, new or pre-existing, measured or evident from source; growth on a common path short of unbounded; a blocking read on the launch path; a universal APK or unmeasured size on a shipping release. Medium = cost on a rare path or only at unlikely data sizes. A cause whose link to a reported symptom is unconfirmed is graded by its own cost. Low = a cost small even at realistic sizes, whatever the fix costs. When a finding matches two bands, the higher band wins. A standalone size or startup task uses this shape with `Category: AppSize` or `Startup` and `Cost` in bytes or milliseconds. Sequential awaited I/O in a loop is `Startup` on the launch path and otherwise `Also seen` for `flutter-data-persistence`; a subscription held by a provider is `Also seen` for `flutter-riverpod-patterns`.
 
-If there are no findings, emit exactly `No performance findings.` so the workflow knows the check ran. A cost figure written in a source comment is `estimated`, not measured.
+**No profile data:** emit `Evidence: estimated (no profile)` and cap severity at High. Never report a timing or memory reading you did not measure; arithmetic derivable from source (decoded bytes = width x height x 4, items-per-frame from `itemCount`) still belongs in `Cost:`, marked estimated. `Evidence: measured` is only a figure read from a profile; arithmetic from source stays `estimated` even when a profile confirms the symptom, timings a report attributes to a release build are `estimated`, and `Cost` names the `n` the source gives (`itemCount`, a page size) with the per-item work - a bare `O(n)` is not a cost, while `every ABI shipped to every install` is.
 
-Blocks are one per defect, ordered by severity, then file and line, then enum order. Each site of a repeated rule is its own defect; a single defect that needs edits in several places anchors on the line to edit and names the others as `also <file:line>` on its citation line.
+A cost figure written in a source comment is `estimated`, not measured.
 
-A finding that depends on code outside the files read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to the line describing its effect. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+Blocks are one per defect, ordered by severity, then file path (repository-relative, byte order), then line, then enum order. A defect is one rule at one fix site: the same rule broken at N sites that each need their own edit is N blocks; the same rule broken at N sites that one edit fixes (a declaration, a shared helper, a config key) is one block anchored on the line to edit, naming the other sites as `also <file:line>` on its citation line (the block's `Code:` line); one line breaking two rules with two different fixes is two blocks, with one fix it is one block under the rule naming the worse failure (on a tie, the earlier enum value).
 
-In diagnose mode, blocks for defects that cause the reported symptoms come first, in the order the symptoms were reported; every other defect seen in the files read follows at its own severity.
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of dart-language-patterns, flutter-widget-patterns, flutter-riverpod-patterns, flutter-navigation-patterns, flutter-networking, flutter-data-persistence, flutter-local-db-migration, flutter-adaptive-responsive, flutter-accessibility, flutter-i18n, flutter-security-patterns, flutter-error-handling, flutter-platform-channels, flutter-testing-patterns, flutter-build-release, flutter-overengineering-review covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's `Category` values, or the path of a file that could not be read) when any check could not be exercised, then `No performance findings.` when there are no blocks. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean; the sentinel is emitted only when there are no blocks, `Not checked` lines or not. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its `Cost:` line, and does not move its check to `Not checked`. Invoked directly, a request to write or change code takes the implement shape, a request to review or audit takes the review shape, and a supplied symptom or bug report takes diagnose mode.
+
+The closing lines - `Also seen` and `Not checked` only when they have content, the sentinel only when there are no blocks:
+
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+
+No performance findings.
+```
+
+Diagnose mode opens with one line per reported symptom, `Symptom <n>: <the report's title or first sentence>`, a title that lists two symptoms is two lines, naming on each any premise the files read contradict (a flag the report says is on, a version it names) - the diagnosis then proceeds on what the code shows - and stating when the files read cannot cause the symptom. Blocks for the causes of the reported symptoms come first, grouped by symptom in reported order and within a group by severity, each such block's `Cost:` line opening with `Symptom <n>:`; a cause shared by two symptoms is one block opening `Symptom 1, 2:`, placed with the lower-numbered symptom; every other defect seen in the files read follows, ordered as in review mode. The sentinel is omitted in diagnose mode; `Also seen` and `Not checked` lines are kept.
 
 When invoked from an implementation workflow, emit a budget table:
 
 ```
 | Surface | Budget | Risk | Mitigation |
 |---------|--------|------|------------|
-| Feed list | 16ms UI / 60Hz | 5k items, network images | builder + itemExtent, cacheWidth 240 |
+| Feed list | 16ms UI / 60Hz | 5k items, network images | builder + itemExtent, cacheWidth = slot x DPR |
 | Detail hero | 8ms raster / 120Hz | blur backdrop | drop BackdropFilter, precomposed asset |
 ```
 
-Budget defaults to 16ms per thread (60Hz); use 8ms for surfaces the product ships to high-refresh devices (ProMotion, 120Hz Android) - take the target from the project's stated device tier, not aspiration, and apply it to every row of that surface. A data-loading step belongs in the table when it runs on the UI isolate during the surface's first frames. The in-memory image cache defaults to 1000 entries and 100 MB of decoded bytes.
+Budget defaults to 16ms per thread (60Hz); use 8ms for surfaces the product ships to high-refresh devices (ProMotion, 120Hz Android) - take the target from the project's stated device tier, not aspiration, and apply it to every row of that surface. Budget names both threads when both are at risk (`8ms UI + 8ms raster / 120Hz`). A Mitigation may be a verification step (`measure on device before merge`); no profile line belongs in a plan. A data-loading step belongs in the table when it runs on the UI isolate during the surface's first frames. The in-memory image cache defaults to 1000 entries and 100 MB of decoded bytes.
 
-Implement mode ends with `Pre-existing: <file:line> - <defect>` for each defect in code the plan edits or depends on but does not fix, or `Pre-existing: none`. Code not yet written is cited as `<path> (new)`. A file the plan depends on that is absent or could not be read is listed as `Not read: <path> - <reason>`. A defect the change cannot ship on top of is fixed in the plan, not listed as `Pre-existing`.
+```
+Fixed in plan: {<file:line> - <defect> | none}
+
+Pre-existing: {<file:line> - <defect> | none}
+
+Not read: {<path> - <reason> | none}
+```
+
+Implement mode describes the state after the plan and ends with these lines, each on its own line with a blank line between: `Fixed in plan: <file:line> - <defect>` per defect in existing code the plan corrects, or `Fixed in plan: none`; `Pre-existing: <file:line> - <defect>` per defect left in place, or `Pre-existing: none`; `Not read: <path> - <reason>` per file the plan needs that is absent, could not be read, or was not read, or `Not read: none`. A defect is fixed in the plan when it sits in code the change edits, or when the new code would misbehave on first run on top of it; every other defect in code the new code calls or reads is `Pre-existing`; code the new code neither edits, calls, nor reads is not listed, except a defect that breaks the build, which is always `Fixed in plan`. Code not yet written is cited as `<path> (new)`.
 
 ## Avoid
 

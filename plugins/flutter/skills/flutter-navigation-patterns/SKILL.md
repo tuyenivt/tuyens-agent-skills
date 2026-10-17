@@ -9,7 +9,7 @@ user-invocable: false
 
 # Flutter Navigation Patterns
 
-> go_router is the default. If the project uses `auto_route`, the concepts map (annotated route classes, generated router, `AutoRouteGuard` in place of `redirect`) - keep the guidance, swap the API names. If it uses raw Navigator 2.0 (`RouterDelegate` + `RouteInformationParser`), the route-tree and guard patterns still apply but you own the plumbing; do not propose migrating routers as a side effect of an unrelated change.
+> go_router is the default. If the project uses `auto_route`, the concepts map (`@RoutePage()` pages, generated route classes, a hand-written `RootStackRouter` config, `AutoRouteGuard` in place of `redirect`) - keep the guidance, swap the API names. If it uses raw Navigator 2.0 (`RouterDelegate` + `RouteInformationParser`), the route-tree and guard patterns still apply but you own the plumbing; do not propose migrating routers as a side effect of an unrelated change.
 
 ## When to Use
 
@@ -22,13 +22,14 @@ user-invocable: false
 
 - The `GoRouter` instance is created once at app scope and passed to `MaterialApp.router(routerConfig: ...)`. Rebuilding it inside a widget `build` discards navigation history
 - Child `path` values are relative (no leading `/`); only top-level routes start with `/`, and routes directly under a `ShellRoute` or `StatefulShellBranch` take the shell's level (top-level under a top-level shell, relative under a shell nested in a `GoRoute`). Tabs that must keep their own stacks use `StatefulShellRoute`. A leading or trailing slash on a child fails go_router's route-configuration assertion
+- Static segments are declared before parameterized siblings (`new` before `:id`) - go_router matches in declaration order
 - `go` replaces the current location and its stack; `push` stacks a route on top and can be popped back off. Tabs and root-level moves use `go`; details and modals opened from the current screen use `push`
 - One top-level `redirect` owns cross-cutting gates (auth, onboarding). Per-route `redirect` handles a single route's own condition. Returning `null` means "allow"
-- `redirect` must be synchronous or fast, must be idempotent, and must never form a cycle (`A -> B -> A`) - go_router detects the loop and routes it to the error page as a `GoException`. Returning the current location counts as no redirect; `redirectLimit` separately caps the chain length
+- `redirect` never awaits I/O, must be idempotent, and must never form a cycle (`A -> B -> A`) - go_router detects the loop and routes it to the error page as a `GoException`. Returning the current location counts as no redirect; `redirectLimit` separately caps the chain length
 - `redirect` reads auth state from a synchronously readable source. To re-evaluate when that state changes, hand the router a `Listenable` via `refreshListenable`; do not `await` an auth check inside `redirect`
 - Path segments carry resource identity (`/orders/:id`); query parameters carry optional, omittable modifiers (filters, pagination, search). Never encode a secret or a token in either
 - Every value arriving from a route is untrusted input, whether it came from an in-app tap or an external link. Parse and validate it, and authorize the resource server-side - a route guard controls what renders, not what the user may access
-- `state.extra` is not part of the URL. It is `null` after an external deep link, and after a web reload or state restoration unless it round-trips through `extraCodec`, so no screen may depend on it for correctness - it is an optimization over re-fetching by id
+- `state.extra` is not part of the URL. It is `null` after an external deep link; after a web reload or state restoration a model object is dropped (only JSON-encodable values survive without an `extraCodec`), so no screen may depend on it for correctness - it is an optimization over re-fetching by id
 - Supply an error route (`errorBuilder` / `errorPageBuilder`). Without one an unmatched or malformed link lands on go_router's default error page, which shows the raw exception and the unmatched URI outside the app's chrome
 - On web with the path URL strategy, the host rewrites unknown paths to `index.html`, or every non-root URL 404s on reload; the default hash strategy needs no rewrite
 
@@ -86,6 +87,8 @@ ShellRoute(
 
 `StatefulShellRoute.indexedStack` is the one to use for bottom-nav tabs that must each keep their own navigation stack and scroll position across switches - it builds from a list of `StatefulShellBranch`, and the builder receives a navigation shell object used to switch branches by index. Plain `ShellRoute` resets the child stack on every switch, which is the usual cause of "my tab forgets where I was".
 
+A route that must cover the shell (a full-screen modal, a capture flow) declares `parentNavigatorKey: rootNavigatorKey` so it renders above the shell's chrome. A screen that is read-only on one tier is one route whose builder branches on `kIsWeb`, not a second route tree.
+
 ### Redirect guards
 
 ```dart
@@ -119,7 +122,7 @@ Path parameters come from `state.pathParameters`; query parameters from `state.u
 ### `extra` is not deep-linkable
 
 ```dart
-// Bad - screen renders blank when reached by link, reload, or restoration
+// Bad - throws when reached by link, reload, or restoration
 context.push('/orders/42', extra: order);
 final order = state.extra! as Order;
 
@@ -151,7 +154,7 @@ final next = state.uri.queryParameters['next'];
 if (next != null && allowed.contains(next)) context.go('/$next');
 ```
 
-The same applies to ids in the path: a link can name any resource, so the guard is server-side authorization on fetch, not the route match.
+The same applies to ids in the path: a link can name any resource, so the guard is server-side authorization on fetch, not the route match. go_router matches `uri.path`, and in a custom-scheme link `fieldly://orders/42` the first segment is the host: register such links with three slashes (`fieldly:///orders/42`) or rewrite host plus path in the top-level `redirect`. A notification tap is a deep link resolved like any other, cold start included: through `initialLocation` resolution and the top-level `redirect`.
 
 ### Web URL strategy
 
@@ -173,20 +176,42 @@ When invoked from an implementation workflow, emit the route table:
 ```
 | Route | Path | Params | Guard | Deep link | Notes |
 |-------|------|--------|-------|-----------|-------|
-| Orders | /orders | - | auth | yes | inside StatefulShellBranch |
-| Order detail | /orders/:id | id (path) | auth | yes | validate id, fetch by id |
-| Search | /search | q, page (query) | none | yes | page defaults to 1 |
+| Orders | /orders | - | auth | https | inside StatefulShellBranch |
+| Order detail | /orders/:id | id (path) | auth | both | validate id, fetch by id |
+| Search | /search | q, page (query) | none | https | page defaults to 1 |
 | Login | /login | from (query) | none | no | redirect target |
 ```
 
-Followed by: `Shell: {none | ShellRoute | StatefulShellRoute}`, `Guard source: {provider | listenable | static | none}`, `Error route: {declared | missing}`, `Web URL strategy: {path | hash | n/a}`. When the top-level redirect owns more than one gate, add `Gate order: {<gate> -> <gate>}` naming the evaluation order; the Guard column then lists the gates in that order, and `Guard source` names one source per gate when they differ. `Guard source` names what the guard reads: `provider` = DI/provider state (bridged to `refreshListenable`), `listenable` = a raw `Listenable`/`ChangeNotifier`, `static` = a value loaded before `runApp` that never changes while the app runs, `none` = no guard. Chained gates carry the original target through both in one `from` parameter; a deep link into a non-default tab selects its `StatefulShellBranch` by location.
+The table is followed by these lines, then the `Fixed in plan` / `Pre-existing` / `Not read` lines:
 
-Implement mode ends with `Pre-existing: <file:line> - <defect>` for each defect in code the plan edits or depends on but does not fix, or `Pre-existing: none`. Code not yet written is cited as `<path> (new)`. A file the plan depends on that is absent or could not be read is listed as `Not read: <path> - <reason>`. A defect the change cannot ship on top of is fixed in the plan, not listed as `Pre-existing`.
+```
+Shell: {none | ShellRoute | StatefulShellRoute}
+
+Guard source: {provider | listenable | static | none}
+
+Error route: {declared | missing}
+
+Web URL strategy: {path | hash | n/a}
+
+Gate order: {<gate> -> <gate> | single gate}
+```
+
+`Gate order` names the evaluation order when the top-level redirect owns more than one gate; the Guard column then lists the gates in that order, and `Guard source` is `;`-separated, one value per gate in that order, when they differ. Platform registration files the plan adds (an intent-filter, `Runner.entitlements`, the hosted association files) appear as `<path> (new)` in Notes. `Deep link: {https | scheme | both | no}` names the link forms the product registers for the route (`scheme` = a custom scheme is registered, whether or not its host is rewritten). `Guard source` names what the guard reads: `provider` = DI/provider state (bridged to `refreshListenable`; a token read from secure storage is `provider` when sign-in or sign-out must re-run the guard), `listenable` = a raw `Listenable`/`ChangeNotifier`, `static` = a value loaded before `runApp` that never changes while the app runs, `none` = no guard. Chained gates carry the original target through both in one `from` parameter; a deep link into a non-default tab selects its `StatefulShellBranch` by location.
+
+```
+Fixed in plan: {<file:line> - <defect> | none}
+
+Pre-existing: {<file:line> - <defect> | none}
+
+Not read: {<path> - <reason> | none}
+```
+
+Implement mode describes the state after the plan and ends with these lines, each on its own line with a blank line between: `Fixed in plan: <file:line> - <defect>` per defect in existing code the plan corrects, or `Fixed in plan: none`; `Pre-existing: <file:line> - <defect>` per defect left in place, or `Pre-existing: none`; `Not read: <path> - <reason>` per file the plan needs that is absent, could not be read, or was not read, or `Not read: none`. A defect is fixed in the plan when it sits in code the change edits, or when the new code would misbehave on first run on top of it; every other defect in code the new code calls or reads is `Pre-existing`; code the new code neither edits, calls, nor reads is not listed, except a defect that breaks the build, which is always `Fixed in plan`. Code not yet written is cited as `<path> (new)`.
 
 When invoked from a review workflow, emit one finding block per issue:
 
 ```
-### [Severity] file:line
+### [{Critical | High | Medium | Low}] {file:line}
 
 - Rule: {router-lifetime | relative-path | route-order | shell-choice | go-vs-push | redirect-contract | guard-source | param-placement | untrusted-param | extra-dependency | error-route | web-strategy | deep-link-registration | naming}
 - Code: {one-line citation}
@@ -194,19 +219,27 @@ When invoked from a review workflow, emit one finding block per issue:
 - Recommendation: {concrete edit}
 ```
 
-`redirect-contract` covers loops (including a target that grows on every pass, such as appending its own location), async work inside `redirect`, and non-idempotence. `shell-choice` is a plain `ShellRoute` where tabs must keep their stacks (Medium). A custom URL scheme where the product needs a verified link is `deep-link-registration`. Every defect that contributes to a reported symptom is a symptom block; diagnose mode omits the zero-finding lines. A navigation target or resource taken from a route parameter is `untrusted-param`. `deep-link-registration` covers the platform side: intent-filter, Associated Domains, hosted assetlinks / site-association files, and applies only to platforms the product links into.
+`redirect-contract` covers loops (including a target that grows on every pass, such as appending its own location), awaited I/O inside `redirect`, and non-idempotence; a missing `refreshListenable` is `guard-source`, its own block. `shell-choice` is a plain `ShellRoute` under a bottom nav (tabs are assumed to keep their stacks unless the product says otherwise), Medium. `route-order` is a parameterized route declared before a static sibling it shadows. `naming` is a route or parameter name that misstates the resource (`/order?id=`) or a `goNamed` name that diverges from its path. A navigation target, a resource id, or a WebView URL taken from a route parameter is `untrusted-param`. `deep-link-registration` covers the platform side - intent-filter, Associated Domains (declared in `ios/Runner/Runner.entitlements`, which `Info.plist` cannot confirm), hosted assetlinks / site-association files - and a custom URL scheme where the product needs a verified link; it applies only to platforms the product links into. Review mode emits no route table or trailing route lines; those are implement mode's.
 
-`Severity: {Critical | High | Medium | Low}`. Critical = open redirect, an unvalidated link parameter reaching navigation or a sink such as a WebView, a secret or token carried in a route, a guard that can be bypassed, or a redirect loop. High = navigation that breaks under realistic use (router rebuilt in `build`, `extra`-dependent screens, a child path with a leading slash, route order that shadows a more specific path such as `:id` declared before `new`, guard source that never notifies, async work or non-idempotence inside `redirect`, unregistered or unverifiable deep links on a platform the product links into). Medium = works but fragile or misplaced (go/push misuse, param placement, missing error route, the path URL strategy without a host rewrite on a web target). Low = naming. When a finding matches two bands, the higher band wins.
+The heading severity is one of Critical, High, Medium, Low. Critical = open redirect, an unvalidated link parameter reaching navigation or a sink such as a WebView, a secret or token carried in a route, or a redirect loop. High = navigation that breaks under realistic use (router rebuilt in `build`, `extra`-dependent screens, a child path with a leading or trailing slash or a top-level path without one, route order that shadows a more specific path, guard source that never notifies, awaited I/O or non-idempotence inside `redirect`, a query parameter force-unwrapped or a route parameter used unparsed (a matched path parameter is present by construction), unregistered or unverifiable deep links on a platform the product links into). Medium = works but fragile or misplaced (go/push misuse, param placement, missing error route, the path URL strategy without a host rewrite on a web target). Low = naming. When a finding matches two bands, the higher band wins.
 
-For each rule in the enum with zero findings, emit exactly `No <rule> findings.` so the workflow knows the check ran; omit that line for rules with findings and for rules on the `Not checked` line.
+In diagnose mode each symptom block's `Recommendation:` ends with `(pattern: <section heading>)`.
 
-When invoked directly to diagnose a navigation symptom, emit the same finding block for the diagnosed cause, citing the pattern section that explains it.
+Blocks are one per defect, ordered by severity, then file path (repository-relative, byte order), then line, then enum order. A defect is one rule at one fix site: the same rule broken at N sites that each need their own edit is N blocks; the same rule broken at N sites that one edit fixes (a declaration, a shared helper, a config key) is one block anchored on the line to edit, naming the other sites as `also <file:line>` on its citation line (the block's `Code:` line); one line breaking two rules with two different fixes is two blocks, with one fix it is one block under the rule naming the worse failure (on a tie, the earlier enum value).
 
-Blocks are one per defect, ordered by severity, then file and line, then enum order. Each site of a repeated rule is its own defect; a single defect that needs edits in several places anchors on the line to edit and names the others as `also <file:line>` on its citation line.
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of dart-language-patterns, flutter-widget-patterns, flutter-riverpod-patterns, flutter-networking, flutter-data-persistence, flutter-local-db-migration, flutter-adaptive-responsive, flutter-accessibility, flutter-i18n, flutter-performance, flutter-security-patterns, flutter-error-handling, flutter-platform-channels, flutter-testing-patterns, flutter-build-release, flutter-overengineering-review covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's `Rule` values, or the path of a file that could not be read) when any check could not be exercised, then the `No <rule> findings.` lines. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean and gets its `No <rule> findings.` line; a check on the `Not checked` line does not. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its `Problem:` line, and does not move its check to `Not checked`. Invoked directly, a request to write or change code takes the implement shape, a request to review or audit takes the review shape, and a supplied symptom or bug report takes diagnose mode.
 
-A finding that depends on code outside the files read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to the line describing its effect. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+The closing lines - `Also seen` and `Not checked` only when they have content, then one `No <rule> findings.` line per clean check (no block, not on the `Not checked` line), blank-separated:
 
-In diagnose mode, blocks for defects that cause the reported symptoms come first, in the order the symptoms were reported; every other defect seen in the files read follows at its own severity.
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+
+{No <rule> findings.}
+```
+
+Diagnose mode opens with one line per reported symptom, `Symptom <n>: <the report's title or first sentence>`, a title that lists two symptoms is two lines, naming on each any premise the files read contradict (a flag the report says is on, a version it names) - the diagnosis then proceeds on what the code shows - and stating when the files read cannot cause the symptom. Blocks for the causes of the reported symptoms come first, grouped by symptom in reported order and within a group by severity, each such block's `Problem:` line opening with `Symptom <n>:`; a cause shared by two symptoms is one block opening `Symptom 1, 2:`, placed with the lower-numbered symptom; every other defect seen in the files read follows, ordered as in review mode. The zero-finding lines named above are omitted in diagnose mode; `Also seen` and `Not checked` lines are kept.
 
 ## Avoid
 

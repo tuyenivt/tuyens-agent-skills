@@ -18,10 +18,10 @@ user-invocable: false
 
 ## Rules
 
-- Every finding names what makes the abstraction unnecessary: no mutable state or lifecycle, no second reader, no second implementer or instantiation, no transformation, no backing source (a flag), a branch that cannot run, the type is already non-nullable. When several stack, comma-separate them in `Unnecessary because:`.
+- Every finding names what makes the abstraction unnecessary: no mutable state or lifecycle, no second reader, no second implementer or instantiation, no transformation, no backing source (a flag), a branch that cannot run, the type is already non-nullable, the type is `dynamic` past its decode boundary, a field the hop drops. When several stack, comma-separate them in `Unnecessary because:`.
 - Intent:
-  - **`[Recommend]`** (default). Name the constraint, recommend the edit. Escalate to **`[Must]`** when measurable cost is present; cite it in `Cost:`. Triggers: `dynamic` propagating past a decode boundary into business logic or a widget (runtime failure replaces a compile error); a mapping hop that silently drops a field; a branch presented as handling a case it can never reach, leaving the real failure mode unhandled; an abstraction whose maintenance cost the diff itself shows (the same change made twice in parallel definitions). A single-implementation interface or a dead null check on its own stays `[Recommend]`; defects outside the four categories belong to other skills and are not reported here
-  - **`[Recommend]`** when justification is plausible but not visible in the diff - state the justification being assumed and ask the author to confirm
+  - **`[Recommend]`** (default). Name the constraint, recommend the edit. Escalate to **`[Must]`** when measurable cost is present; cite it in `Cost:`. Triggers: `dynamic` propagating past a decode boundary into business logic or a widget (runtime failure replaces a compile error); a mapping hop that silently drops a field; a branch with user-visible handling (a message, a fallback) for a case it can never reach, leaving the real failure mode unhandled (a bare null check on a non-nullable value is not this); an abstraction whose maintenance cost the diff itself shows (the same change made twice in parallel definitions). A single-implementation interface or a dead null check on its own stays `[Recommend]`; defects outside the four categories are `Also seen` lines for their owning skill, never blocks
+  - **`[Recommend]`** when justification is plausible but not visible in the diff, unless a `[Must]` trigger is present (it wins) - the `Justified when:` line states the justification assumed and asks the author to confirm
 - An abstraction with **visible** justification - a second implementer, a provider overridden in tests, a union case - is not a finding. A mock or fake that implements the class is not a second implementer: Dart's implicit interface already allows it
 - `Cost:` on a pure-abstraction `[Must]` is the maintenance cost the diff shows (the same change made twice in parallel definitions), not runtime cost
 - Never propose deleting a layer the diff's own tests bind to. Folding an abstract declaration into its one concrete class under the same name is not deleting the layer
@@ -115,18 +115,26 @@ class UserRepository { ... }
 class FakeUserRepository implements UserRepository { ... }   // valid in tests
 ```
 
-Every Dart class defines an implicit interface, so `implements` works against a concrete class - testability alone does not require the abstract declaration. Justified when 2+ implementations exist or arrive in the same PR (local + remote source), the type is a published package's public API, or the class carries a `final` / `base` modifier that blocks implicit-interface substitution.
+Every Dart class defines an implicit interface, so `implements` works against a concrete class - testability alone does not require the abstract declaration. Justified when 2+ implementations exist or arrive in the same PR (local + remote source), the type is a published package's public API, or the class carries a `final`, `base`, or `sealed` modifier that blocks implicit-interface substitution.
 
 #### `freezed` on models with no copy, union, or equality need
 
 ```dart
-// Bad - generated copyWith / == / union machinery no caller uses
+// Bad - generated copyWith / == / union machinery no caller uses, on top of the serializer's .g.dart
 @freezed
-abstract class LogEvent with _$LogEvent { const factory LogEvent(String message) = _LogEvent; } // freezed 3 form
+abstract class LogEvent with _$LogEvent {
+  const factory LogEvent(String message) = _LogEvent; // freezed 3 form
+  factory LogEvent.fromJson(Map<String, dynamic> json) => _$LogEventFromJson(json);
+}
 
 // Good - only serialization is needed
 @JsonSerializable()
-class LogEvent { LogEvent(this.message); final String message; }
+class LogEvent {
+  LogEvent(this.message);
+  final String message;
+  factory LogEvent.fromJson(Map<String, dynamic> json) => _$LogEventFromJson(json);
+  Map<String, dynamic> toJson() => _$LogEventToJson(this);
+}
 ```
 
 The waste is a generated `.freezed.dart` per model on top of the serializer's `.g.dart`, carrying `copyWith`/`==`/union code no caller uses; on its own this is `[Recommend]`. `freezed`'s class-declaration syntax differs across major versions - match the project's existing models rather than the snippet above. Justified for sealed unions and state machines, value equality (provider `family` keys, set/map membership, test comparisons), and `copyWith` on a model whose callers update single fields.
@@ -161,7 +169,7 @@ void greet(String name) {
 }
 ```
 
-Same smell as `user?.name ?? 'unknown'` where `user` is non-nullable. A check is not waste where the value is still `dynamic`, `Object?`, or nullable at a boundary - a JSON decode, a platform-channel result, a plugin returning `dynamic`, FFI - but that is a check on that value, not on a non-nullable one. Validate once at the boundary and stay non-nullable after it.
+Same smell as `user?.name ?? 'unknown'` where `user` and `name` are non-nullable: the `?.` and the `??` are both dead. A check is not waste where the value is still `dynamic`, `Object?`, or nullable at a boundary - a JSON decode, a platform-channel result, a plugin returning `dynamic`, FFI - but that is a check on that value, not on a non-nullable one. Validate once at the boundary and stay non-nullable after it.
 
 #### `dynamic` to silence a type error
 
@@ -194,21 +202,31 @@ Justified when 2+ instantiations exist in the codebase or the type is a package'
 One block per finding; the consuming workflow merges them:
 
 ```
-### [Must | Recommend] file:line
+### [{Must | Recommend}] {file:line}
 
 - Category: {Widget Structure | State Abstraction | Premature Abstraction | Type-System Waste}
 - Code: {one-line citation}
-- Unnecessary because: {what makes it dead or unread; comma-separate when stacked}
-- Cost: {required for [Must]; omit otherwise}
+- Unnecessary because: {what makes it dead or unread}
+- Cost: {the maintenance or runtime cost the diff shows}
 - Recommendation: {concrete Dart edit}
-- Justified when: {one-line note if a legitimate reason might apply; otherwise omit}
+- Justified when: {the justification assumed, and the question for the author}
 ```
 
-For each category with zero findings, emit exactly: `No <category> findings.` (using the category name from the enum) so the workflow knows the check ran. Omit this line for categories that have at least one finding.
+`Unnecessary because:` is comma-separated when reasons stack. `Cost:` is present on every `[Must]` block and absent otherwise. `Justified when:` is present when a legitimate reason might apply and absent otherwise. A `ConsumerStatefulWidget` counts as a `StatefulWidget`; a Cubit or Notifier holding several fields or transition logic is justified; a legacy provider and an unused duplicate Notifier for one state are one defect anchored on the unused one, and the parallel-definitions Cost applies to duplicated state as to duplicated types; a provider override in tests justifies the provider, not an interface behind it; a `dynamic` field that stays inside its class is `[Recommend]` and becomes `[Must]` once it reaches logic or a widget; when a field-for-field hop sits beside a plain class duplicating the DTO, the recommendation deletes the hop and merges the two classes into the type the screens read (the DTO's `freezed` is part of that one defect). A test that stops compiling after a fold is an `also` site; one that keeps compiling needs none.
 
-Blocks are one per defect, ordered by severity, then file and line, then enum order. Each site of a repeated rule is its own defect; a single defect that needs edits in several places anchors on the line to edit and names the others as `also <file:line>` on its citation line.
+Blocks are one per defect, ordered by severity, then file path (repository-relative, byte order), then line, then enum order. A defect is one rule at one fix site: the same rule broken at N sites that each need their own edit is N blocks; the same rule broken at N sites that one edit fixes (a declaration, a shared helper, a config key) is one block anchored on the line to edit, naming the other sites as `also <file:line>` on its citation line (the block's `Code:` line); one line breaking two rules with two different fixes is two blocks, with one fix it is one block under the rule naming the worse failure (on a tie, the earlier enum value).
 
-A finding that depends on code outside the files read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to the line describing its effect. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of dart-language-patterns, flutter-widget-patterns, flutter-riverpod-patterns, flutter-navigation-patterns, flutter-networking, flutter-data-persistence, flutter-local-db-migration, flutter-adaptive-responsive, flutter-accessibility, flutter-i18n, flutter-performance, flutter-security-patterns, flutter-error-handling, flutter-platform-channels, flutter-testing-patterns, flutter-build-release covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's `Category` values, or the path of a file that could not be read) when any check could not be exercised, then the `No <category> findings.` lines. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean and gets its `No <category> findings.` line; a check on the `Not checked` line does not. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its `Unnecessary because:` line, and does not move its check to `Not checked`. Invoked directly, the output is the blocks and closing lines only, with no preamble.
+
+The closing lines - `Also seen` and `Not checked` only when they have content, then one `No <category> findings.` line per clean check (no block, not on the `Not checked` line), blank-separated:
+
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+
+{No <category> findings.}
+```
 
 ## Avoid
 

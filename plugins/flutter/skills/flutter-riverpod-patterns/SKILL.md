@@ -9,7 +9,7 @@ user-invocable: false
 
 # Flutter Riverpod Patterns
 
-> **Riverpod 2 and 3 differ where noted; read the major from `pubspec.yaml`.** In 3, `AsyncValue.value` returns null on error (2 rethrows; use `valueOrNull` there), a failing provider retries automatically (configure `retry:`), a dependency's error arrives wrapped in `ProviderException`, and touching `ref` or `state` after dispose throws (guard with `ref.mounted`).
+> **Riverpod 2 and 3 differ where noted; read the major from `pubspec.yaml`.** In 3, `AsyncValue.value` returns null on error (2 rethrows; use `valueOrNull` there), a failing provider retries automatically (configure `retry:`), a dependency's error arrives wrapped in `ProviderException`, and touching `ref` or `state` after dispose throws (guard with `ref.mounted`). Riverpod 3 also moved `StateProvider`, `StateNotifierProvider`, and `ChangeNotifierProvider` to `package:flutter_riverpod/legacy.dart` and removed the `AutoDispose*` and `Family*` notifier base classes: every notifier extends `Notifier`, `AsyncNotifier`, or `StreamNotifier`, and a family notifier receives its argument through its constructor (`AsyncNotifierProvider.family<TodoNotifier, Todo, String>(TodoNotifier.new)`) rather than as a `build` parameter.
 >
 > **This skill is Riverpod-only.** If the detected project uses Bloc, Provider, or GetX, open the response with `Detected <X>; Riverpod-specific guidance does not apply` and fall back to the state-management-agnostic subset: keep UI state out of widgets, model async work as explicit loading/error/data states, do side effects in event handlers rather than in build/render, release every subscription, timer, and controller on teardown and never emit after close, and inject dependencies so tests can substitute them. Do not rewrite a working Bloc/Provider/GetX codebase into Riverpod unless the user asks for a migration.
 
@@ -26,7 +26,7 @@ user-invocable: false
 - `StateProvider`, `StateNotifierProvider`, and `ChangeNotifierProvider` are legacy - do not use them in new code; `Notifier` / `AsyncNotifier` replace them
 - `build()` of a Notifier is pure: it computes and returns initial state. No navigation, no analytics, no writes, no `state =` inside it. Side effects live in the notifier's own methods or in `ref.listen`
 - `ref.watch` only in `build` (widget or notifier) - it subscribes. `ref.read` only in callbacks and notifier methods - it does not. `ref.listen` only in `build`, and it is the only correct place for reacting to state with a side effect (snackbar, navigation, dialog)
-- Never `ref.watch` inside a callback, and never `ref.read` a provider you depend on for rendering - the first adds a subscription per tap until the next rebuild, the second silently stops rebuilding
+- Never `ref.watch` inside a callback, and never `ref.read` a provider you depend on for rendering - the first registers a dependency from outside `build` (and through `.notifier` subscribes the widget to notifier replacement), so the rebuild it schedules has nothing to do with the tap; the second silently stops rebuilding
 - Async state surfaces as `AsyncValue`; the UI handles loading, error, and data in all three branches. An unhandled error branch is a defect, not a style choice
 - Mutating methods that can fail, on an `AsyncNotifier` or a `StreamNotifier`, wrap the work in `AsyncValue.guard` so the failure lands in `AsyncError` instead of an unhandled zone error
 - `family` arguments must have stable value equality (primitives, records, or a `freezed`/`==`-implementing class). An argument with identity equality creates a new provider instance on every rebuild
@@ -62,17 +62,18 @@ class Counter extends Notifier<int> {
 ```
 
 ```dart
-final todosProvider = AsyncNotifierProvider<Todos, List<Todo>>(Todos.new);
+final todosProvider = AsyncNotifierProvider.autoDispose<Todos, List<Todo>>(Todos.new);
 
-class Todos extends AsyncNotifier<List<Todo>> {
+class Todos extends AsyncNotifier<List<Todo>> {   // Riverpod 3; on 2, extends AutoDisposeAsyncNotifier
   @override
   Future<List<Todo>> build() => ref.watch(todoRepoProvider).fetchAll();
 
   Future<void> add(Todo todo) async {
+    final repo = ref.read(todoRepoProvider); // read before the await: no ref use until the mounted check
     state = const AsyncLoading();
     final next = await AsyncValue.guard(() async {
-      await ref.read(todoRepoProvider).add(todo);
-      return ref.read(todoRepoProvider).fetchAll();
+      await repo.add(todo);
+      return repo.fetchAll();
     });
     if (!ref.mounted) return;     // Riverpod 3; in 2, check a flag set by ref.onDispose in build
     state = next;
@@ -130,7 +131,7 @@ final count = ref.watch(counterProvider);
 ```
 
 ```dart
-// Bad - watch in a callback: a new subscription every tap
+// Bad - watch in a callback: a dependency registered outside build, unrelated to the tap
 onPressed: () => ref.watch(counterProvider.notifier).increment(),
 
 // Good
@@ -168,7 +169,7 @@ return ref.watch(todosProvider).when(
 );
 ```
 
-Dart 3 pattern matching is equivalent and often reads better:
+Dart 3 pattern matching is equivalent and often reads better (`AsyncValue` is `sealed` from Riverpod 2.4; below that the switch is not exhaustive, so use `.when`):
 
 ```dart
 return switch (ref.watch(todosProvider)) {
@@ -199,7 +200,7 @@ A value derived from an async provider stays async: `ref.watch(cartProvider).whe
 // Bad - a new Filter instance each rebuild; identity equality means a fresh provider every time
 ref.watch(itemsProvider(Filter(status: 'open')));
 
-// Good - value equality: records, freezed, or a const instance
+// Good - value equality: records, freezed, or a const instance (itemsProvider declared .family<List<Item>, ({String status, int page})>)
 ref.watch(itemsProvider((status: 'open', page: 1)));
 ```
 
@@ -207,6 +208,7 @@ ref.watch(itemsProvider((status: 'open', page: 1)));
 // Good - keep an expensive result alive only while it is worth caching
 final catalogProvider = FutureProvider.autoDispose<Catalog>((ref) async {
   final catalog = await ref.watch(catalogRepoProvider).fetch();
+  if (!ref.mounted) return catalog;  // Riverpod 3: disposed during the fetch
   final link = ref.keepAlive(); // after the await: a failed fetch is not cached
   final timer = Timer(const Duration(minutes: 5), link.close);
   ref.onDispose(timer.cancel);
@@ -215,6 +217,8 @@ final catalogProvider = FutureProvider.autoDispose<Catalog>((ref) async {
 ```
 
 Every subscription, timer, controller, or listener created in a provider is released in `ref.onDispose`. A provider that opens a stream and never disposes it is the most common Riverpod leak.
+
+State that must outlive the screen that started it - an undo window, an upload queue - is a keep-alive provider the app shell reads once at startup (`ref.read` in the root widget, or `ref.listen` from a keep-alive bootstrap provider) so it exists before any screen; its timers are cancelled in `ref.onDispose`.
 
 ### Dependency injection via overrides
 
@@ -239,7 +243,8 @@ test('loads todos', () async {
   );
   addTearDown(container.dispose);
 
-  expect(await container.read(todosProvider.future), hasLength(2));
+  final sub = container.listen(todosProvider.future, (_, __) {}); // keeps the autoDispose provider alive
+  expect(await sub.read(), hasLength(2));
 });
 ```
 
@@ -258,14 +263,22 @@ When invoked from an implementation workflow, emit the provider graph:
 | TodoRepo | Provider<TodoRepo> | keepAlive | - | DI seam, overridden at root |
 ```
 
-`Scope: {autoDispose | keepAlive}` - lifetime only, matching the declared kind. A provider bound by a root override records that in Notes, not in Scope.
+`Scope: {autoDispose | keepAlive}` - lifetime only, matching the declared kind. `Provider kind` is the declaration as written, class names included. Every provider the plan declares is a row, bootstrap providers included; a new package goes in Notes. A provider bound by a root override records that in Notes, not in Scope.
 
-Implement mode ends with `Pre-existing: <file:line> - <defect>` for each defect in code the plan edits or depends on but does not fix, or `Pre-existing: none`. Code not yet written is cited as `<path> (new)`. A file the plan depends on that is absent or could not be read is listed as `Not read: <path> - <reason>`. A defect the change cannot ship on top of is fixed in the plan, not listed as `Pre-existing`.
+```
+Fixed in plan: {<file:line> - <defect> | none}
+
+Pre-existing: {<file:line> - <defect> | none}
+
+Not read: {<path> - <reason> | none}
+```
+
+Implement mode describes the state after the plan and ends with these lines, each on its own line with a blank line between: `Fixed in plan: <file:line> - <defect>` per defect in existing code the plan corrects, or `Fixed in plan: none`; `Pre-existing: <file:line> - <defect>` per defect left in place, or `Pre-existing: none`; `Not read: <path> - <reason>` per file the plan needs that is absent, could not be read, or was not read, or `Not read: none`. A defect is fixed in the plan when it sits in code the change edits, or when the new code would misbehave on first run on top of it; every other defect in code the new code calls or reads is `Pre-existing`; code the new code neither edits, calls, nor reads is not listed, except a defect that breaks the build, which is always `Fixed in plan`. Code not yet written is cited as `<path> (new)`.
 
 When invoked from a review workflow, emit one finding block per issue:
 
 ```
-### [Severity] file:line
+### [{Critical | High | Medium | Low}] {file:line}
 
 - Rule: {ref-lifecycle | provider-kind | async-value | disposal | family-equality | side-effect-in-build | di-override | test-override | state-in-widget}
 - Code: {one-line citation}
@@ -273,17 +286,27 @@ When invoked from a review workflow, emit one finding block per issue:
 - Recommendation: {concrete edit}
 ```
 
-`Severity: {Critical | High | Medium | Low}`. Critical = code that does not compile, leaked subscription, unhandled error branch on a user-facing path, or state that silently stops updating. High = misuse that misbehaves under realistic use (duplicate side effects from `build`, family arg without value equality, watch-in-callback, `ref` or `state` used after an await without `ref.mounted` on Riverpod 3). Medium = works today but fragile (legacy provider kinds, missing DI seam, keep-alive without justification, undisposed test containers, state a widget should own held in a provider or business logic in a widget). Low = style or naming. When a finding matches two bands, the higher band wins.
+The heading severity is one of Critical, High, Medium, Low. Critical = code that does not compile on the pinned major (a legacy kind imported from its pre-3 path, a removed base class), a subscription, timer, or controller never released, an unhandled error branch on a user-facing path, or state that silently stops updating (including a mutable handle exposed through a `Provider` whose changes rebuild nothing - `provider-kind`). High = misuse that misbehaves under realistic use (duplicate side effects from `build`, family arg without value equality, watch-in-callback, `ref` or `state` used after an await without `ref.mounted` on Riverpod 3, a mutator that sets `AsyncLoading` then awaits without `guard`). Medium = works today but fragile (a legacy kind that still compiles, a kind that does not fit the state shape, missing DI seam, screen state without `autoDispose` or keep-alive without justification, an undisposed test container, state a widget should own held in a provider or business logic in a widget). Low = style or naming. When a finding matches two bands, the higher band wins.
 
-One block per defect, not per code site - a constructor that both leaks a subscription and logs analytics emits two. When a single defect satisfies two rules, file it under the one naming the runtime failure: a subscription that is never released is `disposal`, not `side-effect-in-build`. Missing `autoDispose` files under `disposal`. A `family-equality` defect anchors on the argument class declaration, with its call sites as `also`. A legacy `StateNotifier` releases in its `dispose` override.
+When one line breaks two rules with one fix, file it under the rule naming the runtime failure: a subscription that is never released is `disposal`, not `side-effect-in-build`. Missing `autoDispose` files under `disposal`. A `family-equality` defect anchors on the argument class declaration, with its call sites as `also`; when that file was not read it anchors on the first call site in path order with `(unconfirmed: depends on <path>)`. A removed base class or a legacy kind that no longer compiles is `provider-kind`. A mutable handle exposed through a `Provider` anchors on the declaration. `ref.read` inside `build` is `ref-lifecycle`, Critical when the value is rendered and Medium otherwise. A shared resource (database, HTTP client) a keep-alive provider never closes is `disposal`, Medium. A legacy `StateNotifier` releases in its `dispose` override.
 
-Blocks are one per defect, ordered by severity, then file and line, then enum order. Each site of a repeated rule is its own defect; a single defect that needs edits in several places anchors on the line to edit and names the others as `also <file:line>` on its citation line.
+Blocks are one per defect, ordered by severity, then file path (repository-relative, byte order), then line, then enum order. A defect is one rule at one fix site: the same rule broken at N sites that each need their own edit is N blocks; the same rule broken at N sites that one edit fixes (a declaration, a shared helper, a config key) is one block anchored on the line to edit, naming the other sites as `also <file:line>` on its citation line (the block's `Code:` line); one line breaking two rules with two different fixes is two blocks, with one fix it is one block under the rule naming the worse failure (on a tie, the earlier enum value).
 
-A finding that depends on code outside the files read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to the line describing its effect. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of dart-language-patterns, flutter-widget-patterns, flutter-navigation-patterns, flutter-networking, flutter-data-persistence, flutter-local-db-migration, flutter-adaptive-responsive, flutter-accessibility, flutter-i18n, flutter-performance, flutter-security-patterns, flutter-error-handling, flutter-platform-channels, flutter-testing-patterns, flutter-build-release, flutter-overengineering-review covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's `Rule` values, or the path of a file that could not be read) when any check could not be exercised, then the `No <rule> findings.` lines. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean and gets its `No <rule> findings.` line; a check on the `Not checked` line does not. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its `Problem:` line, and does not move its check to `Not checked`. Invoked directly, a request to write or change code takes the implement shape, a request to review or audit takes the review shape, and a supplied symptom or bug report takes diagnose mode.
 
-For each rule in the enum with zero findings, emit exactly `No <rule> findings.` so the workflow knows the check ran; omit that line for rules with findings.
+The closing lines - `Also seen` and `Not checked` only when they have content, then one `No <rule> findings.` line per clean check (no block, not on the `Not checked` line), blank-separated:
 
-In fallback mode (non-Riverpod project), emit the same structures using the detected framework's terms (e.g., Bloc/Cubit kinds in the graph table), with `Scope` becoming that framework's lifetime vocabulary and DI through its own seam (`RepositoryProvider`, `BlocProvider`, get_it); constructing the repository at the composition root is that seam, not a defect. Findings use only `async-value`, `disposal`, `side-effect-in-build`, `di-override`, `test-override`, and `state-in-widget`, at the band of the analogous Riverpod defect; a Cubit or Bloc constructor runs once per creation, so side effects there file under `side-effect-in-build`. The Riverpod-only rules - `ref-lifecycle`, `provider-kind`, `family-equality` - are neither reported nor enumerated as zero-finding lines.
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+
+{No <rule> findings.}
+```
+
+Diagnose mode opens with one line per reported symptom, `Symptom <n>: <the report's title or first sentence>`, a title that lists two symptoms is two lines, naming on each any premise the files read contradict (a flag the report says is on, a version it names) - the diagnosis then proceeds on what the code shows - and stating when the files read cannot cause the symptom. Blocks for the causes of the reported symptoms come first, grouped by symptom in reported order and within a group by severity, each such block's `Problem:` line opening with `Symptom <n>:`; a cause shared by two symptoms is one block opening `Symptom 1, 2:`, placed with the lower-numbered symptom; every other defect seen in the files read follows, ordered as in review mode. The zero-finding lines named above are omitted in diagnose mode; `Also seen` and `Not checked` lines are kept.
+
+In fallback mode (non-Riverpod project), emit the same structures using the detected framework's terms (e.g., Bloc/Cubit kinds in the graph table), with `Scope` becoming that framework's lifetime vocabulary and DI through its own seam (`RepositoryProvider`, `BlocProvider`, get_it); constructing the repository at the composition root is that seam, not a defect. Findings use only `async-value`, `disposal`, `side-effect-in-build`, `di-override`, `test-override`, and `state-in-widget`, at the band of the analogous Riverpod defect; a Cubit or Bloc constructor runs once per creation, so side effects there file under `side-effect-in-build`. The Riverpod-only rules - `ref-lifecycle`, `provider-kind`, `family-equality` - are neither reported nor enumerated as zero-finding lines. Under Bloc, a subscription a Cubit or Bloc holds is released in its `close()` override and `emit` after close is guarded by `isClosed` (`disposal`); a repository that swallows failures into an empty result is `async-value`; a test asserting only `isA<State>()` is `test-override`.
 
 ## Avoid
 

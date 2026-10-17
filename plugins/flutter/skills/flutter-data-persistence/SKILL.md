@@ -23,9 +23,9 @@ Owns **where each piece of data lives on the device and how it is accessed**. On
 - Secrets - access and refresh tokens, API keys, credentials, encryption keys - live only in platform secure storage. Never `shared_preferences`, never a plain SQLite column, never a file
 - One repository owns each store. Widgets and notifiers depend on the repository interface, never on a DAO, `SharedPreferences`, or a secure-storage handle
 - Local tables model the screens that read them, not the server's schema. They are a projection of remote state that the app is free to reshape
-- A user action that writes more than one row or table is one local transaction; a single-row write, or a single drift `batch` (already atomic), does not need another. Transactions here buy **atomicity across an interrupted app**, not concurrency control
+- A user action, or one sync batch, that writes more than one row or table is one local transaction; a single-row write, or a single drift or sqflite `batch` (already atomic), does not need another. Transactions here buy **atomicity across an interrupted app**, not concurrency control
 - Anything persisted survives app updates. A shape change ships with a migration and a bumped schema version - delegate to `flutter-local-db-migration`
-- Binary payloads go to the filesystem (IndexedDB on web); the row stores a path relative to the base directory
+- Binary payloads go to the filesystem (IndexedDB on web); the row stores a path relative to the base directory, or the IndexedDB key
 - Reads the UI must react to are streams; one-shot reads are for imperative flows
 - Logout and account-switch define explicitly what is wiped and what survives; iOS Keychain entries outlive an uninstall unless deleted
 - Heavy local work stays off the UI isolate (drift's background-isolate support, or `compute` for parse and transform)
@@ -117,7 +117,7 @@ Any field you filter, sort, or index on is a column. Storing the raw response as
 
 ```dart
 final dir = await getApplicationSupportDirectory();
-final rel = 'receipts/$id.jpg';                     // relative: the iOS container path changes across updates
+final rel = 'receipts/$id.jpg';                     // relative: the iOS container path changes across updates; regulated or high-harm bytes are encrypted first (key in secure storage)
 final file = await File(p.join(dir.path, rel)).create(recursive: true);
 await file.writeAsBytes(bytes);
 await db.into(db.receipts).insert(ReceiptsCompanion.insert(path: rel));
@@ -135,37 +135,67 @@ Mobile is the default assumption. On **desktop**, `dart:io` and the same stores 
 
 ## Output Format
 
-When invoked from an implementation workflow, emit one row per persisted item. When the project targets desktop or web, open with the `Tiers:` line in `flutter-adaptive-responsive`'s form (`Tiers: Mobile, Web (source: platform directories)`) - and name the tier constraint in the Rationale of each row it changes (e.g. web: session secret in memory, not secure storage):
+Both modes open with `Tiers: {Mobile[, Desktop (<platforms>)][, Web]} (source: {platform directories | project CLAUDE.md | assumed})` - platform directories win when both sources exist; with neither, `Tiers: Mobile (source: assumed)`. Implement mode then emits one row per persisted item plus one `logout wipe` row. A stored thumbnail, a queue row, and an outbox entry are items; a derived value nobody persists is not. Name the tier constraint in the Rationale of each row it changes (web: session secret in memory, not secure storage):
 
 ```
 | Data | Store | Sensitivity | Rationale |
 |------|-------|-------------|-----------|
 | refresh token | secure storage | Secret | OS keystore, wiped on logout |
-| order + items | Drift | Internal | queried, watched by UI, offline read |
+| order + items | Drift | Personal | the user's purchases: queried, watched by UI, offline read |
+| sync cursor | shared_preferences | Internal | app-produced, no query |
+| logout wipe | secure storage, Drift, filesystem | Secret; Personal | tokens deleted, user tables cleared, receipts removed; pending uploads sent first, theme kept |
 | theme mode | shared_preferences | Public | scalar, no query |
 ```
 
-Classify each item by its most sensitive use. `Sensitivity: {Secret | Personal | Internal | Public}`. Secret = grants access (tokens, keys, credentials) -> secure storage. Personal = user content or identifying/financial/health data -> SQL store, SQLCipher when the dataset is regulated or high-harm; a Personal binary goes to an encrypted file. Internal = app-produced operational data. Public = display-only or config.
-
-Implement mode ends with `Pre-existing: <file:line> - <defect>` for each defect in code the plan edits or depends on but does not fix, or `Pre-existing: none`. Code not yet written is cited as `<path> (new)`. A file the plan depends on that is absent or could not be read is listed as `Not read: <path> - <reason>`. A defect the change cannot ship on top of is fixed in the plan, not listed as `Pre-existing`.
-
-When invoked from a review workflow, emit one block per store the change touches, citing every file that touches it:
+Classify each item by its most sensitive use. `Sensitivity: {Secret | Personal | Internal | Public}`. Secret = grants access (tokens, keys, credentials) -> secure storage, or memory only on web. Personal = user content or identifying/financial/health data -> a SQL or object store, encrypted (SQLCipher for rows, a per-file key from secure storage for binaries) when the dataset is regulated or high-harm, plain otherwise. Internal = app-produced operational data (sync cursors, queue state). Public = display-only or config. A client-generated id is a row's key for life; a server id is a nullable column filled on acknowledgement. Logout names what happens to rows not yet synced: upload first, or wipe after a warning, never silent loss.
 
 ```
-Store: {Drift | sqflite | Isar | Hive | shared_preferences | secure storage | filesystem | in-memory}
-Access Path: {repository at file:line | direct store access from <widget|notifier> at file:line (defect) | second database instance at file:line (defect)} - list each path found
-Sensitive Placement: {OK | VIOLATION: <what> in <store> at file:line}
-Model Shape: {screen projection | server-DTO mirror or queried JSON blob at file:line (defect) | N/A} - typed columns the screens read are a projection even when their names match the server's
-Blobs: {filesystem, relative path in row | BLOB column at file:line (defect) | absolute path stored at file:line (defect) | N/A}
-Transaction Scope: {multi-row or multi-table writes wrapped | single drift batch (atomic) | unwrapped at file:line | N/A single-row write}
-Schema Version: {<n> | unversioned | version key <name> (key-value store) | N/A (no persisted shape changed)}
-Migration: {present - correctness reviewed by flutter-local-db-migration | MISSING for a shipped shape change | N/A no shape change}
-Reactivity: {streamed | one-shot with manual refetch | one-shot, stale | one-shot, imperative flow | N/A}
-Logout Wipe: {defined at file:line | partial: <what survives> | undefined | N/A no account scope}
-Platform Tiers: {mobile | + desktop | + web: <constraint>}
+Fixed in plan: {<file:line> - <defect> | none}
+
+Pre-existing: {<file:line> - <defect> | none}
+
+Not read: {<path> - <reason> | none}
 ```
 
-A defect that depends on code outside the files read is still marked, with `(unconfirmed: depends on <path>)` appended to its slot; the consuming workflow assigns severity. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+Implement mode describes the state after the plan and ends with these lines, each on its own line with a blank line between: `Fixed in plan: <file:line> - <defect>` per defect in existing code the plan corrects, or `Fixed in plan: none`; `Pre-existing: <file:line> - <defect>` per defect left in place, or `Pre-existing: none`; `Not read: <path> - <reason>` per file the plan needs that is absent, could not be read, or was not read, or `Not read: none`. A defect is fixed in the plan when it sits in code the change edits, or when the new code would misbehave on first run on top of it; every other defect in code the new code calls or reads is `Pre-existing`; code the new code neither edits, calls, nor reads is not listed, except a defect that breaks the build, which is always `Fixed in plan`. Code not yet written is cited as `<path> (new)`.
+
+When invoked from a review workflow, emit one block per store the files read touch, citing every file that touches it:
+
+```
+Store: {Drift | sqflite | Isar | Hive | shared_preferences | secure storage | filesystem | IndexedDB (web) | in-memory}
+
+Access Path: {repository at file:line | direct store access from <class> at file:line (defect) | second database instance at file:line (defect) | not in evidence - <file:line> stores the path}
+
+Sensitive Placement: {OK | OK (in memory, session only) | VIOLATION: <what> in <store> at file:line}
+
+Model Shape: {screen projection | server-DTO mirror or queried JSON blob at file:line (defect) | N/A}
+
+Blobs: {filesystem, relative path in row | IndexedDB key in row | BLOB column at file:line (defect) | absolute path stored at file:line (defect) | N/A}
+
+Transaction Scope: {multi-row or multi-table writes wrapped | single drift or sqflite batch (atomic) | unwrapped at file:line (defect) | N/A single-row write}
+
+Schema Version: {<n> | unversioned (defect) | version key <name> (key-value store) | N/A (no persisted shape changed)}
+
+Migration: {present - correctness reviewed by flutter-local-db-migration | MISSING for a shipped shape change (defect) | N/A no shape change}
+
+Reactivity: {streamed | one-shot with manual refetch (sqflite) | one-shot, stale (defect) | one-shot, imperative flow | N/A}
+
+Logout Wipe: {defined at file:line, pending uploads <sent first | wiped after warning | lost (defect)> | partial: <what survives> (defect) | undefined (defect) | N/A no account scope}
+
+Platform Tiers: {Mobile | Mobile, Desktop | Mobile, Web | Mobile, Desktop, Web} - {<constraint per non-mobile tier> | none}
+```
+
+Access Path lists every path found. Typed columns the screens read are a projection even when their names match the server's. One block per store the files read touch; a dependency present but unused gets no block; a datum held in two stores appears in both blocks, each citing the other. For an in-memory store, Model Shape, Blobs, Schema Version, and Migration are `N/A`; Logout Wipe follows the rule below like any store. `openDatabase` on one path with sqflite's default `singleInstance: true` returns the shared instance and is not a second instance. A `Future` exposed through `asStream()` is `one-shot, stale (defect)`. `Logout Wipe: undefined` when the app has sign-in and the files read define no wipe; `N/A no account scope` only when the app has no sign-in. A store whose migration step looks wrong keeps `Migration: present - ...`; the step's defect is an `Also seen` line for `flutter-local-db-migration`. Several values in one slot are `;`-separated. A sync loop of upserts is one action: wrapped, or a batch. A value marked `(defect)` is a finding; the consuming workflow assigns severity.
+
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of dart-language-patterns, flutter-widget-patterns, flutter-riverpod-patterns, flutter-navigation-patterns, flutter-networking, flutter-local-db-migration, flutter-adaptive-responsive, flutter-accessibility, flutter-i18n, flutter-performance, flutter-security-patterns, flutter-error-handling, flutter-platform-channels, flutter-testing-patterns, flutter-build-release, flutter-overengineering-review covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's slot names, or the path of a file that could not be read) when any check could not be exercised. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its slot, and does not move its check to `Not checked`. Invoked directly, a request to write or change code takes the implement shape and a request to review, audit, or explain a failure takes the review shape.
+
+The closing lines, each only when it has content:
+
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+```
 
 ## Avoid
 

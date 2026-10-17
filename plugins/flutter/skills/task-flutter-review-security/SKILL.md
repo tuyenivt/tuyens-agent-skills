@@ -35,12 +35,12 @@ MASVS-shaped client security review: what the app stores on the device, what it 
 
 | Severity | Definition |
 | -------- | ---------- |
-| **Critical** | A live credential, signing key, or privileged API secret committed or compiled into a shipped build (a client-side vendor key is graded by the High row's restriction clause); a session token or credential sent over cleartext; certificate validation disabled on a release path; a deep link or exported component reaching an authenticated action with no session check; a WebView JavaScript channel exposing a privileged operation to arbitrary page content; a platform channel that executes an attacker-influenced path or command; a security control the backend relies on that exists only on the client. Must fix before release; blocks merge. |
-| **High** | Session token or credential in `shared_preferences` or a plaintext file; a session token, credential, or regulated or high-harm personal data in an unencrypted local database; sensitive data left backup-eligible; a production endpoint over cleartext `http://`; a biometric gate protecting data with no key binding; session material not cleared on logout; pinning removed with no recorded rationale; a token, credential, or PII in release-build logs; a deep-link or notification parameter used without validation; an extractable vendor key the vendor does not restrict to this app. Must fix before merge. |
+| **Critical** | A live credential, signing key, or privileged API secret committed or compiled into a shipped build (a client-side vendor key is graded by the High row's restriction clause); a session token or credential sent over cleartext; certificate validation disabled on a release path (a callback scoped to one host or flavour still counts when a release build can reach it); a deep link or exported component reaching an authenticated action with no session check, or whose parameter reaches a WebView or external launcher unvalidated; a WebView JavaScript channel exposing a privileged operation to arbitrary page content; a platform channel that executes an attacker-influenced path or command; a security control the backend relies on that exists only on the client. Must fix before release; blocks merge. |
+| **High** | Session token or credential in `shared_preferences` or a plaintext file; a session token, credential, or regulated or high-harm personal data in an unencrypted local database; sensitive data left backup-eligible; a production endpoint over cleartext `http://`; a biometric gate protecting data with no key binding; session material not cleared on logout; pinning removed (a stated rationale is not a compensating control); a token, nonce, or key derived from a non-secure random source; a credential or token written to the clipboard; a token, credential, or PII in release-build logs; a deep-link or notification parameter used without validation; an extractable vendor key the vendor does not restrict to this app. Must fix before merge. |
 | **Medium** | Hardening gap with a mitigating control elsewhere: obfuscation absent on a build that embeds no secrets, an over-broad permission, a missing backup pin where rotation is documented, verbose logging confined to a non-release flavour. A direct identifier or sensitive category collected or sent to a third party without a consent gate, or a native-code dependency added with no provenance record. Should fix in this change or the next. |
 | **Low** | Defense in depth, a dependency advisory with no reachable path, resilience hardening with no concrete current attack. |
 
-When two clauses match one defect, take the higher tier and name both in the rationale. A removed pin leaves CA validation in place, so it is High by the pinning clause; a removal that also installs an accept-all callback is Critical by the validation clause.
+When two clauses match one defect, take the higher tier and name both in the rationale; two defects that compose follow the combined-finding rule below. A removed pin leaves CA validation in place, so it is High by the pinning clause; a removal that also installs an accept-all callback is Critical by the validation clause.
 
 This rubric governs severity in every run, standalone or subagent. An atomic's own grade - the security atomic's tiers, networking's `Blocker | Major | Minor`, a persistence `VIOLATION` slot - is evidence for a clause, not the tier: name the matching clause, or the nearest one and why the finding sits above or below it.
 
@@ -48,8 +48,8 @@ A defect whose severity turns on a fact the diff cannot settle - a keystore's pr
 
 **Combined-finding rule.** When two findings *compose* on the same path into a worse threat than either alone, file one finding at the elevated severity:
 
-- Token in `shared_preferences` (High) + backup left enabled (High) = **Critical**: the token is extractable without root through a routine backup (an iOS local backup; on Android, `adb backup` below targetSdk 31 or a device-to-device transfer)
-- Deep-link handler that trusts its parameters (High) + a WebView that loads a URL taken from them (High) = **Critical**: attacker-controlled HTML rendered inside the app's own WebView context
+- Token in `shared_preferences` (High, plaintext-file clause) + backup left enabled (High, backup-eligible clause) = **Critical**: the token is extractable without root through a routine backup (an iOS local backup; on Android, `adb backup` when the device runs below Android 12, the app targets below 31, or the build is debuggable; device-to-device transfer unless excluded - by `dataExtractionRules`' `<device-transfer>` section when targeting 31+, where `allowBackup="false"` alone does not stop it, or by `fullBackupContent` below 31)
+- Deep-link handler that trusts its parameters (High) + a WebView or external launcher that loads a URL taken from them = **Critical** by the Critical row's sink clause: attacker-controlled HTML rendered inside the app's own WebView context
 
 Findings that do not compose into a worse threat stay separate at independent severities.
 
@@ -65,33 +65,33 @@ Generated files are build output, not review surface. Exclude from findings: `*.
 
 Defaults to the current branch vs its base; `pr-<N>` reviews a locally fetched PR ref. `review-precondition-check` fails fast on a dirty working tree and on a trunk head - review compares committed code only.
 
-**Never modify the working tree.** Git is read-only here (`status`, `diff`, `log`, `show`).
+**Never modify the working tree.** Git is read-only here (`status`, `diff`, `log`, `show`, `rev-parse`, `ls-tree`, `cat-file`).
 
 A request to audit the whole repository is not a mode: the change set is the review subject, and defects outside it go on `Pre-existing:` lines.
 
-When invoked as a subagent (of `task-flutter-review`), the parent supplies the resolved `base_ref` / `head_ref`, the pre-read diff and name-status, the detected project shape, and the generated-file exclusion list: Step 3 is skipped, no git is re-run, and Step 12 returns the Output Format body instead of writing - the parent owns the report.
+When invoked as a subagent (of `task-flutter-review`), the parent supplies the resolved `base_ref` / `head_ref`, the pre-read diff and name-status, the detected project shape, the request text, and the generated-file exclusion list: Step 3 is skipped and the change set is not re-resolved (read-only git for prior revisions and files beyond the diff stays permitted), and Step 12 returns the Output Format body instead of writing - the parent owns the report.
 
 ## Workflow
 
 ### Step 1 - Behavioral Principles
 
-Use skill: `behavioral-principles`. Accept the parent's confirmation if invoked as a subagent.
+Use skill: `behavioral-principles`. A subagent loads it itself unless the spawning prompt inlined its Rules.
 
 ### Step 2 - Stack and Project Shape
 
-Accept the project shape from the parent when invoked as a subagent. Otherwise read `pubspec.yaml`; if it is absent or declares no `flutter` dependency, stop - this workflow reviews Flutter projects only.
+Accept the project shape from the parent when invoked as a subagent, and read from the head any field below it did not supply. Otherwise read `pubspec.yaml` at the head, after Step 3's round gate has not stopped the run; if it is absent or declares no `flutter` dependency, stop - this workflow reviews Flutter projects only.
 
-Record: secure-storage plugin in use, persistence store, networking client, whether a WebView is present, whether platform channels exist, deep-link mechanism, biometric plugin, and the platform targets present. An absent secure-storage dependency in an app that holds a session is itself a signal. Any field the project files do not establish is written `unconfirmed` in the Summary rather than inferred.
+Record: secure-storage plugin in use, persistence store, networking client and whether it pins, whether a WebView is present, whether platform channels exist, deep-link mechanism, notification handling, biometric plugin, and the platform targets present. An absent secure-storage dependency in an app that holds a session is itself a signal. Any field the project files do not establish is written `unconfirmed` in the Summary rather than inferred.
 
 ### Step 3 - Resolve the Change Set
 
 Use skill: `review-precondition-check` with the invocation's target argument, any `--base`, and `report_type: review-security`, so the handle's `report_path` is this lens's checkpoint and its `prior_checkpoint` that file's frontmatter (or `legacy`). **Skip entirely** when the parent supplied the refs plus the pre-read diff. Surface any fail-fast verbatim.
 
-**Round gate.** Capture `base_sha` / `head_sha` via `git rev-parse` on the handle's refs and decide the round before reading any surface: a valid `prior_checkpoint` whose `head_sha` equals the captured `head_sha` -> print `No new commits since prior security review.` and stop - no review, no report. Otherwise `round` = its `round` + 1 and `prior_head_sha` = its `head_sha`; no `prior_checkpoint`, or `legacy` (Step 12 overwrites the file) -> `round: 1`, no `prior_head_sha`.
+**Round gate.** Capture `base_sha` / `head_sha` via `git rev-parse` on the handle's refs and decide the round before reading any surface: a valid `prior_checkpoint` whose `head_sha` and `base_sha` equal the captured pair -> print `No new commits since prior security review.` and stop - no review, no report. Otherwise `round` = its `round` + 1 and `prior_head_sha` = its `head_sha`; no `prior_checkpoint`, or `legacy` (Step 12 overwrites the file) -> `round: 1`, no `prior_head_sha`.
 
 Then resolve the review set - the paths in `git diff --name-status <base_ref>...<head_ref>`, minus the generated-file list - and read once and reuse, limited to it: `git diff <base_ref>...<head_ref> -- <paths>` for the change body and the name-status for per-file status; a renamed path adds its old path to `<paths>`. The handle's `notes` go to Coverage Notes.
 
-Reading outside the review set is expected: manifests, entitlements, build config, the lockfile, and prior revisions are security surface whether or not the diff touched them.
+Reading outside the review set is expected: manifests, entitlements, build config, the lockfile, and prior revisions are security surface whether or not the diff touched them. Every such file is read at the head (`git show <head_ref>:<path>`); the working tree is read only when the handle's `head_matches_current` is true.
 
 ### Step 4 - Read the Security Surface
 
@@ -100,17 +100,17 @@ Cite real `file:line`. Open:
 - `android/app/src/main/AndroidManifest.xml` - backup attributes, cleartext-traffic flag, debuggable, exported components, intent filters and their link verification, declared permissions
 - `ios/Runner/Info.plist` and entitlements - App Transport Security settings, registered URL schemes, associated domains, permission usage strings
 - Android network security config, when present - pin sets, cleartext exceptions, extra trust anchors, and any debug-only override
-- `pubspec.yaml` and the lockfile - new dependencies, and plugins whose own manifests contribute permissions
+- `pubspec.yaml` and the lockfile - new dependencies
 - Build and CI config - obfuscation and split-debug-info flags, signing setup, and any secret passed in at build time via compile-time environment definitions
 - Every storage call site, the networking client construction and its interceptors, router and deep-link declarations, every platform channel on both the Dart and native side, and WebView configuration
 
-**Permissions arrive from dependencies.** Review the merged manifest, not only the app's own file.
+**Permissions arrive from dependencies.** The merged manifest is a build output git cannot show: name it under Limitations, with the plugins in the lockfile whose documentation declares permissions.
 
 **Removed controls are findings.** When the diff drops pinning, a validation step, a backup restriction, or an auth gate on a route, read the prior revision (`git log -p`) - the blame trail is authoritative. A removal is evidence of insecure design even when each individual line looks small, and the stated rationale ("we will add it back", "it broke the test proxy") is not a compensating control.
 
 ### Step 5 - MASVS Triage
 
-**Triage pass**, not a findings list. One verdict per group, recording whether the diff touches that group's surface - not whether it produced a finding. `yes` means reviewed and clean or reviewed with findings; the Findings sections carry the outcome. Steps 6-11 produce the findings.
+**Triage pass**, not a findings list. One verdict per group, recording whether the diff touches that group's surface - not whether it produced a finding. `yes` means reviewed and clean or reviewed with findings; the Findings sections carry the outcome; a group whose only signal is in code the diff does not touch is `no signal in diff`. Steps 6-11 produce the findings. A method or route the diff adds and nothing yet calls is reviewed as reachable - dead code ships.
 
 `Verdict: {yes | no signal in diff}`
 
@@ -125,7 +125,7 @@ Cite real `file:line`. Open:
 | MASVS-RESILIENCE | Obfuscation config, debuggable flag, root or tamper-detection claims | 10 |
 | MASVS-PRIVACY | More personal data collected or sent than the feature needs; consent gating; third-party SDK collection | 11 |
 
-The groups follow `flutter-security-patterns`' Category-to-Area mapping, and where the two disagree the atomic's mapping wins; a finding the atomic has no Category for (weak randomness, ECB, hand-rolled crypto, dependency provenance) takes the row it falls under. Load that skill at Step 6; it applies through Step 11, and every finding carries the MASVS Area it maps to.
+The groups follow `flutter-security-patterns`' Category-to-Area mapping, and where the two disagree the atomic's mapping wins; a finding the atomic has no Category for (weak randomness, ECB, hand-rolled crypto, a hardcoded IV, dependency provenance) takes the row it falls under, graded by the matching or nearest rubric clause. Load that skill at Step 6; it applies through Step 11, and every finding carries the MASVS Area it maps to. Through Steps 6-11, a security-relevant change that is correctly handled is recorded for `Checked and Correct`.
 
 ### Step 6 - On-Device Storage, Secrets, and Crypto
 
@@ -150,6 +150,7 @@ await secureStorage.write(
   key: 'access_token',
   value: token,
   iOptions: const IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
+  aOptions: const AndroidOptions(encryptedSharedPreferences: true), // 9.x; 10.x applies its own cipher
 );
 ```
 
@@ -160,8 +161,8 @@ Use skill: `flutter-networking`.
 - [ ] **Every endpoint is `https://`.** Cleartext is disabled at the platform level, and any exception is scoped to a named development host and absent from the release configuration
 - [ ] **Certificate validation is never disabled.** A callback that accepts any bad certificate, or a global HTTP override that does the same, ships an app that trusts an interception proxy as readily as the real server. A test-only override not compiled out of release is Critical
 - [ ] **Pinning, where used, pins something that survives renewal** - the issuing CA's certificate or SPKI, or a leaf SPKI plus pins for the next keys - never only the current leaf certificate, carries at least one backup pin, and has a documented rotation plan
-- [ ] **Pinning is an availability risk as much as a control.** An expired pin bricks every installed copy with no server-side remedy, so a remote kill switch or forced-update path is part of this review, not a follow-up
-- [ ] **Pinning coverage stated:** a pin installed on the Dart HTTP client does not cover WebView traffic or a native SDK's own connections
+- [ ] **Pinning is an availability risk as much as a control.** A server key rotated outside the shipped pin set bricks every installed copy with no server-side remedy, so a remote kill switch or forced-update path is part of this review, not a follow-up
+- [ ] **Pinning coverage stated:** a pin installed on the Dart HTTP client does not cover WebView traffic or a native SDK's own connections, and the platform's network security config, ATS, and `usesCleartextTraffic` do not govern Dart's `HttpClient` or Dio's default adapter, which run their own TLS - a Dart-side `http://` URL or permissive callback is a finding whatever the platform flags say
 - [ ] **Auth material travels in headers, never in a path or query string** - URLs reach logs, proxies, and referrers
 - [ ] **Server responses are untrusted input:** parsed defensively, size-bounded, never used to pick code paths by name, never injected as HTML into a WebView unescaped
 
@@ -169,7 +170,7 @@ Use skill: `flutter-networking`.
 
 Use skill: `flutter-navigation-patterns` for deep-link routing. Use skill: `flutter-platform-channels` when the diff adds or changes a channel.
 
-Everything crossing into the process from outside is attacker-controllable: deep-link and custom-scheme URLs, notification payloads, platform-channel arguments, WebView messages, and clipboard contents.
+Everything crossing into the process from outside is attacker-controllable: deep-link and custom-scheme URLs, notification payloads, platform-channel arguments, WebView messages, clipboard contents, and files the user imports (a picker result, a shared file).
 
 **Deep links and exported components:**
 
@@ -185,13 +186,17 @@ Everything crossing into the process from outside is attacker-controllable: deep
 - [ ] The exposed method is the narrowest one that satisfies the feature. A generic "read this path" or "run this command" method hands the app's full privilege to whatever can reach it
 - [ ] The channel does not return secrets to Dart that the native side could have used directly
 
+**Other edges:**
+
+- [ ] A notification payload, clipboard content, or imported file is parsed as untrusted: typed before use, never a URL handed to a WebView or launcher unchecked, never a path the app opens or writes outside its own directories
+
 **WebView:**
 
 - [ ] JavaScript is enabled only where the content requires it
 - [ ] A JavaScript channel is a bridge from page content into the app. Treat every message as hostile, allowlist the operations it can trigger, and never expose storage access, credentials, or navigation past an auth gate through one
 - [ ] Navigation is constrained by a delegate that allowlists destinations rather than following whatever the page requests
 - [ ] No token or session material is injected into page JavaScript or appended to a WebView URL
-- [ ] File and content access are left disabled unless the feature requires them
+- [ ] File and content access are disabled explicitly unless the feature requires them - Android content access defaults on, and file access defaults on below targetSdk 30
 
 ### Step 9 - Local Authentication and Session Handling
 
@@ -223,11 +228,11 @@ Use skill: `flutter-build-release` for flavor, signing, obfuscation, and `--dart
 
 Standalone only. A subagent run writes no file and prints no confirmation line: it returns the Output Format body - Summary, MASVS Triage, Findings, Checked and Correct, Recommendations, Limitations, Next Steps, and Coverage Notes - to the parent, which merges it and owns the report. The triage table and Limitations travel with the findings; the parent cannot recompute them. The checkpoint write is standalone-only.
 
-**Atomic output lines.** Findings keep the atomics' unit: one per defect, further sites of that one defect named as `also <file:line>` on the Location line (each site of a repeated rule is its own defect), and an atomic's `(unconfirmed: depends on <path>)` becomes `pending: <what it depends on>` in the Severity rationale. `No security findings.` and the other atomics' `No <category> findings.` and `No <rule> findings.` lines are working notes: they confirm a check ran and stay out of the report. An absent attribute anchors to the element that should carry it; an absent file is cited as `<path> (missing)`. Every atomic's `Not checked:` line, and any in-scope file that could not be read, is carried into Limitations. There is no cap on findings; order carries priority.
+**Atomic output lines.** Findings keep the atomics' unit: one per defect, further sites of that one defect named as `also <file:line>` on the Location line (each site of a repeated rule that needs its own edit is its own defect; N sites one edit fixes are one finding), and an atomic's `(unconfirmed: depends on <path>)` becomes `pending: <what to check>` in the Severity rationale. `No security findings.`, `No networking findings.`, `No platform-channel findings.`, `No build-release findings.`, and navigation's `No <rule> findings.` are working notes: they confirm a check ran and stay out of the report; persistence's `Tiers:` opener goes to Coverage Notes. An `Also seen: <file:line> - <defect> (owner: <skill>)` line becomes a finding under its triage row when it is a crypto or provenance defect (weak randomness, ECB, hand-rolled crypto, a hardcoded IV, dependency provenance), graded by the matching or nearest rubric clause; otherwise it is dropped when this run loads the owner, and else becomes an `Outside this lens:` line naming the owner; `flutter-build-release` routes ATS exceptions and cleartext flags to `Also seen` for `flutter-security-patterns`, which this run always loads, so those arrive as its findings. An absent attribute anchors to the element that should carry it; an absent file keeps the anchor its atomic gave it (`flutter-platform-channels`' runner entry file or `<path> (missing)`), else anchors to the line of the file that should reference it (the manifest's `<application>` element, `Info.plist`'s top-level `<dict>`, `pubspec.yaml`'s `dependencies:`), with the missing path named in Issue. Every atomic's `Not checked:` line, and any in-scope file that could not be read, is carried into Coverage Notes; Limitations carries only the checks no atomic owns (merged manifest, release build configuration, a vendor SDK's behaviour) - an item is written in one place, never both. There is no cap on findings; order carries priority. An atomic block maps into the finding block as: its Category, Rule, or Risk name opens Issue, with its Problem or Risk text - `flutter-security-patterns`' `Code:` citation - as the defect in Flutter terms; `flutter-security-patterns`' `Attack scenario:` line is the Attack scenario, and for the other atomics the consequence in Problem or Risk feeds it; its Fix or Recommendation is Fix; its `MASVS Area` value in the triage form (`STORAGE` -> `MASVS-STORAGE`), else the triage row, gives Area, with the atomic's `Platform` appended; `flutter-security-patterns`' non-`none` `Server-side dependency` produces the `[Delegate]` entry. A `flutter-data-persistence` store block is one finding per slot value marked `(defect)` or opening `VIOLATION:` that a rubric clause covers (`Logout Wipe: partial` is the High row's session-material clause, `Sensitive Placement: VIOLATION` its plaintext-file or unencrypted-database clause), graded by the rubric and anchored at the write or teardown site the slot describes; a `(defect)` value no clause covers (`Model Shape`, `Transaction Scope`, `Reactivity`, and the like) is an `Outside this lens:` line.
 
-**Pre-existing defects.** A defect on a line the change set does not touch is a finding only when the change makes it reachable or worse - a new caller, a new route into it, a new composition such as a token now stored where backup copies it, or an omission the change needs filled in an untouched file; anchor it at the changed line and name the old line as `also`. Any other defect seen while reading goes on a `Pre-existing: <file:line> - <defect>` line in Coverage Notes and does not affect the Overall Posture count. A defect outside this lens - a correctness or compile error, a cost the perf lens owns - goes on an `Outside this lens: <file:line> - <defect>` line there; in a subagent run the parent routes it to its owning phase. A pre-existing defect that composes into a combined finding keeps the combined-finding anchor.
+**Pre-existing defects.** A defect on a line the change set does not touch is a finding only when the change makes it reachable or worse - a new caller, a new route into it, a new composition such as a token now stored where backup copies it, or an omission the change needs filled in an untouched file; anchor it at the changed line and name the old line as `also`. Anchor precedence: a combined finding anchors at the asset-handling site; otherwise that changed line; otherwise the atomic's heading line, the element that should carry an absent attribute, the atomic's anchor for an absent file, or the write or teardown site a persistence slot describes. A finding anchored in a file the name-status does not list writes `(pre-existing)` after its `file:line` on the Location line. Any other defect seen while reading goes on a `Pre-existing: <file:line> - <defect>` line in Coverage Notes and does not affect the Overall Posture count. A defect outside this lens - a correctness or compile error, a cost the perf lens owns - goes on an `Outside this lens: <file:line> - <defect>` line there; in a subagent run the parent routes it to its owning phase. A pre-existing defect that composes into a combined finding keeps the combined-finding anchor.
 
-**Round 2+ reconcile (standalone).** Project the prior report (the file at the handle's `report_path`, every severity section) into reconcile's parse shape: one `## High-Impact Findings` section with one `### [Label] file:line` heading per finding - the label its severity section maps to (Critical / High -> `[Must]`, Medium / Low -> `[Recommend]`), the bare `file:line` prefix of its `Location` line, and a trailing `_(carried from round <N>)_` group re-emitted on the heading as its own group - followed by its `Issue` line written as `Issue:`. Then Use skill: `review-prior-findings-reconcile` with that projection, the diff, the name-status, `head_sha`, and `git ls-tree -r --name-only <head_sha>` as `head_files` when the name-status has a `D` entry. Its table, note line, and tally render as `## Prior Round Reconciliation`. A `Still open` or `Needs re-check` row this run did not re-derive publishes in its prior severity section with `_(carried from round <N>)_` (`<N>` = the prior report's `round`) appended to its `Location` line; one this run re-derived publishes once, at this run's severity. Both get a Next Steps entry. A prior label outside `[Must]` / `[Recommend]` stays verbatim in the table; `[Praise]` rows are never carried.
+**Round 2+ reconcile (standalone).** Project the prior report (the file at the handle's `report_path`, every severity section) into reconcile's parse shape: one `## High-Impact Findings` section with one `### [Label] file:line` heading per finding - the label its severity section maps to (Critical / High -> `[Must]`, Medium / Low -> `[Recommend]`), the bare `file:line` prefix of its `Location` line (a `<path> (missing)` anchor projects as its bare path; reconcile marks it `Needs re-check` while the path is in neither base nor head, and `Obsolete` when the range deleted it or added and removed it), a `_(pre-existing)_` group when the Location reads `(pre-existing)`, and a trailing `_(carried from round <N>)_` group re-emitted on the heading as its own group - followed by its `Issue` line written as `Issue:`. Then Use skill: `review-prior-findings-reconcile` with that projection, the diff, the name-status, `head_sha`, and `git ls-tree -r --name-only <head_sha>` as `head_files` when the name-status has a `D` entry. Its table, note line, and tally render as `## Prior Round Reconciliation`. A `Still open` or `Needs re-check` row this run did not re-derive publishes in its prior severity section with `_(carried from round <N>)_` (`<N>` = the prior report's `round`) appended to its `Location` line; one this run re-derived publishes once, at this run's severity, and its reconciliation row's Notes names a changed tier (`now Critical`). Both get a Next Steps entry.
 
 Use skill: `review-report-writer` with `report_type: review-security`, `report_body` (the assembled body), `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` as the handle emitted them, `base_sha` / `head_sha` from the Step 3 round gate, `mode: full`, `round` and `prior_head_sha` from the round gate, `scope: +sec`, `depth: deep` (every step runs on every invocation), `stack: flutter`, and `pr_url` when the request carried a PR/MR URL, else copied from `prior_checkpoint.pr_url` when present. Print the writer's confirmation line.
 
@@ -243,10 +248,11 @@ The fence below delimits the template for display only - it is not part of the r
 - **Persistence:** <store> | none | unconfirmed
 - **Local Auth:** <biometric plugin> | none | unconfirmed
 - **Networking:** <client> | pinning: yes / no / changed in this diff | unconfirmed
-- **App Edges:** deep links | platform channels | WebView | notifications | none in diff _(deep-link mechanism: <package> | none | unconfirmed)_
+- **App Edges:** [the edges the diff touches: deep links | platform channels | WebView | notifications | none in diff] {append the project-level presence Step 2 recorded when it differs; `unconfirmed` for a field the files do not establish}
+- **Deep Links:** <package> | none | unconfirmed
 - **Platform Targets:** <list> | unconfirmed
-- **Round:** <N> _(round 2+ standalone runs only)_
-- **Overall Posture:** Clean | Issues Found - [Critical/High/Medium/Low count]
+- **Round:** <N> {round 2+ standalone runs only}
+- **Overall Posture:** Clean | Issues Found - <n> Critical / <n> High / <n> Medium / <n> Low {this run's tiers; a re-derived finding counts once at its new tier}
 
 [2-3 sentence assessment naming the client-specific risks: a token in plaintext preferences, a disabled certificate check, a deep link reaching an authed screen, a secret compiled into the binary.]
 
@@ -267,11 +273,11 @@ The fence below delimits the template for display only - it is not part of the r
 
 ### Critical
 
-- **Location:** [file:line, further sites as `also <file:line>`; `<path> (missing)` for an absent file] _(a carried finding appends `_(carried from round <N>)_`)_
-- **Area:** [MASVS Area - from the security atomic's block, else the triage row the finding falls under; Platform when the atomic gives one, including `unconfirmed: <target>`]
+- **Location:** [file:line at the head, further sites as `also <file:line>`; `(pre-existing)` after the `file:line` when the file is not in the name-status] {a carried finding appends `_(carried from round <N>)_`}
+- **Area:** [`MASVS-<GROUP>` - the security atomic's MASVS Area value in that form, else the triage row the finding falls under; Platform when the atomic gives one, including `unconfirmed: <target>`]
 - **Issue:** [the defect in Flutter terms: "the profile route reads `userId` from the deep link and loads that profile with no session check, so any link recipient opens any account's screen"]
 - **Attack scenario:** [pick one and label: (a) a concrete exploit path; (b) "Regression risk: the next refactor silently drops this check"; (c) "Exposure-dependent: turns on whether the release build ships the debug trust anchor". Do not invent an exploit when the realistic threat is regression or exposure.]
-- **Severity rationale:** [tier] per rubric - [which clause applies]
+- **Severity rationale:** [tier] per rubric - [the clause that applies; both clauses when two match or the finding is combined; the nearest clause and why the finding sits above or below it when none matches] {append `pending: <what to check>` when the diff cannot settle it}
 - **Fix:** [concrete Dart or platform-config remediation with code]
 
 ### High / Medium / Low
@@ -280,7 +286,7 @@ The fence below delimits the template for display only - it is not part of the r
 
 _Within a tier, order by file and line. Omit severity sections with no findings. If all are omitted: "No security issues found."_
 
-## Prior Round Reconciliation _(round 2+ standalone runs only)_
+## Prior Round Reconciliation {round 2+ standalone runs only}
 
 [table, note line, and tally from `review-prior-findings-reconcile`]
 
@@ -294,11 +300,11 @@ _Within a tier, order by file and line. Omit severity sections with no findings.
 
 ## Limitations
 
-[The checks this run could not perform - merged manifest, release build configuration, native handler source - and every atomic's `Not checked:` line. Omit when all were performed.]
+[The checks no atomic owns that this run could not perform - merged manifest, release build configuration, a vendor SDK's behaviour. Omit when all were performed.]
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
+Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend; within a band, Critical first, then by Location.
 Severity maps to intent: Critical / High -> [Must]; Medium / Low -> [Recommend].
 Any finding the client cannot close alone also produces a `[Delegate]` entry naming what the backend or another owner must enforce, placed right after that finding's `[Implement]` entry and citing the same `file:line`. For findings from `flutter-security-patterns`, its non-`none` **Server-side dependency** field states this directly; for every other finding, judge it from the finding - an authorization, collection, or retention concern the server owns delegates the same way. A `[Delegate]` entry carries its finding's intent.
 
@@ -309,7 +315,7 @@ _Omit if no issues found._
 
 ## Coverage Notes
 
-[One line each, omitted when empty: the handle's notes (standalone runs), `Pre-existing:`, `Outside this lens:`]
+[One line each, omitted when empty: the handle's notes (standalone runs), persistence's `Tiers:` opener, `Not checked:` (an in-scope file that could not be read among them), `Pre-existing:`, `Outside this lens:`]
 ```
 
 `Stack Detected` carries the `pubspec.yaml` constraints (`environment.flutter`, `environment.sdk`) as written; a missing constraint is `unconfirmed`.
@@ -326,19 +332,19 @@ _Omit if no issues found._
 
 **Verifiable from the diff (must check):**
 
-- [ ] `behavioral-principles` loaded (or accepted from parent)
-- [ ] Stack confirmed; storage plugin, persistence store, networking client, WebView presence, channels, deep-link mechanism, biometric plugin, and platform targets recorded
-- [ ] `review-precondition-check` ran with `report_type: review-security` (or parent-supplied refs and diff reused); round decided before any surface was read (or the stop line printed); diff and name-status read once and reused
+- [ ] `behavioral-principles` loaded, or rules inlined in the spawning prompt
+- [ ] Stack confirmed after the round gate; storage plugin, persistence store, networking client and pinning, WebView presence, channels, deep-link mechanism, notification handling, biometric plugin, and platform targets recorded
+- [ ] `review-precondition-check` ran with `report_type: review-security` (or parent-supplied refs and diff reused); round decided on `head_sha` and `base_sha` before any surface was read (or the stop line printed); diff and name-status read once and reused; files beyond the diff read at `head_ref`
 - [ ] Security surface read directly (manifest, plist and entitlements, network config, lockfile, build config, storage and network call sites, routes, channels, WebView); prior revision consulted wherever a control was removed
 - [ ] MASVS triage produced one verdict per group; triage verdicts not duplicated as standalone findings
 - [ ] Storage, secrets, and crypto checked: secure storage for session material, storage options set explicitly, local DB encryption, logout teardown, no secret in source or assets, secure randomness, no hand-rolled crypto, hardcoded key, or ECB
 - [ ] Transport checked: TLS everywhere, no disabled validation, pinning shape plus backup pin, rotation path, and kill switch, pinning coverage stated, auth material in headers, server responses treated as untrusted
-- [ ] Every app edge in the diff triaged as untrusted input: deep links, exported components, platform channels, WebView
-- [ ] Local authentication reviewed when in diff: key binding rather than a UI gate, enrollment-change invalidation, device-credential fallback recorded, token lifetime handled on device, app-switcher and screenshot exposure
-- [ ] Build hardening reviewed: obfuscation with archived symbols, debug artifacts absent, backup behaviour, permission minimality including plugin-contributed permissions, dependency provenance, root or tamper detection framed as defense in depth
+- [ ] Every app edge in the diff triaged as untrusted input: deep links, exported components, platform channels, WebView, notification payloads, clipboard, imported files
+- [ ] Local authentication reviewed: key binding rather than a UI gate, enrollment-change invalidation, device-credential fallback recorded, token lifetime handled on device, app-switcher and screenshot exposure
+- [ ] Build hardening reviewed: obfuscation with archived symbols, debug artifacts absent, backup behaviour, permission minimality of declared permissions, dependency provenance, root or tamper detection framed as defense in depth
 - [ ] Leakage reviewed: logs, crash reports, analytics, consent gating, clipboard
 - [ ] Generated files excluded from findings; the producing source cited instead
-- [ ] Severity rubric applied consistently; combined-finding rule applied where two defects compose on one path
+- [ ] Severity rubric applied consistently; combined-finding rule applied where two defects compose on one path; anchor precedence applied; `(pre-existing)` written on untouched-file findings; `Also seen` lines filed as crypto or provenance findings, dropped, or routed to `Outside this lens:`
 - [ ] Diff-unverifiable defects filed at their confirmed-severity with `pending:` rather than discounted
 - [ ] Correctly handled security-relevant changes recorded under Checked and Correct
 - [ ] Every finding carries an attack scenario, a regression-risk rationale, or an exposure-dependent framing

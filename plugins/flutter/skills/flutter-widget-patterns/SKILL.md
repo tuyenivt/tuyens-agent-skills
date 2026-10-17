@@ -85,7 +85,7 @@ ListView(children: [for (final t in todos) TodoTile(todo: t)]);
 ListView(children: [for (final t in todos) TodoTile(key: ValueKey(t.id), todo: t)]);
 ```
 
-Without a key, the framework matches new widgets to existing elements by position and runtime type. That is correct for stable lists and wrong the moment items are reordered or removed: a checkbox, scroll offset, or text field keeps the old element's state and appears to jump to a neighboring row.
+Without a key, the framework matches new widgets to existing elements by position and runtime type. That is correct for stable lists and wrong the moment items are reordered or removed: a checkbox, scroll offset, or text field keeps the old element's state and appears to jump to a neighboring row. Key on the identity that outlives every change the item undergoes - a client-generated id when a server id later replaces it.
 
 ```dart
 // Bad - a new GlobalKey each build; the subtree is remounted and state is lost
@@ -122,7 +122,7 @@ await repo.save(draft);
 messenger.showSnackBar(const SnackBar(content: Text('Saved')));
 ```
 
-Inside a `State`, check `mounted`; elsewhere, `context.mounted`. The `use_build_context_synchronously` lint flags these, so keep it enabled instead of relying on review to catch them.
+Inside a `State`, check `mounted`; elsewhere, `context.mounted`. The `use_build_context_synchronously` lint flags these, so keep it enabled instead of relying on review to catch them. A bottom sheet or dialog is its own route: its `State` owns its controllers, it returns its result through `Navigator.pop(result)`, and the caller re-checks `mounted` after awaiting it.
 
 A `BuildContext` is a handle on a position in the element tree, valid for as long as that element is mounted. Storing one in a field, a controller, or a singleton outlives that guarantee and leaks the element.
 
@@ -178,7 +178,7 @@ class LoggingButton extends StatelessWidget {
 }
 ```
 
-Framework widgets are configuration objects with private state contracts; subclassing binds you to internals that change between releases. Wrapping composes the same behavior with no coupling.
+Framework widgets are configuration objects with private state contracts; subclassing binds you to internals that change between releases. Wrapping composes the same behavior with no coupling. In a reorderable list whose rows hold text fields, set `buildDefaultDragHandles: false` and give each row an explicit drag handle (`ReorderableDragStartListener`) so a long-press in a field edits text instead of starting a drag.
 
 ```dart
 // Bad - not a widget of its own: no context or rebuild boundary, no const call site, rebuilds with the entire parent
@@ -216,9 +216,7 @@ Column(children: [Header(), ListView(...)])
 Column(children: [Header(), Expanded(child: ListView(...))])
 ```
 
-Unbounded-constraint errors nearly always mean a scrollable or flexible child sits inside a parent that imposes no limit on that axis. `Expanded`/`Flexible` fix it and must be direct children of a `Row`, `Column`, or `Flex`. `shrinkWrap: true` (for a scrollable) and `IntrinsicHeight`/`IntrinsicWidth` (for a flexible child; a scrollable's viewport throws on intrinsics) also silence the error but force extra layout work over the children - use them only when the bounded alternative genuinely does not fit.
-
-In a reorderable list whose rows hold text fields, set `buildDefaultDragHandles: false` and give each row an explicit drag handle (`ReorderableDragStartListener`) so a long-press in a field edits text instead of starting a drag.
+Unbounded-constraint errors nearly always mean a scrollable or flexible child sits inside a parent that imposes no limit on that axis. `Expanded`/`Flexible` fix it and must sit under a `Row`, `Column`, or `Flex` with only plain widget wrappers (no other render object) between. `shrinkWrap: true` (for a scrollable) and `IntrinsicHeight`/`IntrinsicWidth` (for a flexible child; a scrollable's viewport throws on intrinsics) also silence the error but force extra layout work over the children - use them only when the bounded alternative genuinely does not fit.
 
 Prefer `SizedBox` over `Container` when only sizing or spacing is needed: it is const-constructible and cheaper. Keyboard and safe-area insets belong to `flutter-adaptive-responsive`.
 
@@ -254,7 +252,7 @@ void didUpdateWidget(ItemView old) {
 FutureBuilder(future: _item, builder: (context, snapshot) => ...)
 ```
 
-The rule generalizes: a builder rebuilds whenever its source changes, so the source must not be *created* during build. Handle every branch a snapshot can present - waiting, error, and data - rather than assuming data.
+The rule generalizes: a builder rebuilds whenever its source changes, so the source must not be *created* during build. Handle every branch a snapshot can present - waiting, error, and data - rather than assuming data. `MediaQuery.of(context)` subscribes the widget to every media-query change; the scoped accessors (`MediaQuery.sizeOf`, `paddingOf`, `viewInsetsOf`) subscribe to one field.
 
 ## Output Format
 
@@ -267,20 +265,28 @@ When invoked from an implementation workflow, emit the tree decisions:
 | OrderList | Stateless | none | full | builds a ListView.builder; items keyed by id |
 | OrderTile | Stateful | ValueKey(order.id) | self | owns expansion controller |
 | TotalBar | Stateless | none | ValueListenableBuilder | isolates the total |
-| EmptyCartHint | Stateless (const) | none | full | no runtime inputs |
+| EmptyCartHint | Stateless (const) | none | const | no runtime inputs |
 ```
 
-One row per widget where a decision was made; skip widgets with nothing to decide.
+One row per widget where a decision was made; skip widgets with nothing to decide. Tier variants (web read-only) and `Semantics` are not tree decisions; they belong to `flutter-adaptive-responsive` and `flutter-accessibility`.
 
 - `Type: {Stateless | Stateless (const) | Stateful | Consumer Stateless | Consumer Stateful}` - `Consumer` when the widget reads providers; write `(const)` only when every call site can pass `const`
-- `Rebuild Scope` names what limits this widget's own rebuild: `self` when it rebuilds alone (including a widget driven only by a controller it listens to, whoever owns it, or by its own state), `full` when it rebuilds with its parent, or the name of the builder, scoped-list widget, `Consumer`, or `select`ed provider that bounds it
+- `Rebuild Scope` names what limits this widget's own rebuild: `self` when it rebuilds alone (including a widget driven only by a controller it listens to, whoever owns it, or by its own state), `full` when it rebuilds with its direct parent, `const` when every call site passes `const` so the parent's rebuild hands the element the identical instance and skips it, or the name of the builder, scoped-list widget, `Consumer`, or `select`ed provider that bounds it
 
-Implement mode ends with `Pre-existing: <file:line> - <defect>` for each defect in code the plan edits or depends on but does not fix, or `Pre-existing: none`. Code not yet written is cited as `<path> (new)`. A file the plan depends on that is absent or could not be read is listed as `Not read: <path> - <reason>`. A defect the change cannot ship on top of is fixed in the plan, not listed as `Pre-existing`.
+```
+Fixed in plan: {<file:line> - <defect> | none}
+
+Pre-existing: {<file:line> - <defect> | none}
+
+Not read: {<path> - <reason> | none}
+```
+
+Implement mode describes the state after the plan and ends with these lines, each on its own line with a blank line between: `Fixed in plan: <file:line> - <defect>` per defect in existing code the plan corrects, or `Fixed in plan: none`; `Pre-existing: <file:line> - <defect>` per defect left in place, or `Pre-existing: none`; `Not read: <path> - <reason>` per file the plan needs that is absent, could not be read, or was not read, or `Not read: none`. A defect is fixed in the plan when it sits in code the change edits, or when the new code would misbehave on first run on top of it; every other defect in code the new code calls or reads is `Pre-existing`; code the new code neither edits, calls, nor reads is not listed, except a defect that breaks the build, which is always `Fixed in plan`. Code not yet written is cited as `<path> (new)`.
 
 When invoked from a review workflow, emit one block per finding:
 
 ```
-### [Must | Recommend] file:line
+### [{Must | Recommend}] {file:line}
 
 - Category: {Widget Type | Const Usage | Key Correctness | Context Safety | Lifecycle | Composition | Constraints | Rebuild Scope}
 - Code: {one-line citation}
@@ -288,19 +294,29 @@ When invoked from a review workflow, emit one block per finding:
 - Recommendation: {concrete edit}
 ```
 
-`[Must]` when the violation crashes, leaks, loses user-visible state, or breaks what the user sees (dead context, missing dispose, missing key on stateful items of a list that reorders, inserts, or removes, a `GlobalKey` built in `build`, an inherited lookup in `initState`, unbounded constraints, overflow that clips content, stale `initState` capture, a `Future` or `Stream` created in `build`). `[Recommend]` for cost and clarity (widget type, const usage including `Container` where `SizedBox` fits, composition, rebuild scope, `shrinkWrap` as a workaround). Provider and plain-Dart defects next to widget code belong to their own skills.
+The label follows the failure, not the category. `[Must]` when the violation crashes, leaks, loses user-visible state, or breaks what the user sees (dead context, missing dispose, missing key on stateful items of a list that reorders, inserts, or removes, a `GlobalKey` built in `build`, an inherited lookup in `initState`, unbounded constraints, overflow that clips content, stale `initState` capture, a `Future` or `Stream` created in `build` - filed as `Rebuild Scope`). `[Recommend]` for cost and clarity: an empty `State` or `ConsumerState` (one that exists only to reach `ref` is a `ConsumerWidget`), omitted `const`, `Container` where `SizedBox`, `Padding`, or `ColoredBox` fits (a `Container` carrying a decoration is not a finding), `_buildX` helpers, the reorderable drag-handle rule (`Composition`), `MediaQuery.of(context)` where a scoped accessor exists (`Rebuild Scope`), `MediaQuery...size` driving layout a constraint could (`Constraints`), a `Positioned` with both `left` and `right` overriding its child's width (`Constraints`), and `shrinkWrap` or `IntrinsicHeight` used to silence an unbounded-constraint error. A disabled `use_build_context_synchronously` or `prefer_const_constructors` lint is one `[Recommend]` finding anchored on its `analysis_options.yaml` line, or on the `linter:` line when the lint is simply absent, under `Context Safety` or `Const Usage`. Provider and plain-Dart defects next to widget code are `Also seen` lines.
 
-When invoked directly to diagnose a symptom, emit the same finding block per diagnosed cause, with two changes: the heading is `### [Must | Recommend] <pattern section>` when no source file was supplied, and each block ends with `- Confidence: {Confirmed | Likely | Needs-Source}` - `Confirmed` when the cited code was read, `Likely` when the reported symptom points to one pattern more strongly than any other, `Needs-Source` when two or more fit equally. Rank blocks by confidence, highest first; a weaker alternative cause is its own lower-confidence block. With no source, `Code:` names the suspected shape (`unkeyed stateful rows in a ListView`).
+Diagnose mode adds `- Confidence: {Confirmed | Likely | Needs-Source}` to every block - `Needs-Source` when two or more causes fit equally, code read or not; otherwise `Confirmed` when the cited code was read and `Likely` when it was not (with no source, never `Confirmed`); a weaker alternative cause is its own block at the label it would carry if confirmed, after the stronger one within its symptom group. With no source file supplied, the heading is `### [{Must | Recommend}] <pattern section>` (the `## Patterns` heading that explains the cause), `Code:` names the suspected shape (`unkeyed stateful rows in a ListView`), and `Issue:` and `Recommendation:` describe the shape and the edit in that section's terms; a `Future` or `Stream` created in `build` cites `Scoping rebuilds with builders`. No `Not checked` line is emitted when no source was read; the `Symptom <n>:` lines are plain lines, blank-separated.
 
-For each category with zero findings, emit exactly `No <category> findings.` using the category name from the enum, so the workflow knows the check ran. Omit that line for categories that have findings, and omit the enumeration entirely when no source was read - emit `Diagnosed from symptom only; no category sweep performed.` instead.
+In diagnose mode with no source read, emit `Diagnosed from symptom only; no category sweep performed.` in place of the omitted lines.
 
 Generated widget code (`*.g.dart`, `*.freezed.dart`, and other build_runner output) is out of scope - report against the source that generates it.
 
-Blocks are one per defect, ordered by severity, then file and line, then enum order. Each site of a repeated rule is its own defect; a single defect that needs edits in several places anchors on the line to edit and names the others as `also <file:line>` on its citation line.
+Blocks are one per defect, ordered by severity, then file path (repository-relative, byte order), then line, then enum order. A defect is one rule at one fix site: the same rule broken at N sites that each need their own edit is N blocks; the same rule broken at N sites that one edit fixes (a declaration, a shared helper, a config key) is one block anchored on the line to edit, naming the other sites as `also <file:line>` on its citation line (the block's `Code:` line); one line breaking two rules with two different fixes is two blocks, with one fix it is one block under the rule naming the worse failure (on a tie, the earlier enum value).
 
-A finding that depends on code outside the files read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to the line describing its effect. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of dart-language-patterns, flutter-riverpod-patterns, flutter-navigation-patterns, flutter-networking, flutter-data-persistence, flutter-local-db-migration, flutter-adaptive-responsive, flutter-accessibility, flutter-i18n, flutter-performance, flutter-security-patterns, flutter-error-handling, flutter-platform-channels, flutter-testing-patterns, flutter-build-release, flutter-overengineering-review covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's `Category` values, or the path of a file that could not be read) when any check could not be exercised, then the `No <category> findings.` lines. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean and gets its `No <category> findings.` line; a check on the `Not checked` line does not. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its `Issue:` line, and does not move its check to `Not checked`. Invoked directly, a request to write or change code takes the implement shape, a request to review or audit takes the review shape, and a supplied symptom or bug report takes diagnose mode.
 
-In diagnose mode, blocks for defects that cause the reported symptoms come first, in the order the symptoms were reported; every other defect seen in the files read follows at its own severity.
+The closing lines - `Also seen` and `Not checked` only when they have content, then one `No <category> findings.` line per clean check (no block, not on the `Not checked` line), blank-separated:
+
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+
+{No <category> findings.}
+```
+
+Diagnose mode opens with one line per reported symptom, `Symptom <n>: <the report's title or first sentence>`, a title that lists two symptoms is two lines, naming on each any premise the files read contradict (a flag the report says is on, a version it names) - the diagnosis then proceeds on what the code shows - and stating when the files read cannot cause the symptom. Blocks for the causes of the reported symptoms come first, grouped by symptom in reported order and within a group by severity, each such block's `Issue:` line opening with `Symptom <n>:`; a cause shared by two symptoms is one block opening `Symptom 1, 2:`, placed with the lower-numbered symptom; every other defect seen in the files read follows, ordered as in review mode. The zero-finding lines named above are omitted in diagnose mode; `Also seen` and `Not checked` lines are kept.
 
 ## Avoid
 

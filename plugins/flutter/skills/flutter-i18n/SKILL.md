@@ -62,7 +62,7 @@ const Text('Order total')
 Text(AppLocalizations.of(context)!.orderTotalLabel)
 ```
 
-The generated class is build output: raise findings against the ARB file and the call site, never against `app_localizations.dart`. Setting `nullable-getter: false` in `l10n.yaml` removes the `!` at every call site.
+The generated class is build output: raise findings against the ARB file and the call site, never against `app_localizations.dart`. Import it from its generated path (`output-dir` in `l10n.yaml`, defaulting to `arb-dir`); the synthetic `package:flutter_gen` import was deprecated in Flutter 3.29 and removed after. Setting `nullable-getter: false` in `l10n.yaml` removes the `!` at every call site.
 
 ```dart
 // Bad - two fragments; word order, gender agreement, and spacing are not translatable
@@ -97,7 +97,7 @@ Text(count == 1 ? l10n.oneOrder : l10n.manyOrders(count))
 Text(l10n.orderCount(orders.length))
 ```
 
-The ICU categories are `zero`, `one`, `two`, `few`, `many`, `other`, plus exact matches like `=0`. The template ARB only needs the forms English uses; translators supply the forms their language needs (Polish uses `one`, `few`, `many`, `other`; Arabic uses all six), which is exactly what the Dart branch makes impossible.
+The ICU categories are `zero`, `one`, `two`, `few`, `many`, `other`; gen_l10n also accepts the exact forms `=0`, `=1`, `=2`, each merged with `zero`, `one`, `two` (so `zero` matches exactly 0 even in English, and a message may not hold both forms of a pair). The template ARB only needs the forms English uses; translators supply the forms their language needs (Polish uses `one`, `few`, `many`, `other`; Arabic uses all six), which is exactly what the Dart branch makes impossible.
 
 `select` handles non-numeric variation, most commonly gender:
 
@@ -169,7 +169,7 @@ Padding(padding: const EdgeInsetsDirectional.only(start: 16), child: Row(childre
 | `BorderRadius.only(topLeft:)` | `BorderRadiusDirectional.only(topStart:)` |
 | `Positioned(left:, right:)` | `PositionedDirectional(start:, end:)` |
 
-`Row` with `MainAxisAlignment.start` already mirrors; it is the explicit `left` / `right` values that do not. Material's directional icons (`arrow_back`, `chevron_right`, `send`, `undo`) set `matchTextDirection` and mirror themselves; custom or third-party directional icons need a mirrored asset or a flip on `Directionality.of(context)`, and `Image` exposes `matchTextDirection` for the asset case. Icons with intrinsic orientation (a clock, a checkmark, a brand mark) must not be mirrored. When no RTL locale ships, physical-side geometry is not a finding.
+`Row` with `MainAxisAlignment.start` already mirrors; it is the explicit `left` / `right` values that do not. Material's directional icons (`arrow_back`, `chevron_right`, `send`, `undo`) set `matchTextDirection` and mirror themselves; custom or third-party directional icons need a mirrored asset or a flip on `Directionality.of(context)`, and `Image` exposes `matchTextDirection` for the asset case. Icons with intrinsic orientation (a clock, a checkmark, a brand mark) must not be mirrored. When no RTL locale ships, physical-side geometry in existing code is not a finding; in lines a change adds it is `RTL-Layout`, Medium.
 
 Verify with a real RTL locale (`ar`, `he`) rather than by inspection: `MaterialApp(locale: const Locale('ar'), ...)` in a widget or golden test.
 
@@ -177,16 +177,19 @@ Verify with a real RTL locale (`ar`, `he`) rather than by inspection: `MaterialA
 
 *Tiers: All.*
 
-Default resolution walks the device's preferred-locale list, matching language with script and country, then language, then country, and falls back to `supportedLocales.first` only when nothing matches. Two consequences worth stating explicitly:
+Default resolution walks the device's preferred-locale list, matching the full locale, then language plus script, then language plus country, then language alone, with a country-only match as the last resort, and falls back to `supportedLocales.first` only when nothing matches. Two consequences worth stating explicitly:
 
 - The first entry in `supportedLocales` is the fallback for every unmatched device locale. The generated list is alphabetical, so set `preferred-supported-locales` in `l10n.yaml` to put the complete locale first.
-- A key present in the template ARB but missing from a translation falls back to the template value, so an untranslated app silently ships English strings. Set `untranslated-messages-file` in `l10n.yaml` so the gap is a build artifact instead of a discovery in production.
+- A key present in the template ARB but missing from a translation falls back to the template value; `flutter gen-l10n` prints only a per-locale count, so set `untranslated-messages-file` in `l10n.yaml` to get a per-key artifact CI can fail on.
 
 Override only when the default is wrong for the product (for example, routing a language the app does not ship to a related one it does, such as Catalan to Spanish, instead of the fallback):
 
 ```dart
 MaterialApp(
-  localeListResolutionCallback: (deviceLocales, supported) => /* explicit choice */,
+  localeListResolutionCallback: (deviceLocales, supported) {
+    final first = deviceLocales?.firstOrNull;
+    return first?.languageCode == 'ca' ? const Locale('es') : null; // null falls through to the default resolution
+  },
 )
 ```
 
@@ -199,8 +202,8 @@ A user-selected locale is app state that must be persisted and applied through `
 Translated strings are commonly longer than English: short labels can double or more, and running text typically grows 20-40%. German, Finnish, and Russian are the usual first failures.
 
 ```dart
-// Bad - fits "Save"; clips "Speichern unter" in German
-SizedBox(width: 88, child: ElevatedButton(onPressed: _save, child: Text(l10n.save)))
+// Bad - fits "Save"; wraps or truncates "Speichern" in German
+SizedBox(width: 88, child: ElevatedButton(onPressed: _save, child: Text(l10n.save, maxLines: 1, overflow: TextOverflow.ellipsis)))
 
 // Good - the button sizes to its label, with a floor rather than a fixed width
 ConstrainedBox(
@@ -219,25 +222,36 @@ When invoked from an implementation workflow, emit the localization plan:
 
 ```
 Setup: {l10n.yaml at <path> | l10n.yaml at <path>, keys added | not configured}
-Template locale: {code}   Supported: {codes}   RTL in scope: {yes | no}
+
+Template locale: {code}
+
+Supported: {codes}
+
+RTL in scope: {yes | no}
+
 Layout: {directional conversions / expansion floors at file:line | none needed}
 
 | String / value | ARB key | Form | Format | Notes |
 |----------------|---------|------|--------|-------|
-| Order count header | orderCount | plural | - | =0 / =1 / other |
-| Order date | placedOn | plain | DateTime yMMMd | placeholder |
-| Order total | orderTotal | plain | String, NumberFormat.currency(name: order code) | currency is the order's, not the locale's |
-| Delete tooltip | deleteOrder | plain | - | semantic label |
+| {what the user reads or types} | {key \| -} | {plain \| plural \| select \| input} | {placeholder type and skeleton \| -} | {states, currency, label role} |
 ```
 
-New locales are listed in the `Supported` header, not as rows. New keys go into the template ARB only; existing translations surface them through `untranslated-messages-file` until translated. Once an RTL locale ships, every physical-side value in the lines the plan edits goes on the Layout line; the rest are `Pre-existing`.
+For example: `Order count header | orderCount | plural | int decimalPattern | =0 / =1 / other`, `Order date | placedOn | plain | DateTime yMMMd | placeholder`, `Order total | orderTotal | plain | String, NumberFormat.currency(name: order code) | currency is the order's, not the locale's`, `Delete tooltip | deleteOrder | plain | - | semantic label`. `Form: input` is a value the user types (an amount, a date) with no ARB key: it is parsed with `NumberFormat.decimalPattern(locale).parse` or `DateFormat`, accepting the locale's separators and digit set, Arabic-Indic included. Semantic labels, tooltips, and error messages (reason as a placeholder) are rows, in screen order. Layout cites `<path> (new)` for unwritten code. New locales are listed in the `Supported` header, not as rows. New keys go into the template ARB only; existing translations surface them through `untranslated-messages-file` until translated. Once an RTL locale ships, every physical-side value in the lines the plan edits goes on the Layout line; the rest are `Pre-existing`.
 
-Implement mode ends with `Pre-existing: <file:line> - <defect>` for each defect in code the plan edits or depends on but does not fix, or `Pre-existing: none`. Code not yet written is cited as `<path> (new)`. A file the plan depends on that is absent or could not be read is listed as `Not read: <path> - <reason>`. A defect the change cannot ship on top of is fixed in the plan, not listed as `Pre-existing`.
+```
+Fixed in plan: {<file:line> - <defect> | none}
+
+Pre-existing: {<file:line> - <defect> | none}
+
+Not read: {<path> - <reason> | none}
+```
+
+Implement mode describes the state after the plan and ends with these lines, each on its own line with a blank line between: `Fixed in plan: <file:line> - <defect>` per defect in existing code the plan corrects, or `Fixed in plan: none`; `Pre-existing: <file:line> - <defect>` per defect left in place, or `Pre-existing: none`; `Not read: <path> - <reason>` per file the plan needs that is absent, could not be read, or was not read, or `Not read: none`. A defect is fixed in the plan when it sits in code the change edits, or when the new code would misbehave on first run on top of it; every other defect in code the new code calls or reads is `Pre-existing`; code the new code neither edits, calls, nor reads is not listed, except a defect that breaks the build, which is always `Fixed in plan`. Code not yet written is cited as `<path> (new)`.
 
 When invoked from a review workflow or directly to diagnose a localization defect report, emit one block per finding:
 
 ```
-### [Blocker | High | Medium | Low] file:line
+### [{Blocker | High | Medium | Low}] {file:line}
 
 - Area: I18n
 - Check: {Setup | Hardcoded-String | Concatenation | Plural-Form | Locale-Format | RTL-Layout | Locale-Resolution | Text-Expansion | Translator-Context}
@@ -247,19 +261,27 @@ When invoked from a review workflow or directly to diagnose a localization defec
 - Fix: {concrete edit}
 ```
 
-Close with one coverage line: `Checks clean: {comma-separated Check values with zero findings | none}`.
-
-**Severity calibration.** `Blocker` = text is unreadable or wrong in a supported locale (clipped label, mirrored layout collision, a date or amount that reads as a different value). `High` = correct characters, wrong language or wrong grammatical form for a supported locale (hardcoded string, two-branch plural), or physical-side geometry misaligning a supported RTL locale short of collision. `Medium` = correct today but structurally fragile (concatenation that no supported locale breaks yet, fixed-width box that currently fits, missing `description`). `Low` = key naming and ARB organization. Concatenation is `High` once a supported locale's word order or agreement breaks the joined sentence. When a finding matches two bands, the higher band wins. A line that fits two Checks is filed once, under the Check whose fix also fixes the other (a hardcoded literal inside a concatenation is `Hardcoded-String`).
+**Severity calibration.** `Blocker` = text is unreadable or wrong in a supported locale (clipped label, mirrored layout collision, a date or amount that reads as a different value). `High` = correct characters, wrong language or wrong grammatical form for a supported locale (hardcoded string, two-branch plural), or physical-side geometry misaligning a supported RTL locale short of collision. `Medium` = correct today but structurally fragile (concatenation that no supported locale breaks yet, fixed-width box that currently fits, missing `description`). `Low` = key naming and ARB organization. Concatenation is `High` once a supported locale's word order or agreement breaks the joined sentence. When a finding matches two bands, the higher band wins. A line that fits two Checks is filed once, under the Check whose fix also fixes the other (a hardcoded literal inside a concatenation is `Hardcoded-String`; a literal inside a Dart plural branch is `Plural-Form` at its own severity, uncapped); when the two fixes differ it is two blocks. A key missing from a shipped translation is `Locale-Resolution`, one block per locale file anchored on that file's `@@locale` line and naming the keys; an unused key is not a finding; the deprecated `flutter_gen` import is `Setup`, Medium, one block per file. A missing `l10n.yaml` option (`preferred-supported-locales`, `untranslated-messages-file`) is `Setup`, Medium, anchored on `l10n.yaml`. A brand name is not a finding; a unit (`kg`) is a key with a placeholder; the wording of a translation is not reviewed. A raw `e.toString()` shown to the user is `Also seen` for `flutter-error-handling`.
 
 **Label mapping for the umbrella review:** `Blocker`, `High` -> `[Must]`; `Medium`, `Low` -> `[Recommend]`.
 
-If the project has no `l10n.yaml` or ARB directory, emit `Localization not configured` once, raise the setup as one `High` finding with Check `Setup` anchored at the `dependencies:` line of `pubspec.yaml`, and still file each hardcoded literal as its own `Hardcoded-String` finding capped at `Medium`; other Checks keep their normal severity. Findings cite the ARB file or the Dart call site, never the generated localizations output; a key missing from a translation anchors on that key's line in the template ARB. With localization not configured, severities are judged against the device locale.
+If the project has no `l10n.yaml` or ARB directory, emit `Localization not configured` once, raise the setup as one `High` finding with Check `Setup` anchored at the `dependencies:` line of `pubspec.yaml`, and still file each hardcoded literal as its own `Hardcoded-String` finding capped at `Medium`, and `Locale-Format` is capped the same; other Checks keep their normal severity. Findings cite the ARB file or the Dart call site, never the generated localizations output. With localization not configured, `Locale-Resolution` and `Translator-Context` are `Not checked`.
 
-Blocks are one per defect, ordered by severity, then file and line, then enum order. Each site of a repeated rule is its own defect; a single defect that needs edits in several places anchors on the line to edit and names the others as `also <file:line>` on its citation line.
+Blocks are one per defect, ordered by severity, then file path (repository-relative, byte order), then line, then enum order. A defect is one rule at one fix site: the same rule broken at N sites that each need their own edit is N blocks; the same rule broken at N sites that one edit fixes (a declaration, a shared helper, a config key) is one block anchored on the line to edit, naming the other sites as `also <file:line>` on its citation line (the block's `Code:` line); one line breaking two rules with two different fixes is two blocks, with one fix it is one block under the rule naming the worse failure (on a tie, the earlier enum value; a pairing the calibration paragraph names is filed as it says).
 
-A finding that depends on code outside the files read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to the line describing its effect. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of dart-language-patterns, flutter-widget-patterns, flutter-riverpod-patterns, flutter-navigation-patterns, flutter-networking, flutter-data-persistence, flutter-local-db-migration, flutter-adaptive-responsive, flutter-accessibility, flutter-performance, flutter-security-patterns, flutter-error-handling, flutter-platform-channels, flutter-testing-patterns, flutter-build-release, flutter-overengineering-review covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's `Check` values, or the path of a file that could not be read) when any check could not be exercised, then the `Checks clean:` line. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean and is listed on `Checks clean:`; a check on the `Not checked` line is not. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its `Impact:` line, and does not move its check to `Not checked`. Invoked directly, a request to write or change code takes the implement shape, a request to review or audit takes the review shape, and a supplied symptom or bug report takes diagnose mode.
 
-In diagnose mode, blocks for defects that cause the reported symptoms come first, in the order the symptoms were reported; every other defect seen in the files read follows at its own severity.
+The closing lines - `Also seen` and `Not checked` only when they have content, `Checks clean:` in review mode:
+
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+
+Checks clean: {comma-separated Check values with zero findings | none}
+```
+
+Diagnose mode opens with one line per reported symptom, `Symptom <n>: <the report's title or first sentence>`, a title that lists two symptoms is two lines, naming on each any premise the files read contradict (a flag the report says is on, a version it names) - the diagnosis then proceeds on what the code shows - and stating when the files read cannot cause the symptom. Blocks for the causes of the reported symptoms come first, grouped by symptom in reported order and within a group by severity, each such block's `Impact:` line opening with `Symptom <n>:`; a cause shared by two symptoms is one block opening `Symptom 1, 2:`, placed with the lower-numbered symptom; every other defect seen in the files read follows, ordered as in review mode. The `Checks clean:` line is omitted in diagnose mode; `Also seen` and `Not checked` lines are kept.
 
 ## Avoid
 
@@ -272,7 +294,7 @@ In diagnose mode, blocks for defects that cause the reported symptoms come first
 - `EdgeInsets.only(left:)`, `Alignment.centerLeft`, `Positioned(left:)` in a layout that ships an RTL locale
 - Mirroring an icon with intrinsic orientation, or leaving a directional arrow unmirrored
 - `supportedLocales.first` chosen by accident - it is the fallback for every unmatched device
-- Shipping without `untranslated-messages-file`, so missing translations surface as silent English
+- Shipping without `untranslated-messages-file`, so missing translations are a console count nobody reads
 - Fixed-width buttons, chips, and labels around translated text
 - Verifying RTL or long-text behaviour by inspection instead of rendering an `ar` or `de` locale in a test
 - Raising findings against generated localization output instead of the ARB source

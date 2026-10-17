@@ -26,7 +26,7 @@ Client-side perf review naming the Flutter idiom: work inside `build`, unscoped 
 
 **Not for:** general review (`task-flutter-review`), security (`task-flutter-review-security`), pre-implementation design (`task-flutter-implement`).
 
-Perceived slowness that is actually a missing loading state or an unhandled offline path is not a perf finding. When the request reports a symptom, the findings that explain it lead their impact section, after any `Critical`-origin finding.
+Perceived slowness that is actually a missing loading state or an unhandled offline path is not a perf finding; `flutter-performance`'s `Startup` block for a first route gated behind one future is, graded by its launch cost, with the loading state as its Fix. When the request reports a symptom, the findings that explain it lead their impact section, after any `Critical`-origin finding.
 
 ## Depth
 
@@ -56,39 +56,40 @@ Defaults to the current branch vs its base; `pr-<N>` reviews a locally fetched P
 
 **Never modify the working tree.** Git is read-only here (`status`, `diff`, `log`, `show`).
 
-When invoked as a subagent (e.g. by `task-flutter-review`), the parent supplies the resolved `base_ref` / `head_ref`, the pre-read diff and name-status, the depth level, the detected project shape, and the generated-file exclusion list: Step 3 is skipped, no git is re-run, and Step 12 returns the Output Format body instead of writing - the parent owns the report.
+When invoked as a subagent (e.g. by `task-flutter-review`), the parent supplies the resolved `base_ref` / `head_ref`, the pre-read diff and name-status, the depth level, the detected project shape, the request text (profiling artifacts, device, stated data, symptoms), and the generated-file exclusion list: Step 3 is skipped and the change set is not re-resolved (read-only git for reads beyond the diff stays permitted), and Step 12 returns the Output Format body instead of writing - the parent owns the report.
 
 ## Workflow
 
 ### Step 1 - Behavioral Principles
 
-Use skill: `behavioral-principles`. Accept the parent's confirmation if invoked as a subagent.
+Use skill: `behavioral-principles`. A subagent loads it itself unless the spawning prompt inlined its Rules.
 
 ### Step 2 - Stack and Project Shape
 
-Accept the project shape from the parent when invoked as a subagent. Otherwise read `pubspec.yaml`; if it is absent or declares no `flutter` dependency, stop - this workflow reviews Flutter projects only.
+Accept the project shape from the parent when invoked as a subagent. Otherwise read `pubspec.yaml` at the head, after Step 3's round gate has not stopped the run; if it is absent or declares no `flutter` dependency, stop - this workflow reviews Flutter projects only.
 
-Record: state management (Riverpod / Bloc / Provider / GetX / none), navigation, networking client, persistence store, image loading approach, and the platform targets present. Navigation, networking, persistence, and image approach are working context; the Summary fields are reported, and any the change set and project files do not establish is written `unconfirmed` rather than inferred - a wrong stack claim misroutes every finding under it.
+Record: state management (Riverpod / Bloc / Provider / GetX / other / none), navigation, networking client, persistence store, image loading approach, and the platform targets present. Navigation, networking, persistence, and image approach are working context; the Summary fields are reported, and any the change set and project files do not establish is written `unconfirmed` rather than inferred - a wrong stack claim misroutes every finding under it.
 
-If state management is not Riverpod, record it and note in the Summary: `Detected <X>; Riverpod-specific guidance does not apply.` Review rebuild scoping against that library's own selector or listener mechanism.
+If state management is Bloc, Provider, or GetX, record it and note in the Summary: `Detected <X>; Riverpod-specific guidance does not apply.` Review rebuild scoping against that library's own selector or listener mechanism.
 
 ### Step 3 - Resolve the Change Set
 
 Use skill: `review-precondition-check` with the invocation's target argument, any `--base`, and `report_type: review-perf`, so the handle's `report_path` is this lens's checkpoint and its `prior_checkpoint` that file's frontmatter (or `legacy`). **Skip entirely** when the parent supplied the refs plus the pre-read diff. Surface any fail-fast verbatim.
 
-**Round gate.** Capture `base_sha` / `head_sha` via `git rev-parse` on the handle's refs and decide the round before reading any surface: a valid `prior_checkpoint` whose `head_sha` equals the captured `head_sha` and whose `depth` covers this run's (`deep` covers `standard`) -> print `No new commits since prior perf review.` and stop - no review, no report. Otherwise `round` = its `round` + 1 and `prior_head_sha` = its `head_sha`; no `prior_checkpoint`, or `legacy` (Step 12 overwrites the file) -> `round: 1`, no `prior_head_sha`.
+**Round gate.** Capture `base_sha` / `head_sha` via `git rev-parse` on the handle's refs and decide the round before reading any surface: a valid `prior_checkpoint` whose `head_sha` and `base_sha` equal the captured pair and whose `depth` covers this run's (`deep` covers `standard`) -> print `No new commits since prior perf review.` and stop - no review, no report. Otherwise `round` = its `round` + 1 and `prior_head_sha` = its `head_sha`; no `prior_checkpoint`, or `legacy` (Step 12 overwrites the file) -> `round: 1`, no `prior_head_sha`.
 
-Then resolve the review set - the paths in `git diff --name-status <base_ref>...<head_ref>`, minus the generated-file list - and read once and reuse, limited to it: `git diff <base_ref>...<head_ref> -- <paths>` for the change body and the name-status for per-file status; a renamed path adds its old path to `<paths>`. The handle's `notes` go to Coverage Notes.
+Then resolve the review set - the paths in `git diff --name-status <base_ref>...<head_ref>`, minus the generated-file list - and read once and reuse, limited to it: `git diff <base_ref>...<head_ref> -- <paths>` for the change body and the name-status for per-file status; a renamed path adds its old path to `<paths>`. Every file read beyond the diff is read at the head (`git show <head_ref>:<path>`); the working tree is read only when the handle's `head_matches_current` is true. The handle's `notes` go to Coverage Notes.
 
 ### Step 4 - Read the Performance Surface
 
-Cite real `file:line`. When the source available carries no line anchors, cite the file and name the construct - never invent a number. Open:
+Cite real `file:line` at the head, never a diff-output line number and never an invented one. Open:
 
 - Every changed widget with a `build` method, plus the `State` classes around them
 - Every changed state holder (notifier, bloc, controller) and its provider or dependency wiring
 - Scrollable constructors and their `itemBuilder` bodies
 - Image call sites and any caching layer around them
 - `main()`, `runApp`, bootstrap, and anything initialized before the first frame
+- The native side of every changed platform channel (Kotlin, Swift) for work the Dart isolate waits on
 - `pubspec.yaml` for added dependencies and assets
 - Isolate entry points (`compute`, `Isolate.run`, `Isolate.spawn`) and what crosses the port
 
@@ -114,13 +115,13 @@ Use skill: `flutter-performance` for the pattern bank. Use skill: `flutter-widge
 // Bad - sorts the whole list on every frame an ancestor rebuilds
 Widget build(BuildContext context) {
   final sorted = items.toList()..sort((a, b) => a.name.compareTo(b.name));
-  return Column(children: sorted.map(ItemRow.new).toList());
+  return ListView.builder(itemCount: sorted.length, itemBuilder: (_, i) => ItemRow(sorted[i]));
 }
 
 // Good - sorting belongs to the state holder; build only renders
 Widget build(BuildContext context, WidgetRef ref) {
   final sorted = ref.watch(sortedItemsProvider);
-  return Column(children: sorted.map(ItemRow.new).toList());
+  return ListView.builder(itemCount: sorted.length, itemBuilder: (_, i) => ItemRow(sorted[i]));
 }
 ```
 
@@ -132,7 +133,7 @@ Widget build(BuildContext context, WidgetRef ref) {
 - [ ] **Bounded per-item work:** no date formatting, `RegExp` compile, sort, or `firstWhere` scan over another collection inside `itemBuilder`
 - [ ] **Windowed or paginated loading** for server-backed lists; an in-memory list that only grows is a leak with a scroll bar
 - [ ] **Stable keys** (`ValueKey(item.id)`) so element and `State` are reused across reorder rather than rebuilt
-- [ ] **`addAutomaticKeepAlives` / `AutomaticKeepAliveClientMixin` used deliberately** - keeping offscreen items alive defeats virtualization's memory benefit
+- [ ] **`AutomaticKeepAliveClientMixin` with `wantKeepAlive: true` used deliberately** - it is what keeps an offscreen item alive (`addAutomaticKeepAlives` defaults to `true` and only enables it); kept-alive items defeat virtualization's memory benefit
 - [ ] List children already get repaint boundaries by default (`addRepaintBoundaries`); adding another per row is noise, not a fix
 
 ### Step 7 - Images, Assets, and Decode Cost
@@ -170,7 +171,7 @@ Use skill: `dart-language-patterns` for isolate and async mechanics.
 
 - [ ] **Everything created in a `State` is released in `dispose`:** `AnimationController`, `Ticker`, `TextEditingController`, `ScrollController`, `PageController`, `TabController`, `FocusNode`, `StreamSubscription`, `StreamController`, `Timer`, and any platform-channel or `EventChannel` subscription
 - [ ] **Every `addListener` has a matching `removeListener`** - a listener closure captures its `State` and pins the element tree it belongs to
-- [ ] **Riverpod:** screen-scoped providers are `autoDispose` or explicitly invalidated; `ref.onDispose` closes whatever the provider opened; a `keepAlive` is a deliberate cache with a stated eviction path
+- [ ] **Riverpod:** screen-scoped providers are `autoDispose` or explicitly invalidated; `ref.onDispose` closes whatever the provider opened; a `keepAlive` is a deliberate cache with a stated eviction path. **Bloc / Provider:** a `Cubit` or `Bloc` is closed and a `ChangeNotifier` disposed when its provider leaves the tree - `BlocProvider` and `ChangeNotifierProvider` do this unless constructed with `.value`, whose instance the creator must close
 - [ ] **Global caches, static maps, and singletons are bounded and evicted** - unbounded growth reads as a slow leak
 - [ ] **Large retained objects released when the route pops** (decoded images, full result sets, buffered streams)
 - [ ] **Leak suspicion is confirmed, not asserted:** navigate away, force a GC, and check the retaining path in the DevTools memory view before filing a leak as measured
@@ -189,17 +190,17 @@ Evidence and impact are independent axes. Evidence records how well the cost is 
 | `estimated` | The pattern's cost is unambiguous from the code alone | `rebuilds all 200 rows on every keystroke` |
 | `unverified` | The cost turns on data only the author has (collection size, image dimensions, device tier) | Name the measurement that would settle it |
 
-`flutter-performance`'s `measured (...)` and `estimated (no profile)` map onto this table, its `estimated` becoming `estimated` or `unverified` by the tiebreak below; blocks from the other atomics carry no Evidence and take one by the same rules. Data the user states (collection size, device) counts as known for the tiebreak. A trace supplied for part of the change set makes `measured` only the costs it isolates - a cost inside a measured window that the trace does not separate stays `estimated`; label the rest by the same rules and say where the trace's coverage ends in the Measurement Basis line; an uncovered path is not a `Not checked:` item. When both `estimated` and `unverified` fit, the tiebreak is whether a reasonable worst case is still a finding: if yes, `estimated`; if the finding evaporates under a plausible small input, `unverified`.
+`flutter-performance`'s `measured (...)`, `estimated (no profile)`, and `estimated (profile confirms the symptom)` map onto this table: `measured` stays `measured`, both `estimated` values become `estimated` or `unverified` by the tiebreak below (a profile that confirms the symptom does not measure the cost), and a supplied size analysis or heap snapshot makes `measured` only the figure read from it; blocks from the other atomics carry no Evidence and take one by the same rules. Data the user states (collection size, device) counts as known for the tiebreak. A trace supplied for part of the change set makes `measured` only the costs it isolates - a cost inside a measured window that the trace does not separate stays `estimated`; label the rest by the same rules and say where the trace's coverage ends in the Measurement Basis line; an uncovered path is not a `Not checked:` item. When both `estimated` and `unverified` fit, the tiebreak is whether a reasonable worst case is still a finding: if yes, `estimated`; if the finding evaporates under a plausible small input, `unverified`.
 
-**Impact mapping.** This report groups by impact and grades only in-lens costs: build and rebuild work, lists, images, isolates, startup and size, disposal and leaks. An atomic finding outside those (key correctness, null safety, an unhandled error branch) is an `Outside this lens:` line. `Critical`, `High`, and `[Must]` map to **High Impact**, `Medium` to Medium, `Low` and `[Recommend]` to Low. One defect raised by two atomics - or two checklist items one edit fixes - is one finding at the higher impact, its Issue opening with the grading atomic's Category or Rule, `flutter-performance`'s when it raised the defect. When one defect multiplies another's cost (a per-tick rebuild re-running a non-lazy list), each is its own finding at the impact it has with the other present, and each names the other in its Issue. A `Critical`-origin finding - `flutter-performance` grades Critical only where profile data covers the path and caps at High without it; another atomic's Critical carries its own rationale - leads the High Impact section and opens its User-Visible Impact line with `Critical:` and the grading atomic's rationale; do not silently flatten it into an ordinary High, and never add the prefix to a finding the atomic did not grade Critical.
+**Impact mapping.** This report groups by impact and grades only in-lens costs: build and rebuild work, raster effects, lists and their keys, images, isolates and platform calls, startup and size, disposal and leaks. An atomic finding outside those (null safety, an unhandled error branch, a `Key` defect that corrupts state rather than costing rebuilds) is an `Outside this lens:` line. `Critical`, `High`, and `[Must]` map to **High Impact**, `Medium` to Medium, `Low` and `[Recommend]` to Low. One defect raised by two atomics - or two checklist items one edit fixes - is one finding at the higher impact, its Issue opening with the grading atomic's Category or Rule, `flutter-performance`'s when it raised the defect. When one defect multiplies another's cost (a per-tick rebuild re-running a non-lazy list), each is its own finding at the impact it has with the other present, and each names the other in its Issue. A `Critical`-origin finding - `flutter-performance` caps at High when no profile data was supplied at all, and with a profile grades Critical only for sustained dropped frames or unbounded growth on a primary path; `flutter-riverpod-patterns` grades Critical a subscription, timer, or controller never released (its other Critical cases - a compile break, an unhandled error branch, state that stops updating - are outside this lens) - leads the High Impact section and opens its User-Visible Impact line with `Critical:` and the atomic's Critical band clause as the rationale; do not silently flatten it into an ordinary High, and never add the prefix to a finding the atomic did not grade Critical.
 
 `unverified` does not lower impact: an unbounded cache on a primary path is High Impact whether or not its size is known. It sets intent instead - every `unverified` finding's Next Steps item is `[Recommend]` and the finding names its measurement, including at High Impact, which is the one case where a High Impact finding is not `[Must]`.
 
-A cost the user cannot perceive on any supported device (well under a frame, off the startup path) is Low, whatever label the atomic gave it.
+A cost the user cannot perceive on any supported device (well under a frame, off the startup path) is Low, whatever label the atomic gave it; a Critical-origin finding is never imperceptible, and its Evidence is `measured` or `estimated`, never `unverified` - the atomic's Critical means the cost does not turn on data only the author has - so it leads the `[Must]` band.
 
-**Atomic output lines.** Findings keep the atomics' unit: one per defect, further sites of that one defect named as `also <file:line>` on the Location line (each site of a repeated rule is its own defect), and an atomic's `(unconfirmed: depends on <path>)` is resolved by reading that path before the finding is filed, and when the path cannot be read the finding stays `(unconfirmed: ...)` and the path joins the `Not checked:` line. `No performance findings.` and the other atomics' `No <category> findings.` and `No <rule> findings.` lines are working notes: they confirm a check ran and stay out of the report. Every atomic's `Not checked:` line, and any in-scope file that could not be read, is carried into Coverage Notes. There is no cap on findings; order carries priority. An atomic block's heading gives Location's `file:line` and its Code line the `also` sites, its Cost, Problem, or Issue line the User-Visible Impact, and its fix the Fix; the other atomics' blocks take a Thread by the same Category logic (disposal and leaks Memory, build work UI); `Dart SDK inferred:` and `Dart 3 patterns unavailable:` lines go to Coverage Notes.
+**Atomic output lines.** Findings keep the atomics' unit: one per defect, further sites of that one defect named as `also <file:line>` on the Location line (each site of a repeated rule that needs its own edit is its own defect; N sites one edit fixes are one finding), and an atomic's `(unconfirmed: depends on <path>)` is resolved by reading that path before the finding is filed; when the path cannot be read, or reads `unknown file`, the finding stays `(unconfirmed: ...)`; the atomic already lists an unreadable path on its `Not checked:` line as `<path> - not readable`. `No performance findings.` and the other atomics' `No <category> findings.` and `No <rule> findings.` lines are working notes: they confirm a check ran and stay out of the report; in diagnose mode the three atomics that have one emit none. An `Also seen: <file:line> - <defect> (owner: <skill>)` line is dropped when this run loads the owner and otherwise becomes an `Outside this lens:` line naming the owner. Every atomic's `Not checked:` line, and any in-scope file that could not be read, is carried into Coverage Notes. There is no cap on findings; order carries priority. An atomic block's heading gives Location's `file:line` unless the anchor precedence below moves it, its Code line the `also` sites, its Cost, Problem, or Issue line the User-Visible Impact, its Fix or Recommendation the Fix, and `flutter-performance`'s Verify the Verify; a Fix that spans files names each `file:line` it edits; the other atomics' blocks take a Thread by the same Category logic (disposal and leaks Memory; build work, `Concurrency`, and `Key Correctness` UI); `Dart SDK:` and `Targets:` lines go to Coverage Notes, and `flutter-riverpod-patterns`' `Detected <X>; Riverpod-specific guidance does not apply` opener is the Step 2 Summary note and is not repeated. When the request reports a symptom, `flutter-performance`, `flutter-widget-patterns`, and `flutter-riverpod-patterns` run in diagnose mode (`dart-language-patterns` has none and keeps its review shape, zero-finding lines included): their `Symptom <n>:` lines open Findings before the first impact heading - one blank-separated line per symptom, merging the three atomics' sets and keeping every premise-contradiction and cannot-cause clause any of them stated - a block's `Symptom <n>:` prefix stays on User-Visible Impact, `flutter-widget-patterns`' `Confidence:` value is appended to Evidence in parentheses (`estimated (Confidence: Likely)`), and the symptom's findings lead their impact section after any Critical-origin finding.
 
-**Pre-existing defects.** A defect on a line the change set does not touch is a finding only when the change makes it reachable or worse - a new caller, a new route into it, a new composition such as a new call site into an unbounded cache, or an omission the change needs filled in an untouched file; anchor it at the changed line and name the old line as `also`. Any other defect seen while reading goes on a `Pre-existing: <file:line> - <defect>` line in Coverage Notes and does not affect the Overall count. A defect outside this lens - a correctness or compile error, a risk the security lens owns - goes on an `Outside this lens: <file:line> - <defect>` line there; in a subagent run the parent routes it to its owning phase.
+**Pre-existing defects.** A defect on a line the change set does not touch is a finding only when the change makes it reachable or worse - a new caller, a new route into it, a new composition such as a new call site into an unbounded cache, or an omission the change needs filled in an untouched file; anchor it at the changed line and name the old line as `also`. Anchor precedence: that changed line first; otherwise the atomic's heading line. Any other defect seen while reading goes on a `Pre-existing: <file:line> - <defect>` line in Coverage Notes and does not affect the Overall count. A defect outside this lens - a correctness or compile error, a risk the security lens owns - goes on an `Outside this lens: <file:line> - <defect>` line there; in a subagent run the parent routes it to its owning phase.
 
 ### Step 12 - Write Report
 
@@ -219,23 +220,25 @@ Every Next Steps item carries exactly one intent label, `[Must]` or `[Recommend]
 ## Flutter Performance Review Summary
 
 - **Stack Detected:** Flutter <constraint> / Dart <constraint>
-- **State Management:** Riverpod | Bloc | Provider | GetX | none | unconfirmed _(non-Riverpod: `Detected <X>; Riverpod-specific guidance does not apply.`)_
+- **State Management:** Riverpod | Bloc | Provider | GetX | other | none | unconfirmed {Bloc, Provider, or GetX: append `Detected <X>; Riverpod-specific guidance does not apply.`}
 - **Platform Targets:** <list>
 - **Measurement Basis:** <profile-mode trace | startup trace | size analysis | heap snapshot> on <device or build> (covering: <paths>; estimated or unverified elsewhere) | estimated from code (no trace supplied) | estimated from code (supplied <debug-mode | emulator> timing not used as evidence)
 - **Scope:** Client (Flutter)
-- **Round:** <N> _(round 2+ standalone runs only)_
-- **Overall:** Clean (no findings) | Issues Found - [count by impact, however few]
-- **Checks with no findings:** [the Step 5-10 areas whose subject the diff touches that ran clean, named - build path, lists, images, isolates, startup and size, disposal]
+- **Round:** <N> {round 2+ standalone runs only}
+- **Overall:** Clean (no findings) | Issues Found - [count by impact, however few; Critical-origin findings count in High with `(<n> Critical-origin)`]
+- **Checks with no findings:** [the Step 5-10 areas whose subject the diff touches and whose checklist items all held, named - build path, lists, images, isolates, startup and size, disposal; `none` when every touched area has a finding]
 
 ## Findings
 
+Symptom <n>: <the report's symptom> {only when the request reports a symptom; one blank-separated line per symptom, merged from the atomics}
+
 ### High Impact
 
-- **Location:** [file:line, further sites as `also <file:line>`; file plus construct when the source has no line anchors] _(a carried finding appends `_(carried from round <N>)_`)_
+- **Location:** [file:line at the head, further sites as `also <file:line>`] {a carried finding appends `_(carried from round <N>)_`}
 - **Issue:** [the grading atomic's Category or Rule, then the Flutter idiom: sort inside `build`, non-lazy `ListView` over a dynamic collection, full-resolution decode into a thumbnail, sync parse on the UI isolate, undisposed `AnimationController`]
 - **User-Visible Impact:** [`Critical: <rationale> - ` first on a Critical-origin finding; then what the user experiences: "dropped frames while typing", "adds ~1.2s to cold start", "+3.1 MB installed size", "about 40 MB retained per visit, never released"]
-- **Evidence:** measured (<source>) | estimated | unverified
-- **Thread:** UI | Raster | Both | Startup | Memory | Size _(the atomic's Thread, except by Category: `Startup` is Startup, `Leak` and a non-blocking `ImageDecode` are Memory, `AppSize` is Size, a non-blocking `PlatformCall` is UI)_
+- **Evidence:** measured (<source>) | estimated | unverified {diagnose mode, flutter-widget-patterns block: append ` (Confidence: <value>)`}
+- **Thread:** UI | Raster | Both | Startup | Memory | Size {the atomic's Thread, except by Category: `Startup` is Startup, `Leak` and a non-blocking `ImageDecode` are Memory, `AppSize` is Size, a non-blocking `PlatformCall` is UI}
 - **Fix:** [concrete Dart change with code]
 - **Verify:** [the measurement that settles an `unverified` finding, or shows the fix worked]
 
@@ -245,7 +248,7 @@ Every Next Steps item carries exactly one intent label, `[Must]` or `[Recommend]
 
 _Omit empty sections._
 
-## Prior Round Reconciliation _(round 2+ standalone runs only)_
+## Prior Round Reconciliation {round 2+ standalone runs only}
 
 [table, note line, and tally from `review-prior-findings-reconcile`]
 
@@ -253,17 +256,17 @@ _Omit empty sections._
 
 [Structural improvements not tied to a single finding]
 
-### Device & Measurement Plan _(deep depth only)_
+### Device & Measurement Plan {deep depth only}
 
 [Which device tiers to measure on, which trace to capture, and the number that decides whether the fix worked]
 
 ## Next Steps
 
-Each tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend.
+Each tagged `[Implement]` or `[Delegate]`, one `[Implement]` per finding, citing its `file:line`; a `[Delegate]` for the server side of a finding that also has a client fix carries that finding's intent and follows its `[Implement]`. Order: Must > Recommend; a Critical-origin finding leads the `[Must]` band.
 Impact maps to intent: High -> [Must]; Medium / Low -> [Recommend]. An `unverified` finding is `[Recommend]` at any impact; when its fix is cheap and safe regardless of the measurement, the action names the fix and the measurement together rather than the measurement alone. Order `[Recommend]` items by impact, so an unverified High Impact finding leads its band.
 
 1. **[Implement]** [Must] file:line - [one-line action]
-2. **[Delegate]** [Recommend] [scope: server contract] - [one-line action]
+2. **[Delegate]** [Must] file:line [scope: server contract] - [one-line action]
 
 _Omit if no actionable findings._
 
@@ -276,22 +279,22 @@ _Omit if no actionable findings._
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded (or accepted from parent)
-- [ ] Stack confirmed; state management, image approach, and platform targets recorded; non-Riverpod state management surfaced rather than flagged
-- [ ] `review-precondition-check` ran with `report_type: review-perf` (or parent-supplied refs and diff reused); round decided before any surface was read (or the stop line printed); diff and name-status read once and reused
-- [ ] Performance surface read directly (widgets and `State`, state holders, scrollables, image call sites, bootstrap, `pubspec.yaml`, isolate entry points)
+- [ ] `behavioral-principles` loaded, or rules inlined in the spawning prompt
+- [ ] Stack confirmed after the round gate; state management, image approach, and platform targets recorded; non-Riverpod state management surfaced rather than flagged
+- [ ] `review-precondition-check` ran with `report_type: review-perf` (or parent-supplied refs and diff reused); round decided on `head_sha`, `base_sha`, and depth before any surface was read (or the stop line printed); diff and name-status read once and reused; files beyond the diff read at `head_ref`
+- [ ] Performance surface read directly (widgets and `State`, state holders, scrollables, image call sites, bootstrap, `pubspec.yaml`, isolate entry points, the native side of changed channels)
 - [ ] `flutter-performance`, `flutter-widget-patterns`, `flutter-riverpod-patterns` consulted; work in `build`, `const`, rebuild scope, `MediaQuery` subscription, builder `child:`, `RepaintBoundary`, and `saveLayer` effects checked
 - [ ] List virtualization checked: lazy constructor, extent hint, no `shrinkWrap` nesting, bounded `itemBuilder`, stable keys, pagination, deliberate keep-alive
-- [ ] Image decode bounds, caching layer, `ImageCache` limits, and per-build re-decode checked when the diff touches images
-- [ ] `dart-language-patterns` consulted; UI-isolate blocking, isolate threshold, and payload transfer assessed when the diff adds computation
-- [ ] Startup path and size delta assessed when the diff touches bootstrap, dependencies, or assets
+- [ ] Image decode bounds, caching layer, `ImageCache` limits, and per-build re-decode checked
+- [ ] `dart-language-patterns` consulted; UI-isolate blocking, isolate threshold, and payload transfer assessed
+- [ ] Startup path and size delta assessed
 - [ ] Disposal completeness audited for every controller, subscription, timer, ticker, and listener introduced; provider disposal scope checked
 - [ ] Every finding labelled `measured` / `estimated` / `unverified`; no debug-mode timing cited as evidence; a partial trace labelled `measured` only for the costs it isolates
 - [ ] `unverified` findings kept at their true impact and tagged `[Recommend]` with the measurement named
 - [ ] Every finding states user-visible impact, not an adjective
 - [ ] Areas that ran clean named in the Summary; unresolvable stack fields written `unconfirmed`
 - [ ] Generated and test files excluded from findings; the producing source cited instead
-- [ ] Findings ordered by impact; Coverage Notes carry handle notes, atomic header lines, `Not checked:`, `Pre-existing:`, and `Outside this lens:` lines
+- [ ] Findings ordered by impact, symptom findings and Critical-origin leading; `Also seen` lines dropped or routed to `Outside this lens:`; Coverage Notes carry handle notes, atomic header lines, `Not checked:`, `Pre-existing:`, and `Outside this lens:` lines
 - [ ] Depth honored: `standard` ran all steps; `deep` added the Device & Measurement Plan
 - [ ] Next Steps produced with `[Implement]` / `[Delegate]` tags, ordered Must > Recommend
 - [ ] On round 2+ standalone runs, prior findings projected and reconciled, unresolved rows carried; report written via `review-report-writer` with every required field (`stack: flutter`, `mode: full`, round, both SHAs), confirmation line printed (standalone only; subagent runs return the Output Format body to the parent)
@@ -309,5 +312,5 @@ _Omit if no actionable findings._
 - Recommending `RepaintBoundary` per list row where the framework already inserts one
 - Treating `async` as a way to move CPU work off the UI isolate
 - Blaming the client for latency that belongs to the server - route it to the owning service
-- Filing a missing loading state or unhandled offline path as a perf finding
+- Filing perceived slowness that is a missing loading state or an unhandled offline path as a perf finding
 - Optimizing without a measurement plan that would show the fix worked

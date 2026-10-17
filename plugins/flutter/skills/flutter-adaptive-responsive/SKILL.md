@@ -29,7 +29,7 @@ user-invocable: false
 - Insets are read, never assumed: `SafeArea` or `MediaQuery.paddingOf` for cutouts and system bars, `MediaQuery.viewInsetsOf` for the keyboard. No hardcoded status-bar or notch heights
 - Any surface that can receive text input or a scroll must survive a keyboard, a rotation, and a window resize without clipping or losing scroll position
 - Every interactive element is reachable and operable by keyboard once desktop or web is a target; pointer affordances (hover, cursor, right-click) are additive, never the only path to an action
-- Web removes capabilities rather than adding them: no `dart:io`, no `MethodChannel`, no secure-storage guarantee. Code paths that need them are behind a capability check with a defined web fallback
+- Web removes capabilities rather than adding them: no `dart:io`, no native host behind a `MethodChannel` (only a registered Dart web-plugin handler can answer), no secure-storage guarantee. Code paths that need them are behind a capability check with a defined web fallback
 
 ## Patterns
 
@@ -43,9 +43,9 @@ Coverage degrades predictably instead of expanding into a full platform matrix.
 | **Secondary** | Windows, macOS, Linux | `windows/` `macos/` `linux/` present | Covered as caveats. |
 | **Tertiary** | Web | `web/` present | Covered as constraints. |
 
-**Desktop caveats (secondary).** Window size and minimum size, mouse and keyboard input, focus traversal order, right-click and context menus, native file dialogs, `dart:io` available, packaging (MSIX / DMG / AppImage), and no app-store sandbox assumptions.
+**Desktop caveats (secondary).** Window size and minimum size, mouse and keyboard input, focus traversal order, right-click and context menus, native file dialogs, `dart:io` available, packaging (MSIX / DMG / AppImage), and sandboxing that differs per OS: the macOS template enables App Sandbox, so network and file access need entitlements; snap and Flatpak confine Linux apps the same way; Windows MSIX runs full-trust.
 
-**Web constraints (tertiary).** No `dart:io`, no `MethodChannel` platform channels (JS interop instead), URL strategy and deep links, deferred loading and initial bundle size, renderer differences in text metrics and paint, PWA and service-worker caching, and **no secure-storage guarantee** - browser storage is not an OS keystore.
+**Web constraints (tertiary).** No `dart:io`, no native host for platform channels (JS interop instead), URL strategy and deep links, deferred loading and initial bundle size, renderer differences in text metrics and paint, PWA and service-worker caching, and **no secure-storage guarantee** - browser storage is not an OS keystore.
 
 When the platform targets cannot be determined, assume Mobile only and say so once rather than silently reviewing against all three tiers.
 
@@ -87,7 +87,7 @@ Material 3 window size classes give a default set. Name them once, in the app's 
 | Compact | < 600 | one pane, bottom `NavigationBar` |
 | Medium | 600 - 839 | one pane wider, `NavigationRail` collapsed |
 | Expanded | 840 - 1199 | two panes, `NavigationRail` |
-| Large / Extra-large | >= 1200 | two or three panes, standard `NavigationDrawer` |
+| Large / Extra-large | >= 1200 | two or three panes, expanded `NavigationRail` (or `NavigationDrawer`) |
 
 ```dart
 // Bad - reads the whole screen; wrong in split-screen, in a dialog, in a resized desktop window
@@ -118,20 +118,17 @@ Padding(padding: const EdgeInsets.only(top: 24), child: content)
 SafeArea(child: content)
 ```
 
-`SafeArea` consumes the intrusions; `MediaQuery.paddingOf(context)` reports them when you need the number (for example to pad a scroll view's content while letting it paint under the status bar). Flutter draws behind the system bars by default, and Android 15 enforces edge-to-edge for apps targeting SDK 35, so reading the padding is never optional.
+`SafeArea` consumes the intrusions; `MediaQuery.paddingOf(context)` reports them when you need the number (for example to pad a scroll view's content while letting it paint under the status bar). iOS draws behind the system bars, Android 15 enforces edge-to-edge for apps targeting SDK 35 (earlier Android only under a translucent status bar unless `SystemUiMode.edgeToEdge` is set), so reading the padding is never optional.
 
 ```dart
 // Bad - a field pinned to the bottom of a full-screen Stack; the keyboard covers it
 Stack(children: [content, Positioned(left: 0, right: 0, bottom: 0, child: TextField(controller: c))])
 
-// Good - the sheet lifts by exactly the keyboard height
-Padding(
-  padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-  child: TextField(controller: c),
-)
+// Good - the bottom-anchored field lifts by exactly the keyboard height
+Stack(children: [content, Positioned(left: 0, right: 0, bottom: MediaQuery.viewInsetsOf(context).bottom, child: TextField(controller: c))])
 ```
 
-`viewInsets` is the keyboard (and other system overlays that obscure content); `padding` is the notch, status bar, and gesture area. `Scaffold` handles the common case via `resizeToAvoidBottomInset`, so a plain `Scaffold(body: Column(...))` with a field is not this defect; it breaks in a custom bottom sheet, a full-screen `Stack`, or a `Scaffold` with `resizeToAvoidBottomInset: false`.
+`viewInsets` is the keyboard (and other system overlays that obscure content); `padding` is the notch, status bar, and gesture area. `Scaffold` handles the common case via `resizeToAvoidBottomInset`: any body it resizes, a `Stack` with a `Positioned(bottom: 0)` child included, is not this defect; it breaks in a custom bottom sheet, an overlay or route outside a resizing `Scaffold`, or a `Scaffold` with `resizeToAvoidBottomInset: false`.
 
 ### Input modality
 
@@ -200,12 +197,12 @@ Foldables and hinged devices report `MediaQuery.displayFeaturesOf(context)`. Con
 
 *Tiers: Desktop only.*
 
-Flutter has no stable Dart API for window sizing. The initial and minimum window size is set in the native runner sources (`windows/runner/`, `macos/Runner/MainFlutterWindow.swift`, `linux/runner/`), or through a window-management package. Two consequences:
+Flutter has no stable Dart API for window sizing (its windowing APIs are experimental and flag-gated). The initial and minimum window size is set in the native runner sources (`windows/runner/`, `macos/Runner/MainFlutterWindow.swift`, `linux/runner/`), or through a window-management package. Two consequences:
 
 - A desktop target with no minimum size ships a window the user can drag to 200px wide. Every layout must either survive that or the runner must set a floor.
-- Layout that assumes a phone aspect ratio produces enormous line lengths at 2560px. Constrain reading-width content with `ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720))` rather than letting text stretch the full window.
+- Layout that assumes a phone aspect ratio produces enormous line lengths at 2560px. Constrain reading-width content with `Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: ...))` - the loosening parent is required, because a tight parent (a `ListView` child, a stretched `Column`) overrides the box on its own - rather than letting text stretch the full window. A floor of about 360 x 600 logical pixels keeps the compact layouts valid.
 
-Desktop also expects: real focus traversal, context menus on right-click, native file pickers rather than an in-app browser, and no assumption that the process is sandboxed the way an app-store mobile build is.
+Desktop also expects: real focus traversal, context menus on right-click, native file pickers rather than an in-app browser, and macOS entitlements for anything the App Sandbox gates.
 
 ### Web constraints
 
@@ -223,7 +220,7 @@ return _fileCache.read(key);
 | Constraint | Consequence |
 |------------|-------------|
 | No `dart:io` | file, socket, and `Platform.isX` code needs a web branch or a conditional import |
-| No `MethodChannel` | native integrations need JS interop; a plugin without web support fails at runtime, not compile time |
+| No native host for `MethodChannel` | native integrations need JS interop; a plugin without web support fails at runtime, not compile time |
 | Initial bundle size | large screens or heavy dependencies belong behind `deferred as` imports and `loadLibrary()` |
 | Renderer differences | text metrics and paint differ from mobile; verify layout on the web build, not on a mobile emulator |
 | URL strategy and deep links | see `flutter-navigation-patterns` |
@@ -236,48 +233,68 @@ When invoked from an implementation workflow, emit the adaptive plan:
 
 ```
 Tiers: {comma-separated from Mobile, Desktop, Web} (source: {platform directories | project CLAUDE.md | assumed})
+
 Design language: {Material | Cupertino}
+
 Breakpoints: {file:line of the named constants | <path> (new) | none defined}
-Window floor (only when Desktop in Tiers): {size set in runner | window-management package | none - set one}
+
+Window floor: {size set in runner | window-management package | set by this plan in <file> | none - set one | N/A (no Desktop tier)}
 
 | Surface | Tiers | Layout switch | Adaptive widgets | Insets | Input paths |
 |---------|-------|---------------|------------------|--------|-------------|
-| OrderList | All | LayoutBuilder @ expanded -> two pane | NavigationBar / NavigationRail | SafeArea | tap, keyboard |
-| FilterSheet | Mobile | compact -> bottom sheet, expanded -> dialog | showAdaptiveDialog | viewInsets bottom | tap, keyboard |
+| {surface} | {All \| subset} | {constraint @ breakpoint -> arrangement} | {.adaptive constructors or navigation component} | {SafeArea \| paddingOf \| viewInsets \| none, comma-separated} | {modalities} |
 ```
 
-The `Tiers` cell is `All` or a comma-separated subset of the header's tiers; a tier may name its present platforms, as in `Desktop (macOS)`. A row may name a form factor (tablet, foldable) inside a tier.
+For example: `OrderList | All | LayoutBuilder @ expanded -> two pane | NavigationBar / NavigationRail | SafeArea | tap, keyboard` and `FilterSheet | Mobile | MediaQuery.sizeOf @ compact -> bottom sheet, expanded -> dialog | showAdaptiveDialog | viewInsets | tap, keyboard`. Platform directories win over CLAUDE.md when both exist. The `Tiers` cell is `All` or a comma-separated subset of the header's tiers; a tier may name its present platforms, as in `Desktop (macOS)`, and a row may name a form factor (tablet, foldable) inside a tier. A surface absent on a tier lists only the tiers it exists on; where it is read-only, Layout switch says so. `Window floor: set by this plan in <file>` is also a `Fixed in plan` line; new breakpoint constants live beside the theme (`lib/app/window_size.dart (new)`).
 
-Implement mode ends with `Pre-existing: <file:line> - <defect>` for each defect in code the plan edits or depends on but does not fix, or `Pre-existing: none`. Code not yet written is cited as `<path> (new)`. A file the plan depends on that is absent or could not be read is listed as `Not read: <path> - <reason>`. A defect the change cannot ship on top of is fixed in the plan, not listed as `Pre-existing`.
+```
+Fixed in plan: {<file:line> - <defect> | none}
+
+Pre-existing: {<file:line> - <defect> | none}
+
+Not read: {<path> - <reason> | none}
+```
+
+Implement mode describes the state after the plan and ends with these lines, each on its own line with a blank line between: `Fixed in plan: <file:line> - <defect>` per defect in existing code the plan corrects, or `Fixed in plan: none`; `Pre-existing: <file:line> - <defect>` per defect left in place, or `Pre-existing: none`; `Not read: <path> - <reason>` per file the plan needs that is absent, could not be read, or was not read, or `Not read: none`. A defect is fixed in the plan when it sits in code the change edits, or when the new code would misbehave on first run on top of it; every other defect in code the new code calls or reads is `Pre-existing`; code the new code neither edits, calls, nor reads is not listed, except a defect that breaks the build, which is always `Fixed in plan`. Code not yet written is cited as `<path> (new)`.
 
 When invoked from a review workflow or directly to diagnose a form-factor bug, emit one block per finding:
 
 ```
-### [Blocker | High | Medium | Low] file:line
+### [{Blocker | High | Medium | Low}] {file:line}
 
 - Area: Adaptive
 - Check: {Platform-Tier | Adaptive-Widget | Breakpoint | Safe-Area | Input-Modality | Orientation | Desktop-Window | Web-Constraint}
-- Tier: {Mobile | Desktop | Web | All}, comma-separated when more than one applies
+- Tier: {Mobile | Desktop | Web | All}
 - Code: {one-line citation}
 - Impact: {what the user cannot see, reach, or do}
 - Fix: {concrete edit}
 ```
 
-Close with one coverage line: `Checks clean: {comma-separated Check values with zero findings | none}`.
+Tier is comma-separated when more than one applies.
 
-**Severity calibration.** `Blocker` = content unreachable or an action impossible on a declared target tier (clipped behind the keyboard, off-screen past a cutout, a runtime throw on web from `dart:io` or an unguarded platform channel). `High` = a declared tier is visibly broken but usable (including screen-size branching that renders the wrong layout in split-screen, a fold, or a resized window), or in-progress user state is discarded by a rotation, fold, or resize, or a long-lived secret is held in browser storage on a declared web tier. `Medium` = correct output in every declared layout produced by fragile means (screen-size branching that happens to hold, inline breakpoint), or a hand-picked control from the other design language in an otherwise consistent screen (`.adaptive` output is not one). `Low` = naming and organization, or a `MediaQuery.of` read where a scoped accessor exists (extra rebuilds only). When a finding matches two bands, the higher band wins.
+**Severity calibration.** `Blocker` = content unreachable or an action impossible on a declared target tier (clipped behind the keyboard, off-screen past a cutout, a runtime throw on web from `dart:io` or an unguarded platform channel). `High` = a declared tier is visibly broken but usable (including screen-size branching that renders the wrong layout in split-screen, a fold, or a resized window, or a desktop target with no minimum window size and no layout floor - `Desktop-Window`), or in-progress user state is discarded by a rotation, fold, or resize, or a long-lived secret is held in browser storage on a declared web tier, or an action reachable through one modality only on a tier where another modality is primary (`Input-Modality`), or a status bar or keyboard inset overlapping content that stays reachable (`Safe-Area` - the keyboard inset is always `Safe-Area`). `Medium` = correct output in every declared layout produced by fragile means (screen-size branching that happens to hold, inline breakpoint), a hand-picked control from the other design language in an otherwise consistent screen (`.adaptive` output is not one), or unbounded reading width on a desktop tier. `Low` = naming and organization, or a `MediaQuery.of` read where a scoped accessor exists (extra rebuilds only). When a finding matches two bands, the higher band wins. A tier does not lower severity: a finding on a declared secondary or tertiary tier is graded as it would be on mobile. A dependency with no implementation for a declared tier, used on that tier, is `Web-Constraint` or `Desktop-Window`. `Platform-Tier` is clean when no file read branches on a tier the project does not target.
 
 When one line fits two Checks, file it under the Check naming the failure on the worst affected tier: a `Platform.isX` read that throws on web is `Web-Constraint`. A Check whose violation was filed under another Check is not listed as clean.
 
 **Label mapping for the umbrella review:** `Blocker`, `High` -> `[Must]`; `Medium`, `Low` -> `[Recommend]`.
 
-Findings are raised only for tiers the project actually targets. Review and diagnose output opens with the same `Tiers:` line as implement mode; when the tier set is unknown it reads `Tiers: Mobile (source: assumed)` and findings stay on mobile.
+Findings are raised only for tiers the project actually targets. Review and diagnose output opens with the `Tiers:` line alone (none of the other header lines; in diagnose mode it precedes the `Symptom` lines); platform directories win over CLAUDE.md when both exist, and when the tier set is unknown it reads `Tiers: Mobile (source: assumed)` and findings stay on mobile.
 
-Blocks are one per defect, ordered by severity, then file and line, then enum order. Each site of a repeated rule is its own defect; a single defect that needs edits in several places anchors on the line to edit and names the others as `also <file:line>` on its citation line.
+Blocks are one per defect, ordered by severity, then file path (repository-relative, byte order), then line, then enum order. A defect is one rule at one fix site: the same rule broken at N sites that each need their own edit is N blocks; the same rule broken at N sites that one edit fixes (a declaration, a shared helper, a config key) is one block anchored on the line to edit, naming the other sites as `also <file:line>` on its citation line (the block's `Code:` line); one line breaking two rules with two different fixes is two blocks, with one fix it is one block under the rule naming the worse failure (on a tie, the earlier enum value).
 
-A finding that depends on code outside the files read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to the line describing its effect. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of dart-language-patterns, flutter-widget-patterns, flutter-riverpod-patterns, flutter-navigation-patterns, flutter-networking, flutter-data-persistence, flutter-local-db-migration, flutter-accessibility, flutter-i18n, flutter-performance, flutter-security-patterns, flutter-error-handling, flutter-platform-channels, flutter-testing-patterns, flutter-build-release, flutter-overengineering-review covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's `Check` values, or the path of a file that could not be read) when any check could not be exercised, then the `Checks clean:` line. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean and is listed on `Checks clean:`; a check on the `Not checked` line is not. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its `Impact:` line, and does not move its check to `Not checked`. Invoked directly, a request to write or change code takes the implement shape, a request to review or audit takes the review shape, and a supplied symptom or bug report takes diagnose mode.
 
-In diagnose mode, blocks for defects that cause the reported symptoms come first, in the order the symptoms were reported; every other defect seen in the files read follows at its own severity.
+The closing lines - `Also seen` and `Not checked` only when they have content, `Checks clean:` in review mode:
+
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+
+Checks clean: {comma-separated Check values with zero findings | none}
+```
+
+Diagnose mode follows the `Tiers:` line with one line per reported symptom, `Symptom <n>: <the report's title or first sentence>`, a title that lists two symptoms is two lines, naming on each any premise the files read contradict (a flag the report says is on, a version it names) - the diagnosis then proceeds on what the code shows - and stating when the files read cannot cause the symptom. Blocks for the causes of the reported symptoms come first, grouped by symptom in reported order and within a group by severity, each such block's `Impact:` line opening with `Symptom <n>:`; a cause shared by two symptoms is one block opening `Symptom 1, 2:`, placed with the lower-numbered symptom; every other defect seen in the files read follows, ordered as in review mode. The `Checks clean:` line is omitted in diagnose mode; `Also seen` and `Not checked` lines are kept.
 
 ## Avoid
 

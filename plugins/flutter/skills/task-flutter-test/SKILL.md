@@ -30,7 +30,7 @@ Flutter-aware test strategy and scaffolding across unit, widget, golden, and `in
 
 ### Step 1 - Principles, Stack, and Project Shape
 
-Use skill: `behavioral-principles` first (accept the parent's confirmation when invoked as a subagent). Accept the project shape from a parent workflow when invoked as a subagent. Otherwise read `pubspec.yaml`; if it is absent or declares no `flutter` dependency, stop - this workflow tests Flutter projects only. Record state management (and the Riverpod major, 2 or 3, when Riverpod is used), navigation, networking client, persistence store, mocking library (mocktail / mockito / hand-written), and whether the project uses code generation.
+Use skill: `behavioral-principles` first; a subagent loads it itself unless the spawning prompt inlined its Rules. Accept the project shape from a parent workflow when invoked as a subagent. Otherwise read `pubspec.yaml`; if it is absent or declares no `flutter` dependency, stop - this workflow tests Flutter projects only. Record state management (and the Riverpod major, 2 or 3, when Riverpod is used), navigation, networking client, persistence store, mocking library (mocktail / mockito / hand-written), and whether the project uses code generation.
 
 The project's own tooling wins over this skill's defaults. Where the project differs, say so once and follow the project:
 
@@ -40,7 +40,7 @@ The project's own tooling wins over this skill's defaults. Where the project dif
 | mocktail | mockito | `@GenerateNiceMocks` (or legacy `@GenerateMocks`) codegen and bare `when(...)`; `registerFallbackValue` does not exist and its checks are N/A |
 | mocktail | hand-written fakes | No matcher registration at all; assert on the fake's recorded calls |
 
-`bloc_test` is built on mocktail, so a Bloc project on mockito ends up with both. Keep each library to its own file, or alias one import - importing both unaliased makes `when`, `verify`, and `any` ambiguous and the file does not compile.
+`bloc_test` depends on mocktail, and stubbing a `MockBloc` needs mocktail's `when`, so a Bloc project on mockito ends up with both. Keep each library to its own file, or alias one import - importing both unaliased makes `when`, `verify`, and `any` ambiguous and the file does not compile.
 
 ### Step 1b - Route the Request
 
@@ -49,12 +49,12 @@ Decide the deliverable before reading code, because it decides what to read:
 | Request | Deliverable | Steps that run |
 |---------|-------------|----------------|
 | "Why does this golden/test fail in CI?" | Diagnosis finding blocks | 1, 2 (the failing test's whole file, its setup, and the CI configuration that runs it), 4, 8 |
-| "Write tests for X" / "scaffold" | Test Scaffolds | all (7 only when test files are sparse against source files; it orders the files written and adds no section) |
+| "Write tests for X" / "scaffold" | Test Scaffolds | all except 7; 7 runs first when test files are sparse - fewer than one test file per two source files under `lib/` - and only orders the files written; it never narrows the targets the user named, and its coverage number lands on the Scaffolds `Coverage:` line |
 | "What tests are missing?" | Coverage Assessment | all |
 | "Test strategy" / "test plan", or low coverage with no scaffolds requested | Strategy Doc | all |
 | Unclear | Strategy Doc | all |
 
-For a strategy or coverage request, Step 7 selects the targets and Step 2 then reads them; run Step 7 first and treat its output as Step 2's reading list.
+For a strategy or coverage request, Step 7 selects the targets and Step 2 then reads them; run Step 7 first and treat its output as Step 2's reading list. A request naming two deliverables runs the union of their steps once, Step 7 first when either needs it first; a request pairing Diagnosis with another deliverable emits the Diagnosis, then the other deliverable as its own run.
 
 ### Step 2 - Read Code Under Test + Existing Tests
 
@@ -62,11 +62,11 @@ Ground output in project conventions, not generic templates.
 
 - Read each target top-to-bottom: the screen's widget tree, its state holder, the repository it depends on, and the failure types it can surface
 - Glob `test/**/*_test.dart` and read one existing widget test, one unit test, one golden test, and any shared setup file - learn the project's finders, pump conventions, fake construction, and override style
-- Read every `test/**/flutter_test_config.dart`; the nearest one above a test applies, and it is where golden and font setup usually lives
+- Read every `flutter_test_config.dart` that applies: the tool walks up from the test file's directory to the package root, so `test/**/flutter_test_config.dart`, one at the package root, and `integration_test/flutter_test_config.dart` all count; the nearest one above a test applies, and it is where golden and font setup usually lives
 - Read CI configuration for how tests run, whether goldens run in a separate job, and how failures surface
 - Read `integration_test/` for existing driver setup
 
-If no existing tests: say so and propose conventions on the `Conventions:` line rather than inventing them silently. A setup file this step names that does not exist is a `Not read: <path> - absent` line, not a gap, unless the deliverable needs it.
+If no existing tests: say so and propose conventions on the `Conventions:` line rather than inventing them silently. A setup file this step names that the deliverable needs and that is absent, could not be read, or was not read is a `Not read: <path> - <reason>` line; a config location that does not exist and nothing needs is not reported.
 
 ### Step 3 - Flutter Test Pyramid
 
@@ -77,23 +77,23 @@ If no existing tests: say so and propose conventions on the `Conventions:` line 
 | Golden | `matchesGoldenFile` | Pixel-level appearance of visually complex or regression-prone UI only |
 | Integration | `integration_test` on a device, emulator, or desktop host | Critical end-to-end journeys only |
 
-**Many** unit, **some** widget, **few** golden and integration. Goldens are a deliberate minority: they are the most expensive layer to keep stable and the least specific about what broke.
+**Many** unit, **some** widget, **few** golden and integration: goldens are the most expensive layer to keep stable and the least specific about what broke.
 
 ### Step 4 - Apply Flutter Test Patterns
 
-Use skill: `flutter-testing-patterns` - diagnose mode for a Diagnosis, implement mode otherwise - for canonical finders, pump semantics, golden stability, mocktail usage, and provider overrides. Notes below cover layer-specific items.
+Use skill: `flutter-testing-patterns` - diagnose mode for a Diagnosis, implement mode otherwise - for canonical finders, pump semantics, golden stability, mocktail usage, and provider overrides. A Coverage Assessment is the implement-mode table with an empty plan: rows for the tests that exist, every missing test a Coverage Gap, defects in existing tests on `Pre-existing:`, and `Fixed in plan: none` - with no plan, the atomic's build-break rule does not apply and a build break is an Infrastructure Gap; a Strategy Doc or Scaffolds describes the state after the plan. Notes below cover layer-specific items.
 
 **Unit tests:**
 
 - Test the state holder directly, without building a widget tree. If a unit test needs a widget, it is misclassified
 - One group per public method; cover success, each failure type, and the edges between them
 - Failure mapping deserves its own tests: assert that a transport error becomes the intended domain failure, not just that "an error happened"
-- Inject fakes through the same seam production uses, so the test proves the wiring too
+- Inject fakes through the same seam production uses, so the test proves the wiring too; the one sanctioned global swap is a plugin's platform interface or messenger mock reset in `addTearDown`
 
 **Widget tests:**
 
 - Build the widget under a test harness that supplies its dependencies via overrides, not a real network client or database
-- Assert on every state the screen can render: loading, error, empty, and populated. A screen tested only in its populated state is half-tested
+- Assert on every state the screen can render: loading, error, empty, and populated
 - Prefer pumping a bounded number of frames over settling when the widget has an indefinite animation or a frame-scheduling timer - settling on those times out and throws instead of failing on the assertion
 - Find by semantics or key where possible; finding by literal text couples the test to copy and breaks under localization
 - Test user interaction, not just initial render: tap, scroll, enter text, then assert the resulting state
@@ -138,9 +138,9 @@ Golden instability is the dominant failure mode, and it is almost always environ
 
 Runs for every Strategy Doc and Coverage Assessment, and **before** scaffolding when test files are sparse against source files - it determines which tests come first.
 
-Measure, do not guess: run the project's coverage command when the suite runs locally (`flutter test --coverage` writes `coverage/lcov.info`; the percentage comes from summarizing it, and files no test imports are missing from it, so say so); when it cannot run, estimate from test-file density and label the number an estimate.
+Measure, do not guess: run `flutter test --coverage` when the suite runs locally (it writes `coverage/lcov.info`; summarize it for the percentage, and say that files no test imports are missing from it); when it cannot run, estimate from test-file density and label the number an estimate; a dependency or SDK resolution failure is itself an Infrastructure Gap (the `Infrastructure:` line on Scaffolds) unless a Strategy Doc's or Scaffolds' plan fixes it, when it is `Fixed in plan:` only.
 
-Band from structure, not implementations: the route table, feature directory names, and pubspec dependencies (a purchase plugin implies P3 surface) are enough to place targets. Step 2 then reads only the selected targets.
+Band from structure, not implementations: the route table, feature directory names, and pubspec dependencies (a purchase plugin implies P3 surface) are enough to place targets. On a strategy or coverage request, Step 2 then reads only the selected targets.
 
 | Priority | Targets |
 |----------|---------|
@@ -154,7 +154,7 @@ Band from structure, not implementations: the route table, feature directory nam
 
 ### Step 8 - Test Infrastructure Hygiene
 
-Run this against the project. Items that fail or cannot be verified fill the `## Infrastructure Gaps` slot in the Strategy Doc and Coverage Assessment, once, and are not repeated as coverage gaps; items that hold need no line. On a Diagnosis, a failing item that causes the failure files as a finding block, and one that only costs (no Defect value names it) becomes an `Infrastructure:` line; on Scaffolds, apply it silently and raise only what blocks the deliverable.
+Run this against the project. Items that fail or cannot be verified fill the `## Infrastructure Gaps` slot in the Strategy Doc and Coverage Assessment, once, and are not repeated as coverage gaps or as `Pre-existing:` lines - an item that fails because of specific existing tests names them here; items that hold need no line. On a Diagnosis, only the items the files in its reading scope can decide are checked; a failing item that causes the failure files as a finding block, and one that only costs (no Defect value names it) becomes an `Infrastructure:` line; on Scaffolds, apply it silently and raise what blocks the deliverable as an `Infrastructure: <file:line> - <defect>` line after the merged `Fixed in plan`, `Pre-existing`, and `Not read` lines.
 
 - [ ] Fonts loaded deterministically before golden tests
 - [ ] Goldens tagged and run in a job that can be excluded from the fast feedback loop
@@ -169,35 +169,36 @@ Run this against the project. Items that fail or cannot be verified fill the `##
 
 ## Output Format
 
-Step 1b routes the request to one deliverable, or to each deliverable the request names; two or more are emitted in this order, separated by `---`: Coverage Assessment -> Strategy Doc -> Test Scaffolds. Diagnosis stands alone.
+Step 1b routes the request to one deliverable, or to each deliverable the request names; two or more are emitted in this order, separated by `---`: Coverage Assessment -> Strategy Doc -> Test Scaffolds, and the sections they share (`## Test Plan by Target`, `## Fixed in plan, Pre-existing and Not read`, `## Infrastructure Gaps`) appear once, in the first deliverable that carries them - a table shared by a Coverage Assessment and a Strategy Doc holds the existing rows, the planned rows with `(planned)` after the Target, and the Coverage Gaps that remain after the plan, and the merged lines and the shared `## Infrastructure Gaps` section take the reading of the deliverable that carries a plan - the Strategy Doc, else Scaffolds (a defect or break its plan fixes is `Fixed in plan:`, not an Infrastructure Gap); Scaffolds following another deliverable adds only its files, its `Stack:` and `Files:` lines, `Verified:` and any `Not verified:` lines, and an `Infrastructure:` line for each blocker the shared `## Infrastructure Gaps` section does not already name. Diagnosis stands alone.
 
-`Stack` carries the `pubspec.yaml` constraints (`environment.flutter`, `environment.sdk`) as written; a missing constraint is `unconfirmed`. Implement-mode atomics end with `Pre-existing:` and `Not read:` lines, a `Not read:` line naming any file the plan needed but could not read, absent or denied. The report carries them once, merged across atomics and deduplicated by cited location, under `## Pre-existing and Not read`; `Pre-existing: none` is written when no atomic found one.
+Every deliverable carries the Step 1 record in its header (the Strategy Doc after its Objective): `Stack` carries the `pubspec.yaml` constraints (`environment.flutter`, `environment.sdk`) as written, a missing constraint is `unconfirmed`, and `State Management` (with the Riverpod major), `Mocking` (`none yet` when the project has no tests), and `Codegen` (yes | no) follow it - as header bullets in the Coverage Assessment and Strategy Doc, as one `Stack: <constraints>; <state management>; <mocking>; codegen <yes | no>` line in Scaffolds and Diagnosis; navigation, networking client, and persistence store are working context and are not written. Implement-mode atomics end with `Fixed in plan:`, `Pre-existing:`, and `Not read:` lines, `Not read:` naming any file the plan needs that is absent, could not be read, or was not read. The report carries them once, merged across atomics and deduplicated by cited location, under `## Fixed in plan, Pre-existing and Not read`; `<kind>: none` is written for each kind no atomic produced.
 
-**Diagnosis:** in this order - the finding blocks from `flutter-testing-patterns`' diagnose mode in that skill's order (blocks for the reported failure first, then every other defect seen in the files read, sibling tests in the failing test's file included), or `No testing findings.` when there are none; its `Production:` lines; `Infrastructure: <file:line> - <defect>` lines for cost defects no Defect value names (goldens gating the fast job, a suite too slow to run per PR); its `Not checked:` line; any `Not read:` line from Step 2; and a `Verify:` line naming the command that re-runs the failing surface (one per finding when no single command exercises every fix). Nothing else: no strategy doc, no pyramid, no coverage table. A defect in shared setup (`flutter_test_config.dart`, a `test/support/` helper, CI configuration) anchors to the file that carries it, or to `<path> (missing)` when the file the fix needs does not exist, and its Test slot names the setup function or CI job. `Not checked:` names checks the files read cannot exercise, not files outside the Diagnosis reading scope.
+**Diagnosis:** in this order - the `Stack:` line; the `Symptom <n>:` lines and finding blocks from `flutter-testing-patterns`' diagnose mode in that skill's order (blocks for the reported symptoms first, then every other defect seen in the files read, sibling tests in the failing test's file included); its `Also seen:` lines, kept as written except those whose owner is `unowned`, which become `Infrastructure:` lines; its `Not checked:` line; its `Production:` lines; `Infrastructure: <file:line> - <defect>` lines for cost defects no Defect value names (goldens gating the fast job, a suite too slow to run per PR) and for the `unowned` `Also seen:` lines; any `Not read:` line from Step 2 for a file that neither `Not checked:` nor a `<path> (missing)` anchor already names; and a `Verify:` line naming the command that re-runs the failing surface (one per finding when no single command exercises every fix). Nothing else: no strategy doc, no pyramid, no coverage table, and no zero-finding sentinel - diagnose mode emits none, so a clean diagnosis is the `Symptom <n>:` lines stating that the files read cannot cause the symptom, then the closing lines. A defect in shared setup (`flutter_test_config.dart`, a `test/support/` helper, CI configuration) anchors to the file that carries it, or to `<path> (missing)` when the file the fix needs does not exist, and its Test slot names the setup function or CI job. `Not checked:` names checks the files read cannot exercise and in-scope files that could not be read, not files outside the Diagnosis reading scope.
 
 **Coverage Assessment:**
 
 ```markdown
 ## Flutter Test Coverage Assessment
 
-**Stack:** Flutter <constraint> / Dart <constraint>
-**State Management:** Riverpod | Bloc | Provider | GetX | none
-**Mocking:** mocktail | mockito | hand-written
-**Coverage:** <N>% measured via <command> | <N>% estimated from test-file density (test files per source file under `lib/`, not line coverage)
-**Conventions:** [only when the project has no tests: the conventions proposed]
-**Recommended pyramid balance:** Unit [target] / Widget [target] / Golden + integration [target - keep small] (share of test files)
+- **Stack:** Flutter <constraint> / Dart <constraint>
+- **State Management:** Riverpod <2 | 3> | Bloc | Provider | GetX | none
+- **Mocking:** mocktail | mockito | hand-written | none yet
+- **Codegen:** yes | no
+- **Coverage:** <N>% measured via <command> | <N>% estimated from test-file density (test files per source file under `lib/`, not line coverage)
+- **Conventions:** [only when the project has no tests: the conventions proposed]
+- **Recommended pyramid balance:** Unit [target] / Widget [target] / Golden + integration [target - keep small] (share of test files)
 
 ## Test Plan by Target
 
-[the per-target table and `### Coverage Gaps` block from `flutter-testing-patterns`; a screen missing loading, error, or empty coverage is a `Missing Layer: Widget` entry naming the missing states]
+[the per-target table from `flutter-testing-patterns`, and its `### Coverage Gaps` block when it emitted one; a screen missing loading, error, or empty coverage is a `Missing Layer: Widget` entry naming the missing states, and a target missing two layers is one entry per layer]
 
-## Pre-existing and Not read
+## Fixed in plan, Pre-existing and Not read
 
-[the merged `Pre-existing:` and `Not read:` lines]
+[the merged `Fixed in plan:`, `Pre-existing:`, and `Not read:` lines]
 
 ## Infrastructure Gaps
 
-[the Step 8 items that failed or could not be verified, unstable goldens among them, each naming the priority band it blocks. Omit when all hold.]
+[the Step 8 items that failed or could not be verified, unstable goldens among them, and any build break or resolution failure Step 4 or Step 7 files here, each naming the priority band it blocks. Omit when none exists.]
 
 ## Prioritization
 
@@ -210,37 +211,43 @@ Step 1b routes the request to one deliverable, or to each deliverable the reques
 [a band whose signal is unavailable reads `P<n> - unmeasurable: <reason>`]
 ```
 
-**Test Scaffolds:** ready-to-run files using project conventions, delivered with the per-target table and `### Coverage Gaps` block from `flutter-testing-patterns`, the `## Pre-existing and Not read` lines, and a `Conventions:` line when the project had no tests:
+**Test Scaffolds:** the `Stack:` line, then ready-to-run files using project conventions, delivered with a `Files:` line listing the paths written, the per-target table from `flutter-testing-patterns` and its `### Coverage Gaps` block when it emitted one, the `## Fixed in plan, Pre-existing and Not read` lines, any `Infrastructure:` line from Step 7 or Step 8, a `Coverage:` line when Step 7 ran (the pre-scaffold number, measured or estimated and labelled), a `Verified: <command> - <result>` line per command run (analyzer issues, tests passed), the `Not verified:` line below when any subset did not run, and a `Conventions:` line when the project had no tests:
 
 - Right test layer for the behaviour
 - Grouped cases with descriptive names, not copy-pasted bodies
 - Factories over raw literals
 - Widget tests covering loading, error, empty, and populated
-- Fakes injected through the project's own dependency seam
+- Finders by key or semantics; when production has no keys and editing it is out of scope, find by fixture data or type and put the missing keys on a `Pre-existing:` line
+- Fakes injected through the project's own dependency seam, or through the sanctioned platform-interface or messenger swap; when production has no seam, the scaffold tests through what exists and the missing seam is a `Pre-existing:` line
+- mocktail fallback values registered once for custom matcher types; mockito `provideDummy` likewise
 - Goldens only where a widget test cannot express the concern, with font and size setup included
-- An existing test the scaffold supersedes is rewritten in place and named in the file list with what it got wrong; `Pre-existing:` stays for defects the scaffolds do not fix
-- **Verified before delivery:** run `flutter analyze` and the generated tests, and fix what they surface. When the environment cannot run them (no Flutter toolchain, no device for integration tests), deliver the scaffolds with an explicit `Not verified:` line naming the subset that did not run and the specific things analysis would have caught - symbol names, generated-type accessors, and API shapes taken from simulated reads. A scaffold that failed a check you did run is never delivered.
+- An existing test the scaffold supersedes is rewritten in place and named on the atomic's `Fixed in plan:` line with what it got wrong; `Pre-existing:` stays for defects the scaffolds do not fix
+- **Verified before delivery:** run `dart run build_runner build --delete-conflicting-outputs` first when Codegen is yes, then `flutter analyze` and the generated tests (`flutter test --exclude-tags golden` while a new golden has no baseline), and fix what they surface; the new golden's first run is `--update-goldens` in the pinned CI job or on the pinned platform, never on an unpinned machine, and it is named on the `Not verified:` line until then. When the environment cannot run them (no Flutter toolchain, no device for integration tests), deliver the scaffolds with an explicit `Not verified:` line naming the subset that did not run, the command the user runs before merging, and the specific things analysis would have caught - symbol names, generated-type accessors, and API shapes taken from simulated reads. A scaffold that failed a check you did run is never delivered.
 
 **Strategy Doc:**
 
 ```markdown
 ## Flutter Test Strategy
 
-**Objective:** [what this strategy achieves]
-**Coverage:** <N>% measured via <command> | <N>% estimated from test-file density (test files per source file under `lib/`, not line coverage)
-**Conventions:** [only when the project has no tests: the conventions proposed]
-**Pyramid balance:** Unit {x}% / Widget {y}% / Golden + integration {z}% (share of planned test files)
-**Tooling:** flutter_test, <the project's mocking library>, <the project's DI seam>, integration_test
-**Golden policy:** [generating platform, font loading, tolerance, how they are regenerated]
-**Network isolation:** [where the client boundary is stubbed]
+- **Objective:** [what this strategy achieves]
+- **Stack:** Flutter <constraint> / Dart <constraint>
+- **State Management:** Riverpod <2 | 3> | Bloc | Provider | GetX | none
+- **Mocking:** mocktail | mockito | hand-written | none yet
+- **Codegen:** yes | no
+- **Coverage:** <N>% measured via <command> | <N>% estimated from test-file density (test files per source file under `lib/`, not line coverage)
+- **Conventions:** [only when the project has no tests: the conventions proposed]
+- **Pyramid balance:** Unit {x}% / Widget {y}% / Golden + integration {z}% (share of planned test files)
+- **Tooling:** flutter_test, <the project's mocking library>, <the project's DI seam>, integration_test
+- **Golden policy:** [generating platform, font loading, tolerance, how they are regenerated]
+- **Network isolation:** [where the client boundary is stubbed]
 
 ## Test Plan by Target
 
-[the per-target table and `### Coverage Gaps` block from `flutter-testing-patterns`]
+[the per-target table from `flutter-testing-patterns`, and its `### Coverage Gaps` block when it emitted one; a screen missing loading, error, or empty coverage is a `Missing Layer: Widget` entry naming the missing states]
 
-## Pre-existing and Not read
+## Fixed in plan, Pre-existing and Not read
 
-[the merged `Pre-existing:` and `Not read:` lines]
+[the merged `Fixed in plan:`, `Pre-existing:`, and `Not read:` lines]
 
 ## Gaps to Close (prioritized)
 
@@ -249,15 +256,15 @@ Step 1b routes the request to one deliverable, or to each deliverable the reques
 
 ## Infrastructure Gaps
 
-[the Step 8 items that failed or could not be verified, each naming the priority band it blocks. Omit when all hold.]
+[the Step 8 items that failed or could not be verified, and any build break or resolution failure Step 4 or Step 7 files here, each naming the priority band it blocks. Omit when none exists.]
 ```
 
 ## Self-Check
 
 **Always:**
 
-- [ ] Step 1: `behavioral-principles` loaded
-- [ ] Stack confirmed; state management, mocking library, and codegen usage recorded
+- [ ] Step 1: `behavioral-principles` loaded, or rules inlined in the spawning prompt
+- [ ] Stack confirmed; state management, mocking library, and codegen usage recorded and written into the deliverable's header
 - [ ] Request routed at Step 1b
 - [ ] Code under test + existing tests + shared setup read directly (Diagnosis: the failing test's whole file, its setup, and its CI configuration)
 - [ ] `flutter-testing-patterns` consulted
@@ -270,42 +277,37 @@ Step 1b routes the request to one deliverable, or to each deliverable the reques
 - [ ] Risk-based prioritization (P1 auth, P2 integrity, P3 business, P4 churn, P5 presentational); Coverage Gaps keep the atomic's Risk, the bands order the targets
 - [ ] Coverage number stated and labelled measured or estimated; unmeasurable bands named rather than guessed
 - [ ] Strategy Doc: golden policy stated - platform, fonts, tolerance, regeneration discipline
-- [ ] `Pre-existing:` and `Not read:` lines carried
+- [ ] `Fixed in plan:`, `Pre-existing:`, and `Not read:` lines carried once, `none` per empty kind
 - [ ] Screens missing loading, error, or empty coverage flagged explicitly
-- [ ] Step 8 failures reported as `## Infrastructure Gaps`, sequenced against the P1-P5 content it blocks
+- [ ] Step 8 failures, and build breaks or resolution failures no plan fixes, reported as `## Infrastructure Gaps`, sequenced against the P1-P5 content they block
 
 **Diagnosis:**
 
-- [ ] Diagnosis in order: finding blocks (or `No testing findings.`), `Production:`, `Infrastructure:`, `Not checked:`, `Not read:`, `Verify:`; no strategy doc or pyramid
+- [ ] Diagnosis in order: `Stack:`, `Symptom <n>:` lines, finding blocks, `Also seen:`, `Not checked:`, `Production:`, `Infrastructure:`, `Not read:`, `Verify:`; no strategy doc, pyramid, coverage table, or sentinel
 - [ ] Shared-setup and CI defects anchored to the file that carries them, or to `<path> (missing)`
 - [ ] Cost defects no Defect value names filed as `Infrastructure:` lines
 - [ ] Verification step named for the author to confirm the fix
 
 **Scaffolds:**
 
-- [ ] Per-target table, `### Coverage Gaps`, and `Pre-existing:` / `Not read:` lines delivered with the files
+- [ ] `Stack:` line, `Files:` line, per-target table, `### Coverage Gaps` when emitted, `Fixed in plan:` / `Pre-existing:` / `Not read:` lines, any `Infrastructure:` line, `Coverage:` when Step 7 ran, `Verified:` and any `Not verified:` lines, and a `Conventions:` line when the project had no tests delivered with the files
+- [ ] Right layer per behaviour; a superseded test rewritten in place and named on `Fixed in plan:`
 - [ ] Grouped and descriptive, not copy-pasted
 - [ ] Factories over raw literals
 - [ ] Widget tests cover loading, error, empty, and populated
 - [ ] Finders prefer key or semantics over literal copy
-- [ ] Fakes injected through the production dependency seam
+- [ ] Fakes injected through the production dependency seam or the sanctioned platform-interface / messenger swap
 - [ ] Golden scaffolds include font and surface-size setup
-- [ ] mocktail: fallback values registered for custom matcher types
-- [ ] Scaffolds analyzed and run before delivery; any subset not run is named
+- [ ] mocktail: fallback values registered for custom matcher types; mockito: `provideDummy` where needed
+- [ ] Scaffolds analyzed and run before delivery; any subset not run is named with the command the user runs before merging and what analysis would have caught; nothing that failed a check that ran is delivered
 
 ## Avoid
 
 - Scaffolding without reading existing tests and shared setup
 - Chasing a coverage number instead of prioritizing by risk
-- Testing only the populated state of a screen that also has loading, error, and empty
 - Golden tests as a substitute for asserting the logic that produced the pixels
 - Regenerating a failing golden without reading the diff
 - Exact golden comparison across platforms
 - Running goldens in the same job as fast unit tests
-- Finding widgets by literal user-facing text in a localized app
-- Settling a widget test that contains an indefinite animation or a frame-scheduling timer
-- Pointing tests at a live shared backend
 - Full integration tests for what a widget test could cover
 - Testing framework internals or generated code
-- Disabling auth in test setup to make unrelated tests pass
-- Delivering scaffolds that were never analyzed or run

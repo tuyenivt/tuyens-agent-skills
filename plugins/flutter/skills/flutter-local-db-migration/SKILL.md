@@ -60,9 +60,10 @@ onUpgrade: (m, from, to) async {
 // Good - stepByStep and the versioned schemas come from `dart run drift_dev schema steps`;
 // every fromNToM callback is required, and 3 -> 9 replays 4, 5, ... 9 in order
 static final _steps = stepByStep(
+  from1To2: (m, schema) => m.addColumn(schema.todos, schema.todos.done),
+  from2To3: (m, schema) => m.createTable(schema.lists),
   from3To4: (m, schema) => m.addColumn(schema.todos, schema.todos.dueDate),
-  from4To5: (m, schema) => m.createTable(schema.tags),
-  // ... from5To6 through from8To9
+  // ... every fromNToM the committed snapshots define is a required argument, through from8To9
 );
 
 onUpgrade: (m, from, to) async {
@@ -81,7 +82,7 @@ Each step receives the schema **as it existed at that version**, so `schema.todo
 ### Adding a column
 
 ```dart
-// Bad - non-nullable with no default; existing rows have no value and the migration fails
+// Bad - non-nullable with no default; SQLite rejects the ALTER itself, whatever the row count
 IntColumn get priority => integer()();
 await m.addColumn(todos, todos.priority);
 ```
@@ -98,11 +99,10 @@ Nullable, or defaulted, or backfilled inside the step. `clientDefault` is applie
 SQLite has no general `ALTER COLUMN`. Retyping, adding a constraint, or removing a column on an old SQLite requires rebuilding the table: create the new shape, copy rows through a transformation, drop the old, rename. Drift wraps this:
 
 ```dart
-// inside the fromNToM step that rebuilds the table to add the column: (m, schema) async { ... }
+// inside the fromNToM step that rebuilds the table to retype a column: (m, schema) async { ... }
 await m.alterTable(TableMigration(
   schema.todos,
-  newColumns: [schema.todos.priority],
-  columnTransformer: {schema.todos.priority: const Constant(0)},
+  columnTransformer: {schema.todos.priority: schema.todos.priority.cast<int>()}, // was text
 ));
 ```
 
@@ -113,7 +113,7 @@ The rebuild rewrites the whole table. On a large table on a cold device this is 
 | Situation | Option | Cost |
 | --- | --- | --- |
 | Column no longer read | Leave it, stop reading it | Zero risk; a dead column forever |
-| Column must be removed | Table rebuild without it | Rewrites the table; that column's data is gone |
+| Column must be removed | `DROP COLUMN` in place on bundled SQLite (3.35+); table rebuild on system SQLite | That column's data is gone; a rebuild rewrites the table |
 | Data is a rebuildable cache | Drop and refetch on next sync | User sees a loading state, and it needs network |
 | Data is user-authored | Migrate it to a preserved form, or export it before dropping | The only acceptable path |
 
@@ -151,26 +151,44 @@ When invoked from an implementation workflow:
 
 ```
 Schema Version: {<old> -> <new>}
+
 Step: {from<N>To<M>}
-Change Type: {additive | rebuild | destructive | index-only} - the most severe operation in the step
-Data Impact: {preserved | backfilled: <rule> | LOST: <what>}, comma-separated when the step mixes them
+
+Change Type: {additive | rebuild | destructive | index-only}
+
+Data Impact: {preserved | backfilled: <rule> | LOST: <what>}
+
 Oldest Shipped Version: {<n> | unknown}
+
 SQLite Feature Floor: {none | requires SQLite >= <x>, bundled | system SQLite (risk)}
-Snapshot Committed: {yes - <path> | NO | N/A (sqflite)}
+
+Snapshot Committed: {yes - <path> | yes - <path> (new) | NO | N/A (sqflite, key-value or object store)}
+
 Migration Test: {every shipped version -> current (<a>..<b>), with seeded data | shape only | newest version only | none}
-Rebuild Cost: {N/A | rewrites <table> - measured on <n> rows | unmeasured}
+
+Rebuild Cost: {N/A | rewrites <table> - measured on <n> rows | unmeasured - <who measures before release>}
+
 Downgrade Path: {explicit at file:line | unhandled}
+
 Rollback: {none - forward-only by construction}
 ```
 
-A requested column that already exists is reported, not re-added: the step backfills or retypes it, and the plan says which. A shipped step found broken while planning is repaired forward in the new step and listed on the `Pre-existing` line; a repair that must reach every install runs at the new version after all shipped steps, never inside them. When snapshots were never committed, dump the current schema now and rebuild older ones from each release tag. Without production data, size a rebuild on a synthetic table at the largest realistic row count.
+`Change Type` is the most severe operation in the step: `destructive` when any user-authored data is dropped, `rebuild` when a table is rewritten with its data preserved. `Data Impact` is comma-separated when the step mixes outcomes. Slots describe the state after the plan; what the plan adds to close a defect (a snapshot directory, a test, a downgrade guard) is also a `Fixed in plan` line, anchored on the existing code that lacked it (the `schemaVersion` getter, the `onUpgrade` body). `Oldest Shipped Version` is `unknown` unless release history names it - the lowest `from` in the ladder is not evidence; when it is unknown, `Migration Test` ranges `1..current`. A requested column that already exists is reported, not re-added: the step backfills or retypes it, and the plan says which. Every new column is nullable or defaulted, and the default states what old rows mean (`upload_status = 'pending'` for rows that predate the queue and were never sent). A shipped step found broken while planning is repaired forward in the new step and listed on the `Fixed in plan` line; a repair that must reach every install runs in `onUpgrade` after `_steps(m, from, to)` returns and detects the broken state itself (a missing column, a null where a value belongs) rather than gating on `from`, never inside a shipped step. Resolving the app's own directories inside a step is not app state, and writing the files a step moves data into is allowed; relocating existing files is a separate task the app runs after the upgrade. A step "throws on every device" when no install can complete it (a rejected `ALTER`); a step that passes on some installs has completed somewhere and is repaired forward. When snapshots were never committed, dump the current schema now and rebuild older ones from each release tag. Without production data, size a rebuild on a synthetic table at the largest realistic row count; `unmeasured` is allowed in a plan when it names who measures before release.
 
-Implement mode ends with `Pre-existing: <file:line> - <defect>` for each defect in code the plan edits or depends on but does not fix, or `Pre-existing: none`. Code not yet written is cited as `<path> (new)`. A file the plan depends on that is absent or could not be read is listed as `Not read: <path> - <reason>`. A defect the change cannot ship on top of is fixed in the plan, not listed as `Pre-existing`.
+```
+Fixed in plan: {<file:line> - <defect> | none}
+
+Pre-existing: {<file:line> - <defect> | none}
+
+Not read: {<path> - <reason> | none}
+```
+
+Implement mode describes the state after the plan and ends with these lines, each on its own line with a blank line between: `Fixed in plan: <file:line> - <defect>` per defect in existing code the plan corrects, or `Fixed in plan: none`; `Pre-existing: <file:line> - <defect>` per defect left in place, or `Pre-existing: none`; `Not read: <path> - <reason>` per file the plan needs that is absent, could not be read, or was not read, or `Not read: none`. A defect is fixed in the plan when it sits in code the change edits, or when the new code would misbehave on first run on top of it; every other defect in code the new code calls or reads is `Pre-existing`; code the new code neither edits, calls, nor reads is not listed, except a defect that breaks the build, which is always `Fixed in plan`. Code not yet written is cited as `<path> (new)`.
 
 When invoked from a review workflow, emit one finding block per issue:
 
 ```
-### [Severity] file:line
+### [{Critical | High | Medium | Low}] {file:line}
 
 - Rule: {version-bump | step-composition | shipped-step-mutated | non-nullable-add | in-place-alter | system-sqlite | rebuild-cost | data-loss | test-coverage | snapshot-missing | downgrade-unhandled | foreign-keys | offline-safety | dead-column}
 - Code: {one-line citation}
@@ -178,20 +196,30 @@ When invoked from a review workflow, emit one finding block per issue:
 - Recommendation: {concrete edit}
 ```
 
-`Severity: {Critical | High | Medium | Low}`. Critical = crash on launch after update, a step that needs the network or app state (`offline-safety`), a step unreachable from a shipped version, a shipped step edited (device state diverges by when each install migrated), or silent loss of user-authored data. High = will fail on part of the installed base or on realistic data (a shape change without a version bump that has not yet crashed, missing snapshot/tests, system-SQLite feature use, unhandled downgrade, unmeasured rebuild of a large table), or a column of unknown provenance dropped without an archive. Medium = fragile but currently working (newest-version-only tests, shape-only verification). Low = a column still written but never read (`dead-column`; a column deliberately left and no longer read is not a finding), naming. When a finding matches two bands, the higher band wins.
+The heading severity is one of Critical, High, Medium, Low. Critical = crash on launch after update, a step that needs the network or app state (`offline-safety`), a step unreachable from a shipped version, a shipped step edited (device state diverges by when each install migrated), or silent loss of user-authored data. High = will fail on part of the installed base or on realistic data (a shape change without a version bump that has not yet crashed, missing snapshot/tests, system-SQLite feature use, unhandled downgrade, unmeasured rebuild of a large or unknown-size table), or a column of unknown provenance dropped without an archive. Medium = fragile but currently working (newest-version-only tests, shape-only verification, a measured but slow rebuild, a fresh-install schema that diverges from the upgraded one). Low = a column still written but never read (`dead-column`; a column deliberately left and no longer read is not a finding). When a finding matches two bands, the higher band wins.
 
-Review scope is the whole migration strategy of the file the change touches, not only the added lines: defects in its shipped steps are reported (and fixed forward, never by editing the step). A missing guard or file anchors on the call that should carry it: `openDatabase` for a missing `onDowngrade` in `sqflite`, the `MigrationStrategy` for a missing `from > to` check, snapshot directory, or migration test in drift. A new op folded into a shipped step is `shipped-step-mutated`, not `version-bump`. A defect that predates the change opens its Problem line with `Pre-existing:`. An ineffective `PRAGMA foreign_keys` toggle is Medium. For `sqflite`, `snapshot-missing` is `Not checked` (no snapshot tooling); tests go under `test-coverage`.
+Review scope is the whole migration strategy of the file the change touches, not only the added lines: defects in its shipped steps are reported and fixed forward, never by editing a step that has completed on any device (a step that throws on every device is replaced). A missing guard or file anchors on the call that should carry it: `openDatabase` for a missing `onDowngrade` in `sqflite`, the `MigrationStrategy(` line for a missing `from > to` check, snapshot directory, or migration test in drift. A new op folded into a shipped step is `shipped-step-mutated`, not `version-bump`; a fresh-install schema (`onCreate`) that differs from the upgraded one is `step-composition`. When the review has a diff, a defect that predates it opens its Problem line with `Pre-existing:`; a whole-strategy review with no diff uses no prefix. A missing or ineffective `PRAGMA foreign_keys` toggle is Medium, Critical when a rebuild with foreign keys on would cascade into child rows (`data-loss`). `version-bump` and `shipped-step-mutated` are `Not checked` when the files read carry no release history. For `sqflite`, `snapshot-missing` is `Not checked` (no snapshot tooling), `system-sqlite` is clean unless a version-gated feature is used, and tests go under `test-coverage`. Several reasons on the `Not checked` line are `;`-separated. An absolute file path stored in a row is `Also seen` for `flutter-data-persistence`.
 
-For each rule in the enum with zero findings, emit exactly `No <rule> findings.` so the workflow knows the check ran; omit that line for rules with findings.
+Blocks are one per defect, ordered by severity, then file path (repository-relative, byte order), then line, then enum order. A defect is one rule at one fix site: the same rule broken at N sites that each need their own edit is N blocks; the same rule broken at N sites that one edit fixes (a declaration, a shared helper, a config key) is one block anchored on the line to edit, naming the other sites as `also <file:line>` on its citation line (the block's `Code:` line); one line breaking two rules with two different fixes is two blocks, with one fix it is one block under the rule naming the worse failure (on a tie, the earlier enum value).
 
-Blocks are one per defect, ordered by severity, then file and line, then enum order. Each site of a repeated rule is its own defect; a single defect that needs edits in several places anchors on the line to edit and names the others as `also <file:line>` on its citation line.
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of dart-language-patterns, flutter-widget-patterns, flutter-riverpod-patterns, flutter-navigation-patterns, flutter-networking, flutter-data-persistence, flutter-adaptive-responsive, flutter-accessibility, flutter-i18n, flutter-performance, flutter-security-patterns, flutter-error-handling, flutter-platform-channels, flutter-testing-patterns, flutter-build-release, flutter-overengineering-review covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's `Rule` values, or the path of a file that could not be read) when any check could not be exercised, then the `No <rule> findings.` lines. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean and gets its `No <rule> findings.` line; a check on the `Not checked` line does not. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its `Problem:` line, and does not move its check to `Not checked`. Invoked directly, a request to write or change code takes the implement shape, a request to review or audit takes the review shape, and a supplied symptom or bug report takes diagnose mode.
 
-A finding that depends on code outside the files read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to the line describing its effect. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+The closing lines - `Also seen` and `Not checked` only when they have content, then one `No <rule> findings.` line per clean check (no block, not on the `Not checked` line), blank-separated:
+
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+
+{No <rule> findings.}
+```
+
+Diagnose mode opens with one line per reported symptom, `Symptom <n>: <the report's title or first sentence>`, a title that lists two symptoms is two lines, naming on each any premise the files read contradict (a flag the report says is on, a version it names) - the diagnosis then proceeds on what the code shows - and stating when the files read cannot cause the symptom. Blocks for the causes of the reported symptoms come first, grouped by symptom in reported order and within a group by severity, each such block's `Problem:` line opening with `Symptom <n>:`; a cause shared by two symptoms is one block opening `Symptom 1, 2:`, placed with the lower-numbered symptom; every other defect seen in the files read follows, ordered as in review mode. The zero-finding lines named above are omitted in diagnose mode; `Also seen` and `Not checked` lines are kept.
 
 ## Avoid
 
 - Assuming the previous version is the starting version - v3 -> v9 in one launch is normal
-- Editing, renumbering, or reordering a step that has shipped
+- Editing, renumbering, or reordering a step that has completed on any device
 - Splitting one released revision's ops across several version bumps, or folding new ops into a step that already shipped
 - Adding a non-nullable column with no stored default
 - Reaching for `ALTER COLUMN` (SQLite has none) instead of a table rebuild

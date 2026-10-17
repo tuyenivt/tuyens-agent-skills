@@ -80,6 +80,8 @@ Records have value equality and no declaration cost, which makes them right for 
 
 Names on **positional** record fields are documentation only - `(int x, int y)` is still accessed as `$1` and `$2`. Use named fields when you want to read them by name.
 
+An identity that changes over time (a client id later replaced by a server id) is one class with a nullable server-id field, never a mutable `String`; a money amount is `(int minor, String currency)` with the exponent taken from the currency, not the locale.
+
 ### Sealed classes and exhaustive `switch`
 
 ```dart
@@ -122,7 +124,7 @@ extension type OrderId(String value) {}
 void link(UserId userId, OrderId orderId) { ... }
 ```
 
-An extension type is erased to its representation type at runtime, so runtime type tests and dynamic dispatch cannot tell it apart from the underlying value - it is a static-checking tool, not a runtime one. Adding `implements String` makes the wrapper substitutable for the raw value, which reopens exactly the hole it was created to close; add it only deliberately.
+An extension type is erased to its representation type at runtime, so runtime type tests and dynamic dispatch cannot tell it apart from the underlying value - it is a static-checking tool, not a runtime one. Adding `implements String` makes the wrapper assignable wherever a `String` is accepted and exposes every `String` member on it; the two ids still cannot be swapped for each other, but the wrapper now flows into raw-string APIs unchecked - add it only deliberately.
 
 ### Async: start concurrently, await once
 
@@ -137,7 +139,7 @@ final (user, prefs) = await (fetchUser(), fetchPrefs()).wait;
 
 A `Future` starts when it is created, not when it is awaited. Starting two futures and awaiting them one by one is not a fix: if the first throws, the second's error goes unhandled. The record `.wait` (Dart 3) awaits all of them and throws one `ParallelWaitError`; `Future.wait([...])` covers a homogeneous list and throws the first error.
 
-Fire-and-forget needs to be explicit - wrap it in `unawaited(...)` from `dart:async` so an intentional gap is distinguishable from a forgotten `await`, and attach error handling, because an unobserved failed future is silent.
+Fire-and-forget needs to be explicit - wrap it in `unawaited(...)` from `dart:async` so an intentional gap is distinguishable from a forgotten `await`, and attach error handling: a failed future nobody awaits reaches only the zone's uncaught-error handler, detached from the caller's control flow and from any `try`/`catch`.
 
 ### Streams
 
@@ -202,12 +204,20 @@ When invoked from an implementation workflow, emit decisions per concern:
 
 One row per shape decision the task actually forced; do not pad with concerns the task never raised.
 
-Implement mode ends with `Pre-existing: <file:line> - <defect>` for each defect in code the plan edits or depends on but does not fix, or `Pre-existing: none`. Code not yet written is cited as `<path> (new)`. A file the plan depends on that is absent or could not be read is listed as `Not read: <path> - <reason>`. A defect the change cannot ship on top of is fixed in the plan, not listed as `Pre-existing`.
+```
+Fixed in plan: {<file:line> - <defect> | none}
+
+Pre-existing: {<file:line> - <defect> | none}
+
+Not read: {<path> - <reason> | none}
+```
+
+Implement mode describes the state after the plan and ends with these lines, each on its own line with a blank line between: `Fixed in plan: <file:line> - <defect>` per defect in existing code the plan corrects, or `Fixed in plan: none`; `Pre-existing: <file:line> - <defect>` per defect left in place, or `Pre-existing: none`; `Not read: <path> - <reason>` per file the plan needs that is absent, could not be read, or was not read, or `Not read: none`. A defect is fixed in the plan when it sits in code the change edits, or when the new code would misbehave on first run on top of it; every other defect in code the new code calls or reads is `Pre-existing`; code the new code neither edits, calls, nor reads is not listed, except a defect that breaks the build, which is always `Fixed in plan`. Code not yet written is cited as `<path> (new)`.
 
 When invoked from a review workflow, emit one block per finding:
 
 ```
-### [Must | Recommend] file:line
+### [{Must | Recommend}] {file:line}
 
 - Category: {Null Safety | Exhaustiveness | Type Modeling | Async | Concurrency | Error Handling | Resource Lifecycle | Collection Style}
 - Code: {one-line citation}
@@ -215,15 +225,31 @@ When invoked from a review workflow, emit one block per finding:
 - Recommendation: {concrete edit}
 ```
 
-`[Must]` when the violation produces a runtime failure or leak (a scheduled-crash `!` or `late`, disabled exhaustiveness, missing `cancel`/`close`, swallowed or unobserved errors, UI-thread jank filed as `Concurrency`, money as `double` filed as `Type Modeling`, `Future.delayed` used to wait for another async step filed as `Async`). A misused `late` is `Null Safety`. `[Recommend]` for shape and readability (type modeling including sentinels, collection style, serialized independent awaits, an isolate spawned for trivial work, an unmodified public class, `implements <representation>` on an extension type) and for degraded diagnostics (`throw e` discarding a stack trace, a bare `catch` that logs or shows the error but never reports it). The label follows the violation, not mitigation elsewhere in the call chain.
+`[Must]` when the violation produces a runtime failure or leak (a scheduled-crash `!` or `late`, disabled exhaustiveness, missing `cancel`/`close`, swallowed or unobserved errors, UI-thread jank filed as `Concurrency`, money as `double` filed as `Type Modeling`, `Future.delayed` used to wait for another async step filed as `Async`). A misused `late` is `Null Safety`. `[Recommend]` for shape and readability (type modeling including sentinels, collection style, serialized independent awaits, an isolate spawned for trivial work, an unmodified public class, `implements <representation>` on an extension type) and for degraded diagnostics (`throw e` discarding a stack trace, a bare `catch` that logs or shows the error but never reports it). A `dynamic` value or unchecked `as` cast flowing past a decode boundary, and a type used as a map key or `family` argument without `==`/`hashCode`, are `Type Modeling` - the cast `[Must]` (it throws at runtime), the key type `[Recommend]`; writing to a closed sink or notifier is `Resource Lifecycle`, `[Must]`; a `Future` exposed through `asStream()` where callers expect re-emission is `Async`, `[Recommend]`. Language-level defects inside widget files are this skill's. The label follows the violation, not mitigation elsewhere in the call chain.
 
-Blocks are one per defect, ordered by severity, then file and line, then enum order. Each site of a repeated rule is its own defect; a single defect that needs edits in several places anchors on the line to edit and names the others as `also <file:line>` on its citation line.
+Blocks are one per defect, ordered by severity, then file path (repository-relative, byte order), then line, then enum order. A defect is one rule at one fix site: the same rule broken at N sites that each need their own edit is N blocks; the same rule broken at N sites that one edit fixes (a declaration, a shared helper, a config key) is one block anchored on the line to edit, naming the other sites as `also <file:line>` on its citation line (the block's `Code:` line); one line breaking two rules with two different fixes is two blocks, with one fix it is one block under the rule naming the worse failure (on a tie, the earlier enum value).
 
-A finding that depends on code outside the files read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to the line describing its effect. A check whose subject does not appear in the files read is clean; a check the files read cannot exercise is listed once as `Not checked: <names> - <reason>` and gets no clean or zero-finding line. A file in scope that could not be read is named on that line.
+Review output is, in order: any opening lines this skill defines, the finding blocks, one `Also seen: <file:line> - <defect> (owner: <skill>)` line per defect in the files read that no value of this skill's enum covers - one per line, blank-separated, in file order (no block, no severity; the owner is whichever of flutter-widget-patterns, flutter-riverpod-patterns, flutter-navigation-patterns, flutter-networking, flutter-data-persistence, flutter-local-db-migration, flutter-adaptive-responsive, flutter-accessibility, flutter-i18n, flutter-performance, flutter-security-patterns, flutter-error-handling, flutter-platform-channels, flutter-testing-patterns, flutter-build-release, flutter-overengineering-review covers it, or `unowned`), one `Not checked: <names> - <reason>` line (names are this skill's `Category` values, or the path of a file that could not be read) when any check could not be exercised, then the `No <category> findings.` lines. A check is `Not checked` when the files read reference its subject but the code that decides it was not read (an imported file, a test or platform directory, release history); a check whose subject nothing in the files read references is clean and gets its `No <category> findings.` line; a check on the `Not checked` line does not. A check with a finding is never `Not checked`. A file in scope that could not be read is its own `Not checked` entry, `<path> - not readable`; when the file that decides a finding is unknown, `<path>` in the unconfirmed suffix reads `unknown file`. A finding whose confirmation lies in a file not read is still emitted at the severity it would have if confirmed, with `(unconfirmed: depends on <path>)` appended to its `Issue:` line, and does not move its check to `Not checked`. Invoked directly, a request to write or change code takes the implement shape and a request to review, audit, or explain a failure takes the review shape.
 
-In review mode only, for each category with zero findings, emit exactly `No <category> findings.` using the category name from the enum, so the workflow knows the check ran. Omit that line for categories that have findings.
+The closing lines - `Also seen` and `Not checked` only when they have content, then one `No <category> findings.` line per clean check (no block, not on the `Not checked` line), blank-separated:
 
-In both modes, the SDK version is the lower bound of pubspec.yaml's `environment: sdk:` constraint. When that is unavailable, infer the floor from language features already in the code (records/patterns imply 3.0+, `extension type` implies 3.3+) and report `Dart SDK inferred: <version> (from <feature>)` once; do not silently restrict findings. When the version is below 3.0, report `Dart 3 patterns unavailable: SDK <version>` once, restrict findings to null safety, async, concurrency, error handling, and resource lifecycle, and list the rest as `Not checked`; fixes there use pre-3.0 forms (`Future.wait`, `package:collection`'s `firstOrNull`). On 3.0-3.2, skip `extension type` recommendations (3.3+); below 3.2, treat private-final field promotion as unavailable.
+```
+Also seen: {<file:line> - <defect> (owner: <skill>)}
+
+Not checked: {<names> - <reason>}
+
+{No <category> findings.}
+```
+
+Both modes open with two lines:
+
+```
+Dart SDK: {<version> (pubspec) | <version> (inferred from <feature>)}{ - Dart 3 patterns unavailable}
+
+Targets: {<platforms>} (source: {platform directories | project CLAUDE.md | brief | assumed mobile})
+```
+
+The version is the lower bound of pubspec.yaml's `environment: sdk:` constraint or, when that is unavailable, inferred from features already in the code (records and patterns imply 3.0+, `extension type` 3.3+). `Targets` keys the `compute` vs `Isolate.run` guidance: web present -> `compute`, also for a feature that is native-only at runtime but compiles for web; `Isolate.run` only in code a `kIsWeb` guard keeps off the web build; below Dart 2.19 `Isolate.run` does not exist, so `compute` there too. Below 3.0 the first line ends ` - Dart 3 patterns unavailable`: `Exhaustiveness` is listed as `Not checked`, record, sealed, class-modifier, and extension-type recommendations are skipped, and fixes use pre-3.0 forms (`Future.wait`, `package:collection`'s `firstOrNull`); `Type Modeling` (money as `double`, sentinels) and `Collection Style` (collection-`if`/`for`, Dart 2.3+) stay in force. Below 2.12 `Null Safety` is also `Not checked`. On 3.0-3.2, skip `extension type` recommendations (3.3+); below 3.2, treat private-final field promotion as unavailable.
 
 ## Avoid
 
@@ -236,7 +262,7 @@ In both modes, the SDK version is the lower bound of pubspec.yaml's `environment
 - `implements <representation>` on an extension type unless substitutability is the goal
 - `throw e` inside `catch` - use `rethrow`
 - Bare `catch (e)` outside a reporting boundary, and `catch` blocks that swallow without logging
-- Un-awaited futures with no `unawaited()` and no error handler - failures vanish
+- Un-awaited futures with no `unawaited()` and no error handler - the failure bypasses every local handler
 - `listen` without a stored subscription, or a `StreamController` with no `close`
 - `Isolate.run` for work measured in microseconds - the copy costs more than the work - or on a web target, where it throws
 - `Future.delayed` to wait for another async step to finish (a deliberate backoff delay is fine)
