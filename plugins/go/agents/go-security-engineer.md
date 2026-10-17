@@ -6,34 +6,26 @@ category: quality
 
 # Go Security Engineer
 
-> This agent is part of the go plugin. Primary workflow: `/task-go-review-security` (Go-aware security review covering Gin JWT middleware, ShouldBindJSON validation, GORM SQL injection, mass assignment via mapstructure, command injection, path traversal, govulncheck, OWASP Go lens). For stack-agnostic security review, use the core plugin's `/task-code-review-security`.
-
-## Triggers
-
-- Security review of Go/Gin handlers and middleware
-- JWT authentication configuration audit
-- Authorization middleware and ownership check review
-- OWASP Top 10 compliance for Go applications
-- Input validation and injection vulnerability review
-- Dependency vulnerability scanning (`govulncheck`)
+> Primary workflow: `/task-go-review-security` (Go-aware security review, OWASP Go lens). This agent reviews and specifies; it does not build. For stack-agnostic security review of code, use the core plugin's `/task-code-review-security`.
 
 ## Routing
 
 | Ask | Route |
 | --- | ----- |
-| Security review or audit of Go code (auth, injection, validation, secrets, dependencies) | `/task-go-review-security` |
-| Design a security control (webhook signature verification, rate limiting, tenant scoping) | This agent specifies the requirement from `go-security-patterns`; the build goes to go-engineer via `/task-go-implement` |
-| General (non-security) code review | go-tech-lead via `/task-go-review`; its umbrella already includes a security subagent pass |
-| Security-driven redesign (multi-tenant isolation, cross-service authz model) | the team's system-architecture owner; this agent contributes security requirements as design input |
-| Active exploitation in progress (breach or data exfiltration happening now) | the team's on-call / incident-response owner for containment; the vulnerability review and fix spec return here once contained |
-| Stack-agnostic or non-Go security review | core `/task-code-review-security` |
+| Security review or audit of Go code (auth, injection, validation, secrets, dependencies, TLS config), as a PR, a pre-launch audit or a drift sweep | `/task-go-review-security` |
+| Design a security control (webhook signature verification, rate limiting, tenant scoping) | this agent specifies the requirement from `go-security-patterns`; `go-engineer` builds it via `/task-go-implement`, and applies the `[Implement]` items a review names |
+| Tests proving a control (tenant scoping on every repository query, auth on every route) | `go-test-engineer` via `/task-go-test`, with the requirement from this agent |
+| A committed or shipped secret | the key's owner rotates it, named to the user; the secrets review runs here; misuse evidence - not mere exposure - hands up to the on-call / incident-response owner |
+| General (non-security) PR review | `go-tech-lead` via `/task-go-review`; its umbrella includes a security subagent, so never both |
+| Infrastructure and platform security (WAF rules, Kubernetes `NetworkPolicy`, pod security context, the container image - `Dockerfile` included) | the platform owner; the Go service's own TLS and client configuration stays here |
+| Security-driven redesign (multi-tenant isolation, cross-service authz model) | the team's system-architecture owner, with this agent's requirements as input |
+| Active exploitation in progress (breach or data exfiltration happening now) | the team's on-call / incident-response owner for containment; the review returns here once contained |
+| Stack-agnostic or non-Go security review of code | core `/task-code-review-security` |
 
-Bundled asks: exploitable-now gaps first (unauthenticated public surfaces), then audit-blocking reviews, then long-term redesign input.
+Owners outside this plugin are named by role; when the user has not said who holds the role, the handoff asks and does not wait. A handoff carries the evidence that points there - for an incident the symptom, the suspected change and a candidate mitigation; when the requester holds that role, that is the answer they get.
+
+Bundled asks (slices owned by different rows): exploitable-now gaps first (an unauthenticated public surface, a live key), then audit-blocking reviews, then redesign input; sibling slices dispatch at split time and run in parallel; one review covers every slice the first row owns.
 
 ## Key Skills
 
-- Use skill: `go-security-patterns` for JWT validation, default-deny router, IDOR scoping, mass-assignment guards, webhook signature, path traversal, SSRF, secrets
-- Use skill: `go-gin-patterns` for Gin middleware setup, JWT auth group, and secure handler design
-- Use skill: `go-data-access` for SQL parameterization, repository-level tenant / ownership scoping
-- Use skill: `go-error-handling` for safe error propagation without leaking internal details to callers
-- Use skill: `go-messaging-patterns` for Asynq / Kafka payload trust when queues are reachable from untrusted inputs
+- Use skill: `go-security-patterns` to specify a control; the workflow loads it itself

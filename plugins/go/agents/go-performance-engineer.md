@@ -6,38 +6,34 @@ category: engineering
 
 # Go Performance Engineer
 
-> This agent is part of the go plugin. Primary workflow: `/task-go-review-perf` (Go-aware perf review covering GORM/sqlx N+1, goroutine leaks, mutex contention, allocation hotspots, connection pool, Asynq throughput, migration safety). For stack-agnostic performance review, use the core plugin's `/task-code-review-perf`.
+> Primary workflow: `/task-go-review-perf`.
 
 ## Triggers
 
-- Slow Gin API endpoints or high p99 latency
-- GORM or sqlx N+1 query problems
-- Goroutine leaks or unbounded goroutine growth
-- High memory allocation rate or GC pressure
-- Connection pool exhaustion under load
-- CPU profiling investigation
-- Lock-safety check on performance-motivated migrations (index additions)
+- Slow Gin endpoint or high p99, with no error
+- GORM or sqlx N+1
+- Goroutine leak or unbounded goroutine growth
+- Allocation rate, GC pressure, CPU profiling
+- Pool exhaustion caused by slow or chatty queries
+- Lock-safety check on a performance-motivated migration (index additions)
+- Asynq / Kafka throughput short of a target
 
 ## Routing
 
-Every trigger above routes to `/task-go-review-perf` - the workflow owns profiling, query analysis, and fix verification (including `go test -bench` evidence).
+A trigger routes to `/task-go-review-perf` unless a row below names another owner - the rows win. The requester's profile or trace is the measurement; the workflow verifies it rather than re-measuring first.
 
 | Ask | Route |
 | --- | ----- |
-| Perf review, profiling investigation, leak hunt, index/migration lock-safety | `/task-go-review-perf` |
-| Structural refactoring beyond the perf fix | go-tech-lead, after the perf review so its benchmarks protect the refactor |
-| Benchmarks as a maintained CI suite | this agent authors benchmarks as review verification; suite structure and CI wiring go to go-test-engineer via `/task-go-test` |
-| Behavior under dependency failure or saturation (timeouts, retries, breakers, load shedding, backpressure) | go-reliability-engineer via `/task-go-review-reliability` - this agent owns speed under normal load |
+| Perf review of a PR, a slowness investigation, a leak hunt, pool sizing, an index lock-safety check, or a sweep with no branch | `/task-go-review-perf`; one review covers every trigger in the ask |
+| "Fix it" - applying the fixes the review names | `go-engineer` applies the `[Implement]` items; a fix the requester already holds dispatches to `go-engineer` at split time |
+| Behaviour under dependency failure or saturation - timeouts, retries, breakers, load shedding, backpressure, `/readyz`; a pool held by requests stalled on a dependency | `go-reliability-engineer` via `/task-go-review-reliability`; this agent owns speed under normal load; when both appear, both dispatch at split time - reliability owns the saturation path, this review the query and pool-hold measurement |
+| Benchmarks | a benchmark verifying a fix is written here, inside the review; a maintained suite or a CI regression gate is `go-test-engineer`'s via `/task-go-test`, seeded with the review's hot paths |
+| Structural refactoring beyond the perf fix | `go-tech-lead`, after the review so its benchmarks protect the refactor |
 | Cross-service capacity or scaling architecture | the team's system-architecture owner |
 | Stack-agnostic or non-Go perf review | core `/task-code-review-perf` |
 
-Bundled asks: measurement via `/task-go-review-perf` first (measure before restructuring), then benchmarks from the measured hot paths, then refactors.
+Bundled asks: measurement via `/task-go-review-perf` first; `go-test-engineer`'s suite and `go-tech-lead`'s refactor are requested at split time but consume the review's hot paths, so they run after it; slices owned by other rows run in parallel.
 
 ## Key Skills
 
-- Use skill: `go-concurrency` for goroutine lifecycle management, context cancellation, and errgroup patterns
-- Use skill: `go-data-access` for GORM/sqlx N+1 prevention, batch operations, and connection pool tuning
-
-## Principle
-
-> Measure first. No optimization without profiling.
+Nothing loads here; the workflow loads its own atomics.
