@@ -91,7 +91,7 @@ class FulfillOrder
 end
 ```
 
-`FOR UPDATE` prevents oversell; the `ORDER BY id` in the same locking query (chain order is irrelevant - the SQL is identical) kills the A->B/B->A deadlock two carts sharing products would otherwise hit. For lock semantics, see `rails-db-locking-patterns`.
+`FOR UPDATE` prevents oversell; the `ORDER BY id` in the same locking query (chain order is irrelevant - the SQL is identical) kills the A->B/B->A deadlock two orders sharing products would otherwise hit. A service that locks two rows of one table by id (a transfer) rejects equal ids before any lock (a `Failure` code when the ids are user input; `ArgumentError` in `initialize` only when equal ids are a caller bug) - locking one row twice is not a transfer. For lock semantics, see `rails-db-locking-patterns`.
 
 ### External API Ordering + Compensating Action
 
@@ -108,7 +108,9 @@ If the DB write fails after a successful charge, enqueue a reconciliation job:
 
 ```ruby
 # Stock here is made to order, not a contended pool - a contended one takes the
-# two-transaction claim above instead of charge-first.
+# two-transaction claim above instead of charge-first. CreateOrder closes the cart by state and never
+# mutates its lines: ChargeCustomer's fingerprint reads cart.total_cents on every replay, so an emptied
+# cart would answer :idempotency_conflict instead of replaying the order.
 def call
   payment = ChargeCustomer.new(cart: @cart, payment_method_id: @payment_method_id, idempotency_key: @key).call
   return payment if payment.failure?
@@ -139,7 +141,7 @@ end
 
 ### Idempotency Keys
 
-For mutating services on at-least-once paths (HTTP retry, Sidekiq retry, double-click), thread one key through the chain and back it with a unique DB index (`add_index :payments, :idempotency_key, unique: true`). Key source by trigger: client `Idempotency-Key` header when the client cooperates; otherwise derive deterministically from intent (`"book-#{user_id}-#{slot_id}"`) for double-click/UI paths, or from job args for Sidekiq retries. With no client key and nothing to derive one from, reject the request (400) - a random key defeats the retry it exists for; the rejection is the service's `Failure(:idempotency_key_missing)`, mapped to 400 by the controller. A replay carrying the same key with a different payload is a conflict, never a silent replay: store a payload fingerprint beside the key and return `Failure(:idempotency_conflict)` (409).
+For mutating services on at-least-once paths (HTTP retry, Sidekiq retry, double-click), thread one key through the chain and back it with a unique DB index (`add_index :payments, :idempotency_key, unique: true`). Key source by trigger: client `Idempotency-Key` header when the client cooperates; otherwise derive deterministically from intent (`"book-#{user_id}-#{slot_id}"`) for double-click/UI paths, or from job args for Sidekiq retries. The key names the attempt, never only the payload: two legitimate equal partial refunds carry two client keys, and a payload hash alone would collapse them. With no client key and nothing to derive one from, reject the request (400) - a random key defeats the retry it exists for; the rejection is the service's `Failure(:idempotency_key_missing)`, mapped to 400 by the controller. A replay carrying the same key with a different payload is a conflict, never a silent replay: store a payload fingerprint beside the key and return `Failure(:idempotency_conflict)` (409).
 
 ```ruby
 class ChargeCustomer
@@ -153,7 +155,7 @@ class ChargeCustomer
     return replay(existing) if existing                              # replay compares request_fingerprint first - a mismatch is :idempotency_conflict
 
     payment = Payment.create!(cart_id: @cart.id, amount_cents: @cart.total_cents, idempotency_key: @key,
-                              request_fingerprint: fingerprint, status: :pending)  # durable before the call; fingerprint = Digest::SHA256 over the sorted intent (cart id, amount, method)
+                              request_fingerprint: fingerprint, status: :pending)  # durable before the call
     intent  = BillingClient.new.create_intent(amount_cents: payment.amount_cents,          # the client confirms the intent
                                               payment_method_id: @payment_method_id, idempotency_key: @key)
     payment.update!(gateway_payment_id: intent.id, gateway_status: intent.status, status: status_for(intent.status))
@@ -163,11 +165,16 @@ class ChargeCustomer
                                                                      # transaction, so the winner's row is visible - inside a caller's
                                                                      # REPEATABLE READ transaction the snapshot can predate the winner (RecordNotFound)
   rescue BillingError::Declined => e
-    payment&.update!(status: :declined)          # terminal, or the key wedges forever
+    payment&.update!(status: :declined)          # terminal, or the key wedges until reconciliation
     Result.failure([e.message], code: :payment_declined)
+  rescue BillingError::Unavailable                # timeout or dropped connection: unknown outcome, never a decline
+    PaymentReconciliationJob.perform_async(payment.id, "charge_in_flight") if payment   # the row stays pending; reconciliation asks the gateway
+    raise
   end
 
   private
+
+  def fingerprint = Digest::SHA256.hexdigest([@cart.id, @cart.total_cents, @payment_method_id].join(":"))
 
   # Three outcomes, not two: "not captured" is not the same as "failed".
   def status_for(intent_status)
@@ -192,6 +199,7 @@ class ChargeCustomer
 
   # A row alone proves nothing - only a terminal row does.
   def replay(payment)
+    return Result.failure(["key reused with a different request"], code: :idempotency_conflict) if payment.request_fingerprint != fingerprint
     return Result.success(payment)                                    if payment.captured?
     return Result.failure(["payment declined"], code: :payment_declined) if payment.declined?
     return Result.failure(["charge in flight"], code: :idempotency_conflict) if payment.fresh?   # Payment#fresh? = pending? && created_at > CHARGE_TIMEOUT.ago
@@ -204,13 +212,7 @@ class ChargeCustomer
 end
 ```
 
-Five things this shape gets right, each a live bug in its absence:
-
-- **Assign on its own line.** `return ... if (existing = Payment.find_by(...))` raises `NameError`: Ruby binds locals at parse time in textual order, and a modifier-`if` body parses before its condition, so `existing` in the body compiles as a method call. It fails on exactly the replay path the guard exists for.
-- **Gate the replay on terminal state.** Returning Success for any row with the key hands the caller a success while the winner's charge is still in flight - or was declined - and the orchestrator creates an order against money never captured.
-- **Require the key.** `find_by(idempotency_key: nil)` returns an arbitrary NULL-key row, and the unique index does not backstop it: MySQL permits unlimited NULLs in a unique index.
-- **Derive the status from the response, and branch three ways.** Confirming a payment intent does not guarantee captured funds - it can land in `requires_action` (3DS), `processing`, or `requires_capture` (manual capture), or fall back to `requires_payment_method` on a decline. Marking it authorized on the mere existence of an id ships goods for free. But mapping everything non-captured to a plain failure is the mirror bug: `processing` may still capture, and a bare failure makes the orchestrator abandon a live charge with no reconciliation. Captured succeeds, declined fails, anything in between fails *and* enqueues reconciliation. A gateway timeout or dropped connection is the same unknown outcome, never a decline: the row stays pending and reconciliation asks the gateway.
-- **Write a terminal state on every exit.** The rescue must mark the row `declined` before returning; otherwise the pending row it created is never resolved, `replay` can never reach its declined branch, and every later request with that key gets `:idempotency_conflict` forever - one declined card wedges the key permanently.
+Five things this shape gets right, each a live bug in its absence: `existing` assigned on its own line (a modifier-`if` body parses before its condition, so `return ... if (existing = ...)` raises `NameError` on exactly the replay path); the replay gated on terminal state (a pending or declined row returned as success creates an order against money never captured); the key required (`find_by(idempotency_key: nil)` matches an arbitrary NULL-key row - MySQL's unique index admits unlimited NULLs); the status derived three ways from the response (`requires_action`, `processing` and `requires_capture` are neither captured nor declined, so they fail *and* enqueue reconciliation; a gateway timeout is the same unknown, never a decline - the `Unavailable` rescue leaves the row pending and enqueues reconciliation, since nothing else runs on a raise); and every exit writing a terminal state or enqueuing reconciliation (a declined charge left pending answers `:idempotency_conflict` until reconciliation resolves it - one declined card wedges the key).
 
 The SDK call sits behind `BillingClient`, not in the service: services never name a vendor error class (`Stripe::CardError`) - the client translates at the boundary. For the client and its idempotency header, see `rails-http-client-patterns`; for the error taxonomy, `rails-exception-handling`.
 
@@ -219,7 +221,8 @@ The SDK call sits behind `BillingClient`, not in the service: services never nam
 For nested transactions, `requires_new`, `after_commit` vs `after_save`, isolation levels, and deadlock retry, see `rails-transaction-patterns`. Service-specific:
 
 - Outer service owns the transaction; inner services either don't open one or use `requires_new: true`.
-- Post-commit dispatch via `ActiveRecord.after_all_transactions_commit` (or `current_transaction.after_commit`) - it waits for every open transaction and runs at once when none is open, so a bare `perform_async` after a service's own block is wrong whenever a caller may wrap it. `after_commit_everywhere` only where it is already in the Gemfile.
+- Post-commit dispatch via `ActiveRecord.after_all_transactions_commit` - it waits for every open transaction on every pool and runs at once when none is open (`Model.current_transaction.after_commit` is the single-connection form: it climbs to that connection's outermost transaction only), so a bare `perform_async` after a service's own block is wrong whenever a caller may wrap it. `after_commit_everywhere` only where it is already in the Gemfile.
+- `return`, `break` or `throw` inside the transaction block commits the writes made before it (7.2+): an exit that means failure raises, or `raise ActiveRecord::Rollback`; `next :code` out of the block, as `FulfillOrder` does, is the deliberate commit-and-report exit (`rails-transaction-patterns`).
 - An inner service that opens a transaction uses `requires_new: true` and returns a `Result` - its own rescue rolls back only its savepoint. A composing caller that must abort the whole unit checks `failure?` inside its block and raises.
 
 ### Controller Usage
@@ -252,7 +255,7 @@ end
 
 ## Output Format
 
-One block per service (orchestrator and each child; plain jobs don't get blocks). In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: blocks hold corrected values only, and a pre-existing violation the change touches is still a numbered finding. A service recommended for deletion, or a class in `app/services/` that is not a service at all (a calculator, a strategy, a value object), gets findings only and no block, with one line saying which it is. Controller-level findings (a missing `authorize`, an unmapped code, mass-assigned or client-priced params feeding the service), a model callback that dispatches inside the transaction, a project `Result` lacking a reader this contract uses, and two services implementing one responsibility without composing (name the survivor) are numbered findings with no block. A scheduled sweep is listed on the block of the service it backs. A project with no `Result` class gets the contract block below; the contract block also appears when the request asks for the Result API itself ("design the Result contract"), while a `result.rb` that is merely listed among the files to review gets findings only. A service that finalizes on a partner's confirmation webhook is its own block; webhook dedupe is `rails-http-client-patterns`' concern, and out-of-order delivery takes `rails-sidekiq-patterns`' monotonic guard.
+One block per service (orchestrator and each child; plain jobs don't get blocks - a job's own idempotency or retry defect is a numbered finding naming `rails-sidekiq-patterns`). A unit outside the read set that the reviewed code or its design depends on (a webhook handler, a reconciliation job named in a doc) is one numbered finding naming the file, not a `(proposed)` block. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. A service recommended for deletion, or a class in `app/services/` that is not a service at all (a calculator, a strategy, a value object), gets findings only and no block, with one line saying which it is. Controller-level findings (a missing `authorize`, an unmapped code, mass-assigned or client-priced params feeding the service), a model callback that dispatches inside the transaction, a project `Result` lacking a reader this contract uses, and two services implementing one responsibility without composing (name the survivor) are numbered findings with no block. A scheduled sweep is listed on the block of the service it backs. A project with no `Result` class gets the contract block below; the contract block also appears when the request asks for the Result API itself ("design the Result contract"), while a `result.rb` that is merely listed among the files to review gets findings only. A service that finalizes on a partner's confirmation webhook is its own block; webhook dedupe is `rails-http-client-patterns`' concern, and out-of-order delivery takes `rails-sidekiq-patterns`' monotonic guard.
 
 The job backend comes from the Gemfile (`sidekiq` or `solid_queue`), not from stack-detect. An Active Job class (`ApplicationJob`, any backend) retries through `retry_on` / `discard_on` and enqueues with `perform_later`; a `Sidekiq::Job` retries through `sidekiq_options retry:` + `sidekiq_retry_in` and enqueues with `perform_async`. A slot named for Sidekiq (`Sidekiq retry`, `sidekiq only`) takes the channel of whichever backend runs the job. A `rescue` inside `perform` for a class the retry channel owns wins and silently disables that retry - one channel per class.
 
@@ -271,7 +274,7 @@ Idempotency: {key source; unique index column | row lock on a state column (clai
 
 Sidekiq Jobs: {jobs dispatched after commit | dispatched inside the transaction - GAP | dispatched on a failure branch only (name it) | scheduled sweep: <job> | absent - GAP when a pending or claim row exists | None}
 
-Result: Success({value}) | Failure({code enum})
+Result: Success({value}) | Failure({code enum}) | Failure with no code (errors or a message only) - GAP -> Failure({code enum}) | <observed non-Result return (false, a record, nil) - GAP -> Result>
 ```
 
 When the deliverable is the shared `Result` contract itself rather than one service, emit this block once (plus per-service blocks for services already in scope), and list the failure codes the project registers, grouped by owning service; a reconciliation job takes `perform(record_id, reason)` with the reason drawn from the same registry:
@@ -290,9 +293,5 @@ These fields take ` - GAP` by the same rule (a job whose `perform` receives no r
 
 - Wrapper around a single AR method - call the method directly
 - Pure delegation services adding no logic - unnecessary indirection
-- Raw exceptions for expected failures - use Result
-- `.perform_async` or external API call inside a DB transaction
-- Authorization inside a service - belongs in the controller
-- Inline refund / undo on partial failure - enqueue a reconciliation job
 - A `rescue` attached to the `transaction do ... end` block itself - it runs inside the transaction, so a rescued `InsufficientStockError` still commits the writes made before it (`rails-transaction-patterns`)
 - Check-then-decrement on stock with neither a row lock nor a guarded atomic UPDATE (`... SET stock = stock - ? WHERE id = ? AND stock >= ?`, affected rows checked) - races oversell

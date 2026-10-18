@@ -56,7 +56,7 @@ div class=current_user.role
 div class="user-role"
 ```
 
-(Slim `/` comments are line-level only - a trailing `/ ...` on a tag line renders as content.)
+(Slim `/` comments are line-level only: after inline text, `p Hello / note` renders the slash as content, and right after a tag or its attributes `/` is the self-closing marker, so trailing text raises `Slim::Parser::SyntaxError: Unexpected text after closed tag`.)
 
 Indentation defines scope - a misaligned line silently changes branch:
 
@@ -122,13 +122,15 @@ Uniform lists use collection caching - one `read_multi` instead of a cache read 
 
 `cached: true` keys on the record alone, so one partial reused with different `locals:` - a public variant and an operator variant with extra columns - collides, and whichever renders first is served to both. Put the distinguishing local in the key: `cached: ->(order) { [order, show_operator_columns] }`.
 
-`cached: true` is partial-only. ViewComponent rows render via `OrderCardComponent.with_collection(@orders)`, which passes the collection member as `order_card:` (derived from the class name) - so the component needs `with_collection_parameter :order` for an `order:` initializer, or it raises `ViewComponent::MissingCollectionArgumentError`. Don't wrap component renders in `cache` blocks - template digests don't track component files, so component edits never bust the fragment.
+`cached: true` is partial-only. ViewComponent rows render via `OrderCardComponent.with_collection(@orders)`, which passes the collection member as `order_card:` (derived from the class name) - so the component needs `with_collection_parameter :order` for an `order:` initializer, or it raises `ViewComponent::MissingCollectionArgumentError`. Don't wrap component renders in `cache` blocks - template digests don't track component files, so component edits never bust the fragment (view_component 4.15+'s opt-in `ViewComponent::ExperimentallyCacheable` registers them with the digestor).
 
 Russian-doll: `touch: true` on child associations bubbles writes so the parent cache key invalidates:
 
 ```ruby
 belongs_to :order, touch: true
 ```
+
+A record-keyed fragment misses changes in associations that do not `touch` it (a review edited, a variant's price) - add `touch: true` on those, or key on `[record, assoc.maximum(:updated_at)]`. The model-side `touch: true` is a `Fix: handoff: rails-activerecord-patterns` block in review and an `app/models/...` line under `Files Generated` when generating. A relative time (`time_ago_in_words`) inside a cached fragment freezes at render - put it outside the cache block, or render the timestamp and relativise it client-side.
 
 Hot-key stampede protection (controller-computed aggregates cache here too, not in the view):
 
@@ -146,7 +148,7 @@ Caching and streams compose, but not because broadcasts skip the cache - they re
     p Loading...
 ```
 
-The trailing `do` is required. Slim passes the nested lines as the helper's block only when the `=` line ends in `do`; without it the frame renders empty and the placeholder lands beside it as a sibling - silently, nothing fails to compile.
+Slim appends the `do` itself when an `=` line has nested content, so the indented lines become the helper's block either way - write it anyway, so the block is visible to readers and survives an ERB or HAML port.
 
 Frame vs stream: a frame with `src:` *pulls* on navigation/lazy-load; live in-place updates *push* via `turbo_stream_from` + a broadcast targeting `dom_id(record)`. Reuse the same partial for initial render and stream update so markup stays consistent (rows built as ViewComponents: have the broadcast render the component, or keep the row a partial both paths share); a local the broadcast cannot pass defaults via `local_assigns.fetch(:operator, false)`:
 
@@ -214,6 +216,7 @@ Files Generated:
   app/javascript/controllers/{name}_controller.js      # Stimulus, when one is added
   app/helpers/{name}_helper.rb                          # when a stateless transform is added
   app/presenters/{name}_presenter.rb                    # when Logic Moves names a presenter
+  app/models/{model}.rb                                 # touch: true, when a Russian-doll key needs it
   config/locales/{locale}.yml                          # keys added, when strings are user-visible (create the file when absent)
 
 ViewComponents: {app/components/{name}_component.rb + .html.{ext} | None}
@@ -229,10 +232,10 @@ Fragment Caching: {Record (cache record) on X | Russian-doll on X | Collection (
 Logic Moves: {helper -> presenter/component verdicts | None}
 ```
 
-Reviewing - one block per finding in the format below, Critical first; after all blocks, emit the corrected template code for each affected file. A project-wide finding (no linter) takes `Location: Gemfile`; a cross-file finding cites the file where the fix lands; a finding on a non-template file takes `Engine: n/a`:
+Reviewing - a `Default engine: {ERB | HAML | Slim}` line, then one block per finding in the format below, Critical first; after all blocks, emit the corrected template code for each affected file (the whole file when new, the changed lines when it exists). A project-wide finding (no linter) takes `Location: Gemfile`; a cross-file finding cites the file where the fix lands; a finding on a non-template file takes `Engine: n/a`:
 
 ```
-Severity: {Critical (XSS, JS-context injection, a cache or stream that leaks across users, roles or tenants, a credential or token rendered into the markup - a key designed as publishable is not one) | High (stale/never-invalidating cache, logic/indentation bug, frame collision, per-row rendering or N+1 that degrades the page, a user-supplied href with an unrestricted scheme, a state-changing bare GET link) | Medium (attribute-value injection - class tokens, style; helper/presenter misplacement; an inline script with no user data) | Low (style, partial contract, a user-visible string outside i18n)}
+Severity: {Critical (XSS, JS-context injection, a cache or stream that leaks across users, roles or tenants, a credential or token rendered into the markup - a key designed as publishable is not one) | High (stale/never-invalidating cache, logic/indentation bug, frame collision, a Stimulus wiring bug (misnamed identifier, an action outside its controller's scope), a broadcast that replaces its own `turbo_stream_from` container, per-row rendering or N+1 that degrades the page, a user-supplied href with an unrestricted scheme, a state-changing bare GET link) | Medium (attribute-value injection - class tokens, style; helper/presenter misplacement; an inline script with no user data) | Low (style, partial contract, a user-visible string outside i18n)}
 
 Engine: {ERB | HAML | Slim | n/a (non-template file)}
 
@@ -247,9 +250,6 @@ An N+1 or a missing preload seen from the template gets a block here with the qu
 
 ## Avoid
 
-- `<%==`, Slim `==`, HAML `!=` on any user-reachable expression
 - Mixing template engines without a migration plan
-- Inline `<script>` tags
 - Slim/HAML without a linter - indentation bugs go unnoticed
 - Fragment keys omitting implicit scope context - data cached under a `default_scope` (tenant scoping is the dangerous case) serves other scopes; include the scoping value in the key (`cache [Current.tenant, :stats]`)
-- Caching on `record.id` instead of the record

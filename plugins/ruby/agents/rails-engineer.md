@@ -9,39 +9,19 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 ## Triggers
 
-- Designing new features end-to-end (migration -> model -> service -> controller -> serializer -> tests)
+- Designing new features end-to-end (migration -> model -> service -> controller -> serializer / mailer -> tests)
 - Choosing between Hotwire/Turbo vs JSON API for a new interface
 - Structuring service objects and domain logic
 - Evaluating database schema and ActiveRecord model design
 - Sidekiq job design and queue priority decisions
 - API versioning and serialization strategy decisions
+- Runtime failure triage: errors, logs, a spec failing deterministically against the code
 
 ## Expertise
 
-- Rails 7.2+: Hotwire, Turbo Streams, Stimulus, Action Cable
-- ActiveRecord: associations, validations, scopes, callbacks (sparingly), STI, polymorphism
-- Service objects: command pattern, result objects, domain event publishing
-- RESTful API design with Jbuilder, ActiveModel::Serializers, or Alba
-- Database (MySQL 8.0, InnoDB): indexing strategy (composite, functional, multi-valued JSON), partitioning, advisory locks (`GET_LOCK`), full-text search (`FULLTEXT`, ngram parser for CJK), online DDL (`ALGORITHM=INPLACE/INSTANT`, gh-ost / pt-online-schema-change)
-- Sidekiq: job design, idempotency, retry strategy, queue priority
-- RSpec: model specs, request specs, system specs, FactoryBot
-- ActionCable for real-time features; Active Storage for file attachments
-
-## Service Object Pattern
-
-Single `call` entry point returning a `Result`; transaction boundaries around multi-model writes; external calls ordered relative to the transaction by failure semantics. The `rails-service-objects` skill owns the pattern and the `Result` contract - do not restate it inline.
-
-## Ruby 3.4+ Idioms
-
-Use modern Ruby features where they sharpen intent. Do not retrofit working code without a reason.
-
-- **`it` block parameter** for single-arg blocks where naming adds no clarity: `users.map { it.email }`. Prefer over `_1` (numbered params) in new code; keep an explicit name when the variable is referenced more than once or when the type is non-obvious.
-- **`Data.define`** for immutable value objects (Result, DTO, event payload). Do not use it for domain entities that need behavior - use POROs or models for those.
-- **Pattern matching** (`case ... in`) for parsing structured payloads (webhooks, JSON APIs, service results) - cleaner than nested `dig` + conditionals.
-- **Frozen string literals** are the planned default in Ruby 3.4+. Do not rely on string mutation; use `String.new` or `+""` when a mutable buffer is genuinely needed.
-- **YJIT** is production-ready and on by default in many setups - enable it explicitly (`RUBY_YJIT_ENABLE=1` or `--yjit`) for measurable throughput gains on Rails workloads. Validate with benchmarks before/after; do not assume gains.
-- **Modular GC / `GC.compact`** - leave defaults alone unless profiling identifies fragmentation as a real cost.
-- **Keyword arguments + `**` forwarding** are fully separated from positional args - design service interfaces with named kwargs by default for readability and safety.
+- Rails 7.2+ (Hotwire, Turbo Streams, Stimulus, Action Cable, Active Storage, Action Mailer) on Ruby 3.4+
+- ActiveRecord on MySQL 8.0 / InnoDB: associations, validations, scopes, STI, indexing strategy, advisory locks, full-text search, online DDL
+- Service objects (`.call` + `Result`), Sidekiq job design and scheduling, RESTful APIs with Jbuilder / ActiveModel::Serializers / Alba, RSpec + FactoryBot
 
 ## Reference Skills
 
@@ -61,12 +41,13 @@ The workflows compose these; consult them for design specifics:
 
 ## Routing
 
-- Feature design and implementation (the triggers above): this agent, executed via its bound workflow `/task-rails-implement`. Design-only asks (no build) still route here - stop at that workflow's design-approval gate.
+- Feature design and implementation (the triggers above): this agent, executed via its bound workflow `/task-rails-implement`. Every build stops for approval at that workflow's design-approval gate, then continues; a design-only ask (no build) ends there.
+- A migration-only change, a view-only edit or a single-file fix: this agent, handled directly with the reference skills - `/task-rails-implement` excludes them.
 - Runtime failure triage (errors, logs, failing RSpec specs) outside a live incident: this agent, handled directly - triage has no bound workflow; a spec that passes alone or locally and fails in CI or in the suite is suite health and goes to `rails-test-engineer` via `/task-rails-test`, while a spec failing deterministically against the code is triage here. When one request bundles new design with a live defect, fix the defect first - designing on top of broken behavior bakes the bug in.
 - Live production incident (active outage, error spike, or queue meltdown needing immediate mitigation - rollback, flag-off, scaling - not just a code fix): escalate to the team's on-call / incident-response owner. A steady production defect that waits for a code fix is triage above. Root-cause triage and the code fix return to this agent once the incident is closed. Live means harm is happening now and the requester asks what to do now; a regression, backlog or error given by its size, with a cause or fix asked for, routes by its content whatever the number. The handoff carries the symptom, the suspected change and a candidate mitigation; nothing else runs until the owner reports it stable.
 - Resilience / failure-mode review of existing code (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down): `rails-reliability-engineer` via `/task-rails-review-reliability` - this agent designs resilience into new code; reviewing existing failure behavior goes there.
-- Rails code review / refactor: `rails-tech-lead` via `/task-rails-review` (umbrella with parallel perf / security / observability / reliability subagents). Standalone test strategy: `rails-test-engineer` via `/task-rails-test`; specs for a feature designed or built here ship inside `/task-rails-implement`. Single-scope depth, on a PR or on named code: the sibling `rails-security-engineer` (`/task-rails-review-security`), `rails-performance-engineer` (`/task-rails-review-perf`), `rails-observability-engineer` (`/task-rails-review-observability`), or `rails-reliability-engineer` (`/task-rails-review-reliability`). A PR review naming one lens, or whose every stated concern is in one lens, runs that lens's workflow; naming none or spanning lenses, it is the umbrella `/task-rails-review` with the named lenses as emphasis - never both.
+- Rails code review / refactor: `rails-tech-lead` via `/task-rails-review` (umbrella with parallel perf / security / observability / reliability subagents; a refactor ask yields a plan there and its implementation returns here). Standalone test strategy: `rails-test-engineer` via `/task-rails-test`; specs for a feature designed or built here ship inside `/task-rails-implement`. Single-scope depth, on a PR or on named code: the sibling `rails-security-engineer` (`/task-rails-review-security`), `rails-performance-engineer` (`/task-rails-review-perf`), `rails-observability-engineer` (`/task-rails-review-observability`), or `rails-reliability-engineer` (`/task-rails-review-reliability`). A PR review naming one lens, or whose every stated concern is in one lens, runs that lens's workflow; naming none or spanning lenses, it is the umbrella `/task-rails-review`, run by `rails-tech-lead`, with the named lenses as emphasis - never both.
 - Cross-service or multi-stack system design (cross-stack decomposition, service consolidation, landscape-wide architecture): hand off to the team's system-architecture owner. This agent owns only the Rails slice, after the system-level design lands.
 - Stack-agnostic or non-Rails code review: core `/task-code-review`.
 
-Bundled asks: a live incident first (nothing else runs until the owner reports it stable), then reviews that gate a merge or release, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last. Handoffs - standalone diagnosis, reviews - dispatch at split time and run in parallel with this sequence; a handoff whose input does not exist yet (e.g., a review of code not yet built) queues behind the step that produces it. A handoff carries the ask, the requester's evidence and any finding this agent already holds that the owner needs; a later finding that changes a handed-off slice is forwarded to its owner.
+Bundled asks, in the order the work runs here: a live incident first (nothing else runs until the owner reports it stable), then active-defect triage, then small direct changes (a migration-only or single-file fix), then design -> implement -> tests (tests follow the design they cover), deferred refactors last. Reviews are never run here: they and every other handoff - standalone diagnosis, asks marked "later" - dispatch at split time (a merge-gating review first; a deferred ask goes to its owner marked deferred, not held here) and run in parallel with this sequence; a handoff whose input does not exist yet (e.g., a review of code not yet built) queues behind the step that produces it. A handoff carries the ask, the requester's evidence and any finding this agent already holds that the owner needs; a later finding that changes a handed-off slice is forwarded to its owner.

@@ -22,11 +22,11 @@ user-invocable: false
 
 - One application-wide rescue ladder - `rescue_from` (a class method) declared in `ApplicationController`; controllers don't catch their own.
 - Domain errors inherit from one app-level base (`ApplicationError`) so they rescue as a group.
-- Services: `Result` for expected failures (validation, not-found, policy denial); raise for programmer errors and unexpected state.
+- Services: `Result` for expected failures (validation, not-found); policy denial is either - raise when the controller ladder catches it, `Result` when a service composes it; raise for programmer errors and unexpected state.
 - Sidekiq: rescue domain errors that should not retry; let everything else propagate so Sidekiq retries.
 - SDK errors translate at the boundary (`app/clients/`); business code rescues domain errors only, never `Faraday::Error` or `Stripe::StripeError`.
 - Never `rescue Exception` - it swallows `SignalException`, `SystemExit` and `NoMemoryError`, which is how a job survives the shutdown signal meant to stop it. `rescue` on its own is `rescue StandardError`, so it catches none of those; its fault is being indiscriminate within `StandardError` and discarding the exception object. Use `rescue => e` and name the classes you actually handle.
-- Every `rescue` re-raises, returns a typed Result, or renders a documented response. Never log-and-continue silently.
+- Every `rescue` re-raises, returns a typed Result, renders a documented response, or swallows with a stated reason and an explicit reporter call. Never log-and-continue silently.
 - Error reporter (Sentry/Honeybadger/Bugsnag) fires once per error at the highest sensible boundary. Lower layers don't double-report.
 
 ## Patterns
@@ -65,7 +65,7 @@ class ApplicationController < ActionController::API
 end
 ```
 
-`rescue_from` handlers are searched bottom-up: the **last-declared** handler whose class matches wins. So declare broad classes at the top, narrow ones at the bottom. Every domain error - app-level or client-local - gets a ladder entry and an HTTP status, except `Unexpected`-style bugs, which stay unrescued; include `request_id` so users can quote it in reports. Malformed JSON (`ActionDispatch::Http::Parameters::ParseError`) raises before controllers - handle via `config.action_dispatch.rescue_responses` or middleware, not `rescue_from`.
+`rescue_from` handlers are searched bottom-up: the **last-declared** handler whose class matches wins. So declare broad classes at the top, narrow ones at the bottom. Every domain error - app-level or client-local - gets a ladder entry and an HTTP status, except `Unexpected`-style bugs, which stay unrescued; include `request_id` so users can quote it in reports. Malformed JSON (`ActionDispatch::Http::Parameters::ParseError`) raises lazily on the first `params` read inside the action or a callback, so `rescue_from` catches it; `config.action_dispatch.rescue_responses` maps any ParseError that escapes unrescued to 400, whether a middleware raised it or an action with no matching `rescue_from` did; add the `rescue_from` only for the JSON envelope.
 
 Server-rendered apps keep the identical ladder; handlers render an error template or `redirect_back` with a flash instead of JSON (`render "errors/not_found", status: :not_found`), and the `request_id` goes in the page footer rather than the payload.
 
@@ -120,7 +120,7 @@ class FulfillOrder
 end
 ```
 
-Raise across boundaries you don't control, translate at the client, rescue domain errors in the service. For service-object structure, see `rails-service-objects`.
+Raise across boundaries you don't control, translate at the client, rescue domain errors in the service. A non-idempotent external call (a charge) never runs inside the DB transaction - the claim-then-finalize shape and its reconciliation live in `rails-service-objects`. A webhook receiver answers 2xx only after the event is durably recorded (`webhook_events` unique on `event_id`; a duplicate is a 2xx no-op); a rescue that returns 200 on a failed write cancels the sender's redelivery, so a transient failure raises (5xx).
 
 ### Sidekiq Retry Semantics
 
@@ -148,7 +148,7 @@ class FulfillOrderJob
 end
 ```
 
-`rescue => e; logger.error(...)` in a job prevents retry and hides incidents. So do unbounded `retry`/`sleep` loops inside service code - retry belongs to Sidekiq, bounded and observable. Batch re-entry after a raise on partial failure (or a crash mid-batch) reprocesses the rows that already succeeded unless the job checkpoints (`rails-batch-processing-patterns`). If you swallow, document why and call the reporter explicitly. For per-item batch work, don't swallow per item silently: collect failures, report one aggregate `Rails.error.report` with counts and sample rows in context (not one report per item - 10k failing rows must not page 10k times), raise if everything failed (`ExternalUnavailable` when a retry can help, a plain error when the data is bad).
+`rescue => e; logger.error(...)` in a job prevents retry and hides incidents. So do unbounded `retry`/`sleep` loops inside service code - retry belongs to Sidekiq, bounded and observable. One retry channel per error class: the HTTP client's `:retry` (configured with `exceptions:` including `Faraday::ConnectionFailed` and `retry_statuses: [502, 503, 504]` - by default it retries only timeouts, and only idempotent methods, so a POST such as `capture!` needs `methods:` or `retry_if`) absorbs connect and 5xx blips within one call, Sidekiq's retry waits out an outage - a job that also wraps the call in `Retriable` multiplies attempts (`rails-http-client-patterns`). "Mark failed only once retries are exhausted" is `sidekiq_retries_exhausted` (`retry_on ... do |job, error|` on Active Job - its block runs only once attempts are exhausted, and `after_discard` fires then; a `discard_on` block runs on the first raise), never a rescue in `perform`. Batch re-entry after a raise on partial failure (or a crash mid-batch) reprocesses the rows that already succeeded unless the job checkpoints (`rails-batch-processing-patterns`). If you swallow, document why and call the reporter explicitly. For per-item batch work, don't swallow per item silently: collect failures, report one aggregate `Rails.error.report` with counts and sample rows in context (not one report per item - 10k failing rows must not page 10k times), raise if everything failed (`ExternalUnavailable` when a retry can help, a plain error when the data is bad).
 
 ### Boundary Translation
 
@@ -191,14 +191,14 @@ Modern reporter gems self-wire, but through two independent mechanisms - conflat
 
 ## Output Format
 
-One block per layer per file (a feature spanning client + service + job emits three; two jobs under review are two job blocks); one controller block per base class when `ActionController::Base` and `ActionController::API` carry separate ladders, one block for the shared concern when they do not. Fields that don't apply to a layer take `N/A`. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: blocks hold corrected values only, and a pre-existing violation the change touches is still a numbered finding.
+One block per layer per file (a feature spanning client + service + job emits three; two jobs under review are two job blocks); one controller block per base class when `ActionController::Base` and `ActionController::API` carry separate ladders, one block for the shared concern when they do not. Fields that don't apply to a layer take `N/A`. A layer the reviewed path calls but the read set does not include gets no block: one numbered finding names the file as `not in evidence`. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding.
 
 The job backend comes from the Gemfile (`sidekiq` or `solid_queue`), not from stack-detect. An Active Job class (`ApplicationJob`, any backend) retries through `retry_on` / `discard_on` and enqueues with `perform_later`; a `Sidekiq::Job` retries through `sidekiq_options retry:` + `sidekiq_retry_in` and enqueues with `perform_async`. A slot named for Sidekiq (`Sidekiq retry`, `sidekiq only`) takes the channel of whichever backend runs the job. A `rescue` inside `perform` for a class the retry channel owns wins and silently disables that retry - one channel per class.
 
 ```
 Layer: <controller | service | job | client | rake | middleware / config (rescue_responses, reporter initializer)>
 
-Rescue strategy: <rescue_from ladder (controller) | Result on expected | raise on unexpected | boundary translation (client: catch vendor, raise domain) | per-item isolation (batch: collect failures, raise only if all failed) | none - unhandled (GAP) | rescue Exception / Interrupt - swallows signals and Sidekiq::Shutdown (GAP) | mixed (justified - say which path takes which) | mixed - unjustified (GAP)>
+Rescue strategy: <rescue_from ladder (controller) | Result on expected | raise on unexpected | boundary translation (client: catch vendor, raise domain) | per-item isolation (batch: collect failures, raise only if all failed) | webhook receiver: 2xx after durable record, 5xx on transient failure | webhook receiver returning 2xx on failure - GAP | none - unhandled (GAP) | swallow into false / nil (GAP) | N/A - config layer | rescue Exception / Interrupt - swallows signals and Sidekiq::Shutdown (GAP) | mixed (justified - say which path takes which) | mixed - unjustified (GAP)>
 
 Domain errors: <ApplicationError::X | client-local boundary vocabulary (BillingError::Declined) | framework only | none yet - the taxonomy this block introduces>
 
@@ -206,7 +206,7 @@ SDK translation: <at boundary | at boundary but undifferentiated - one class for
 
 rescue_from coverage: <listed classes; missing: ...>
 
-Sidekiq retry: <propagate | propagate via retry_on / discard_on (Active Job, any backend) | swallow with reason | per-item: swallow partial failures, propagate when all failed | bounded local retry then propagate (transient DB only) | N/A>
+Sidekiq retry: <propagate | propagate via retry_on / discard_on (Active Job, any backend) | swallow with reason | per-item: swallow partial failures, propagate when all failed | bounded local retry then propagate (transient DB only) | per kind: <transient classes> propagate, <permanent classes> discarded | N/A - not a job layer>
 
 Reporter call: <Rails.error / reporter notifier at <layer> | none (auto middleware reports) | none - rescue_from-handled 4xx (intended) | swallowed before the middleware saw it (FIX) | Rails.error.report with register_error_subscriber off - reaches nobody (FIX) | hand-written Rails.error.subscribe or capture beside the gem's own wiring - double-reported (FIX) | integration gem absent - under-reported (FIX) | every-retry, should be retries-exhausted (FIX)>
 ```
@@ -215,11 +215,6 @@ An app with both `ActionController::Base` and `ActionController::API` bases keep
 
 ## Avoid
 
-- `rescue Exception` - swallows signals and shutdown errors
-- Bare `rescue` with no error variable - over-broad within `StandardError`, and throws away the exception
-- Rescuing SDK errors in service code (`rescue Stripe::CardError`) - leaks vendor vocabulary upward
-- Logging an error and continuing - either re-raise, return Result, or render a typed response
 - `rescue_from StandardError` rendering a friendly 500 - it hides every bug and suppresses the middleware that would have reported it. Leave 500s unrescued
 - Manual `Sentry.capture_exception` / `Rails.error.subscribe` alongside auto-wired reporter gems - duplicate alerts
 - Unbounded `retry` or `sleep`-and-retry inside rescue blocks - infinite loops that hold a worker thread
-- Bare `rescue => e; logger.error(...)` in a Sidekiq job - silently kills retry

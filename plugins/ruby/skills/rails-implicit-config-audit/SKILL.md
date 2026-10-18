@@ -21,7 +21,7 @@ user-invocable: false
 - Findings inventory the *current state*. Suggestions are optional cherry-picks from 6.1 onward (Pattern E). Keep them in separate output sections.
 - Cite `file:line` on every Finding, Suggestion, and per-model/env entry.
 - `Current value` is the *effective* value; when a flag is textually set but not applied (initializer-timing), state both.
-- Severity mapping: Critical = security/data-loss exposure (`action_cable.disable_request_forgery_protection = true`, `use_yaml_unsafe_load = true`); High = active correctness bug or a set-but-not-applied flag tied to a reported symptom; Medium = latent footgun; Low = harmless redundancy; Informational = explicit setting matching the baseline; Divergent-by-design = a deliberate, documented departure needing no action. Findings are listed in that severity order.
+- Severity mapping: Critical = security/data-loss exposure (`action_cable.disable_request_forgery_protection = true`, `use_yaml_unsafe_load = true`); High = active correctness bug or a set-but-not-applied flag tied to a reported symptom; Medium = latent footgun; Low = harmless redundancy; Informational = explicit setting matching the baseline; Divergent-by-design = a deliberate, documented departure needing no action; the same departure undocumented is Medium. Findings are listed in that severity order.
 - Evidence not provided (env files, models): state "not provided" in that section - never silently omit it.
 
 ## Patterns
@@ -30,9 +30,9 @@ user-invocable: false
 
 `config.load_defaults <version>` in `config/application.rb` sets defaults cumulatively up to that version. Canonical table: [Versioned default values](https://guides.rubyonrails.org/configuring.html#versioned-default-values) (unpinned - the 8.0 block matters for apps on 8.0).
 
-Attribute each flag to the block that actually introduced it. `active_job.enqueue_after_transaction_commit` and `config.yjit` are **7.2** (on 8.0 the app-wide enqueue setting gives way to a per-job class attribute); `load_defaults 8.0` adds exactly three - `active_support.to_time_preserves_timezone = :zone`, `action_dispatch.strict_freshness = true`, `Regexp.timeout`. So an app at `load_defaults 7.2` already has the first two and lacks only the 8.0 three. Later blocks (8.1 onward) keep accruing; read the version map for the Rails actually installed rather than assuming the newest block you know.
+Attribute each flag to the block that actually introduced it. `active_job.enqueue_after_transaction_commit` and `config.yjit` are **7.2** (on 8.0 the app-wide enqueue setting gives way to a per-job class attribute); on Rails 8.0.x `load_defaults 8.0` adds three - `active_support.to_time_preserves_timezone = :zone`, `action_dispatch.strict_freshness = true`, `Regexp.timeout` - so an app at `load_defaults 7.2` lacks only those; on 8.1 that block sets two (8.1 deprecates `to_time_preserves_timezone`), and on 8.0+ the 7.2 block no longer sets `enqueue_after_transaction_commit`, though it still sets `yjit`, `active_storage.web_image_content_types` (adds webp), `active_record.validate_migration_timestamps` and `active_record.postgresql_adapter_decode_dates`. Later blocks (8.1 onward) keep accruing; read the version map for the Rails actually installed rather than assuming the newest block you know.
 
-Enumerate only flags in effect for this project (`load_defaults` + explicit overrides in `config/application.rb`, `config/environments/*.rb` and `config/initializers/*.rb`, `new_framework_defaults_*.rb` included), not every framework flag. Apps pinned at 5.x/6.x usually do so deliberately because raising it touches every component at once - not a defect. One Active Storage flag belongs in the same inventory: `active_storage.variant_processor` (`:vips` from 7.0, `:mini_magick` below); `config.active_storage.service` is an environment override, and `:mirror` there is a `Divergent-by-design` finding that names the move in progress. With no `Gemfile.lock`, `Rails version` is the Gemfile constraint marked `(unverified)` and `Modern default` uses the newest `load_defaults` that constraint admits.
+Enumerate only flags in effect for this project (`load_defaults` + explicit overrides in `config/application.rb`, `config/environments/*.rb` and `config/initializers/*.rb`, `new_framework_defaults_*.rb` included), not every framework flag: a Findings row exists for every explicit override and for every flag a Behaviour, Diagnosis or Suggestion cites; a flag `load_defaults` sets that nothing cites stays out. Apps pinned at 5.x/6.x usually do so deliberately because raising it touches every component at once - not a defect. One Active Storage flag belongs in the same inventory: `active_storage.variant_processor` (`:vips` from 7.0, `:mini_magick` below); `config.active_storage.service` is an environment override, and `:mirror` there is a `Divergent-by-design` finding that names the move in progress. With no `Gemfile.lock`, `Rails version` is the Gemfile constraint marked `(unverified)` and `Modern default` uses the newest `load_defaults` that constraint admits.
 
 ### B. Implicit per-model and per-controller behaviour
 
@@ -52,15 +52,16 @@ Hidden defaults invisible from the call site:
 
 `rails app:update` generates `config/initializers/new_framework_defaults_<version>.rb` (versioned since 5.1, so `_6_1`, `_7_0` ... `_8_0`) with each flip commented out, to be enabled one at a time before bumping `load_defaults`.
 
-**Three AR flags are silent no-ops when set in this initializer** - a load-order problem: their values are copied out of `config.active_record` when `ActiveRecord::Base` loads, and something usually loads it before `config/initializers` run (callback order is also fixed as each callback is declared). Set them in `config/application.rb`:
+**Two kinds of `config.active_record` flag go stale when set in this initializer.** `ActiveRecord::Base` class attributes (`has_many_inversing`, `automatic_scope_inversing`, `partial_inserts`, `default_column_serializer`, `run_commit_callbacks_on_first_saved_instances_in_transaction`) are copied out of `config.active_record` only when `ActiveRecord::Base` loads, and something usually loads it before `config/initializers` run - a silent no-op. `ActiveRecord.`-module flags read when a model's class body runs (`run_after_transaction_callbacks_in_order_defined`, `belongs_to_required_validates_foreign_key`, `raise_on_assign_to_attr_readonly`, `generate_secure_token_on`) are re-copied in `after_initialize`, too late for models already loaded - all of them under `eager_load`, which runs first. Set them in `config/application.rb`. The ones the generator places there:
 
 - `config.active_record.has_many_inversing` ([rails#45683](https://github.com/rails/rails/issues/45683))
 - `config.active_record.automatic_scope_inversing` ([rails#46208](https://github.com/rails/rails/issues/46208))
 - `config.active_record.run_after_transaction_callbacks_in_order_defined` ([rails#52098](https://github.com/rails/rails/issues/52098))
+- `partial_inserts`, `default_column_serializer`, `run_commit_callbacks_on_first_saved_instances_in_transaction` (class attributes: stale for every model), `belongs_to_required_validates_foreign_key`, `raise_on_assign_to_attr_readonly`, `generate_secure_token_on` (module flags: stale for models loaded before `after_initialize`)
 
-`config.active_support.cache_format_version` is a fourth: the `:initialize_cache` bootstrap builds `Rails.cache` before `config/initializers/*` runs, so setting it there is a silent no-op (the generated template's own comment says to set it in `config/application.rb`).
+`config.active_support.cache_format_version` is one non-AR case (the others: `add_autoload_paths_to_load_path` (7.1), `action_dispatch.strict_freshness` (8.0), `active_support.escape_js_separators_in_json` (8.1), each copied by a railtie initializer that runs before `config/initializers/*`): the `:initialize_cache` bootstrap builds `Rails.cache` before `config/initializers/*` runs, so setting it there is a silent no-op (the generated template's own comment says to set it in `config/application.rb`).
 
-If the initializer exists and any of these four lines is uncommented there, report `Footgun: initializer-timing` regardless of stated intent. The other flags the generator places in that file work from it; report `Footgun: none`.
+If the initializer exists and any of these lines is uncommented there, report `Footgun: initializer-timing` regardless of stated intent. The non-AR flags the generator places in that file work from it, except the four named above - `Footgun: initializer-timing` as well (a leftover `active_support.disable_to_s_conversion`, removed in 7.2, does nothing anywhere: a Low redundancy); a runtime-read `ActiveRecord.` flag not listed above (`verify_foreign_keys_for_fixtures`, `marshalling_format_version`, 8.1's `raise_on_missing_required_finder_order_columns`) reaches its reader through the `after_initialize` copy and works from it. For those, report `Footgun: none`.
 
 Two per-model and per-call-site behaviours belong in the Behaviours section beside the config flags: `attachment-blank-param` - `record.files.attach(params[:files])` with a nil or blank param is a silent no-op that reads as success (guard with `present?`, and `attach` on a persisted record returns `nil` on a validation rejection); and `call-site-opt-out` - `redirect_to url, allow_other_host: true` or a `skip_before_action` re-opens, for one action, a protection a config flag or base class closed (`raise_on_open_redirects`, an auth filter), so the Diagnosis cites both the flag and the call site.
 
@@ -69,7 +70,7 @@ Two per-model and per-call-site behaviours belong in the Behaviours section besi
 `config/environments/{development,test,production,staging}.rb` can flip behaviour per-env. Failure mode: a correctness- or security-affecting flag is set in one env in a way that hides bugs from another. Recurring examples:
 
 - `strict_loading_by_default = true` in development/test only - every lazy association load raises for developers and passes silently in production (no `load_defaults` version turns this on, so `false` everywhere is the baseline, not a divergence)
-- `active_job.queue_adapter = :inline` in development masks the enqueue-inside-transaction race - the job runs on the same thread and connection and sees the uncommitted rows; `:async` surfaces it only intermittently (its own thread and connection). Active Job `perform_later` / `deliver_later` is deferred to commit only by `enqueue_after_transaction_commit`: on Rails 7.2 the app-wide `config.active_job.enqueue_after_transaction_commit` (`:never` unless set; `load_defaults 7.2` sets `:default`, which delegates to the adapter's `enqueue_after_transaction_commit?` - read it for the adapter in use), on 8.0+ a per-job-class boolean defaulting to `false` (the app-wide symbol form is deprecated) - read the Rails version, then the setting or the job class; `deliver_later` follows `ActionMailer::MailDeliveryJob`, which inherits `ActiveJob::Base`, not `ApplicationJob`. Sidekiq-native `perform_async` is never deferred unless `Sidekiq.transactional_push!` is on (6.5+; gem-free on Rails 7.2+, `after_commit_everywhere` below). `:async` does *not* mask ActiveJob serialization errors - it serializes eagerly at enqueue
+- `active_job.queue_adapter = :inline` in development masks the enqueue-inside-transaction race - the job runs on the same thread and connection and sees the uncommitted rows; `:async` surfaces it only intermittently (its own thread and connection). Active Job `perform_later` / `deliver_later` is deferred to commit only by `enqueue_after_transaction_commit`: on Rails 7.2 the app-wide `config.active_job.enqueue_after_transaction_commit` (`:never` unless set; `load_defaults 7.2` sets `:default`, which delegates to the adapter's `enqueue_after_transaction_commit?` - true for most built-in adapters and for Sidekiq 7.3.3+'s own (7.3.0-7.3.2 ship no adapter); `false` for `:inline`, and for `:delayed_job` / `:queue_classic` unless constructed with `enqueue_after_transaction_commit: true`); on 8.0 a per-job-class boolean (`self.enqueue_after_transaction_commit = true`, default `false`), and the app-wide key is deprecated whatever its value but still applied (`:always` -> true, anything else, `:default` included, -> false); on 8.1 the app-wide key is ignored - read the Rails version, then the job class or the 7.2 setting; `deliver_later` follows `ActionMailer::MailDeliveryJob`, which inherits `ActiveJob::Base`, not `ApplicationJob`. Sidekiq-native `perform_async` is never deferred unless `Sidekiq.transactional_push!` is on (6.5+; gem-free on Rails 7.2+ from Sidekiq 7.3.10 / 8.0.6, `after_commit_everywhere` below). `:async` does *not* mask ActiveJob serialization errors - it serializes eagerly at enqueue
 - `eager_load = true` in production only surfaces autoload bugs after deploy
 - Worker processes are the third environment nobody writes down: Sidekiq loads the same `production.rb` but with its own concurrency, its own pool (`RAILS_MAX_THREADS` vs `concurrency` - `rails-connection-pool-sizing`), and (usually) `eager_load` behaviour set by the same flag - divergences between the web and worker tiers belong in this section even though there is no `config/environments/worker.rb`; cite the manifest or `sidekiq.yml` line as the `File:`
 
@@ -82,11 +83,11 @@ Individual flips adoptable without bumping `load_defaults`; the 7.2 and 8.0 flag
 | Cherry-pick | From (on by default at this load_defaults and above) | Consider if | Risk | Where |
 | ----------- | ------------------------------------ | ----------- | ---- | ----- |
 | `active_record.automatic_scope_inversing = true` | 7.0 | Hot serializers/decorators/child callbacks traverse scoped associations; APM shows redundant parent SELECTs | Low | `application.rb` (initializer-timing) |
-| `active_record.raise_on_assign_to_attr_readonly = true` | 7.1 | Any `attr_readonly` declarations | Low | initializer |
+| `active_record.raise_on_assign_to_attr_readonly = true` | 7.1 | Any `attr_readonly` declarations | Low | `application.rb` (initializer-timing) |
 | `active_record.run_after_transaction_callbacks_in_order_defined = true` | 7.1 | Multiple `after_commit` per model AND reverse-order has caused a bug, OR gems with their own `after_commit` chains. (Baseline pre-7.1 behavior: `after_commit` fires in *reverse* declaration order.) | Medium | `application.rb` (initializer-timing) |
-| `active_record.partial_inserts = false` | 7.0 | Schema cleanup involving DB defaults, `ignored_columns` use, or Rails as sole source of truth for defaults | Low - Rails skips an unchanged column with a DB default *function* (`CURRENT_TIMESTAMP`, MySQL 8.0.13+ expression defaults such as `(uuid())`), so those keep their DB default; every other column is inserted from the cached `column_defaults`, so a static default changed in the DB while old processes still run (a rolling deploy) inserts the stale value | initializer |
-| `active_record.belongs_to_required_validates_foreign_key = false` | 7.1 | Saves of a child with a required `belongs_to` show a parent SELECT | Low | initializer |
-| `active_record.default_column_serializer = nil` | 7.1 | Any `serialize` declarations without explicit coder - an RCE vector only under `use_yaml_unsafe_load = true`, otherwise a load-time error once a coder is required | Medium | initializer |
+| `active_record.partial_inserts = false` | 7.0 | Schema cleanup involving DB defaults, `ignored_columns` use, or Rails as sole source of truth for defaults | Low - Rails skips an unchanged column with a DB default *function* (`CURRENT_TIMESTAMP`, MySQL 8.0.13+ expression defaults such as `(uuid())`), so those keep their DB default; every other column is inserted from the cached `column_defaults`, so a static default changed in the DB while old processes still run (a rolling deploy) inserts the stale value | `application.rb` (initializer-timing) |
+| `active_record.belongs_to_required_validates_foreign_key = false` | 7.1 | Saves of a child with a required `belongs_to` show a parent SELECT | Low | `application.rb` (initializer-timing) |
+| `active_record.default_column_serializer = nil` | 7.1 | Any `serialize` declarations without explicit coder - an RCE vector only under `use_yaml_unsafe_load = true`, otherwise a load-time error once a coder is required | Medium | `application.rb` (initializer-timing) |
 | `active_support.cache_format_version = 7.1` | 7.1 | Cache size/hit rate matters AND every process runs 7.1+ with no rollback planned - the 7.1 serializer still reads 6.1/7.0 entries, but older processes (a rolling deploy, a rollback) cannot read 7.1 entries | Low | `application.rb` (initializer-timing - the `:initialize_cache` bootstrap builds `Rails.cache` before `config/initializers/*` runs, so setting it there is a silent no-op) |
 | `action_dispatch.cookies_same_site_protection = :strict` | 6.1 sets `:lax`; `:strict` is never a default (manual opt-in) | Public app with no cross-site auth flows | Medium | env config |
 
@@ -104,6 +105,7 @@ The report is the template below, sections in this order. Diagnosis exists only 
 - Rails version: {from Gemfile.lock}
 - config.load_defaults: {version from config/application.rb:NN | none - the call is absent, pre-5.0 defaults apply}
 - Target load_defaults: {version the request names | n/a}
+- new_framework_defaults: {file - N of M flips uncommented | absent}
 
 ## Diagnosis {only when symptoms were reported}
 
@@ -111,7 +113,7 @@ The report is the template below, sections in this order. Diagnosis exists only 
 
 ## Upgrade Delta {only when a target is named}
 
-1. {step in adoption order: a gem bump, then one flag per deploy (`new_framework_defaults_<version>.rb`, except the four Pattern C flags, which go in `config/application.rb`), then the `load_defaults` bump last} - {flag, the block that adds it, what to verify before the next step}
+1. {step in adoption order: a gem bump, then one flag per deploy (`new_framework_defaults_<version>.rb`, except the Pattern C flags and the four non-AR initializer-timing flags, which go in `config/application.rb`), then the `load_defaults` bump last} - {flag, the block that adds it, what to verify before the next step}
 
 ## Findings (baseline state)
 
@@ -126,7 +128,7 @@ The report is the template below, sections in this order. Diagnosis exists only 
 ## Implicit Per-Model / Per-Controller Behaviours
 
 - Path: {app/models|app/controllers/<file>.rb:NN | config/application.rb:NN | config/environments/<env>.rb:NN | config/initializers/<file>.rb:NN}
-  - Behaviour: {touch | autosave | nested-attributes | default_scope | inverse_of-missing | callback-touches-association | callback-side-effect | callback-skipped (update_columns / update_all / insert_all bypass) | validation-touches-association | attr_readonly | serialize-without-coder | attachment-blank-param | before_action-chain | call-site-opt-out (allow_other_host: true, skip_before_action) | autoload-path}
+  - Behaviour: {touch | autosave | nested-attributes | default_scope | inverse_of-missing | callback-touches-association | callback-side-effect | enqueue-in-transaction (perform_later / perform_async inside Model.transaction - Pattern D decides whether it defers) | job-retry-config (retry_on / discard_on / sidekiq_options retry: in ApplicationJob or a job class) | callback-skipped (update_columns / update_all / insert_all bypass) | validation-touches-association | attr_readonly | serialize-without-coder | attachment-blank-param | before_action-chain | call-site-opt-out (allow_other_host: true, skip_before_action) | autoload-path}
   - Effect: {one sentence}
 
 Synthesis: {Behaviours X, Y, Z explain {symptom}{ at <controller>#<action>}} {only when several behaviours converge on one symptom}
@@ -144,7 +146,7 @@ Not defects, not defaults. Each entry stands alone; skipping is fine.
 
 - Flag: {flag, or `inverse_of:` on <Model#association> for the surgical alternative}
   - Source: {file:line the suggestion applies to}
-  - From version: {6.1 | 7.0 | 7.1 | 7.2 | 8.0 | manual opt-in (never a default) | n/a - model change}
+  - From version: {6.1 | 7.0 | 7.1 | 7.2 | 8.0 | 8.1 | manual opt-in (never a default) | n/a - model change}
   - Consider if: {condition}
   - Risk: {Low | Medium | High}
   - Where to set: {application.rb | initializer | env config | model}
@@ -154,6 +156,4 @@ Not defects, not defaults. Each entry stands alone; skipping is fine.
 ## Avoid
 
 - Recommending `config.load_defaults <newer>` as a single change - never right for a mature app
-- Enumerating every default in the canonical table
-- Trusting an uncommented line in `new_framework_defaults_*.rb` without the initializer-timing check
 - Confusing "update loads associations" with a `load_defaults` problem when the cause is `touch:` / `autosave:` / nested-attributes / a callback (see `rails-activerecord-patterns`)

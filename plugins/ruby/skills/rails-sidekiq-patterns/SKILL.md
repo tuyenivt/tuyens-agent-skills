@@ -20,7 +20,7 @@ user-invocable: false
 
 - Every job idempotent - check state before mutating
 - Pass IDs only - never AR objects, request context, or payloads > 1 KB
-- Enqueue after the DB transaction commits (never inside `Model.transaction`)
+- Enqueue after the DB transaction commits - inside `Model.transaction` only when `Sidekiq.transactional_push!` or Active Job's `enqueue_after_transaction_commit` defers it (`rails-transaction-patterns`)
 - No HTTP / S3 / Redis inside `Model.transaction` - holds row locks for the network round-trip
 - Rescue known errors; let unknown propagate to Sidekiq retry
 - Cap `perform` at ~5 min; longer jobs split or fan out
@@ -73,6 +73,8 @@ end
 
 Give every `until_executed` lock a `lock_ttl` - a worker killed without the graceful path (OOM, SIGKILL) orphans the lock, blocking enqueues for those args until the gem's reaper (default every 10 min) or the TTL clears it. Size the TTL above worst-case runtime plus retry window. For mutual exclusion under load use `while_executing` with `on_conflict: { client: :log, server: :reschedule }` - the server strategy re-enqueues without touching the retry counter - rather than a hand-rolled rescue-and-`perform_in`.
 
+A cron-fired job takes its period from the fire time: a sidekiq-cron entry's `args:` are static, so set `date_as_argument: true` (appends the fire epoch) and derive the period from it, or have the CronJob / rake enqueuer pass it (`perform_async(Date.yesterday.iso8601)`); computed inside `perform` or as a default argument, a retry after midnight processes the wrong day.
+
 ### Post-Commit Dispatch
 
 ```ruby
@@ -87,7 +89,7 @@ ActiveRecord::Base.transaction { order.update!(status: :processing) }
 ShipmentNotificationJob.perform_async(order.id)
 ```
 
-When the service runs inside a caller's transaction, "after the local block" still fires before the outer commit. Use `ActiveRecord.after_all_transactions_commit { Job.perform_async(id) }` (Rails 7.2+), or the `after_commit_everywhere` gem - whose method is `after_commit`, not the gem's own name: `include AfterCommitEverywhere` then `after_commit { Job.perform_async(id) }`, or call `AfterCommitEverywhere.after_commit { ... }` directly. A model `after_commit` callback works too. Full transaction-boundary discipline: see `rails-transaction-patterns`.
+When the service runs inside a caller's transaction, "after the local block" still fires before the outer commit. Use `ActiveRecord.after_all_transactions_commit { Job.perform_async(id) }` (Rails 7.2+), or the `after_commit_everywhere` gem - whose method is `after_commit`, not the gem's own name: `include AfterCommitEverywhere` then `after_commit { Job.perform_async(id) }`, or call `AfterCommitEverywhere.after_commit { ... }` directly. A model `after_commit` callback works too. An Active Job `perform_later` is deferred by `enqueue_after_transaction_commit` - on Rails 7.2 under `load_defaults 7.2` (`:default`; the class attribute itself defaults to `:never`) it defers on every Sidekiq 7.x: Rails 7.2's bundled adapter inherits `AbstractAdapter#enqueue_after_transaction_commit?` (true), and the adapter Sidekiq ships from 7.3.3 answers true as well; on 8.0+ the adapter is never asked and the per-class boolean defaults to false, so it defers only where the job class sets `self.enqueue_after_transaction_commit = true`. Full transaction-boundary discipline and the version table: see `rails-transaction-patterns`.
 
 ### Backend Choice
 
@@ -158,7 +160,7 @@ On deploy the supervisor - systemd, the k8s kubelet, the dyno manager - sends `S
 
 - Persist progress per chunk (state column / checkpoint) so the re-pushed job skips completed work
 - Never swallow `Sidekiq::Shutdown`. It descends from `Interrupt`, not `StandardError`, so a bare `rescue => e` never catches it - `rescue Exception` and an explicit `rescue Sidekiq::Shutdown` / `rescue Interrupt` do. The re-push has already happened, so swallowing cannot prevent requeue; it lets the job keep working in a dying process while a duplicate is queued, so the redo starts from an inconsistent point
-- For cooperative checkpoint-and-interrupt on long iterators, `include Sidekiq::IterableJob` (7.3+: `build_enumerator` yields `(item, cursor)`, `each_iteration` does the work, the cursor is saved on shutdown); below 7.3 the `sidekiq-iteration` gem
+- For cooperative checkpoint-and-interrupt on long iterators, `include Sidekiq::IterableJob` (7.3+: `build_enumerator(*args, cursor:)` returns an Enumerator of `[item, cursor]` pairs, `each_iteration(item, *args)` does the work, the cursor is flushed every 5 s and on shutdown); below 7.3 the `sidekiq-iteration` gem
 
 ### Fan-out and Fan-in
 
@@ -191,14 +193,14 @@ ProcessOrderJob.perform_async(order.id, ProcessOrderJob::CURRENT_VERSION)
 
 ## Output Format
 
-One block per job class (fan-out designs emit one per job). In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: blocks hold corrected values only, and a pre-existing violation the change touches is still a numbered finding.
+One block per concrete job class in the read set (an abstract base such as `ApplicationJob` gets none - its settings appear in each child's `Retry`); fan-out designs emit one per job. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding.
 
 ```
 Job: {class name}
 
 Queue: {critical | default | mailers | low | custom - name the isolation: a dedicated process (`-q x -c N`) or a Sidekiq 7+ capsule; a weight alone caps nothing | shared weighted pool, no isolation - GAP when the job is heavy (minutes per run) or rate-limited | queue no process consumes - GAP}
 
-Trigger: {what causes enqueue | parent job fan-out | not in evidence}
+Trigger: {what causes enqueue | parent job fan-out | two schedulers (sidekiq-cron plus a CronJob) - GAP (one owner) | not in evidence}
 
 Rate budget: {none - GAP (a hard quota is named and nothing enforces it) | capsule or dedicated process at concurrency N | Redis token bucket N per second or minute, shared across processes | n/a - no hard quota | unknown - not in evidence}
 
@@ -206,20 +208,19 @@ Arguments: {names and types - IDs only; flag any mismatch between `perform`'s ar
 
 Idempotency: {state check | natural (recompute from source) | external idempotency key forwarded | monotonic guard (updated_at) | sidekiq-unique-jobs lock: <until_executed | while_executing | until_and_while_executing> + lock_ttl | Redis SET NX fence | none - GAP on an at-least-once path - list all that apply}
 
-Retry: {count and backoff; channel: `sidekiq_options retry:` + `sidekiq_retry_in` | ActiveJob `retry_on` | rescue-and-`perform_in` - GAP (resets the counter) | rescue swallows, nothing retries - GAP | two channels for one class - GAP (`retry: 0` beside `retry_on` is one channel) | two channels plus an inner rescue of the same class - GAP (the rescue wins; keep `retry_on` on an Active Job class)}
+Retry: {count and backoff; channel: `sidekiq_options retry:` + `sidekiq_retry_in` | ActiveJob `retry_on` | rescue-and-`perform_in` - GAP (resets the counter) | rescue swallows, nothing retries - GAP | two channels for one class - GAP (`retry: 0` beside `retry_on` is one channel) | two channels plus an inner rescue of the same class - GAP (the rescue wins; keep `retry_on` on an Active Job class) | inherited from ApplicationJob (`retry_on` there, plus Sidekiq's own 25 unless `retry: 0`) - state both | `retry: 25` (the default) on a non-idempotent side effect - GAP (bound it)}
 
-Dead-letter: {dead set + alerting on its size | sidekiq_retries_exhausted hook | dead set, no alerting - GAP | unreachable - perform swallows every error - GAP | none - GAP (retry: false or dead: false)}
+Dead-letter: {dead set + alerting on its size | sidekiq_retries_exhausted hook | dead set, no alerting - GAP | dead set, alerting not in evidence | dead set on first failure (`retry: 0`, `dead` left true) | unreachable - perform swallows every error - GAP | none - GAP (retry: false or dead: false)}
 
 Shutdown safety: {checkpointed per chunk - re-run resumes | short enough to finish inside `timeout` | GAP - long, uncheckpointed work | GAP - supervisor grace shorter than `timeout` (both values; later blocks write `see <first job>`)}
 
-Dispatch: {post-commit | after_all_transactions_commit / after_commit_everywhere | model after_commit | cron/scheduler | parent job | perform_later inside a transaction - GAP unless enqueue_after_transaction_commit defers it (rails-transaction-patterns) | perform_async inside a transaction - GAP unless Sidekiq.transactional_push! is on (rails-transaction-patterns)}
+Dispatch: {post-commit | after_all_transactions_commit / after_commit_everywhere | model after_commit | cron/scheduler | rake task | parent job | not in evidence (call site outside the read set) | perform_later inside a transaction - GAP unless enqueue_after_transaction_commit defers it (rails-transaction-patterns) | perform_async inside a transaction - GAP unless Sidekiq.transactional_push! is on (rails-transaction-patterns)}
+
+Versioning: {args carry a version (CURRENT_VERSION) | n/a - the arg contract is unchanged | none - GAP (the contract changes under queued jobs)}
 ```
 
 ## Avoid
 
-- AR objects, request context (`current_user`, `session`), or payloads > 1 KB as args
-- `.perform_async` or any HTTP / S3 / Redis call inside `Model.transaction`
-- `rescue => e; log` that swallows errors and blocks retry
-- `perform` > ~5 min without splitting or fanning out
+- `.perform_async` (undeferred) or any HTTP / S3 / Redis call inside `Model.transaction`
 - rescue-and-`perform_in` for retryable errors - resets the retry counter
 - `Sidekiq::Testing.inline!` outside tests

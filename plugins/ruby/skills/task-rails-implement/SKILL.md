@@ -49,6 +49,7 @@ Ask-vs-infer threshold: when the domain has one defensible conventional shape, i
 Use skill: `rails-activerecord-patterns` (associations, scopes, enums). Use skill: `rails-service-objects` (interface, transactions, Result).
 
 Present:
+- Stack: Ruby <v> / Rails <v> / MySQL <patch level or unknown> / <test framework> (Step 2)
 - Surface: API namespace | server-rendered | both (Step 2)
 - Entity model: fields, types, constraints, enum integer mapping
 - Status transitions: allowed edges per stateful entity (from Step 3 item 6)
@@ -57,7 +58,7 @@ Present:
 - External integrations: each call placed before the transaction (gating) or after commit (deferrable) per Step 7, the inbound webhook endpoint (Step 8.5, under `app/controllers/webhooks/` outside the authenticated namespace), the scheduler cadence (Step 7)
 - Endpoints (method, URI, status, request/response shapes)
 - Authorization rules per action
-- Attachments, if any: Use skill: `rails-active-storage-patterns` here so it shapes the migration (Step 5), the model declarations (Step 6) and the upload surface - the form (Step 11) when server-rendered; API-only clients drive the direct-upload route through an app subclass of `ActiveStorage::DirectUploadsController` that skips forgery protection and authenticates the caller (the engine controller inherits `ActionController::Base` with forgery protection on), then submit the `signed_id` in the JSON body (Step 9)
+- Attachments, if any: Use skill: `rails-active-storage-patterns` here so it shapes the migration (Step 5), the model declarations (Step 6) and the upload surface - the form (Step 11) when server-rendered keeps `direct_upload: true`, which resolves the `rails_direct_uploads` route by name (and silently renders a plain file field when none exists); every client drives an app subclass of `ActiveStorage::DirectUploadsController` that authenticates the caller (the engine controller inherits `ActionController::Base`, not `ApplicationController`, so it carries none of the app's filters), drawn by the app as `post "/rails/active_storage/direct_uploads" => "direct_uploads#create", as: :rails_direct_uploads` with `config.active_storage.draw_routes = false` (copy the engine's `config/routes.rb` into the app minus its `direct_uploads` line - the blob, representation and `/disk` routes and `direct` / `resolve` helpers that the Disk service in dev and test and `url_for(attachment)` need) - otherwise the engine's unauthenticated route stays open; API-only clients also skip forgery protection and submit the `signed_id` in the JSON body (Step 9)
 - File tree (only files this feature touches - generated ones, and existing files it modifies, each marked)
 
 Example tree:
@@ -85,11 +86,11 @@ spec/factories/orders.rb
 db/migrate/<ts>_create_orders.rb
 ```
 
-**Generate code only after user approves.** When the run cannot reach the user, present the design and stop there - state that the gate is unmet and what approval it needs. Explicit approval written into the request itself meets the gate; never infer approval. The design is written from the atomics Steps 2-4 load; the atomics of Steps 5-13 load once the gate is met, so an unmet-gate design names the rules it will apply (signature verification, dedupe, scheduler) without loading them. A provider whose signing scheme the request does not state is named at the gate as an assumption (the default: HMAC-SHA256 over the raw body in the signature header, the timestamp header checked for freshness).
+**Generate code only after user approves.** When the run cannot reach the user, present the design and stop there - state that the gate is unmet and what approval it needs. Explicit approval written into the request itself meets the gate; never infer approval. The design is written from the atomics Steps 2-4 load; the atomics of Steps 5-13 load once the gate is met, so an unmet-gate design names the rules it will apply (signature verification, dedupe, scheduler) without loading them. A provider whose signing scheme the request does not state is named at the gate as an assumption (the default: HMAC-SHA256 over `"#{timestamp}.#{raw_body}"` in the signature header, the signed timestamp header rejected when older than ~5 minutes).
 
 ### Step 5 - Migrations
 
-Use skill: `rails-migration-safety`. One structural change per migration (a new table with its indexes and constraints - inline in `create_table`, or an `add_index` on that new table in the same file - is one). Indexes on FKs and frequently-filtered columns; for a non-terminal-status filter, a composite with the range/sort column or a functional index (MySQL has no partial indexes); `null: false` + defaults where appropriate. Monetary values: integer cents columns (`amount_cents`) by default; `decimal` precision/scale only when matching an existing project convention; never float for money or percentages (integer percent / basis-point columns).
+Use skill: `rails-migration-safety`. One structural change per migration (a new table with its indexes and constraints - inline in `create_table`, or an `add_index` on that new table in the same file - is one). A new lifecycle on an existing entity (a scheduled or cancellable variant of its rows) is columns on that table - a state value, the trigger date, a cancel timestamp - one migration each under the one-structural-change rule, not a new table; a new table only when the rows outlive, outnumber or are shared beyond the parent. Indexes on FKs and frequently-filtered columns; for a non-terminal-status filter, a composite with the range/sort column or a functional index (MySQL has no partial indexes); `null: false` + defaults where appropriate. Monetary values: integer cents columns (`amount_cents`) by default; `decimal` precision/scale only when matching an existing project convention; never float for money or percentages (integer percent / basis-point columns).
 
 ### Step 6 - Models
 
@@ -99,7 +100,7 @@ File uploads: decided at the Step 4 design (`rails-active-storage-patterns` load
 
 ### Step 7 - Services
 
-Use skill: `rails-service-objects`. Use skill: `rails-transaction-patterns` for boundary discipline (`after_commit` dispatch, nested transactions). If a background job is needed: Use skill: `rails-sidekiq-patterns` - a Solid Queue app applies its idempotency, IDs-only and post-commit rules, retries through `retry_on` / `discard_on`, and puts terminal failure in the `retry_on` block. If a rake/backfill task is needed: Use skill: `rails-rake-task-patterns`. A mutation meeting neither limb of `rails-service-objects`' extraction bar takes no service - the atomic forbids the hollow wrapper; it stays in the model or controller (a single AR write: the controller calls it directly); a domain-state denial inside such a model method raises an `ApplicationError` subclass the Step 12 ladder already maps - never a controller-local `rescue_from`.
+Use skill: `rails-service-objects`. Use skill: `rails-transaction-patterns` for boundary discipline (`after_commit` dispatch, nested transactions). If a background job is needed: Use skill: `rails-sidekiq-patterns` - a Solid Queue app applies its idempotency, IDs-only and post-commit rules, retries through `retry_on` / `discard_on`, and puts terminal failure in the `retry_on` block. If a rake/backfill task is needed: Use skill: `rails-rake-task-patterns`. A mutation meeting neither limb of `rails-service-objects`' extraction bar takes no service - the atomic forbids the hollow wrapper; it stays in the model or controller (a single AR write: the controller calls it directly); a domain-state denial inside such a model method raises an `ApplicationError` subclass with a Step 12 ladder entry (`ValidationFailed` -> 422 for an invalid transition; a cap / stock conflict adds a `Conflict` subclass -> 409, since `rails-exception-handling`'s taxonomy maps only `IdempotencyConflict` to 409) - never a controller-local `rescue_from`.
 
 Canonical shape: `rails-service-objects`' `FulfillOrder` - the replay guard and the full precondition checked after `lock!` inside `transaction(requires_new: true)`, and dispatch through `ActiveRecord.after_all_transactions_commit` (it waits for a caller's transaction and runs at once when none is open). A replay skips the work, not the dispatch, so every dispatched job - and any mail it sends - is idempotent on its own guard.
 
@@ -121,7 +122,7 @@ If the feature fans out across two or more external services on the same request
 
 ### Step 8.5 - Inbound Webhooks
 
-Skip if the feature receives no provider callback. Otherwise the endpoint verifies the signature through the provider SDK where one exists, verifies against `request.raw_post` (cached and rewind-safe; a raw `request.body.read` must be rewound), rejects a signed timestamp older than ~5 minutes and is idempotent on the provider's event id (`webhook_events(provider, event_id)` unique index), responds before doing slow work (enqueue, don't process inline), and is excluded from the authenticated namespace with its own rationale. Use skill: `rails-security-patterns` for the verification rules, and Use skill: `rails-http-client-patterns` (Webhooks) for dedupe; out-of-order delivery takes `rails-sidekiq-patterns`' monotonic guard.
+Skip if the feature receives no provider callback. Otherwise the endpoint verifies the signature through the provider SDK where one exists, verifies against `request.raw_post` (cached and rewind-safe; a raw `request.body.read` must be rewound), rejects a signed timestamp older than ~5 minutes and is idempotent on the provider's event id (`webhook_events(provider, event_id)` unique index), answers 200 once the event row is stored and the job enqueued (a duplicate event id also answers 200 and re-enqueues the idempotent job unless the stored row's `processed_at`, set by the job when it finishes, is present - this overrides `rails-exception-handling`'s duplicate-as-no-op because the row insert and the enqueue are not atomic) - before doing slow work, never inline, and is excluded from the authenticated namespace with its own rationale. Use skill: `rails-security-patterns` for the verification rules, and Use skill: `rails-http-client-patterns` (Webhooks) for dedupe; out-of-order delivery takes `rails-sidekiq-patterns`' monotonic guard.
 
 ### Step 9 - Controllers
 
@@ -158,21 +159,21 @@ Skip for API-only. Use skill: `rails-view-templates`. **Match the existing engin
 
 Use skill: `rails-security-patterns` (Pundit policies per resource; `verify_authorized` / `verify_policy_scoped` on the base class per its shape when every controller authorizes, else on the new controllers with the gap named at the design gate; strong params). Use skill: `rails-exception-handling` for the `ApplicationController#rescue_from` ladder and domain error taxonomy.
 
-Public/token endpoints (shared links): the token *is* the capability - use Rails signed ids, `record.signed_id(expires_in:, purpose:)` and `Model.find_signed!(token, purpose:)`, so the token expires and is scoped to one purpose - it stays replayable until expiry, so a one-shot action also records its use (a `has_secure_token` column does neither); route by token outside the authenticated resource namespace, serve through a read-only serializer, and skip Pundit's enforcement with `skip_authorization` (and `skip_policy_scope` on a collection) inside the action - never `skip_after_action` on a callback the base class did not register (`rails-security-patterns`' base registers `verify_pundit_authorization`, not `verify_authorized`) - plus stated rationale.
+Public/token endpoints (shared links): the token *is* the capability - use Rails signed ids, `record.signed_id(expires_in:, purpose:)` and `Model.find_signed!(token, purpose:)`, so the token expires and is scoped to one purpose - it stays replayable until expiry, so a one-shot action also records its use (a `has_secure_token` column does neither); route by token outside the authenticated resource namespace, serve through a read-only serializer, and skip Pundit's enforcement inside the action with `skip_authorization` (`skip_policy_scope` instead on an `index` action, where the base calls `verify_policy_scoped`) - never `skip_after_action` on a callback the base class did not register (`rails-security-patterns`' base registers `verify_pundit_authorization`, not `verify_authorized`) - plus stated rationale.
 
 - File uploads: `rails-active-storage-patterns` was loaded at the Step 4 design; apply its serving/security rules here
 - Custom ActionCable channels / connection auth: Use skill: `rails-actioncable-patterns` here (when Step 11 did not already load it)
 
 ### Step 13 - Tests
 
-Use skill: `rails-testing-patterns`. A Minitest suite (`test/`) is the project's convention: the same rows as Minitest tests under `test/` (request spec -> `test/integration`, job -> `test/jobs`, service / policy / client -> `test/services` / `test/policies` / `test/clients`), each in the atomic's per-file block with `File:` under `test/`, records built per its FactoryBot rule (adding `factory_bot_rails` to the test group, named at the gate; existing fixtures untouched). Minimum coverage - add rows the feature's behavior demands beyond this list:
+Use skill: `rails-testing-patterns`. A Minitest suite (`test/`) is the project's convention: the same rows as Minitest tests under `test/` (request spec -> `test/integration`, job -> `test/jobs`, service / policy / client -> `test/services` / `test/policies` / `test/clients`), each in the atomic's per-file block, its `File:` slot holding the `test/` path in place of the slot's `spec/` forms (named under `Divergences:` at the gate), records built per its FactoryBot rule (adding `factory_bot_rails` to the test group, named at the gate; existing fixtures untouched). Minimum coverage - add rows the feature's behavior demands beyond this list:
 - Model: associations, validations, scopes, enums
 - Service: one example per `Result` outcome; side effects asserted
 - Policy: every action, one example per distinct outcome, plus the `Scope`
 - Request: happy + unauthorized + validation-error per action
 - Job: idempotency + bounded retry (if applicable)
 - Client: boundary-stubbed (WebMock) per outcome, incl. timeout/error -> domain-error translation (if external APIs)
-- Mailer: per email action; enqueued via `deliver_later` from a request or service, delivered via `deliver_now` from a job (if emails sent). `rails-testing-patterns`' `Test Type` enum carries no Mailer, Component or Channel value - emit these in its per-file block shape with the type named plainly
+- Mailer: per email action; enqueued via `deliver_later` from a request or service, delivered via `deliver_now` from a job (if emails sent). `rails-testing-patterns`' `Test Type` enum carries no Component value - emit ViewComponent specs in its per-file block shape with the type named plainly (Mailer and Channel use the enum's own values)
 - Channel (custom ActionCable channel): subscription authorization + broadcast (if Step 12 generated one)
 - Rake task: wiring spec (if Step 7 generated one)
 - ViewComponent (server-rendered): `render_inline` per state
@@ -204,7 +205,7 @@ Run `bundle exec rspec` (a Minitest suite: `bin/rails test:all` - `bin/rails tes
 ## Files Generated
 {grouped by layer: migrations, models, services, controllers, serializers/views (incl. Stimulus controllers, helpers, locales), policies, jobs, mailers, clients, errors, channels, rake tasks, view components, routes, scheduler config, tests; each path followed by the file's content in a fenced block}
 
-## Background Jobs   {when at least one job; Retry = retries after the first run: `sidekiq_options retry:`, or `retry_on` attempts minus 1}
+## Background Jobs   {when at least one job; Retry = retries after the first run: `sidekiq_options retry:`, or `retry_on` attempts minus 1 - an Active Job class on the Sidekiq adapter also gets Sidekiq's own channel - its `sidekiq_options retry:` value, 25 when unset, none under `retry: 0` / `retry: false` - stated beside it; a `retry_on` block swallows only the classes it names}
 | Job                     | Queue   | Trigger               | Retry |
 | ----------------------- | ------- | --------------------- | ----- |
 | ShipmentNotificationJob | mailers | After order fulfilled | 5     |

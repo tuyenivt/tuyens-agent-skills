@@ -23,7 +23,7 @@ user-invocable: false
 - Every channel `subscribed` authorizes the requested resource - never `stream_from` a client-supplied identifier without an ownership check
 - `turbo_stream_from` scope is a capability; pass model objects, not public IDs. Per-user data: `turbo_stream_from current_user, :orders`. Shared resources: `turbo_stream_from project, :comments` - authorization is the controller only rendering the tag for permitted viewers
 - Keep `allowed_request_origins` strict in production and never set `disable_request_forgery_protection` - cookie-authenticated connections are Cross-Site WebSocket Hijacking targets otherwise
-- Redis (two conns per process) or Solid Cable in production - Solid Cable when the app already runs the Solid stack and poll latency is acceptable (`polling_interval`; the generated `cable.yml` sets 0.1s), Redis for high broadcast volume or sub-poll latency; `async` in development, `adapter: test` in test - the broadcast matchers require it
+- Redis or Solid Cable in production (table below); `async` in development, `adapter: test` in test - the broadcast matchers require it
 - Broadcast from `after_commit`, not `after_save` - subscribers re-querying mid-broadcast see the pre-commit state otherwise, and a rolled-back write is still announced
 - Fan-out to > 100 *distinct targets* goes through one batched background job that enumerates the targets and broadcasts from the job - calling `broadcast_*_later_to` once per target still loops in the request thread and enqueues N jobs. When every target receives the same payload, the fix is one shared stream scoped to the resource they share (`stream_for warehouse`, authorized in `subscribed`), not batching. One broadcast to a stream many subscribers share is a single publish regardless of subscriber count - that cost is the adapter's, not the request thread's, so viewer count alone never triggers this rule
 - Channel actions are RPC over a socket - rate-limit per identity (`connection.connection_identifier`, shared by every socket of one user) and validate params like any HTTP endpoint
@@ -44,7 +44,7 @@ module ApplicationCable
 end
 ```
 
-For JWT/API apps, prefer the `Sec-WebSocket-Protocol` subprotocol header for the token - headers don't land in access logs; the client adds it with `consumer.addSubProtocols(token)` (Rails 7.1+), and in `connect` you split `request.headers["Sec-WebSocket-Protocol"]` on `,`, strip each entry, and take the one that is neither `actioncable-v1-json` nor `actioncable-unsupported`. Query params are acceptable only for short-lived single-use tickets minted per connection. Never put the long-lived JWT itself in a URL. A mailed capability token lives as long as the link must work (`expires_in:` on the signed id, days for a shipment); the cable ticket minted per page load stays short-lived, and an expired identifier is refused on the next reconnect rather than by dropping live sockets. Devise apps can identify via `env["warden"].user` instead of the cookie lookup.
+For JWT/API apps, prefer the `Sec-WebSocket-Protocol` subprotocol header for the token - headers don't land in access logs; the client adds it with `consumer.addSubProtocol(token)` (Rails 7.1+), and in `connect` you split `request.headers["Sec-WebSocket-Protocol"]` on `,`, strip each entry, and take the one that is neither `actioncable-v1-json` nor `actioncable-unsupported`. Query params are acceptable only for short-lived single-use tickets minted per connection. Never put the long-lived JWT itself in a URL. A mailed capability token lives as long as the link must work (`expires_in:` on the signed id, days for a shipment); the cable ticket minted per page load stays short-lived, and an expired identifier is refused on the next reconnect rather than by dropping live sockets. Devise apps can identify via `env["warden"].user` instead of the cookie lookup.
 
 ### Subscription Authorization (IDOR Prevention)
 
@@ -86,7 +86,7 @@ Same rule for Turbo Stream scope:
 | Adapter      | Use when                              | Trade-off                                  |
 | ------------ | ------------------------------------- | ------------------------------------------ |
 | `redis`      | Production, >1 app process            | Two Redis conns per process (one blocked in SUBSCRIBE, one publishing) - budget `maxclients` accordingly; default in the Rails 7.2 generated `cable.yml` |
-| `solid_cable`| Production, Rails 8 default           | Table-backed (works on MySQL) and polled (`polling_interval`) - delivery is only as fast as the poll; every cable-serving process polls, so give it its own database or budget the connections |
+| `solid_cable`| Production, Rails 8 default; the app already runs the Solid stack and poll latency is acceptable | Table-backed (works on MySQL) and polled (`polling_interval`; the generated `cable.yml` sets 0.1s) - delivery is only as fast as the poll; every cable-serving process polls, so give it its own database or budget the connections |
 | `async`      | Development, single process           | No cross-process broadcast                 |
 | `test`       | Test env                              | Records broadcasts (and still delivers in-process, like async); `have_broadcasted_to` requires it and raises under any other adapter |
 
@@ -142,6 +142,8 @@ def send_message(data)
 end
 ```
 
+A loop publishing the same payload N times to one stream is a GAP - replace it with one broadcast; a value that changes hundreds of times a minute (a live counter) is coalesced - a short-interval job broadcasts the current value - rather than broadcast per event.
+
 Non-`later` broadcast helpers render the partial in the caller's thread. Use the `_later_to` variants (`broadcast_replace_later_to`) from model callbacks and request-path code so rendering happens on Active Job; inline variants are fine from jobs, which already run off-thread. The Turbo directive form (`broadcasts_to ->(o) { [o.user, :orders] }`) wires the `later` variants for create and update; removal on destroy stays inline (`broadcast_remove_to` renders nothing).
 
 ### Testing
@@ -168,8 +170,8 @@ end
 # record or array target without `.from_channel(...)` raises "Broadcasting channel can't be
 # inferred", and from_channel(Turbo::StreamsChannel) is wrong for Turbo streams anyway, because
 # broadcasting_for prefixes the channel name. perform_enqueued_jobs runs the _later_to render job -
-# it needs ActiveJob::TestHelper (rspec-rails does not include it in model, service or request
-# specs: config.include ActiveJob::TestHelper for those) and the :test queue adapter.
+# it needs ActiveJob::TestHelper (request specs get it through the integration-test load hook;
+# model and service specs do not: config.include ActiveJob::TestHelper, type: :model) and the :test queue adapter.
 it "broadcasts the updated card" do
   expect { perform_enqueued_jobs { order.update!(status: :paid) } }
     .to have_broadcasted_to("#{order.user.to_gid_param}:orders")
@@ -180,36 +182,32 @@ end
 
 ## Output Format
 
-In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: blocks hold corrected values only, and a pre-existing violation the change touches is still a numbered finding. `Broadcast adapter` names the production adapter; a test environment on anything but `test` is a numbered finding. Emit one block per channel, and one per stream when streams on the same channel differ in scope or hook (an account balance stream and a global entries stream are two blocks). Pure `turbo_stream_from` flows have no custom channel: write `Channel: Turbo::StreamsChannel (turbo_stream_from)` and pick the signed-scope authorization value; when the controller rendering the tag is outside the read set, `Authorization in subscribed` is `not in evidence` plus the controller file. Connection-wide fields (`Identified by`, `Broadcast adapter`, `Request origins`) repeat in every block. An existing policy that cannot express the ownership rule (an admin-only `show?`) is a numbered finding owned by `rails-security-patterns`.
+In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. `Broadcast adapter` names the production adapter; a test environment on anything but `test` is a numbered finding. Emit one block per channel, and one per stream when streams on the same channel differ in scope or hook (an account balance stream and a global entries stream are two blocks). Pure `turbo_stream_from` flows have no custom channel: write `Channel: Turbo::StreamsChannel (turbo_stream_from)` and pick the signed-scope authorization value; when the controller rendering the tag is outside the read set, `Authorization in subscribed` is `not in evidence` plus the controller file. Connection-wide fields (`Identified by`, `Broadcast adapter`, `Request origins`) repeat in every block; the finding behind a connection-wide GAP is written once. An existing policy that cannot express the ownership rule (an admin-only `show?`) is a numbered finding owned by `rails-security-patterns`.
 
 ```
 Channel: <name | Turbo::StreamsChannel (turbo_stream_from)>
 
-Identified by: <current_user | current_user, no reject on a missing user - GAP | session token | resource identifier from a raw id - GAP | JWT (transport) | signed resource ticket (anonymous) | not in evidence - list every identifier the Connection declares, joined with +>
+Identified by: <current_user | current_user, no reject on a missing user - GAP | session token | unsigned cookie id - GAP (`cookies[:user_id]`, forgeable) | resource identifier from a raw id - GAP | JWT (transport) + the identifier it resolves to | signed resource ticket (anonymous) | not in evidence - list every identifier the Connection declares, joined with +>
 
 Stream scope: <per-user | per-tenant | per-resource | global - reason (a reason is required; a global stream carrying per-user data is a GAP)>
 
-Authorization in subscribed: <Yes - policy/ownership check | fixed at connect (the identifier is the resource) | Signed scope + controller gate (turbo_stream_from) | Signed scope, controller gate missing - GAP | No - GAP>
+Authorization in subscribed: <Yes - policy/ownership check | Yes - audience gate (a shared stream every authenticated role may read; the check is the role, not a record) | fixed at connect (the identifier is the resource) | Signed scope + controller gate (turbo_stream_from) | Signed scope, controller gate missing - GAP | No - GAP>
 
 Authorization in actions: <per-action check + rate limit | per-action check, no rate limit - GAP | no receiving actions | No - GAP>
 
 Broadcast adapter: <redis | solid_cable | async | not in evidence>
 
-Request origins: <allowed_request_origins strict, forgery protection on | unset - same-origin only (framework default, compliant) | allowed_request_origins permissive - GAP | disable_request_forgery_protection - GAP | not in evidence>
+Request origins: <allowed_request_origins strict, forgery protection on | unset - same-origin only, plus localhost in development (framework default, compliant; a stated client on another origin makes it a GAP -> allowed_request_origins strict) | allowed_request_origins permissive - GAP | disable_request_forgery_protection - GAP | not in evidence>
 
-Broadcast hook: <after_commit (later) | after_commit (inline, from a model callback) - GAP | service explicit (later, or inline from a job) | service explicit (inline, request path) - GAP | broadcasts directive | channel action broadcasting an ephemeral event (typing, presence) | channel action re-broadcasting what the callback announces - GAP (persist in the action, let the callback announce) | after_save - GAP | not in evidence - the broadcaster is outside the read set>
+Broadcast hook: <after_commit (later) | after_commit enqueuing a broadcasting job (the job broadcasts inline) | after_commit (inline, from a model callback) - GAP | service explicit (later, or inline from a job) | service explicit (inline, request path) - GAP | broadcasts directive | channel action broadcasting an ephemeral event (typing, presence) | channel action re-broadcasting what the callback announces - GAP (persist in the action, let the callback announce) | after_save - GAP | not in evidence - the broadcaster is outside the read set>
 
-Fan-out volume: <distinct targets per event - batched job | <= 100 distinct targets broadcast inline | > 100 distinct targets broadcast inline - GAP | single shared stream (subscriber count is not fan-out; a shared stream carrying per-user data is an authorization GAP, not a cost) | not enumerable from the reviewed files | not in evidence>
+Fan-out volume: <distinct targets per event - batched job | <= 100 distinct targets broadcast inline | > 100 distinct targets broadcast inline - GAP | same payload published N times to one stream - GAP (one broadcast) | single shared stream (subscriber count is not fan-out; a shared stream carrying per-user data is an authorization GAP, not a cost) | not enumerable from the reviewed files | not in evidence>
 
 Tests: <channel spec | channel spec, no rejection case - GAP | broadcast assertion | broadcast assertion + request/system test (turbo_stream_from flows - full coverage) | channel spec + broadcast assertion | none - GAP>
 ```
 
 ## Avoid
 
-- `stream_from "scope_#{params[:id]}"` without an ownership check - IDOR over WebSocket
-- One shared `turbo_stream_from` scope for per-user or per-tenant data - every viewer holds the identical signed tag
-- Broadcasting from `after_save` - subscribers race the commit
-- Sharing one Redis instance between ActionCable and Sidekiq under load
-- Inline `broadcast_to` in a loop over many recipients
 - `async` adapter in production - broadcasts never leave the process that sent them
 - Treating `turbo_stream_from`'s signed scope as authorization
+- A channel action that re-broadcasts what the model callback already announces - double delivery

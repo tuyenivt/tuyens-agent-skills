@@ -20,8 +20,8 @@ user-invocable: false
 ## Rules
 
 - Each AR-calling thread checks out one connection - count threads, not pods.
-- Per-process `pool == max_threads_in_that_process` (+ executor/Cable extras when `load_async` / ActionCable share the process - see Headroom; a Solid Queue worker adds 2).
-- Deployment-wide sum stays under DB `max_connections` with headroom: 15% only when the deploy peak is bounded and has been observed (a surge knob exists - `maxSurge`, Kamal `boot: limit:` - and someone measured the overlap); 25% otherwise - unmeasured, no surge knob (Capistrano, ASG), or an instance shared with analytics or another application. A neighbouring application on the same server is subtracted explicitly: its budget (or its measured draw) comes off `max_connections` before the headroom, not out of it. `available_for_app = max_connections * (1 - headroom) - reserved_for_cli - reserved_for_ops`, and both steady state *and* deploy peak must fit under it.
+- Per-process `pool == max_threads_in_that_process` (+ executor/Cable extras when `load_async` / ActionCable share the process - see Headroom; a Solid Queue `threads:` worker adds 2 on its queue database, a `fibers:` worker starts at 3-5 per process).
+- Deployment-wide sum stays under DB `max_connections` with headroom: 15% only when the deploy peak is bounded and has been observed (a surge knob exists - `maxSurge`, Kamal `boot: limit:` - and someone measured the overlap); 25% otherwise - unmeasured, no surge knob (Capistrano, ASG), or an instance shared with analytics or another application. A neighbouring application on the same server is subtracted explicitly: its budget (or its measured draw) comes off `max_connections` before the headroom, not out of it. `available_for_app = (max_connections - neighbour) * (1 - headroom) - reserved_for_cli - reserved_for_ops`, and both steady state *and* deploy peak must fit under it.
 - Rolling deploys hold old + new pool simultaneously - size for the peak.
 - A long-running query holds the connection for its full duration.
 - Never tune `pool` without re-deriving the deployment-wide total.
@@ -38,10 +38,11 @@ total =
     (puma_pods * max(puma_workers, 1) * puma_threads) # web; single mode (workers 0) is 1 process
   + (puma_pods * max(puma_workers, 1) * extras)       # executor + Cable threads (Headroom)
   + (sidekiq_pods * sidekiq_processes * concurrency)  # workers; concurrency = sum of capsules
-  + (sq_pods * sq_processes * (sq_threads + 2))       # Solid Queue workers (polling + heartbeat),
-                                                      # plus supervisor / dispatcher connections
+  + (sq_pods * sq_processes * (sq_threads + 2))       # Solid Queue threads: workers (polling + heartbeat); 3-5 per fibers: process,
+                                                      # plus supervisor / dispatcher connections; + sq_threads on the primary pool
+                                                      # when the queue database shares the server
   + (cron_pods * concurrent_scheduled_jobs)           # scheduled processes hold 1 each,
-                                                      # x pool only if the script threads
+                                                      # x min(script threads, pool) if the script threads
 ```
 
 Example - 30 web (`workers=2, threads=5`) + 10 worker (`concurrency=15`), with 5 held back for CLI/ops:
@@ -60,7 +61,7 @@ On `db.t3.large` (~683 max_connections, minus the 5 reserved and 25% headroom fo
 | -------------------- | ------------------------------------------------------------------------ |
 | Puma worker          | `puma_threads` + executor concurrency + Cable worker threads (see Headroom) |
 | Sidekiq process      | `concurrency` - the sum across capsules on Sidekiq 7+                     |
-| Rails console / rake | whatever `database.yml` sets; holds 1 connection, since checkout is lazy - bump only if the script spawns threads. `db:migrate` holds 2 (its advisory lock takes a second) |
+| Rails console / rake | whatever `database.yml` sets; holds 1 connection, since checkout is lazy - bump only if the script spawns threads. `db:migrate` holds 1 (the advisory lock rides the migration connection) |
 
 ```yaml
 # Bad - the pool stops being a cap. AR opens connections lazily, so this reserves
@@ -69,7 +70,7 @@ On `db.t3.large` (~683 max_connections, minus the 5 reserved and 25% headroom fo
 pool: 25  # threads=5
 # Good (no in-process Cable, no async executor - otherwise add those extras) - same env
 # var and fallback as puma.rb (Rails 7.2+ generates 3 there)
-pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 3 } %>
+pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 3 } %>   # Rails 8.1 generators write max_connections: - pool: stays an alias
 ```
 
 ### Headroom for non-request work
@@ -88,7 +89,7 @@ Set `RAILS_MAX_THREADS=15` in the Sidekiq deployment env so `pool=15` matches. A
 
 Partition memory- or query-heavy queues onto a separate process or a Sidekiq 7+ capsule with lower `concurrency`; a capsule adds threads to its process, so that process's `pool` is the sum of its capsules. A queue running 10s SQL at `concurrency: 25` holds 25 connections for ten seconds.
 
-Solid Queue (the Rails 8 default) is the same budget: a worker's concurrency is its `threads` in `config/queue.yml` times `processes`, and its database pool needs those threads plus Solid Queue's own polling and heartbeat connections (threads + 2, per its README). Its supervisor and dispatchers hold connections too, and a process's pools for the queue, cable and cache databases add when they share a server.
+Solid Queue (the Rails 8 default) is the same budget: a worker's concurrency is its `threads` in `config/queue.yml` times `processes`, and its database pool needs those threads plus Solid Queue's own polling and heartbeat connections (threads + 2 for a `threads:` worker, per its README; a `fibers:` worker, Solid Queue 1.6+, starts at 3-5 per process). Its jobs' own queries draw `threads` connections from the primary pool, separate from the queue database's threads + 2 (the install generator writes `config.solid_queue.connects_to = { database: { writing: :queue } }`). Its Puma plugin forks the supervisor, so the workers are separate processes with their own pools; `solid_queue_mode :async` (Solid Queue 1.3+) runs them as threads in the process that boots Puma (the cluster master serves no requests), ignores `processes`, and draws `threads` from that process's primary pool and threads + 2 from its queue pool. Its supervisor and dispatchers hold connections too, and a process's pools for the queue, cable and cache databases add when they share a server.
 
 ### Deploy-window doubling
 
@@ -142,7 +143,7 @@ SHOW GLOBAL STATUS LIKE 'Max_used_connections';   -- high-water mark since resta
 | ---------------------------------------------------- | ------------------------------------ |
 | `ActiveRecord::ConnectionTimeoutError`               | In-process pool exhausted            |
 | MySQL 1040 `Too many connections` (`ActiveRecord::ConnectionNotEstablished` at connect; `Mysql2::Error` / `Trilogy::BaseError` underneath) | DB `max_connections` reached |
-| MySQL 2006 / 2013 `server has gone away` / `Lost connection` (`ActiveRecord::ConnectionFailed` after Rails' reconnect retry) | Network blip, DB restart, a proxy/NAT/load-balancer idle timeout, an oversized packet (`max_allowed_packet`); `wait_timeout` only when `database.yml` overrides the session value Rails sets |
+| MySQL 2006 / 2013 `server has gone away` / `Lost connection` (`Mysql2::Error`; `Trilogy::EOFError` / `Trilogy::ConnectionClosed` on trilogy; `ActiveRecord::ConnectionFailed` after Rails' reconnect retry) | Network blip, DB restart, a proxy/NAT/load-balancer idle timeout, an oversized packet (`max_allowed_packet`); `wait_timeout` only when `database.yml` overrides the session value Rails sets |
 
 ### Reserved budget
 
@@ -154,7 +155,7 @@ Easy to forget; commonly what pushes a deploy over:
 - Backup tools (`mysqldump`, `mysqlsh` dump utilities, `xtrabackup`)
 - Schema tools (`gh-ost` heartbeat, `pt-online-schema-change`, `liquibase`)
 
-Reserve 5-10 connections - 10 when a backup or ETL tool connects on a schedule; when the consumers are enumerated (4 consoles, an 8-connection reporting script), reserve their sum.
+Reserve 5 connections; 10 when a backup or ETL tool is named in the read set; when the consumers are enumerated (4 consoles, an 8-connection reporting script), reserve their sum.
 
 ### Fork resets
 
@@ -162,15 +163,15 @@ Active Record discards parent connections in forked children automatically (Rail
 
 ### Multiplexer notes
 
-- **RDS Proxy**: not transparent by default - session state pins a client to one backend connection (`LOCK TABLES`, temporary tables, user and session variables), and the combined session `SET` the mysql2 / trilogy adapter always issues on connect (`NAMES`, `sql_mode`, `wait_timeout`) may pin every session - proxy versions differ in which session variables they track. Measure after rollout: `DatabaseConnectionsCurrentlySessionPinned` for pinning, `DatabaseConnectionsCurrentlyBorrowed` and `DatabaseConnectionsBorrowLatency` for pool pressure. A parameter-group change does not stop that `SET` and Rails has no setting to skip it, so when pinning shows, accept it or use ProxySQL. The proxy's `MaxConnectionsPercent` caps its share of `max_connections`; the app's pools then size against the proxy, not the server.
+- **RDS Proxy**: not transparent by default - session state pins a client to one backend connection (`LOCK TABLES`, temporary tables, user and session variables), and the session `SET` the mysql2 / trilogy adapter issues on connect (`wait_timeout` always; `NAMES` when `encoding:` is set; `sql_mode` unless `strict: :default` with no `variables: sql_mode` override) may pin every session - proxy versions differ in which session variables they track. Measure after rollout: `DatabaseConnectionsCurrentlySessionPinned` for pinning, `DatabaseConnectionsCurrentlyBorrowed` and `DatabaseConnectionsBorrowLatency` for pool pressure. A parameter-group change does not stop that `SET` and Rails has no setting to skip it, so when pinning shows, accept it or use ProxySQL. The proxy's `MaxConnectionsPercent` caps its share of `max_connections`; the app's pools then size against the proxy, not the server.
 - **ProxySQL**: query routing, read/write splitting; more ops overhead than RDS Proxy.
 
 ## Output Format
 
-A question the request asks ("is it safe?", "do we need a proxy?") gets a one-line answer above the blocks. The Gemfile decides the worker tier's shape (`sidekiq` or `solid_queue`); a README that says otherwise is a one-line contradiction above the blocks. A build request with no `config/puma.rb` or `config/database.yml` yet assumes the generator defaults (`threads 3`, `WEB_CONCURRENCY` 2 per pod), states the assumption, and follows the blocks with the `puma.rb` and `database.yml` lines the sizing implies in one fenced block. `Available for app` gates steady state and deploy peak alike. In `Executor / Cable extras`, provisioned equal to required is correct, provisioned below required is the GAP that causes timeouts, provisioned above required is a mis-sized pool. `Worker tier` names any job that holds a connection for minutes. `Cron / rake` counts schedules that overlap in time together; ad-hoc console and ops live in Reserved. `Deploy peak` is ~2x when the rollout has no surge knob (Capistrano, ASG, Kamal without `boot: limit:`) or no manifest is in scope - a proposed tier with no manifest takes ~2x on its own while existing tiers keep the surge form. In `Result`, the mis-sized-pool value combines with any outcome, and the multiplexer threshold is ~200 backend processes at peak; a connection held across an external call (an HTTP request inside a transaction or `lock!`) is its own `Result` value, since every stalled thread holds one connection for the partner's timeout. One block per database server (a read replica on its own host is its own budget; a documented replica no process connects to gets one line, no block); logical databases sharing a server (queue, cable, cache) fold into its block, each tier line summing every pool that tier's processes hold on it. A proposal (N pods -> M) gets one block per state, the as-configured state first when its pools are mis-sized. Two independent symptoms get two `Result:` lines. A field whose evidence is outside the reviewed files is `not in evidence` plus the file to read.
+A question the request asks ("is it safe?", "do we need a proxy?") gets a one-line answer above the blocks. The Gemfile decides the worker tier's shape (`sidekiq` or `solid_queue`); a README that says otherwise is a one-line contradiction above the blocks. A build request with no `config/puma.rb` or `config/database.yml` yet assumes the generator defaults (`threads 3`, one Puma process per pod - the generated `puma.rb` sets no `workers`, and Puma reads `WEB_CONCURRENCY` as the `workers` default only when it is set), states the assumption, and follows the blocks with the `puma.rb` and `database.yml` lines the sizing implies in one fenced block. `Available for app` gates steady state and deploy peak alike. In `Executor / Cable extras`, provisioned equal to required is correct, provisioned below required is the GAP that causes timeouts, provisioned above required is a mis-sized pool. `Worker tier` names any job that holds a connection for minutes. `Cron / rake` counts schedules that overlap in time together (a CronJob at `concurrencyPolicy: Allow` whose run can outlast its interval counts twice); ad-hoc console and ops live in Reserved. `Deploy peak` is ~2x when the rollout has no surge knob (Capistrano, ASG, Kamal without `boot: limit:`) or no manifest is in scope; a Kubernetes Deployment with no `strategy` block takes the default `maxSurge: 25%`, `maxUnavailable: 25%` - a proposed tier with no manifest takes ~2x on its own while existing tiers keep the surge form. In `Result`, the mis-sized-pool value combines with any outcome, and the multiplexer threshold is ~200 backend processes at peak; a connection held across an external call (an HTTP request inside a transaction or `lock!`) is its own `Result` value, since every stalled thread holds one connection for the partner's timeout. One block per database server (a read replica on its own host is its own budget; a documented replica no process connects to gets one line, no block); logical databases sharing a server (queue, cable, cache) fold into its block, each tier line summing every pool that tier's processes hold on it. A proposal (N pods -> M) gets one block per state, the as-configured state first when its pools are mis-sized; an incident's fix is a proposal, so it gets the same second block. Two independent symptoms get two `Result:` lines. A field whose evidence is outside the reviewed files is `not in evidence` plus the file to read.
 
 ```
-Database: MySQL on {RDS / Aurora / self-hosted, instance class}
+Engine: MySQL on {RDS / Aurora / self-hosted, instance class}
 
 max_connections: {value}
 
@@ -182,13 +183,13 @@ Available for app: {(max_connections - neighbour) x (1 - headroom) - reserved} =
 
 Web tier: {pods} x {max(workers, 1)} x {threads} = {total}, pool = {N}{ + {N} per other logical database on this server}
 
-Executor / Cable extras: per process {pool - threads} provisioned vs {executor_concurrency + Cable threads} required; fleet {pods x max(workers, 1) x required}
+Executor / Cable extras: per process {pool - threads} provisioned vs {executor_concurrency + Cable threads} required; fleet {pods x max(workers, 1) x min(required, pool - threads)}
 
-Worker tier: {pods} x {processes} x {concurrency | threads + 2 (Solid Queue)} = {total}, pool = {N}{ + {N} per other logical database on this server}{ + Solid Queue supervisor / dispatcher connections}
+Worker tier: {pods} x {processes} x {concurrency | threads + 2 (Solid Queue threads:) | 3-5 (Solid Queue fibers:)} = {total}, pool = {N}{ + {N} per other logical database on this server}{ + Solid Queue supervisor / dispatcher connections}
 
 Cron / rake: {peak parallel scheduled app processes} = {total}
 
-Steady-state total: {web + extras fleet + worker + cron}
+Steady-state total: {web + extras fleet + worker + cron} - each tier at its own tier line's per-process figure x processes, capped per process and per database at that database's pool (web and extras share the Puma process's pool: min(threads + required extras, pool)) - an oversized pool is a mis-sizing finding, not draw
 
 Deploy peak (rolling): {steady x (1 + maxSurge) | steady x (1 + maxSurge) + draining pods | steady + booting hosts' share (Kamal boot: limit) | ~2x full overlap | measured} - computed per tier when tiers differ in surge, then summed
 
@@ -197,10 +198,6 @@ Result: {within budget | within budget, multiplexer not yet warranted | within b
 
 ## Avoid
 
-- `pool` higher than `puma_threads` + the documented executor / Cable extras
-- Sizing for steady-state only - the deploy peak causes the outage
 - Forgetting Sidekiq is a separate process from Puma
 - Direct connections >200 backend processes without a multiplexer
-- Tuning `pool` without re-checking deployment-wide total
-- Treating `max_connections` as hard ceiling - leave 15-25% headroom
 - Assuming `load_async` is free - the process-global executor adds up to `global_executor_concurrency` connections per process (not one per query)

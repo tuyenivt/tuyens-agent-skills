@@ -25,11 +25,11 @@ Depth (`standard` (default) | `deep`) and scope (`Core` | `+Perf` | `+Sec` | `+O
 
 **Auto-escalate scope on Rails signals:**
 
-- **+Sec**: file upload (Active Storage/Shrine/CarrierWave), Devise/Pundit/CanCanCan config, `params.permit` changes, raw SQL, secrets, Sidekiq taking user input, a new action with no authentication filter
+- **+Sec**: file upload (Active Storage/Shrine/CarrierWave), Devise/Pundit/CanCanCan config, `params.permit` changes, raw SQL, secrets, Sidekiq taking user input, a new action with no authentication filter or one authorizing outside the app's policy layer (a hand-rolled role check)
 - **+Perf**: `db/migrate/`, `add_index`, new `.where`/`.order`/scopes, new payload endpoints, loops hitting DB or HTTP
 - **+Obs**: log/notifications/tracer config, a new external dependency, or a new service / ActiveJob / Sidekiq class whose diff adds no instrumentation (no structured log or event)
 - **+Rel**: new Faraday/`Net::HTTP` client without timeout, `stoplight`/`retriable` config, Sidekiq job without an idempotency guard, external call or `.perform_async` inside a transaction, unbounded `.all.each`, missing `after_commit` dispatch
-- Two or more categories in the resolved union (user flags + firing signals) -> **Full** (this workflow's Summary `Scope:` line and its Step 10 writer mapping are both single-valued; `review-report-writer` would accept a space-joined subset, but nothing here emits one)
+- Two or more categories in the resolved union (user flags + firing signals) -> **Full** (all four lenses run, fired or not)
 
 ## Invocation
 
@@ -76,19 +76,13 @@ If `prior_checkpoint: legacy` (file present, frontmatter missing/invalid) -> `ro
 
 Otherwise (valid prior checkpoint present):
 
-**Step 3.5a - Auto-fetch the head branch.** Only when a valid prior checkpoint exists, refresh the remote-tracking ref for the reader's reference:
+**Step 3.5a - Auto-fetch the head branch.** Only when a valid prior checkpoint exists, the handle's `head_is_remote` is false, and the upstream is not `base_ref`, refresh the local branch's remote-tracking ref for the reader's reference:
 
 ```bash
-upstream=$(git rev-parse --abbrev-ref --symbolic-full-name "<branch>@{u}" 2>/dev/null)
+remote=$(git config "branch.<branch>.remote") && merge=$(git config "branch.<branch>.merge") && [ "$remote/${merge#refs/heads/}" != "<base_ref>" ] && git fetch "$remote" "${merge#refs/heads/}"
 ```
 
-If `upstream` resolves to `<remote>/<branch>` form, split and run:
-
-```bash
-git fetch <remote> <branch>
-```
-
-No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, detached HEAD, no remote configured), skip the fetch silently. If `git fetch` fails (offline, auth, deleted remote branch), continue silently - this is a convenience, not a gate. The fetch writes `FETCH_HEAD` and, when the configured refspec covers the branch, `refs/remotes/<remote>/<branch>` - it never moves a local branch or `HEAD`, so `current_head_sha` does not change and is not re-resolved. Its value is leaving the tracking ref current for the reader, not for this run.
+The upstream's branch half, not `<branch>`, names the remote ref (a `pr-42` branch tracking `origin/feature/x` fetches `feature/x`). No checkout, no merge. If either config key is unset (pr-ref with no upstream, detached HEAD, no remote configured), skip the fetch silently. If `git fetch` fails (offline, auth, deleted remote branch), continue silently - this is a convenience, not a gate. The fetch writes `FETCH_HEAD` and, only when `remote.<remote>.fetch` maps the branch, `refs/remotes/<remote>/<upstream branch>`; it never moves a local branch or `HEAD`, so `current_head_sha` does not change and is not re-resolved. With `head_is_remote` true the fetch is skipped: it would move `head_ref` itself out from under the captured SHA; the guard skips it likewise when `<remote>/<upstream branch>` is `base_ref` (a branch cut from `origin/main` tracks `main`), or the diff would be read against a moved base.
 
 **Step 3.5b - Compare checkpoints.**
 
@@ -153,7 +147,7 @@ Atomic skills - load with `Use skill:` each one whose area the PR touches:
 
 Checks:
 
-- [ ] **Transactions / callbacks**: writes wrapped; no HTTP / `.perform_async` / `deliver_now` inside transactions or `after_save`/`after_create` - dispatch via `after_commit` (see `rails-transaction-patterns`). An Active Job `perform_later` / `deliver_later` deferred to commit by `enqueue_after_transaction_commit`, or Sidekiq `perform_async` under `Sidekiq.transactional_push!`, is not a finding - read the setting per `rails-transaction-patterns`; when it is not in evidence, file the finding and name the setting to check in its Fix.
+- [ ] **Transactions / callbacks**: writes wrapped; no HTTP / `.perform_async` / `deliver_now` inside transactions or `after_save`/`after_create` - dispatch via `after_commit` (see `rails-transaction-patterns`). An Active Job `perform_later` / `deliver_later` deferred to commit by `enqueue_after_transaction_commit`, or Sidekiq `perform_async` under `Sidekiq.transactional_push!`, is not a finding - read the setting per `rails-transaction-patterns`; when it is not in evidence, file the finding and name the setting to check in its Fix. Sidekiq's bulk forms are findings whatever the setting - `push_bulk` / `perform_bulk` and a push inside a `Sidekiq::Batch` enqueue immediately; `ActiveJob.perform_all_later` enqueues immediately below Rails 8.1.2, and from 8.1.2 defers only the jobs whose class sets `enqueue_after_transaction_commit = true`.
 - [ ] **`save!`** in services/transactions so failures surface
 - [ ] **Error handling**: no bare `rescue` / `rescue Exception` / blanket `rescue StandardError` that logs-and-continues; `Pundit::NotAuthorizedError` and app-level `ApplicationError` centralized via `rescue_from` in `ApplicationController` (an uncaught `RecordNotFound` is already a 404 via `rescue_responses` - a per-action rescue of it is the finding, not its absence)
 - [ ] **Bulk operations**: partial-failure path defined; transaction wraps one chunk, not whole run or single row
@@ -172,7 +166,7 @@ Checks:
 - [ ] Data migrations in rake tasks, not `db/migrate/`
 - [ ] Rollback path documented
 
-**API contract PRs** - run when the diff carries a contract-change signal: a removed / renamed / retyped serializer attribute, a changed rendered status code, a newly `permit`-ted required field or tightened validation, a new public route in a `/v1/`-versioned or external API namespace, a `render json:` on a raw AR model with no serializer, or an rswag / `openapi.yaml` edit. Use skills: `backend-api-guidelines`, `ops-backward-compatibility`:
+**API contract PRs** - run when the diff carries a contract-change signal: a removed / renamed / retyped serializer attribute, a changed rendered status code, a newly `permit`-ted required field or tightened validation, a new public route in a `/v1/`-versioned or external API namespace, a new non-GET write route whose effect duplicates on retry with no `Idempotency-Key` support, a `render json:` on a raw AR model with no serializer, or an rswag / `openapi.yaml` edit. Use skills: `backend-api-guidelines`, `ops-backward-compatibility`:
 
 - [ ] Breaking change (removed/renamed/retyped attribute, tightened validation, newly required param, changed status or error shape) carries a version bump or expand-contract plan; "no external callers" backed by a search; when consumption is unknown, treat a `/v1/`-versioned or spec-published surface as externally consumed and an unversioned, unpublished `/api/` namespace as internal unless the request or commits say otherwise; a repo-wide convention of rendering raw models does not lower the tier
 - [ ] Responses rendered through serializers, never a raw AR model; errors follow RFC 9457; collections paginated
@@ -184,7 +178,7 @@ Checks:
 Use skill: `architecture-guardrail`.
 
 - [ ] **Layering**: presentation -> service/domain -> data. No business logic in controllers; no `Net::HTTP` in models; no view rendering in services
-- [ ] **Service discipline**: extraction follows `rails-service-objects`' bar (2+ models or an external API plus a transaction boundary, or 3+ call sites - never line count); services follow its shape (instance `#call`; `Result` where the caller branches on an expected failure) - a service below that bar is Step 7's finding, not a missing one here
+- [ ] **Service discipline**: extraction follows `rails-service-objects`' bar (2+ models or an external API plus a transaction boundary, or 3+ call sites - never line count); services follow its shape (instance `#call`; `Result` where the caller branches on an expected failure) - a service below that bar is Step 7's finding, not a missing one here, unless the project's CLAUDE.md mandates services for writes, where `architecture-guardrail` files the missing one as a documented-rule violation and Step 7 files none
 - [ ] **Concern hygiene**: `app/**/concerns/*.rb` role-based (`Sluggable`, `SoftDeletable`), not grab-bags
 - [ ] **Zeitwerk**: file paths match constant names; no `require_relative` inside `app/`
 - [ ] **Namespace / engine boundaries**: cross-namespace access via service objects, not direct model reach-in
@@ -196,7 +190,7 @@ For multi-service PRs, also Use skill: `ops-backward-compatibility` for API cont
 ### Step 7 - Code Hygiene
 
 - Use skill: `complexity-review` - cyclomatic/cognitive complexity, method length, nesting
-- Use skill: `rails-overengineering-review` - validations duplicating DB constraints, defensive guards on impossible states, services/`Result`/base classes wrapping trivial logic, redundant indirection (`User -> Decorator -> Presenter -> Serializer`); its findings join the set (Feedback Labels), its per-category `Considered, not flagged` footer lines go to `## Maintainability Notes`
+- Use skill: `rails-overengineering-review` - validations duplicating DB constraints, defensive guards on impossible states, services/`Result`/base classes wrapping trivial logic, redundant indirection (`User -> Decorator -> Presenter -> Serializer`); its findings join the set (Feedback Labels), except a Category 3 service finding when the project's CLAUDE.md mandates services for writes (Step 6); its per-category `Considered, not flagged` footer lines go to `## Maintainability Notes`
 - [ ] **Test verbosity**: setup > 30 lines per example; `let!` chains replaceable by a FactoryBot trait; matchers reimplemented when shoulda-matchers exist
 
 ### Step 8 - Maintainability
@@ -221,11 +215,11 @@ Skip when the resolved scope is `Core` (`core-only` suppresses signals; a user f
 | +Obs  | `task-rails-review-observability` | `rails-observability-engineer` |
 | +Rel  | `task-rails-review-reliability`   | `rails-reliability-engineer`   |
 
-`Full` = 4 subagents.
+`Full` = 4 subagents, fired or not.
 
 Each scope's skill in that table is loaded with `Use skill:` and returns its `## Findings`; the table names it rather than repeating the directive per row.
 
-**Subagent prompt contract:** resolved `base_ref`/`head_ref` + pre-read diff and commit log; depth level; pre-confirmed stack (the full stack-detect output); the lens returns its `## Findings` - tier sections plus any `out of lens` lines, with reliability's Failure-Mode and Blast-Radius Map after them at `deep` and security's `## Axes Skipped` - and no Summary, Next Steps, or report.
+**Subagent prompt contract:** resolved `base_ref`/`head_ref` + pre-read diff and commit log; depth level; pre-confirmed stack (the full stack-detect output); each spawned lens runs its own Step 1 (`behavioral-principles`), or the spawning prompt inlines those rules where the subagent cannot load it; the lens returns its `## Findings` - tier sections plus any `out of lens` lines, with reliability's Failure-Mode and Blast-Radius Map after them at `deep` and security's `## Axes Skipped` - and no Summary, Next Steps, or report.
 
 **Failure isolation:** if a subagent fails or times out, continue with remaining results; note `Scope incomplete: <scope>` under Summary.
 
@@ -237,8 +231,8 @@ Scopes added by *firing signals* and by *user flag* alike review the full range;
 
 Runs once Step 9 has returned (with no lens in scope, on core's findings alone). Verify, reconcile, and the report all read this set, so build it in order:
 
-1. **Project each lens's findings onto this report's shape.** Match tiers on the severity word, not the heading string - perf, observability, and reliability head tiers `High` / `Medium` / `Low` (`Impact` or `Severity`), security `Critical` / `High` / `Medium` / `Low`. A `Quick Wins` heading carries no severity word - treat its findings as `Low`. Every lens block carries a `Label:` line - use it; with none, Critical / High -> `[Must]`, Medium / Low -> `[Recommend]`. Re-file each as `### [Label] file:line` (the `file:line` prefix of its Location line; a Location with none takes: `Controller#a, #b` -> the controller file at the first named action's line; a route -> `config/routes.rb` at the route's line; a file named without a line -> the line of the construct named; an absent file -> the bare path) with `Issue` (the lens's `Issue`, or observability's `Missing`), `Impact` (its `Impact`, security's `Attack scenario`, or reliability's `Failure Mode` and `Blast Radius` joined in one line), `Fix`, plus `System Risk` on a `[Must]`, written here from the Step 4 lines and the lens's stated exposure. Nothing downstream reads lens headings - `review-prior-findings-reconcile` sees only `## High-Impact Findings`. Core, Step 3.7, and atomic-shaped findings (`- [Label] file:line - claim`, Category / Cost / Recommendation, Signal / Simplification, Issue / Impact / Drift, table rows) take the same shape: the claim -> `Issue`, its cost or impact -> `Impact`, its recommendation -> `Fix`, each drafted here when the source carries none.
-2. **Merge.** Core (Steps 5-8), Step 3.7, and lens findings that make the same claim about the same defect collapse to one entry: strongest label wins (`Must` > `Recommend`), one `file:line`, and when two or more sources raised it, `raised by: <sources>` appended to the Issue line using the tokens `core`, `+Perf`, `+Sec`, `+Obs`, `+Rel` (Step 3.7 findings count as `core`). Distinct claims at one `file:line` stay separate entries - never re-anchor one to a neighbouring line to make room. The merged entry takes the prose of the source that states the mechanism most specifically, not the strongest label's source and not the first read. When sources disagree on a fact (one lens calls a timeout infinite, another says 60 s), pick neither: Step 9.4's evidence settles it. A Step 3.7 criterion finding and a defect finding on the same gap merge the same way, the Issue line naming the criterion.
+1. **Project each lens's findings onto this report's shape.** Match tiers on the severity word, not the heading string - perf, observability, and reliability head tiers `High` / `Medium` / `Low` (`Impact` or `Severity`), security `Critical` / `High` / `Medium` / `Low`. A `Quick Wins` heading carries no severity word - treat its findings as `Low`. Every lens block carries a `Label:` line - use it; with none, Critical / High -> `[Must]`, Medium / Low -> `[Recommend]`. Re-file each as `### [Label] file:line` (the `file:line` prefix of its Location line; a Location with none takes: `Controller#a, #b` -> the controller file at the first named action's line; a route -> `config/routes.rb` at the route's line; a file named without a line -> the line of the construct named; an absent file -> the bare path; a bare class name -> its defining file at the class line; `a:line -> b:line` -> the left-hand `file:line`, the right side named in Issue; a module or edge anchor -> the first file of the module or edge at the violating line, the module or edge named in Issue) with `Issue` (the lens's `Issue`, or observability's `Missing`), `Impact` (its `Impact`, security's `Attack scenario`, or reliability's `Failure Mode` and `Blast Radius` joined in one line), `Fix`, plus `System Risk` on a `[Must]`, written here from the Step 4 lines and the lens's stated exposure. Nothing downstream reads lens headings - `review-prior-findings-reconcile` sees only `## High-Impact Findings`. Core, Step 3.7, and atomic-shaped findings (`- [Label] file:line - claim`, Category / Cost / Recommendation, Signal / Simplification, Issue / Impact / Drift, table rows) take the same shape: the claim -> `Issue`, its cost or impact -> `Impact`, its recommendation -> `Fix`, each drafted here when the source carries none. A `GAP`- or `BLOCKER`-marked block field with no numbered finding, a `rails-migration-safety` `Safety: Blocked | Maintenance Window | Reject`, and a `rails-view-templates` review block (Critical / High -> `[Must]`, Medium / Low -> `[Recommend]`) are each drafted as a finding; the atomics' own blocks are not emitted, and an overengineering sibling pointer to `rails-security-patterns` follows the Step 5 security carve-out.
+2. **Merge.** Core (Steps 5-8), Step 3.7, and lens findings that make the same claim about the same defect collapse to one entry: strongest label wins (`Must` > `Recommend`), one `file:line`, and when two or more sources raised it, `raised by: <sources>` appended to the Issue line using the tokens `core`, `+Perf`, `+Sec`, `+Obs`, `+Rel`, each once (Step 3.7, atomic and Step 5-8 findings all count as `core`). Distinct claims at one `file:line` stay separate entries - never re-anchor one to a neighbouring line to make room. The merged entry takes the prose of the source that states the mechanism most specifically, not the strongest label's source and not the first read. When sources disagree on a fact (one lens calls a timeout infinite, another says 60 s), pick neither: Step 9.4's evidence settles it. A Step 3.7 criterion finding and a defect finding on the same gap merge the same way, the Issue line naming the criterion.
 3. **Non-finding lens lines.** A lens `out of lens` line is drafted here as a finding (label per Feedback Labels, Fix written here from the defect it names) before Step 9.4. Lenses return nothing else except reliability's `Failure-Mode and Blast-Radius Map` at `deep`, preserved verbatim as its own section after Next Steps, and security's `## Axes Skipped`, which is not rendered. `## Architecture Notes` carries the `Drift:` lines of `architecture-guardrail`'s violations (omitted on its `No Violations Found`) and `## Maintainability Notes` the `Considered, not flagged` lines; `complexity-review`'s rows (a row's `Simplification:` is its Fix) and `rails-overengineering-review`'s labelled findings join the set in item 2.
 4. **Next Steps.** One entry per published finding (two findings at one `file:line` are two entries), `[Implement]` when the fix is localized to the PR, `[Delegate]` with a `[scope: <owner>]` token when it leaves the PR's scope; Step 10 orders it. `[scope: <owner>]` names who owns the work - platform, schema, dependencies, infra, load-test, a team - never a lens.
 
@@ -280,7 +274,7 @@ Emit the report body in chat, then the writer's confirmation line.
 
 ## Feedback Labels
 
-Every finding carries exactly one label: `[Must]` (do not merge until this is fixed) or `[Recommend]` (fix, or push back with reasoning - cannot be silently acked). No other label is written; what earns neither is not written down. `complexity-review`'s maintainability-only signals (complexity, structure, naming) carry `[Recommend]` at every severity, while its correctness case (a request-path catch that swallows errors) takes `[Must]`; `backend-api-guidelines` findings take the Step 5 gate's tiers; `architecture-guardrail`'s own `[Must]` / `[Recommend]` stands; an `ops-backward-compatibility` breaking change with `Compatible: No` or `No (unverified)` is `[Must]`, except an internal API break, which takes the Step 5 gate's `[Recommend]`. A finding this workflow raises directly takes `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Where `review-finding-verify` publishes a different `Label`, the published label governs - in Next Steps and Assessment too.
+Every finding carries exactly one label: `[Must]` (do not merge until this is fixed) or `[Recommend]` (fix, or push back with reasoning - cannot be silently acked). No other label is written; what earns neither is not written down. `complexity-review`'s rows carry `[Recommend]` at every severity, except a row whose `Error-handling complexity` Signal group is a broad catch that swallows errors on a request path, which takes `[Must]`; `rails-overengineering-review`'s own `[Must]` / `[Recommend]` stands (its Rules' escalation list); `backend-api-guidelines` findings take the Step 5 gate's tiers; `architecture-guardrail`'s own `[Must]` / `[Recommend]` stands; an `ops-backward-compatibility` breaking change with `Compatible: No` or `No (unverified)` is `[Must]`, except an internal API break, which takes the Step 5 gate's `[Recommend]`. A finding this workflow raises directly takes `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Where `review-finding-verify` publishes a different `Label`, the published label governs - in Next Steps and Assessment too.
 
 ## Output Format
 
@@ -299,7 +293,7 @@ The fence below delimits the template for display only - it is not part of the r
 - **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}
 - **Requirement Source:** <path or origin> (Specified | Self-attested)   {this line and the next together, or both omitted when Step 3.7 resolved no source}
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
-- **Notes:** <every note line mandated by Depth and Scope, Steps 3.5/3.5c/4/9 - narrowing, expansion, short-circuit, incomplete or inline scopes - and the handle's `notes` (base fallback, approval gate)>   {omit when none}
+- **Notes:** <every note line mandated by Depth and Scope, Steps 2/3.5/3.5c/4/9 - declared-vs-code divergence, narrowing, expansion, short-circuit, incomplete or inline scopes - and every entry of the handle's `notes` (base fallback, approval gate, tag collision, pr-ref base reminder, legacy checkpoint)>   {omit when none}
 
 ## Change Brief
 
@@ -364,14 +358,14 @@ _Omit empty sections. Omit Next Steps only when there are no published findings,
 ## Self-Check
 
 - [ ] Steps 1-3: behavioral rules, stack, diff resolved (or accepted from parent); `review-precondition-check` ran with `report_type: review` (or handle received); `branch` = `head_short_name`, current_head_sha, and current_base_sha fixed before the diff/log were read once
-- [ ] Step 3.5 - round decided (1 / prior + 1 / no-op); auto-fetch attempted only when prior checkpoint exists; the full `<base_ref>...<head_ref>` range analyzed regardless of round; no-op path exits without writing the report
+- [ ] Step 3.5 - round decided (1 / prior + 1 / no-op); auto-fetch attempted only when a valid prior checkpoint exists, `head_is_remote` is false, and the upstream is not `base_ref`; the full `<base_ref>...<head_ref>` range analyzed regardless of round; no-op path exits without writing the report
 - [ ] Step 3.7 - `review-change-intent` ran on the cumulative diff; Change Brief carried into the report; requirement lines in Summary, or all three requirement outputs omitted when no source resolved; its findings consumed into the set, section header not rendered
 - [ ] Step 4: Risk and Blast Radius stated before findings, atomic blocks not emitted; depth auto-promoted on Wide/Critical; scope resolved with its Summary annotation; a `[Delegate]` Next Step per suppressed signal
-- [ ] Step 5: Rails correctness only - security idioms deferred to the security subagent or the single most severe flagged for it; API contract checks ran when the diff carried a contract-change signal
+- [ ] Step 5: touched-area atomics loaded; Rails correctness only - security idioms deferred to the security subagent or the single most severe flagged for it; test-coverage gap filed as a named finding; `rails-migration-safety` and `ops-backward-compatibility` applied on a `db/migrate/` change; API contract checks ran when the diff carried a contract-change signal
 - [ ] Step 6: architecture / layering / Zeitwerk / multi-tenant / multi-DB applied via `architecture-guardrail` (or skipped via low-risk short-circuit)
 - [ ] Step 7: complexity + overengineering reviews run; test verbosity checked (or skipped via low-risk short-circuit)
 - [ ] Step 8: maintainability checks applied (or skipped via low-risk short-circuit)
-- [ ] Step 9: non-Core subagents ran in parallel with pre-resolved artifacts (or inline in sequence, noted); failed scopes noted
+- [ ] Step 9: non-Core subagents ran in parallel with pre-resolved artifacts (or inline in sequence, noted); each subagent loaded behavioral-principles, or rules inlined in the spawning prompt; failed scopes noted
 - [ ] Step 9.3 - lens findings projected to `### [Label] file:line`; same-claim findings merged with strongest label and `raised by:`; distinct claims kept apart; core / Step 3.7 / atomic findings drafted in the same shape; lens `out of lens` lines drafted as findings; reliability's Map preserved; Notes sections filled from their named sources; one Next Steps entry per published finding
 - [ ] Step 9.4 - review-finding-verify ran on the assembled set; Dropped rows excluded; verdict labels and annotation groups applied; tally in Summary in the atomic's Summary form
 - [ ] Step 9.5 - on round 2+, review-prior-findings-reconcile ran with `head_sha`; reconciliation table inserted; Still open / Needs re-check rows folded into Next Steps with (open since round <N>) suffix at the right label; legacy labels mapped
@@ -380,13 +374,9 @@ _Omit empty sections. Omit Next Steps only when there are no published findings,
 
 ## Avoid
 
-- State-changing git from this workflow (checkout/merge/pull/rebase). The one allowed exception is `git fetch <remote> <branch>` in Step 3.5a, and only when a valid prior checkpoint exists.
-- Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
-- Scoping round 2+ analysis to `<prior_checkpoint.head_sha>...<head_sha>` - risk, scope, depth, and requirement fit score the full `<base_ref>...<head_ref>` range on every round.
-- Writing the report on no-op exit - the file must stay byte-identical. (Same head SHA with expanded scope/depth is not a no-op - Step 3.5b.)
+- State-changing git from this workflow (checkout/merge/pull/rebase). The one allowed exception is Step 3.5a's `git fetch <remote> <upstream branch>`, and only when a valid prior checkpoint exists, `head_is_remote` is false, and the upstream is not `base_ref`.
 - Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
 - Duplicating perf / security / observability / reliability depth here - dedicated subagents own it
 - Reviewing without reading the full diff and log first
 - Applying generic backend conventions where a Rails idiom exists
 - Nitpicking style
-- Running extra-scope subagents sequentially or when the resolved scope is `Core`
