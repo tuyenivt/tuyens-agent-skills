@@ -64,11 +64,11 @@ Use skill: `stack-detect`. When the request names a stack and detection returns 
 
 ### Step 3 - Calibrate the reader and the format
 
-Use skill: `design-audience-calibration` for the fluency axes, vocabulary policy, diagram budget, body budget, appendix policy, and its `Reader decides` question - Section 8's ask is written to it. For its component test, an independently deployed component is one that ships on its own release: a new worker inside an existing deployable is not a second component. Use skill: `design-reference-pattern` for the house skeleton, metadata slots, depth convention, and diagram convention.
+Use skill: `design-audience-calibration` for the fluency axes, vocabulary policy, diagram budget, body budget, appendix policy, and its `Reader decides` question - Section 8's ask is written to it. For its component test, an independently deployed component is one this organization ships on its own release: a new worker inside an existing deployable is not a second component, and neither is an external system (a payment provider). Its Attribution line is rendered as the `Written for:` bullet, never emitted separately. Use skill: `design-reference-pattern` for the house skeleton, metadata slots, depth convention, and diagram convention.
 
-Supply the reference skill with this workflow's required content - problem, approach and diagram, change inventory, how it works (the flow), why this way, risks, rollout and back-out, the ask - as its required-content list, and state that the deliverable carries no appendix for the required content - its appendix holds depth only - so an item the skeleton cannot house resolves as `appended as <name>`. Follow the mapping it returns, except when it reports `Source: built-in`: then its mapping is ignored and the skeleton is the Output template below - this workflow has its own and does not fall back to that skill's generic headings. When it reports a template or an approved design, the house skeleton governs headings and order, and this template's five metadata bullets ride with the house metadata slots rather than replacing them: any house field this brief does not produce reads TBD, and a house status enum takes its nearest value to this template's.
+Supply the reference skill with this workflow's required content - problem, approach and diagram, change inventory, how it works (the flow), why this way, risks, rollout and back-out, the ask - as its required-content list, and state that the deliverable carries no appendix for required content (its own Appendix holds depth, plus the flow diagram when the diagram budget displaces it - Step 6), so every item the skeleton cannot house resolves as `appended as <name>`. Follow the mapping it returns, except when it reports `Source: built-in`: then its mapping is ignored and the skeleton is the Output template below - this workflow has its own and does not fall back to that skill's generic headings. When it reports a template or an approved design, the house skeleton governs headings and order, and this template's five metadata bullets ride with the house metadata slots rather than replacing them: any house field this brief does not produce reads TBD, and a house status enum takes its nearest value to this template's.
 
-A house pattern governs headings, order, and metadata slots - the sanctioned exception to the behavioral directive's structure rule. The required content itself never changes: every item resolves as placed in a house heading or appended under its own name - unnumbered, after the house Appendix, in the Output template's order, each carrying one line saying why it was added. A partial fit is a placement when the heading is where the reviewer would look: the inventory under the heading that carries the proposed change (it never relocates - Step 8), the ask under a house open-questions or decisions heading. `## 0. How It Works Today` is the exception and always sits immediately before the first content heading. Nothing is dropped to fit a template, and no house heading is reused for an appended section.
+A house pattern governs headings, order, and metadata slots - the sanctioned exception to the behavioral directive's structure rule. The required content itself never changes: every item resolves as placed in a house heading or appended as the mapping names it (related items share one appended section) - unnumbered, after the last house skeleton section and before any trailing metadata block such as a version history, in the Output template's order, each carrying one line saying why it was added. A partial fit is a placement when the heading is where the reviewer would look: the inventory under the heading that carries the proposed change (it never relocates - Step 8), the ask under a house open-questions or decisions heading. `## 0. How It Works Today` is the exception and always sits immediately before the first content heading; when the house skeleton has no appendix heading, this brief's `## Appendix` follows the appended sections. Nothing is dropped to fit a template, and no house heading is reused for an appended section.
 
 ### Step 4 - Analyze (nothing is emitted here)
 
@@ -105,22 +105,22 @@ This is the section a domain-fluent reviewer evaluates on, and the one that earn
 
 ### Step 6 - Draw the change
 
-Default to Mermaid; follow the house diagram convention when one was found - it replaces the template's fence language. Body diagrams are capped by the calibration's diagram budget - one structural diagram always, one flow diagram when ordering, retries, or async behavior are not obvious from the structure. The budget wins over the flow condition: when it has no room, omit Section 4 and put the flow diagram with its walk-through in the appendix.
+Default to Mermaid; when the pattern's Diagram convention names a tool - a recorded clash or a `built-in: <tool>` value included - that tool replaces the template's fence language, and only the tool is taken: a before/after pair the value names never overrides the single after-state diagram, and a tool that is not text-rendered (a draw.io export, screenshots) keeps the Mermaid fence and is named on the `Format` line instead. Body diagrams are capped by the calibration's diagram budget - one structural diagram always, one flow diagram when ordering, retries, or async behavior are not obvious from the structure. The budget wins over the flow condition: when it has no room, omit Section 4 and put the flow diagram with its walk-through in the appendix.
 
-- **Mark change state in the label**, not only in color: `Notifier - new`, `Nightly settlement - changed`, unmarked for untouched. Use the hyphen form: unquoted parentheses inside a Mermaid node label are a parse error, so `[Notifier (new)]` will not render. `classDef` coloring is an enhancement some renderers drop; the label suffix is what survives.
+- **Mark change state in the label**, not only in color: `Notifier - new`, `orders - changed`, unmarked for untouched. Use the hyphen form: unquoted parentheses inside a Mermaid node label are a parse error, so `[Notifier (new)]` will not render. `classDef` coloring is an enhancement some renderers drop; the label suffix is what survives.
 - **Carry a legend line** under every marked diagram.
 - **Every element exists in the change inventory or in the current system.** Never invent a box to balance a diagram; an untouched box is current-system, not an inventory gap.
 - **The diagram comes before the prose that explains it**, at every fluency level.
 
-Prefer one after-state diagram with change marking over a before/after pair. Where domain fluency is Low the calibration adds a current-state section that sits outside the page budget: emit it as `## 0. How It Works Today`, immediately before the first content heading. It is the one section that never relocates - not to the appendix, and not to wherever a house pattern would otherwise place it. Its diagram consumes one of the budget's two slots and Section 2's the other (every Low-domain quadrant budgets two), so Section 4's flow diagram goes to the appendix there. At High domain there is no Section 0: the flow diagram takes the second slot where the budget has one (Low/High) and goes to the appendix at High/High. Outside Section 0, draw a separate current-state diagram only when the change is a restructuring whose delta the marking cannot express.
+Prefer one after-state diagram with change marking over a before/after pair. Where domain fluency is Low the calibration adds a current-state section that sits outside the page budget: emit it as `## 0. How It Works Today`, immediately before the first content heading. It never relocates - not to the appendix, and not to wherever a house pattern would otherwise place it. Its diagram consumes one of the budget's two slots and Section 2's the other (every Low-domain quadrant budgets two), so Section 4's flow diagram goes to the appendix there. At High domain there is no Section 0: the flow diagram takes the second slot where the budget has one (Low/High) and goes to the appendix at High/High. Outside Section 0, draw a separate current-state diagram only when the change is a restructuring whose delta the marking cannot express.
 
 ```mermaid
 flowchart LR
   U[Customer] --> API[Order API - changed]:::changed
-  API --> DB[(orders)]
+  API --> DB[(orders - changed)]:::changed
   API -.-> OB[[order_outbox - new]]:::new
   OB --> N[Notifier - new]:::new
-  DB --> S[Nightly settlement - changed]:::changed
+  DB --> S[Nightly settlement]
   classDef new fill:#d6f5d6,stroke:#2d7a2d,stroke-width:2px
   classDef changed fill:#fff3cd,stroke:#a67c00,stroke-width:2px
 ```
@@ -131,7 +131,7 @@ Legend: "new" = added by this epic, "changed" = existing and modified, unmarked 
 
 **Risk.** Each risk is one row: what fails, what the user or the business sees, what is done about it, how it is noticed. The user-visible consequence is the payload - a severity label never replaces it, and appears only when the house template's own risk table carries a column for one. Cap the body at 3-5 risks ordered by user-visible impact, not by likelihood; the rest go to the appendix.
 
-**Rollout and back-out.** Name the phases, who is exposed at each, the switch by name (where the stack has no rollout mechanism, propose one and mark it `assumed`), and the exit criterion per phase - the named signal that lets the next phase start. Stated constraints - a freeze, a deadline, a frozen system - bound the phases and are named there. Back-out states four things: the trigger condition, the action, how long until behavior matches today, and **what happens to data written under the new behavior**. That last one is the risk-averse approver's real question and is the most commonly missing line in a rejected brief. Where a step cannot be undone - a one-shot backfill, a third-party write - name it as the point of no return and state the roll-forward action instead of a restore time (`ops-release-safety`). Invent no dates or estimates - with none supplied, give sequencing and say timing is open.
+**Rollout and back-out.** Name the phases, who is exposed at each, the switch by name (where the stack has no rollout mechanism, propose one and mark it `assumed`), and the exit criterion per phase - the named signal that lets the next phase start. Stated constraints - a freeze, a deadline, a frozen system - bound the phases and are named there. Back-out states four things: the trigger condition, the action, how long until behavior matches today, and **what happens to data written under the new behavior**. That last one is the risk-averse approver's real question and is the most commonly missing line in a rejected brief. Where a step cannot be undone - an in-place backfill, a third-party write, a sent email - name it as the point of no return and state the roll-forward action instead of a restore time (`ops-release-safety`). Invent no dates or estimates - with none supplied, give sequencing and say timing is open.
 
 **The ask.** Three slots:
 
@@ -143,7 +143,7 @@ Legend: "new" = added by this epic, "changed" = existing and modified, unmarked 
 
 Apply the house skeleton and metadata slots. Hold the body to the calibration's budget: everything over it moves to the appendix, and nothing is deleted; the change inventory itself never relocates - it is what the reviewer evaluates on, so overflow comes from other sections.
 
-The budget is a target, not a licence to drop required content: where it conflicts with the Output template, the template wins. The Section 2 diagram, the Section 3 inventory and the Section 6 risk table stay in the body - they are what the reviewer decides on. Prose is what compresses and elaboration is what relocates. At the one-page quadrants those three blocks are most of the budget: cut prose to captions, and say in one line that the body is at its floor rather than dropping a block. At Low/Low the inventory stays but is written in outcome language - what each row means for customers or cost - with the identifiers alongside for the technical reader, since the quadrant routes mechanism, not the inventory itself, to the appendix. Then check the body for an unglossed architecture term or acronym, a severity enum standing in for a consequence, a condescension marker, and a diagram element in neither the inventory nor the current system.
+The budget is a target, not a licence to drop required content: where it conflicts with the Output template, the template wins. The Section 2 diagram, the Section 3 inventory and the Section 6 risk table stay in the body - they are what the reviewer decides on. Prose is what compresses and elaboration is what relocates. At the one-page quadrants those three blocks are most of the budget: cut prose to captions, and say in one line that the body is at its floor rather than dropping a block. At Low/Low the inventory stays but is written in outcome language - what each row means for customers or cost - with the identifiers alongside for the technical reader, since the quadrant routes mechanism, not the inventory itself, to the appendix. Then check the body for an unglossed architecture term or acronym where architecture fluency is Low, a severity enum standing in for a consequence, a condescension marker, and a diagram element in neither the inventory nor the current system.
 
 ## Output Format
 
@@ -153,12 +153,10 @@ The budget is a target, not a licence to drop required content: where it conflic
 - **Written for:** <reviewer or group> - architecture <High | Low> (<stated: <phrase> | inferred: <signal> | assumed default>), domain <High | Low> (<stated: <phrase> | inferred: <signal> | assumed default>). {with readers in different quadrants: each axis carries the lower bound, an author-reader excepted, and names the per-reader values}
 - **Author:** <name, squad | TBD>
 - **The ask:** <what is being asked for, one clause>
-- **Format:** <template: <path or name>{ + approved design: <path or name>} | approved design: <path or name> | built-in>{ - <the pattern's Attribution sentence>}
+- **Format:** <template: <path, name, or pasted>{ + approved design: <path, name, or pasted>} | approved design: <path, name, or pasted> | built-in> - <the pattern's Attribution sentence>
 - **Status:** <For review (default) | Draft, only when the author asked for a working copy>
 
-## 0. How It Works Today
-
-_Include when domain fluency is Low; sits outside the body budget and never relocates. Omit the section entirely otherwise. Its diagram consumes one of the budget's two slots._
+## 0. How It Works Today {only when domain fluency is Low; outside the body budget, never relocates; its diagram takes one of the budget's two slots}
 
 ```mermaid
 <current-state structural diagram, unmarked>
@@ -190,9 +188,7 @@ Kind: service | endpoint | table/column | job | event/queue | config | infra | t
 
 **Not changing:** <adjacent systems a reviewer would reasonably fear are affected, and are not>
 
-## 4. How It Works
-
-_Include when ordering, retries, or async behavior are not obvious from Section 2 and the diagram budget has room; otherwise omit the section (a flow diagram the budget displaced sits in the appendix) and keep the numbering - 3 is followed by 5._
+## 4. How It Works {only when ordering, retries, or async behavior are not obvious from Section 2 and the diagram budget has room; otherwise omitted with the numbering kept - 3 is followed by 5 - and the displaced flow diagram in the appendix}
 
 ```mermaid
 sequenceDiagram
@@ -202,19 +198,15 @@ sequenceDiagram
 
 <2-4 lines walking the numbered steps.>
 
-## 5. Why This Way
+## 5. Why This Way {at most three decisions}
 
 - **<Decision>:** <chosen> over <alternative>, because <reason>. Cost: <what is given up>. Reversibility: <Easy | Moderate | Hard> - <the work required to change later>. Revisit when: <observable condition>.
 
-<At most three.>
-
-## 6. What Could Go Wrong
+## 6. What Could Go Wrong {3-5 rows, ordered by user-visible impact; the rest in the appendix}
 
 | If this fails | What you would see | What we do about it | How we would know |
 | --- | --- | --- | --- |
 | <failure> | <user-visible consequence> | <mitigation> | <signal> |
-
-<3-5 rows, ordered by user-visible impact; the rest in the appendix.>
 
 ## 7. Rollout and Back-out
 
@@ -223,34 +215,28 @@ sequenceDiagram
 - **Back-out trigger:** <the specific condition, not "if something goes wrong">
 - **Back-out action:** <what is done, and how long until behavior matches today>
 - **Data written under the new behavior:** <what happens to it on back-out>{ (assumed)}
-- **Point of no return:** <the step after which back-out becomes roll-forward, and the roll-forward action | none>
+- **Point of no return:** <the step after which back-out becomes roll-forward - the verification gate and backup before it - the roll-forward action | none>
 - **Exit criteria:** <per phase: the named signal that says it is working and the next may start>
 
 ## 8. What I Need From You
 
-**Decisions**
+**Decisions** {at most three}
 
 - **<Question>?** <Option A - recommended> or <Option B>. Choosing B means <consequence>.
 
-<At most three.>
-
 {instead, when nothing is left to decide: one line saying so}
 
-**Please confirm from your side**
+**Please confirm from your side** {at most four confirm-questions, Spike lines not counted; the rest as appendix assumptions}
 
 - <question only this reviewer's domain knowledge can settle, drawn from an `assumed` or `unknown` cell in Section 3 or value in Section 7>
 
 - Spike: <question only engineering can settle, from an `assumed` or `unknown` cell>
 
-<At most four confirm-questions; the rest as appendix assumptions.>
-
 {instead, when no `assumed` or `unknown` cell exists: one line saying nothing needs confirming}
 
 **What approval means:** <what is being signed off>. <What would come back for a second look.>
 
-## Appendix
-
-_Omit when empty._
+## Appendix {omit when empty}
 
 ### <Topic>
 
@@ -258,7 +244,7 @@ _Omit when empty._
 
 <Analysis that did not need to be in the body: mechanism detail, NFR figures, rejected alternatives, observability, capacity.>
 
-{when a house skeleton could not house a required item: `## <item name>`, unnumbered, after the house Appendix, its content, and one line saying why it was added}
+{when a house skeleton could not house a required item: `## <the mapping's appended name>`, one section per related group, unnumbered, after the last house section and before any trailing metadata block, its content, and one line saying why it was added}
 ````
 
 ## Self-Check
@@ -268,14 +254,14 @@ Applied internally, never emitted in the deliverable.
 - [ ] **Steps 1-2:** behavioral-principles and stack-detect loaded; a request-stated stack honored when detection is `unknown`
 - [ ] **Step 3:** calibration recorded with its source; house pattern located or `built-in` declared, with every required content item mapped
 - [ ] **Step 4:** every fired signal's atomic loaded; findings absorbed into sections or the appendix; no atomic output block emitted
-- [ ] **Step 5:** every row names a findable thing and traces to Section 1; implied rows found; unverified impact marked `assumed`; Not-changing line present
+- [ ] **Step 5:** every row names a findable thing and traces to Section 1; implied rows found; unverified impact marked `assumed`, or `unknown` where no inference reaches it; Not-changing line present
 - [ ] **Step 6:** change state marked in labels with a legend; every element traces to the inventory or the current system; each diagram precedes its prose
 - [ ] **Step 7:** each risk states a user-visible consequence; back-out gives trigger, action, time to restore, and the data answer; every `assumed` or `unknown` cell became a confirm-question, merged into one, a spike, or is listed in the appendix; an irreversible step names its point of no return; the ask bounds what approval covers
-- [ ] **Step 8:** body within budget with overflow relocated to the appendix, not deleted; no unglossed term, severity enum standing in for a consequence, or condescension marker in the body
+- [ ] **Step 8:** body within budget with overflow relocated to the appendix, not deleted; no unglossed term at Low architecture fluency, severity enum standing in for a consequence, or condescension marker in the body
 
 ## Review Mode
 
-A pasted brief answers two questions in one pass, and they can disagree. Steps 1-3 still run first; Steps 4-8 produce nothing, though Step 4's signal table still names the atomics the lens composes. The readiness checks consume the calibration's vocabulary policy and budgets. `stack-detect` grounds whether the inventory names things this stack actually has, and `design-reference-pattern` supplies the house skeleton the brief is audited against for content placement, not heading names - a brief that follows a house pattern is not marked down for section names the built-in template would use. Stack, calibration, and house pattern land in the lens's Review Context as `Stack:`, `Reader:`, and `Format:` lines this workflow adds, with depth `full`, never as their own blocks.
+A pasted brief answers two questions in one pass, and they can disagree. Steps 1-3 still run first; Steps 4-8 produce nothing, though Step 4's signal table still names the atomics the lens composes. The readiness checks consume the calibration's vocabulary policy and budgets. `stack-detect` grounds whether the inventory names things this stack actually has, and `design-reference-pattern` supplies the house skeleton the brief is audited against for content placement, not heading names - a brief that follows a house pattern is not marked down for section names the built-in template would use. Stack, calibration, and house pattern land in the lens's Review Context as `Stack:`, `Reader:`, and `Format:` lines this workflow adds after the lens's depth line, with depth `full`, never as their own blocks. A Present-but-wrong factor reads Present in the Completeness table with the later step's F-number in its `F{n}` column and `-` in the other two; a finding bearing on two factors is recorded under the first and its F-number referenced in the second's `F{n}` column.
 
 **Soundness.** Use skill: `architecture-review-lens` - the full lens, per-factor findings included, with Step 4's signal table naming the atomics for its deeper checks; a step that does not fit follows the lens's own skip rule - criteria scoring is the usual one: skip it only when the brief states no design decision the six criteria can be scored against, never on length alone, and name the skip and its reason in one line. Supply this factor list to the completeness audit. The `Required` column names the factors the verdict turns on; a factor the artifact's scope does not reach reads `N/A` with its reason, Required or not, and is not a gap. Every other factor is Present, Under-specified (partial coverage), or Missing, and the lens's own floors set severity - Under-specified Minor at least, Missing Major at least, Blocker when the decision cannot be made without it.
 
@@ -298,7 +284,8 @@ A pasted brief answers two questions in one pass, and they can disagree. Steps 1
 
 | Check | Predicted objection |
 | --- | --- |
-| Unglossed term or acronym | Stalls, and asks a colleague rather than the author |
+| Unglossed term or acronym, at Low architecture fluency | Stalls, and asks a colleague rather than the author |
+| `Written for` or `Format` line absent, unsourced, or naming a format other than the one `## Design Docs` resolves to | "Who is this written for, and in whose format?" |
 | The body over its page budget with prose still compressible | Not read; approval slips |
 | No change inventory at all | "Which of my systems does this touch?" - a lens Blocker, not only an objection |
 | An inventory row with an empty `Also touches` or `If it goes wrong` cell | "What else reads this?" |
@@ -307,7 +294,7 @@ A pasted brief answers two questions in one pass, and they can disagree. Steps 1
 | Back-out silent on data written under the new behavior | "And if we have to roll back on day three?" |
 | Condescension marker | Unspoken, and expensive |
 
-Readiness verdict: **{Ready to send | Send with fixes | Not ready}**. **Not ready** when a lens Blocker exists or an objection leaves the reviewer nothing to act on - no explicit ask, or back-out silent on data. Any other non-empty objection set is **Send with fixes**, each fix tied to its objection; **Ready to send** requires zero objections.
+Readiness verdict: **{Ready to send | Send with fixes | Not ready}**. **Not ready** when a lens Blocker exists or an objection leaves the reviewer nothing to act on - no explicit ask, or back-out silent on data - each of which is also recorded as a lens Blocker, so the two verdicts never disagree. Any other non-empty objection set is **Send with fixes**, each fix tied to its objection; **Ready to send** requires zero objections.
 
 Output header: `# Design Brief Review`. Use the lens's output structure and add a `## Approval Readiness` section, after the lens verdict, carrying the readiness verdict and the predicted objections. The authoring Output template and Self-Check do not apply; these checks replace them:
 
@@ -319,9 +306,4 @@ Output header: `# Design Brief Review`. Use the lens's output structure and add 
 ## Avoid
 
 - Running `task-design-architecture` first when no named consumer needs the full artifact
-- Inventory rows naming categories ("the order flow") instead of findable things
-- A severity enum, blast-radius label, or pattern name standing in for the user-visible consequence
 - Deleting analysis instead of relocating it to the appendix
-- Inventing dates, effort estimates, or diagram elements
-- Condescension markers, or explaining the reviewer's own domain back to them
-- Padding the body past its budget - an unread document is not an approved one

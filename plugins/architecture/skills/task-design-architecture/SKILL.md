@@ -9,7 +9,7 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows. Then load `Use skill: stack-detect` - the detected stack shapes Sections 3 through 8 and 11 (caching, resiliency, indexing engine, concurrency runtime, observability, compatibility, capacity, API conventions); when no project context exists, use the stack stated in the request. If a delegated skill is unavailable (standalone use), apply the section's inline instructions on judgment and say so in the output. Delegated skills supply analysis method, not structure: this skill's output contract is the only one - absorb their findings into its sections and never emit their own Output blocks. Review Mode is the one exception: it emits `architecture-review-lens`'s structure, as its section says.
+> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow. These rules govern every step that follows. Then load `Use skill: stack-detect` - the detected stack shapes Sections 3 through 8 and 11 (caching, resiliency, indexing engine, concurrency runtime, observability, compatibility, capacity, API conventions); when no project context exists, use the stack stated in the request. If a delegated skill is unavailable (standalone use), apply the section's inline instructions on judgment and say so in the output. Delegated skills supply analysis method, not structure: this skill's output contract is the only one - absorb their findings into its sections and never emit their own Output blocks. Two exceptions: Review Mode emits `architecture-review-lens`'s structure, and a loaded house pattern governs headings, order, and metadata slots (Audience and house format, below).
 
 # Architecture Design -- Staff Edition
 
@@ -28,7 +28,7 @@ Not this workflow when the artifact's only consumer is an approver who will not 
 
 ## Mode Detection
 
-If the user's input makes mode obvious (e.g., "here's a design doc, review it" or "design a payment service"), proceed. A pasted authored design artifact (design doc, proposal, design spec) with no authoring request is Review Mode even without a verb; a requirements document, PRD, or the user's own rough sketch inside the request is input to New Design, not an artifact to review. Otherwise ask: **new design** (full proposal) or **review existing** (evaluate proposal). Default: New Design.
+If the user's input makes mode obvious (e.g., "here's a design doc, review it" or "design a payment service"), proceed. A pasted authored design artifact (design doc, proposal, design spec) with no authoring request is Review Mode even without a verb; a requirements document, PRD, or the requester's own rough sketch or direction note - inside the request or in a file - is input to New Design, not an artifact to review, and "is this direction sensible?" about it is always a `quick` New Design run; a direction argued by someone else and pasted for review is Review Mode (the pre-design rule under the factor list). Otherwise ask: **new design** (full proposal) or **review existing** (evaluate proposal). Default: New Design.
 
 ### New Design Mode
 
@@ -42,7 +42,7 @@ For 2+ proposals on the same problem, or a single artifact weighing two or more 
 
 State the shared problem and its binding constraints (NFRs, team capacity, volume, timeline) before the matrix, and flag scope mismatch (proposals solving different problems) separately from coverage gap (a proposal omitting criteria) - on mismatch, compare against the full underlying problem. Complementary proposals each solving a real problem resolve to which to fund first - ordered by the same decisive criteria - and the funded proposal is the named winner; the follow-up is recorded in the recommendation with a trigger condition and horizon.
 
-Close with a named winner - a tie is not a valid output. The recommendation names the decisive criteria (those the stated constraints make non-negotiable), the key trade-off accepted, any gaps the winner must close before adoption, and anything worth carrying over from rejected proposals. When the supplied material contains an explicit recommendation from someone other than a proposal's own author (an ADR author's pick among options, a cover note's preference), explicitly agree with or overturn it with reasoning - a proposal advocating itself is not a recommendation, and with no external recommendation the agree/overturn line is omitted. Do not recommend a hybrid when one proposal is clearly stronger, and do not mistake more detail or better polish for more substance.
+Close with a named winner - a tie is not a valid output. The recommendation names the decisive criteria (those the stated constraints make non-negotiable), the key trade-off accepted, any gaps the winner must close before adoption, and anything worth carrying over from rejected proposals. When the supplied material contains an explicit recommendation from someone other than a proposal's own author (an ADR author's pick among options, a cover note's preference), explicitly agree with or overturn it with reasoning - a proposal advocating itself, or an author's pick among the options in their own artifact, is not an external recommendation, and with none the agree/overturn line is omitted. Do not recommend a hybrid when one proposal is clearly stronger, and do not mistake more detail or better polish for more substance.
 
 The comparison emits as a `## Comparison` section between the lens's Intake and Completeness Audit, in order: problem and binding constraints; eliminations (one line each; omitted when no pre-screen ran); criteria matrix; proposal profiles; recommendation as labelled lines - Winner, Decisive criteria, Trade-off accepted, Gaps to close (F-numbers), Carried over, External recommendation (agree | overturn - reason; omitted when none), Follow-up (complementary proposals only: funding order, trigger, horizon) - each on its own line and blank-line separated, or they render as one paragraph. The lens then runs on the winner only (rejected proposals' scores are final); its criteria-scoring step carries the matrix's scores forward, including any added problem-specific criterion, re-scoring a criterion only where lens findings change it - the step is neither skipped nor re-derived from scratch.
 
@@ -52,7 +52,7 @@ For a single proposal:
 
 Use skill: `architecture-review-lens` for severity taxonomy, intake, completeness audit, internal-consistency check, assumptions audit, per-factor findings, criteria scoring, questions for the author, and verdict.
 
-Supply this design-specific factor list to the completeness audit. The `Required` column names the factors the verdict turns on; a factor the artifact's scope does not reach reads `N/A` with its reason, Required or not, and is not a gap. Every other factor is Present, Under-specified (partial coverage), or Missing, and the lens's own floors set severity - Under-specified Minor at least, Missing Major at least, Blocker when the decision cannot be made without it.
+Supply this design-specific factor list to the completeness audit. The `Required` column names the factors the verdict turns on; a factor the artifact's scope does not reach reads `N/A` with its reason, Required or not, and is not a gap. Every other factor is Present, Under-specified (partial coverage), or Missing, and the lens's own floors set severity - Under-specified Minor at least, Missing Major at least, Blocker when the decision cannot be made without it. A pre-design artifact reviewed alone (a direction argued before a full design) follows the Comparison rule: sections it never set out to cover are Missing at Major, not Blocker, unless the absence would change whether the direction is adopted; the expected verdict is Approve with changes, and Needs rework is reserved for defects in what it states. A Present-but-wrong factor reads Present in the Completeness table with the later step's F-number in its `F{n}` column and `-` in the other two; a finding bearing on two factors is recorded under the first and its F-number referenced in the second's `F{n}` column. Reviewer arithmetic on the artifact's own numbers lives in the finding it grounds.
 
 | Factor                        | Required | What "Present" Looks Like                                                                  |
 | ----------------------------- | -------- | ------------------------------------------------------------------------------------------ |
@@ -74,7 +74,7 @@ Supply this design-specific factor list to the completeness audit. The `Required
 
 The factor list mirrors Design Model Sections 1-12 (Security and auth spans Sections 3 and 11): for per-factor depth, compose that section's atomic skills to evaluate the quality of what the author wrote; a factor with no dedicated atomic (Security and auth, Diagrams, multi-tenancy within API contracts) is evaluated directly against its "What Present Looks Like" column. Treat performance, deployment, trade-offs, API contracts, and diagrams as first-class review targets - when Present or Under-specified, evaluate their substance; when Missing, the completeness finding carries them. Depth levels apply to New Design only; reviews always run the full lens, using the lens's own skip rule for steps that do not fit. Compose a section's atomic only where the factor is Present and its quality is what the finding turns on - a Missing factor is settled in the Completeness Audit and needs no atomic. Diagrams are N/A under Section 12's skip conditions and API contracts when the asterisk condition fails; every factor follows the Required rule above.
 
-Output header: `# Architecture Review` and use the output structure defined in `architecture-review-lens` (tables for audits, lists for findings; report depth as "full") - the Completeness Audit table carries Factor, Required, Status (Present / Under-specified / Missing / N/A), a Finding cell (the F-number the row raises or forward-references, the N/A reason, or `-`), and for a raised finding its Severity and Recommendation, as the lens requires wherever a finding is raised. Skip the New Design output template. In this mode the Review Self-Check below replaces the authoring Self-Check (self-checks are applied internally, never emitted in the deliverable):
+Output header: `# Architecture Review` and use the output structure defined in `architecture-review-lens` (tables for audits, lists for findings; report depth as "full") - the Completeness Audit table carries Factor, Required, Status (Present / Under-specified / Missing / N/A) and the lens's three finding columns - `F{n}` (the F-number the row raises or forward-references, the N/A reason, or `-`), Severity, Recommendation - `-` in each on a row with no finding. Skip the New Design output template. In this mode the Review Self-Check below replaces the authoring Self-Check (self-checks are applied internally, never emitted in the deliverable):
 
 - [ ] behavioral-principles loaded first, stack-detect second
 - [ ] Comparison, when two or more proposals were supplied: pre-screened to three when more than three came in, each elimination recorded, all scored on the same criteria, a named winner with its decisive criteria, and the external recommendation agreed or overturned when one was supplied
@@ -98,7 +98,7 @@ Output header: `# Architecture Review` and use the output structure defined in `
 
 Handle partial inputs gracefully. When input is missing, state assumptions under Section 1 Assumptions and list what additional context would strengthen the design under Section 1 Open Questions, together with the confirmation questions `nfr-specification` raises for assumed targets.
 
-**Audience and house format (New Design Mode only).** When a reviewer profile is supplied, or a house pattern is loaded, load `Use skill: design-audience-calibration` (with no profile it calibrates on its recorded default); when a reference doc is supplied or the project's instruction file carries a `## Design Docs` section, load `Use skill: design-reference-pattern`; when it reports `Source: built-in` (a section naming only `Approver:` or `Tool:`), its skeleton is this workflow's own template and only its Approver and Tool values are taken. In Review Mode load neither - the review's reader is the artifact's author, and approver-fit review belongs to `task-design-brief`. `stack-detect` does still run in Review Mode: it grounds the stack-specific guidance a complete design should carry, and lands in the lens's Review Context as a `Stack:` line this workflow adds, never as its own block. Neither changes this workflow's analysis or its 12-section content contract: calibration governs prose, glossing, and what moves to an appendix (its diagrams-before-prose rule yields to this template's Section 12), and the house pattern governs headings (the H1 becomes the house title slot), order, and metadata slots, with every section mapped to a house heading or appended under its own name, unnumbered and placed after the house Appendix in this template's order, and the pattern's Reviewer value in the house reviewers slot or as a metadata line below `Written for` - the one sanctioned exception to the behavioral directive's structure rule. Each numbered heading appears exactly once and in order; a house pattern replaces the numbering wholesale rather than interleaving with it. Required content is never dropped to fit a template: when the calibration budget conflicts with the 12-section contract, the contract wins - load-bearing tables and decisions stay in the body, elaboration moves to the appendix, and the C4 Container outranks the diagram budget, with further diagrams relocating to the appendix rather than dropping. When either is loaded the deliverable carries an appendix - the house Appendix section when one exists, else `## Appendix` as the final section - and the `Written for` / `Format` line in the Output template; unknown metadata slot values read `TBD`. A house pattern carried as front matter stays first, the H1 and the lines below it following. The required-content list is handed over stating that the deliverable carries no appendix for the required content - its appendix holds depth only - so a required item the skeleton cannot house resolves as `appended as <name>`. Where neither a project nor the request names a stack, the header's `Stack:` line reads `unknown` and recommendations stay stack-agnostic rather than assuming one. Depth selects sections; calibration and the house pattern never add one back - a `quick` output carries no diagram, whatever the diagram budget or a house section's diagram-first convention. The required-content list handed to the house pattern is one item per template section (the Staff-Level Summary included), subsection, or field block the depth produces; calibration decides body versus appendix first, then the house pattern places the body content. Settle every item's destination before drafting a heading, and write the resulting heading list out in order first: several template sections may fold into one house heading, and the failure this prevents is inventing a numbered heading the house skeleton does not have. Numbering comes from the house skeleton alone - never extend it.
+**Audience and house format (New Design Mode only).** When a reviewer profile is supplied, or a house pattern is loaded, load `Use skill: design-audience-calibration` (with no profile it calibrates on its recorded default); when a reference doc is supplied or the project's instruction file carries a `## Design Docs` section, load `Use skill: design-reference-pattern`; when it reports `Source: built-in` (no usable reference: a section naming only `Approver:` or `Tool:`, or every supplied reference rejected), its built-in skeleton and Content mapping are ignored - this workflow's own template is the skeleton - and only its Approver and Tool values are taken; a `built-in` result is not a loaded house pattern (calibration then loads only on a reviewer profile, and no appendix is added on its account), and the Approver value is written as a `Reviewer:` line below `Written for`. In Review Mode load neither - the review's reader is the artifact's author, and approver-fit review belongs to `task-design-brief`. `stack-detect` does still run in Review Mode: it grounds the stack-specific guidance a complete design should carry, and lands in the lens's Review Context as a `Stack:` line this workflow adds after the lens's depth line, never as its own block. Neither changes this workflow's analysis or its 12-section content contract: calibration governs prose, glossing, and what moves to an appendix (its diagrams-before-prose rule yields to this template's Section 12; table cells keep raw terms, with a gloss line under the table at Low architecture fluency), and the house pattern governs headings (the H1 becomes the house title slot; the Staff-Level Summary's bullets land in the house summary heading when the skeleton has one, else they resolve through the mapping), order, and metadata slots, with every section mapped to a house heading or appended as the pattern's mapping names it (related items share one section; a house heading that houses several template sections carries each one's tables under its own `####` sub-heading), unnumbered, after the last house section and before any trailing metadata block in this template's order, and the pattern's Reviewer value in the house reviewers slot or as a metadata line below `Written for` - the directive's second exception. Each numbered heading appears exactly once and in order; a house pattern replaces the numbering wholesale rather than interleaving with it. Required content is never dropped to fit a template: when the calibration budget conflicts with the 12-section contract, the contract wins - load-bearing tables and decisions stay in the body, elaboration moves to the appendix, and the C4 Container outranks the diagram budget, with further diagrams relocating to the appendix rather than dropping. When either is loaded the deliverable carries an appendix - the house Appendix section when one exists, else `## Appendix` after the last house section, followed only by the appended sections and then any trailing house metadata block - and the `Written for` / `Format` line in the Output template; unknown metadata slot values read `TBD`. A house pattern carried as front matter stays first, the H1 and the lines below it following. The required-content list is handed over stating that the deliverable carries no appendix for the required content - its appendix holds depth only - so a required item the skeleton cannot house resolves as `appended as <name>`. Where neither a project nor the request names a stack, the header's `Stack:` line reads `unknown` and recommendations stay stack-agnostic rather than assuming one. Depth selects sections; calibration and the house pattern never add one back - a `quick` output carries no diagram, whatever the diagram budget or a house section's diagram-first convention. The required-content list handed to the house pattern is one item per template section (the Staff-Level Summary included), subsection, or field block the depth produces; calibration decides body versus appendix first, then the house pattern places the body content. Settle every item's destination before drafting a heading, and write the resulting heading list out in order first, as a working note that is not emitted: several template sections may fold into one house heading, carrying their tables as that heading's sub-tables, and the failure this prevents is inventing a numbered heading the house skeleton does not have. Numbering comes from the house skeleton alone - never extend it.
 
 ## Depth Levels
 
@@ -138,7 +138,7 @@ Use skill: `nfr-specification` to elicit and structure non-functional requiremen
 
 ### 2. System Context and Boundaries
 
-Use skill: `system-boundary-design` for formal boundary modeling. Use skill: `architecture-guardrail` for the boundary violations it detects in the current codebase; restate each as a forward constraint in Section 10's Architecture Constraints, or at `quick` in the Must Not Cross cell. It emits review findings, not authored rules - on a greenfield design with no code to inspect, derive the constraints from Section 2's boundaries instead and say so. Use skill: `review-blast-radius` to size a Shared cell in Boundary Contracts - run as if the boundary's own change were the diff; its overall `Blast Radius:` value only.
+Use skill: `system-boundary-design` for formal boundary modeling. Use skill: `architecture-guardrail` for the boundary violations it detects in the current codebase (skipped as `no code read` when only documents are available); external systems are Communication Model parties, never Module Boundaries rows. Restate each as a forward constraint in Section 10's Architecture Constraints, or at `quick` in the Must Not Cross cell. It emits review findings, not authored rules - on a greenfield design with no code to inspect, derive the constraints from Section 2's boundaries instead and say so. Use skill: `review-blast-radius` to size a Shared cell in Boundary Contracts - run as if the boundary's own change were the diff; its overall `Blast Radius:` value only.
 
 For each boundary state: what crosses (data, commands, events), what must NOT cross (domain internals), failure isolation guarantee.
 
@@ -146,13 +146,13 @@ For each boundary state: what crosses (data, commands, events), what must NOT cr
 
 Use skill: `architecture-data-consistency` for consistency boundary design. Use skill: `backend-idempotency` for retry safety at integration points. Use skill: `backend-caching` for caching strategy and invalidation. Use skill: `ops-resiliency` for fault tolerance and REST client integration patterns.
 
-For each component, state: what it owns (data, state), what it depends on, primary failure mode. State the security model once here - authn mechanism, authz enforcement point, secret/key rotation, rate limiting and abuse controls; per-endpoint auth stays in Section 11. The component, communication, and caching tables plus the Security Model block in the Output template are the contract; the Communication Model's Pattern and Notes cells copy `system-boundary-design`'s Pattern and Trade-off strings verbatim, transport named alongside.
+For each component, state: what it owns (data, state), what it depends on, primary failure mode. State the security model once here - authn mechanism, authz enforcement point, secret/key rotation, rate limiting and abuse controls; per-endpoint auth stays in Section 11. The component, communication, and caching tables plus the Security Model block in the Output template are the contract; the Communication Model's Pattern and Notes cells copy `system-boundary-design`'s Pattern and Trade-off strings verbatim, transport named alongside, and Type reads Sync for Sync API and Direct DB read or write, Async for Async event, Shared cache and Data replication.
 
 ### 4. Data and Consistency Model
 
 Use skill: `architecture-data-consistency` for consistency strategy selection. Use skill: `backend-db-indexing` for data access patterns and index strategy - recorded in Data Flow as the lookups each path relies on, each carrying the atomic's recommended index and lock-risk line as a sub-bullet.
 
-For each data boundary: consistency guarantee, partial-failure behavior, recovery mechanism. Name the distributed consistency strategy when applicable (outbox, saga, compensating transactions). The Data Flow, Consistency Boundaries, Saga Steps, and Schema Evolution blocks in the Output template are the contract; `architecture-data-consistency`'s Schema Evolution Plan fills the last.
+For each data boundary: consistency guarantee, partial-failure behavior, recovery mechanism. Name the distributed consistency strategy when applicable (outbox, saga, compensating transactions). The Data Flow, Consistency Boundaries, Saga Steps, and Schema Evolution blocks in the Output template are the contract; `architecture-data-consistency`'s Schema Evolution Plan fills the last, its Risks become Section 5 Failure Scenarios rows (Transaction boundary error or the matching Failure Type, Blast Radius sized by `review-blast-radius` for that boundary, the risk's Recommendation as the Mitigation), and an `unconfirmed boundary` risk also becomes a Section 1 Open Questions item.
 
 ### 5. Failure and Risk Analysis
 
@@ -176,7 +176,7 @@ The bottleneck (component saturating first) and the scaling model are non-option
 
 Use skill: `ops-release-safety` for rollout and rollback patterns. Use skill: `dependency-impact-analysis` for deployment ordering.
 
-The rollback trigger (specific condition, not "if something goes wrong") and the migration order vs. code deploy are the load-bearing decisions. Name the rollout mechanism (`ops-release-safety`'s enum: feature flag, canary, blue-green, rolling update, one-shot script, big bang as proposed) and feature flags by purpose.
+The rollback trigger (specific condition, not "if something goes wrong") and the migration order vs. code deploy are the load-bearing decisions. Name the rollout mechanism (`ops-release-safety`'s enum: feature flag, canary, blue-green, rolling update, one-shot script, big bang - suffixed `(plan proposed <mechanism>)` when the plan names a mechanism the design does not implement) and feature flags by purpose.
 
 ### 9. Trade-Off Analysis
 
@@ -186,7 +186,7 @@ For each significant decision: chosen option, alternatives, reasons, what is sac
 
 ### 10. Guardrails and Review Guidance
 
-Use skill: `architecture-guardrail` for the violations it detects; each becomes a forward constraint here. Use skill: `ops-engineering-governance` for evolving existing guardrails - enforcement tiers, and its category prefix (`[new]`, `[strengthen]`, `[automate]`, `[broaden]`, `[retire]`) on the Constraint cell and its Enforcement value (`checklist (automate: <mechanism>)` when manual) in the Enforcement column; its incident-evidence bound and its Guardrails That Held section do not apply to a design, whose constraints trace to Section 2's boundaries instead. Also produce the Review Checklist Additions (one item per constraint a reviewer cannot detect mechanically) and the Drift Detection Points (the signal that says a constraint is eroding).
+Use skill: `architecture-guardrail` for the violations it detects; each becomes a forward constraint here. Use skill: `ops-engineering-governance` for evolving existing guardrails - enforcement tiers, and its category prefix (`[new]`, `[strengthen]`, `[automate]`, `[broaden]`, `[retire]`) on the Constraint cell and its Enforcement values (`checklist (automate: <mechanism>)` or `review policy (automate: <mechanism>)` when manual, `remove: <step>` on a `[retire]` row) in the Enforcement column; its incident-evidence bound and its Guardrails That Held section do not apply to a design, whose constraints trace to Section 2's boundaries instead. Also produce the Review Checklist Additions (one item per constraint a reviewer cannot detect mechanically) and the Drift Detection Points (the signal that says a constraint is eroding).
 
 Each constraint must be concrete and detectable: rule, what violation looks like, consequence - at least one guardrail per module (per Module Boundaries row). "Follow clean architecture" is not a guardrail; "no module under `domain/` may import from `infrastructure/`" is. Include AI-codegen constraints when patterns must be enforced on generated code.
 
@@ -196,13 +196,13 @@ Run at `standard` and `deep` for any design exposing APIs to external clients, s
 
 Use skill: `backend-api-guidelines` for HTTP semantics, naming, pagination, RFC 9457 errors, idempotency; the multi-tenancy pattern comes from Section 3's Security Model. Use skill: `ops-backward-compatibility` for versioning and breaking-change classification.
 
-The output template (Section 11 in Output) lists the per-endpoint fields the design must produce: endpoint table (method, path, auth, request - including the pagination parameters on every collection endpoint - response, status), idempotency table for state-sensitive endpoints, multi-tenancy pattern, RFC 9457 error examples, and a backward-compatibility table when modifying existing APIs. Treat these as first-class - reviewers must be able to evaluate auth, idempotency, multi-tenancy, and pagination from the proposal alone. Section 11's idempotency table is authoritative for the HTTP endpoints this design exposes - the Communication Model row for their caller (one row per caller-callee pair, not per endpoint) writes "see Section 11" in the Idempotent cell; every other row (events, queues, outbound HTTP calls to external systems) states Yes/No with its mechanism in Notes. Inbound third-party webhooks fit the endpoint table with auth = signature verification (e.g., Stripe-Signature). Outbound events and webhooks delivered to external consumers are contracts too: the Outbound Events / Webhooks table documents payload schema version, receiver-side auth (e.g., HMAC signature header), ordering, and retry/redelivery semantics. Section 8's Backward Compatibility field summarizes deploy-level compatibility; API-change detail lives in Section 11's table.
+The output template (Section 11 in Output) lists the per-endpoint fields the design must produce: endpoint table (method, path, auth, request - including the pagination parameters on every collection endpoint - response, status), idempotency table (`backend-api-guidelines`' values: `Idempotency-Key required` for each non-idempotent POST or PATCH, `provider event ID dedup` for each inbound webhook, `natural (<reason>)` for any other state-changing endpoint whose idempotency the design relies on), multi-tenancy pattern, RFC 9457 error examples, and a backward-compatibility table when modifying existing APIs. Treat these as first-class - reviewers must be able to evaluate auth, idempotency, multi-tenancy, and pagination from the proposal alone. Section 11's idempotency table is authoritative for the HTTP endpoints this design exposes - the Communication Model row for their caller (one row per caller-callee pair, not per endpoint) writes "see Section 11" (the house heading's name when a house skeleton renumbers) in the Idempotent cell when Section 11 is produced; every other row (internal component-to-component calls, events, queues, outbound HTTP calls to external systems) states Yes/No with its mechanism in Notes. Inbound third-party webhooks fit the endpoint table with auth = signature verification (e.g., Stripe-Signature). Outbound events and webhooks delivered to external consumers are contracts too: the Outbound Events / Webhooks table documents payload schema version, receiver-side auth (e.g., HMAC signature header), ordering, and retry/redelivery semantics. Section 8's Backward Compatibility field summarizes deploy-level compatibility; API-change detail lives in Section 11's table.
 
 ### 12. Diagrams
 
 Run at `standard` and `deep`. Skip with a one-liner only if a current accurate diagram exists or the design is too narrow to diagram meaningfully.
 
-Default format: **Mermaid**. Use **PlantUML** only when explicitly requested.
+Default format: **Mermaid**. Use **PlantUML** only when explicitly requested; a house Diagram convention that is not text-rendered (a draw.io export, screenshots) keeps the Mermaid fence and is named on the `Format` line.
 
 Always: **C4 Container** (major deployable units + tech). When applicable: **C4 Context** (3+ external interactors), **Sequence** (non-obvious ordering or async/sync semantics), **Data flow** (multiple paths through the system), **Deployment** (multi-region, VPC, networking).
 
@@ -210,7 +210,7 @@ Always: **C4 Container** (major deployable units + tech). When applicable: **C4 
 
 - Every element traces to a component or boundary from Sections 2-3; never invent elements to "complete" the diagram
 - One abstraction level per diagram: a Container diagram shows containers, not the internals of one. The actors and external systems at the system boundary belong on it and are not a level mix
-- One `Diagram Notes` block after the last diagram (a house pattern may separate them), one sub-list per diagram carrying Scope / Assumptions / Next level and, for the container diagram, the form used; assumptions go in Notes, not silently inside the diagram
+- One `Diagram Notes` block after the last diagram (a house pattern may separate them; diagrams relocated to the appendix get their own block there), one sub-list per diagram carrying Scope / Assumptions / Next level and, on the container diagram's entry only, the form used; assumptions go in Notes, not silently inside the diagram
 
 Use Mermaid: `C4Container` for C4, `sequenceDiagram` with `autonumber` for sequence, `flowchart LR/TD` for data flow, nested `subgraph` blocks for deployment topology. Mermaid's C4 support is still experimental; where the renderer does not carry it, a `flowchart` showing the same containers, actors and external systems satisfies the requirement - say which form was used in Diagram Notes.
 
@@ -219,11 +219,11 @@ Use Mermaid: `C4Container` for C4, `sequenceDiagram` with `autonumber` for seque
 ````markdown
 # Architecture Design Proposal
 
-**Direction: {Sensible | Sensible with changes | Reconsider}** - {reason} _(only for `quick` "is this direction sensible?" inputs)_
+**Direction: {Sensible | Sensible with changes | Reconsider}** - {reason} {only on a quick "is this direction sensible?" run}
 
 Stack: {<language / framework> (detected) | <stack> (prompt-stated) | unknown - recommendations stay stack-agnostic}
 
-Written for: {reader} (Architecture {High | Low}, {source}; Domain {High | Low}, {source}). Format: {house reference | built-in} _(only when calibration or the house pattern was loaded; below the Direction line, above any house metadata table; below house front matter. With a house pattern but no reviewer profile, the axes take `design-audience-calibration`'s default - Architecture Low, Domain High - with the source recorded as `assumed default`)_
+Written for: {design-audience-calibration's Attribution line}. Format: {design-reference-pattern's Attribution sentence | built-in template} {only when calibration or the house pattern was loaded; below the Direction line, above any house metadata table; below house front matter. With a house pattern but no reviewer profile, the axes take the calibration's default - Architecture Low, Domain High - with the source recorded as assumed default}
 
 ## 1. Problem Framing
 
@@ -281,7 +281,7 @@ Downstream Consumers:
 
 | Interaction | Type       | Pattern          | Idempotent | Notes             |
 | ----------- | ---------- | ---------------- | ---------- | ----------------- |
-| A -> B      | Sync/Async | {Sync API \| Async event \| Shared cache \| Data replication \| Direct DB read (violation)} | {Yes \| No \| see Section 11} | Trade-off string; transport (REST, gRPC, Kafka); timeout, fallback |
+| A -> B      | {Sync \| Async} | {Sync API \| Async event \| Shared cache \| Data replication \| Direct DB read (violation) \| Direct DB write (violation)}{ (inferred)} | {Yes \| No \| see Section 11} | Trade-off string; transport (REST, gRPC, Kafka); timeout, fallback |
 
 ### Caching Strategy
 
@@ -309,13 +309,15 @@ Rate limiting and abuse controls:
 
 | Boundary | Pattern | Consistency Model | Staleness Tolerance | Partial Failure Behavior | Recovery Mechanism |
 | -------- | ------- | ----------------- | ------------------- | ------------------------ | ------------------ |
-| A -> B   | database transaction / shared transaction / outbox + events / saga (orchestrated or choreographed) / CQRS + async sync / region-local strong + async replication / dual-field contract versioning | {Strong \| Eventual \| Version-skew} | Acceptable lag | What happens, the tolerated anomaly, and how concurrent writers resolve | How to recover |
+| A -> B   | database transaction / shared transaction / outbox + events / saga (orchestrated or choreographed) / CQRS + async sync / region-local strong + async replication / dual-field contract versioning / unstated - see Risks / a defect value from architecture-data-consistency, as found or as proposed | {Strong \| Eventual \| Version-skew}{ (derived)} | Acceptable lag | What happens, the tolerated anomaly, and how concurrent writers resolve | How to recover |
 
-### Saga Steps _(when a saga is named)_
+### Saga Steps {when a saga is named or a write sequence spans boundaries; one table per saga}
+
+#### {saga name}
 
 | Step | Forward Action | Compensation | Idempotency Key |
 | ---- | -------------- | ------------ | --------------- |
-| Name | What it does | How it unwinds \| `pivot - go/no-go, no compensation defined` \| `none - retry until success` (post-pivot) | Key and scope |
+| Name | What it does | How it unwinds \| `undefined - see Risks` \| `pivot - go/no-go, no compensation defined` \| `none - retry until success` (post-pivot) | Key and scope |
 
 ### Schema Evolution
 
@@ -328,8 +330,8 @@ Rate limiting and abuse controls:
 | Scenario            | Component | Blast Radius         | Mitigation                |
 | ------------------- | --------- | -------------------- | ------------------------- |
 | External dependency failure | Name | Narrow/Moderate/Wide/Critical | Circuit breaker, fallback |
-| Transaction boundary error  | Name | Scope | Mechanism |
-| Resource exhaustion         | Name | Scope | Mechanism |
+| Transaction boundary error  | Name | Narrow/Moderate/Wide/Critical | Mechanism |
+| Resource exhaustion         | Name | Narrow/Moderate/Wide/Critical | Mechanism |
 
 ### Concurrency Risks
 
@@ -391,7 +393,7 @@ Cost Drivers:
 
 ## 8. Deployment Strategy
 
-Rollout Approach: {Feature flag | Canary | Blue-green | Rolling update | One-shot script | Big bang (as proposed)}
+Rollout Approach: {Feature flag | Canary | Blue-green | Rolling update | One-shot script | Big bang}{ (plan proposed <mechanism>)}
 
 Backward Compatibility: {Yes | No | N/A - no schema change} - {summary}
 
@@ -437,7 +439,7 @@ Feature Flags:
 
 | Constraint    | Violation Looks Like    | Consequence | Enforcement |
 | ------------- | ----------------------- | ----------- | ----------- |
-| Specific rule | How to detect violation | What breaks | CI gate / lint rule / policy-as-code / architecture test / framework constraint / alert / dashboard / SLO / checklist / review policy / contract term |
+| Specific rule | How to detect violation | What breaks | CI gate / lint rule / policy-as-code / architecture test / framework constraint / alert / dashboard / SLO / checklist (automate: <mechanism>) / review policy (automate: <mechanism>) / contract term / remove: <step> (on a `[retire]` row) |
 
 ### Review Checklist Additions
 
@@ -448,9 +450,7 @@ Feature Flags:
 
 - Signal to watch for erosion
 
-## 11. API Contracts
-
-_Skip with a one-liner if the design exposes neither HTTP endpoints nor externally consumed events._
+## 11. API Contracts {skipped with a one-liner when the design exposes no API surface and delivers no events or webhooks to consumers outside its boundary}
 
 ### Endpoints
 
@@ -463,7 +463,7 @@ _Skip with a one-liner if the design exposes neither HTTP endpoints nor external
 
 | Endpoint              | Idempotency | Mechanism                           |
 | --------------------- | ----------- | ----------------------------------- |
-| POST /api/v1/orders   | Required    | Idempotency-Key header, 24h window  |
+| POST /api/v1/orders   | Idempotency-Key required | Idempotency-Key header, 24h window |
 
 ### Multi-Tenancy
 
@@ -477,21 +477,19 @@ Rate limits: per-tenant or global
 
 RFC 9457 problem details; example bodies for the error statuses the API actually returns (typically 400, 404, 409, 422).
 
-### Outbound Events / Webhooks _(when the design delivers events or webhooks to external consumers)_
+### Outbound Events / Webhooks {when the design delivers events or webhooks to external consumers}
 
 | Contract        | Schema / Version                  | Receiver Auth         | Ordering          | Retry / Redelivery               |
 | --------------- | --------------------------------- | --------------------- | ----------------- | -------------------------------- |
 | invoice.paid v1 | Versioned envelope, additive-only | HMAC signature header | Per-endpoint FIFO | Backoff schedule, dead-letter    |
 
-### Backward Compatibility (if modifying existing API)
+### Backward Compatibility {when modifying an existing API}
 
-| Change | Contract Type | Direction | Consumers (evidence) | Compatible | Impact | Migration Path |
-| ------ | ------------- | --------- | -------------------- | ---------- | ------ | -------------- |
-| ...    | REST API / Event schema / DB schema / Shared library / other | out / in / db | ... | Yes / No / No (unverified) | ... | ... |
+| Contract Type | Change | Direction | Consumers (evidence) | Compatible | Action Required |
+| ------------- | ------ | --------- | -------------------- | ---------- | --------------- |
+| REST API / Event schema / DB schema / Shared library / other | ... | out / in / db | ... | Yes / No / No (unverified) | the matrix action in the detected stack's mechanism; on a No or No (unverified) row, the Breaking Changes block's migration plan and transition window |
 
-## 12. Diagrams
-
-_Skip with a one-liner if a current diagram already exists or the design is too narrow to diagram meaningfully._
+## 12. Diagrams {skipped with a one-liner when a current accurate diagram already exists or the design is too narrow to diagram meaningfully}
 
 ### Container Diagram (C4)
 
@@ -499,13 +497,13 @@ _Skip with a one-liner if a current diagram already exists or the design is too 
 {Mermaid C4Container code showing major deployable units, data stores, queues, and external systems}
 ```
 
-### Sequence Diagram - {Flow name} _(when ordering or async/sync semantics are non-obvious)_
+### Sequence Diagram - {Flow name} {when ordering or async/sync semantics are non-obvious}
 
 ```mermaid
 {Mermaid sequenceDiagram code for the flow}
 ```
 
-### Data Flow / Deployment _(include when applicable)_
+### Data Flow / Deployment {when applicable}
 
 ```mermaid
 {Mermaid flowchart or deployment subgraph code}
@@ -513,30 +511,24 @@ _Skip with a one-liner if a current diagram already exists or the design is too 
 
 ### Diagram Notes
 
-- **{Diagram name}** ({C4Container | flowchart fallback}, container diagram only)
+- **{Diagram name}**{ ({C4Container | flowchart fallback})}
   - **Scope:**
   - **Assumptions:**
   - **Next level:**
 
-## Staff-Level Summary
-
-Each bullet should be specific to this design, not generic advice. Example: 'Key systemic risks: Retry amplification from SMS provider timeouts can overload the outbox worker under burst load.'
+## Staff-Level Summary {each bullet specific to this design, e.g. "Key systemic risks: Retry amplification from SMS provider timeouts can overload the outbox worker under burst load."}
 
 - Key systemic risks:
 - Long-term evolution notes:
 - Areas requiring strict review:
 
-## Capacity Model
-
-_Deep only._
+## Capacity Model {deep only}
 
 | Component | Limit (native unit) | Per-Request Cost (native unit) | Expected RPS | Peak RPS | Saturation Point | Bottleneck? | Scaling Action |
 | --------- | ------------------- | ------------------------------ | ------------ | -------- | ---------------- | ----------- | -------------- |
-| Name      | N                   | N                              | N            | N        | N RPS / 0 above current load / N/A (not limiting) | Yes / No / Also below demand | Scale out / up |
+| Name      | N                   | N                              | N            | N        | N RPS (jobs/s for a queue-fed component) / 0 above current load / N/A (not limiting) / unknown - no usage data | Yes / No / Also below demand | Scale out / up |
 
-## Failure Simulation
-
-_Deep only._
+## Failure Simulation {deep only}
 
 ### Scenario 1: {Most likely high-impact failure}
 
@@ -556,17 +548,13 @@ Walk through the failure end-to-end:
 
 [Repeat for 1-2 additional scenarios in deep mode]
 
-## Evolution Notes
-
-_Deep only._
+## Evolution Notes {deep only}
 
 - **If traffic doubles**: {What saturates first, what to scale, what must be redesigned}
 - **If {key dependency} is removed**: {What breaks, what the fallback is}
 - **If team size changes significantly**: {What becomes hard to maintain, what should be simplified}
 
-## Appendix
-
-_Present whenever calibration or a house pattern was loaded; the house Appendix heading when one exists. Holds elaboration relocated from the body, each topic with one line saying why it sits here. Appended sections follow it, unnumbered, each with its one-line reason._
+## Appendix {whenever calibration or a house pattern was loaded; the house Appendix heading when one exists; holds elaboration relocated from the body, each topic with one line saying why it sits here; appended sections follow it, unnumbered, each with its one-line reason}
 ````
 
 ## Self-Check
@@ -578,11 +566,11 @@ _Present whenever calibration or a house pattern was loaded; the house Appendix 
 - [ ] Consistency model stated per data boundary, with partial-failure behavior
 - [ ] Highest-blast-radius scenario has a mitigation; retry amplification and backpressure assessed
 - [ ] Rollback strategy and rollback trigger present; observability plan names an SLO candidate
-- [ ] Guardrails are concrete, detectable rules (one per module boundary minimum)
+- [ ] Guardrails are concrete, detectable rules (one per Module Boundaries row minimum)
 - [ ] Security Model block states authn, authz enforcement point, secret rotation, and abuse controls
-- [ ] Section 11 produced if any API surface exists: auth per endpoint, RFC 9457 errors, idempotency on state-mutating endpoints, pagination on collections, multi-tenancy if applicable; outbound event/webhook contracts documented when the design delivers them
+- [ ] Section 11 produced if any API surface exists: auth per endpoint, RFC 9457 errors, idempotency on every non-idempotent POST or PATCH and inbound webhook, pagination on collections, multi-tenancy if applicable; outbound event/webhook contracts documented when the design delivers them
 - [ ] Section 12 produced at standard/deep, or its skip one-liner: at minimum a C4 Container diagram; every diagram element traces to a component/boundary defined in Sections 2-3; Diagram Notes state scope, assumptions, and next level per diagram
-- [ ] Section 1 states the problem, the NFRs the design is accountable to, and the constraints; unmet NFRs listed under Open Questions rather than assumed
+- [ ] Section 1 states the problem, the NFRs the design is accountable to, and the constraints; each NFR without a stated value carries nfr-specification's `(assumed: basis)` default with its confirmation question under Open Questions, or reads `not specified` and is listed there as a gap; at `quick`, NFRs the decisions do not depend on appear only under Open Questions
 - [ ] Section 7 names the binding bottleneck and the scaling model at every depth where it runs, not only at deep
 - [ ] Heading list settled before drafting; every numbered heading appears exactly once, comes from the house skeleton or the template rather than being invented, and runs in order; appended sections sit after the appendix, unnumbered, each with its one-line reason
 - [ ] Staff-Level Summary present at every depth, each bullet specific to this design; the Direction line present on a quick direction check

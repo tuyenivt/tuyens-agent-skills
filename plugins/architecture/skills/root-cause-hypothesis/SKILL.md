@@ -15,12 +15,12 @@ Whenever ranked hypotheses with calibrated confidence are needed; typically afte
 
 ## Rules
 
-- Produce Primary + Secondary by default. A candidate is scored only when at least one signal bears on its own distinguishing claim; an argued-for candidate with no such signal is not scored and is named unscored in Remaining, so a Primary can stand alone at any confidence. Every scored hypothesis that survives normalization at 10% or more is reported; one that does not is folded into Remaining with its raw score.
+- Produce Primary + Secondary by default. A candidate is scored only when at least one signal bears on its own distinguishing claim, for or against it; an argued-for candidate with no such signal is not scored and is named unscored in Remaining, so a Primary can stand alone at any confidence. Every scored hypothesis that survives normalization at 10% or more is reported, and so is the top-ranked one, which normalization step 4 never reports below 10; any other is folded into Remaining with its raw score.
 - Hypotheses may share a triggering change when the mechanisms differ (e.g., two distinct failure modes of the same upgrade) - rank them independently.
 - Report only mechanistically distinct hypotheses; two framings of one mechanism are one hypothesis.
 - For intermittent failures, the mechanism must explain why the failure only sometimes occurs (threshold, race, load-dependent trigger, cache expiry, replication lag accumulation)
 - A contributing factor is a condition that amplified the failure; if removing the condition alone would have prevented the incident, it is part of the mechanism, not a contributing factor. Where that counterfactual cannot be settled on the evidence, call it a contributing factor and say the counterfactual is untested - the weaker claim is the honest one
-- Timeline is always emitted: the lag and why, or one of the constants in the template
+- Every hypothesis block emits Timeline: the lag and why, or one of the constants in the template
 
 ## Patterns
 
@@ -36,20 +36,20 @@ This procedure is the only method; there is no second scale to reconcile it agai
 - +10 when an independent pattern matches the mechanism's prediction (e.g., regional error distribution matches a canary rollout order)
 - +10, applied once regardless of how many alternatives it rules out, when negative evidence eliminates an alternative class (the alternative would have produced errors/signals that are absent)
 - -10, applied once, when key discriminating evidence is missing or contradictory
-- Cap at 90; a fix or mitigation applied with the symptom confirmed to stop raises that hypothesis's cap to 95 and no higher
+- Cap at 90; a fix aimed at this hypothesis's own mechanism - not a rollback, failover or other mitigation that would also stop a rival - applied with the symptom confirmed to stop raises its cap to 95 and no higher
 
 Raw scores land between 15 and 95, in steps of 5. If a score looks wrong for the evidence, the error is in how the evidence was classified - re-check which signals are genuinely direct - not in the arithmetic; never nudge the number by feel. Where two hypotheses tie on raw score, the one with direct evidence at the reported symptom's failure point ranks higher; if they tie on that too, the order is arbitrary and the output says so on every tied header.
 
-Evidence value for "direct": stack traces, metric timelines, resource metrics at the failure point. Deploy correlation, config diffs, and topology context corroborate but are not direct. Log patterns and user reports are weak.
+Evidence tiers map onto the modifiers: direct evidence (stack traces, metric timelines, resource metrics at the failure point) feeds the +15/+10 direct modifiers; deploy correlation, config diffs and topology context feed only the start value and the +10 pattern match; log patterns and user reports never feed the +15/+10 direct modifiers or the +10 pattern match - on their own they support only the start-at-25 case - but the absence of an error a rival would have logged still feeds the +10 negative-evidence modifier.
 
 **Normalization.** Reported confidences and Remaining always sum to 100, in steps of 5.
 
 1. Let `S` be the sum of the raw scores. If `S <= 95`, every hypothesis keeps its raw score and Remaining is `100 - S`.
 2. Otherwise scale every hypothesis - the primary included - by `95 / S` and round each to the nearest 5, halves down. The same factor for all keeps their order; pinning the primary would not.
-3. While the rounded sum exceeds 95, take 5 off the smallest hypothesis not yet reduced in this step (ties: the one ranked lower by the tie rule above) and repeat; each pass lowers the sum by 5, so this ends.
+3. While the rounded sum exceeds 95, take 5 off the smallest hypothesis not yet reduced in this step (ties on the rounded value: the one ranked lower by raw score, then by the tie rule above) - when it belongs to a raw-tied group the tie rule leaves in arbitrary order, take 5 off every unreduced member of that group in the same pass - and repeat; each pass lowers the sum, so this ends.
 4. Move any hypothesis now under 10 into Remaining, naming it in one clause with its raw score, so a reader can see it was scored rather than skipped - except the top-ranked one, which is always reported at its rounded value or 10, whichever is higher. Remaining is `100 - (sum of the reported hypotheses)`, never under 5. With no scored candidate at all, emit only `Remaining (100%)` with its unscored clauses and evidence items, and no hypothesis block.
 
-With `S > 95` the primary is scaled like every rival, so a reported 90 means no rival was scored. Reported numbers follow the raw order but not the raw ratios: rounding and the 10% floor compress a crowded field, which is why unscored candidates stay out of `S`.
+A reported 90 or 95 occurs only when the primary is the sole scored hypothesis (`S <= 95`); with `S > 95` the primary is scaled like every rival and reports at most 80. Reported numbers follow the raw order but not the raw ratios: rounding and the 10% floor compress a crowded field, which is why unscored candidates stay out of `S`.
 
 ### Remaining Bucket
 
@@ -59,11 +59,11 @@ Consider every mechanism anyone has actually argued for, plus any the evidence p
 
 ### When Evidence Is Thin
 
-Applies when every RAW score is under 40 - the raw score, not the normalized confidence, since normalization can push a well-evidenced hypothesis down for reasons unrelated to its evidence. Propose a causal mechanism, not just the correlation. Consider multiple causal directions: A→B, B→A, or C→both. The Verification field still names the single most discriminating action; the 2-3 evidence items that would raise confidence go under Remaining, which lists them in this case regardless of its own value.
+Applies when every RAW score is under 40 - the raw score, not the normalized confidence, since normalization can push a well-evidenced hypothesis down for reasons unrelated to its evidence. Propose a causal mechanism, not just the correlation. Consider multiple causal directions: A->B, B->A, or C->both. The Verification field still names the single most discriminating action; the 2-3 evidence items that would raise confidence go under Remaining, which lists them in this case regardless of its own value.
 
 ## Output
 
-All hypotheses use the same fields. `Triggering change` may be omitted on a non-primary hypothesis when identical to the primary. Fields are blank-line separated: this block is reproduced verbatim into callers' documents, where consecutive bare label lines would collapse into one paragraph.
+All hypotheses use the same fields. `Triggering change` may be omitted on a non-primary hypothesis when identical to the primary; its risk-level suffix is emitted only on the hypothesis whose change the caller rated. Timeline reads `n/a - no trigger identified` for a latent defect with no change event, whatever lag its mechanism would predict, and a fix is not a trigger - it belongs in Evidence for; with a trigger, `lag unknown` takes the mechanism's implied lag only when the mechanism predicts one. A rival that does not involve the rated change reads `Triggering change: None identified`. When a rival hypothesis is reported, Verification names the action that discriminates between them. The closing evidence-item line is emitted only when Remaining exceeds 40% or every raw score is under 40. Fields are blank-line separated: this block is reproduced verbatim into callers' documents, where consecutive bare label lines would collapse into one paragraph.
 
 ```
 Primary Hypothesis ({confidence}% confidence, raw {raw}{; order arbitrary - tied with <hypothesis>[, <hypothesis>...]}):
@@ -78,11 +78,11 @@ Evidence against: {observations that weaken it | "none - no contradicting signal
 
 Contributing factors: {amplifying conditions, distinct from root cause | "none identified"}
 
-Triggering change: {PR, deploy, config, infra/platform change, traffic shift, or "None identified"}{ - risk level {Low | Medium | High | Critical} where the caller supplied one}
+Triggering change: {PR, deploy, config, infra/platform change, traffic shift, or "None identified"}{ - risk level {Low | Medium | High | Critical}}
 
-Timeline: {trigger-to-symptom lag + why | "lag unknown", plus the mechanism's implied lag when the mechanism predicts one | "simultaneous" | "n/a - no trigger identified"}
+Timeline: {trigger-to-symptom lag + why | "lag unknown"{, mechanism implies <lag>} | "simultaneous" | "n/a - no trigger identified"}
 
-Verification: {one concrete action to confirm or reject; where a rival hypothesis is reported, the action that discriminates between them}
+Verification: {one concrete action to confirm or reject}
 
 Secondary Hypothesis ({confidence}% confidence, raw {raw}{; order arbitrary - tied with <hypothesis>[, <hypothesis>...]}):
 
@@ -92,14 +92,11 @@ Secondary Hypothesis ({confidence}% confidence, raw {raw}{; order arbitrary - ti
 
 Remaining ({remaining}%): {unexplained}{, plus <candidate> (raw <score> | unscored - no signal on its own claim) - <why it was not reported>, one clause per dropped or unscored candidate}
 
-{2-3 evidence items that would raise confidence, with where to get them, whenever Remaining exceeds 40% or every raw score is under 40}
+{2-3 evidence items that would raise confidence, with where to get them}
 ```
 
 ## Avoid
 
-- Anchoring on the first hypothesis without considering alternatives
 - Restating a correlation as a mechanism (e.g., "high CPU correlates with 503s" is a correlation, not a mechanism)
-- Generic debugging suggestions instead of specific suspects
-- Ignoring topology context (DB primary/replica, cache tiers, regional routing, sharded queues) when signals point to a layered subsystem
 - Hypotheses spanning multiple system layers without tracing the causal chain between layers
 - Reporting a confidence that was judged rather than scored

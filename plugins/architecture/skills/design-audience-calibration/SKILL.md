@@ -46,7 +46,7 @@ An approver who is also the author is still a reader on both axes, but never the
 | High / High | Peer architect on this system | Raw terms; no current-state recap | 1 | ~1 page | Mechanism detail and rejected alternatives, compactly - this reader asks rather than reads |
 | Low / High | Long-tenure engineer or promoted lead who now signs off | Gloss once, anchored to a named domain object; never re-explain the domain | 2-3 | ~2 pages | Mechanism detail, NFR figures, rejected alternatives |
 | High / Low | Platform, security, or external architect | Raw terms | 2, current state first | ~2 pages | Domain glossary |
-| Low / Low | Manager, exec, or stakeholder new to this system | Term plus consequence, in outcome and risk language; no mechanism | 2, heavily labelled | ~1 page | Everything technical |
+| Low / Low | Manager, exec, or stakeholder new to this system | Term plus consequence, in outcome and risk language; no mechanism | 2, current state first, heavily labelled | ~1 page | Everything technical |
 
 Both Low-domain rows gain a current-state section on top of the page figure, per the rule below.
 
@@ -69,7 +69,7 @@ Anchor every abstraction in something the reader already names - a named entity,
 
 | Instead of | Write |
 | --- | --- |
-| Blast radius: Moderate | If this fails, checkout still works and confirmation emails are delayed up to 10 minutes - a moderate blast radius |
+| Blast radius: Moderate | If this fails, checkout still works and confirmation emails are held until the sender recovers, normally within 10 minutes - a moderate blast radius |
 | We use the outbox pattern | The "send confirmation" row is written in the same database transaction as the order, so a crash cannot lose it, and a background job sends it (the outbox pattern) |
 | The read model is eventually consistent | The report catches up with the orders table rather than matching it instantly, normally within 30 seconds (the read model is eventually consistent) |
 | The endpoint is idempotent | Retrying with the same request ID creates one payment, not two (idempotent) |
@@ -101,12 +101,9 @@ Audience calibration:
   Attribution line: {one sentence naming the fluency the document assumes on each axis, and saying the profile was assumed where it was}
 ```
 
-Contract: every field is always present. An author who is the sole reader binds, and the author-reader line in `Also answer` wins over either n/a value. Each axis records its own source on its own line; `assumed default` only when nothing was stated and no signal supported an inference. For mixed readers the axis carries the lower bound, and provenance lists each reader's own value so a split (one stated, one defaulted) stays visible - the axis values themselves never describe an individual reader's fluency. `Reader decides` is the calibrated document's question; `Also answer` carries the others'. `Diagram budget` takes a single number: where the quadrant gives a range, the top when the change alters how two or more independently deployed components talk to each other and the bottom when it changes behaviour inside one; a single-value quadrant takes that value. A datastore the change only reads or writes is not a second component. Diagrams go before the prose that explains them. The current-state section's own diagram counts against the diagram budget; its ~150-word charge follows its words, outside the page figure.
+Contract: every field is always present. The binding reader on an axis is the one whose value set the lower bound. An author who is the sole reader binds; otherwise an author-reader is excluded from the lower bound and from per-reader provenance, and the author-reader line in `Also answer` wins over either n/a value. Each axis records its own source on its own line; `assumed default` only when nothing was stated and no signal supported an inference. For mixed readers the axis carries the lower bound, and provenance lists each reader's own value so a split (one stated, one defaulted) stays visible - the axis values themselves never describe an individual reader's fluency. `Reader decides` is the calibrated document's question; `Also answer` carries the others'. `Diagram budget` takes a single number: where the quadrant gives a range, the top when the change alters how two or more independently deployed components talk to each other and the bottom when it changes behaviour inside one; a single-value quadrant takes that value. A datastore the change only reads or writes is not a second component. Diagrams go before the prose that explains them. The current-state section's own diagram counts against the diagram budget; its ~150-word charge follows its words, outside the page figure.
 
 ## Avoid
 
-- Deleting analysis instead of relocating it - a shorter document that decided less is not calibrated, it is thinner
-- Dropping a term to avoid glossing it, leaving a vaguer sentence than the original
-- Condescension markers, or restating the reader's own domain back to them
-- Treating an unstated profile as permission to write at the author's own level
 - Reordering or renaming the caller's sections - this skill sets depth, vocabulary, diagram count, and what moves to the appendix; the caller's output contract owns the section list
+- Writing a bound into a gloss that the system does not enforce

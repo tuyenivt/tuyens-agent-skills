@@ -35,7 +35,7 @@ Required: report or symptom. Optional: affected entity (user/order/request ID), 
 
 ### Step 1 - Detect Stack
 
-Consume the stack the calling workflow supplies; run `Use skill: stack-detect` only when none was handed in. It is consumed in Step 4, where the framework-implicit behaviours to check (transaction boundaries, ORM callbacks, scheduling, retries, caching, serialization defaults) depend on the framework, and it is handed forward on escalation.
+Consume the stack the calling workflow supplies; run `Use skill: stack-detect` only when none was handed in. Its `Language` and `Framework` are consumed in Step 4, where the framework-implicit behaviours to check (transaction boundaries, ORM callbacks, scheduling, retries, caching, serialization defaults) depend on the framework, and are handed forward on escalation in the Escalation line's `**Stack:**` field, the stack's only home in this output.
 
 ### Step 2 - Classify Request
 
@@ -58,12 +58,12 @@ Request Type describes what was reported; Verdict describes what you found. They
 
 Narrow first, then verify it is not silently affecting others.
 
-- One entity or many? Reproducible or intermittent? Specific endpoint/feature/data subset? Started at a specific time?
-- **Blast radius probe**: query for other entities with the same symptom (e.g., other users with the same status filter); for operational failures, the impact set is other runs of the same job plus downstream consumers of its output; for an alert with no entity, it is whether other hosts or jobs in the same group show the same signal; check error logs/metrics for the same code path - elevated rates suggest wider impact; if traceable to a deploy/config/migration, assume all users on that code path may be affected until proven otherwise. When you cannot run the probe (no DB/log access), mark it `Not run` and name the recommended query as an action item. A probe with more than one part that you could only half-run is `Partially run` - say which half, and carry the unrun half into Remaining Uncertainty.
+- One entity or many? Reproducible or intermittent? Specific endpoint/feature/data subset? Started at a specific time? Set Time Window from the reported occurrence, widened by `fetch_issue` first-seen/last-seen or the earliest matching log line once Step 5 has run; while the symptom continues, the range ends at the latest occurrence held.
+- **Blast radius probe**: query for other entities with the same symptom (e.g., other users with the same status filter); for operational failures, the impact set is other runs of the same job plus downstream consumers of its output; for an alert with no entity, it is whether other hosts or jobs in the same group show the same signal; check error logs/metrics for the same code path - elevated rates suggest wider impact; if traceable to a deploy/config/migration, assume all users on that code path may be affected until proven otherwise. When you cannot run the probe (no DB/log access), mark it `Not run` and name the recommended query as an action item. A probe with more than one part that you could only half-run is `Partially run` - say which half, and carry the unrun half into Remaining Uncertainty. The probe is `N/A` only when there is no entity, no peer group, no prior run and no downstream consumer to check.
 
-**Escalate to `incident-root-cause` if any of:** >=3 distinct users (or tenants) affected within an hour - entities alone do not count, and "N others affected" counts distinct users excluding the reporter; error rate on the affected path is more than 2x baseline and more than 10 errors in that hour, so a handful of errors on a quiet path does not qualify; OR a revenue/auth/data-integrity path shows confirmed multi-user impact or active error-rate elevation. "Confirmed" means observed in evidence - a mechanism that could plausibly affect many users is a reason to run the probe, not a reason to escalate. Evaluate the error-rate criterion from evidence in hand; when no error-rate figure is held, fetch `metric_series` for it here (`ops-observability-fetch`) or mark that criterion `Not run`. A single job or queue with no peer group makes the probe `N/A`.
+**Escalate to `incident-root-cause` if any of:** >=3 distinct users (or tenants) affected within an hour - entities alone do not count, and "N others affected" counts distinct users excluding the reporter; error rate on the affected path is more than 2x baseline and more than 10 errors in that hour, so a handful of errors on a quiet path does not qualify; OR a revenue/auth/data-integrity path shows confirmed multi-user impact or active error-rate elevation. "Confirmed" means observed in evidence - a mechanism that could plausibly affect many users is a reason to run the probe, not a reason to escalate. Evaluate the error-rate criterion from evidence in hand; when no error-rate figure is held, or the fetched `metric_series` reads `Baseline delta: no baseline`, fetch it here (`ops-observability-fetch`) or mark that criterion `Not run`.
 
-Escalating ends this investigation. Fill Request Type, Affected Scope, Blast Radius Probe, Time Window, Escalation and the Verdict line; write the handoff into Evidence; omit the Expected and Actual lines and the Root Finding section; Recommended Action carries the single hand-off action; put anything still unknown in Remaining Uncertainty. The handoff carries the symptom, the scope found so far, the detected stack, and an error or stack trace or a monitor/issue URL - `incident-root-cause` needs one of those two to start, so where you hold neither, say so in the handoff and name what the receiving engineer must capture first.
+Escalating ends this investigation. Fill Request Type, Affected Scope, Blast Radius Probe, Time Window, Escalation and the Verdict line; omit the Expected and Actual lines and the Root Finding section; Recommended Action carries the single hand-off action; put anything still unknown in Remaining Uncertainty. The Escalation line carries the handoff - the symptom, the scope found so far, the detected Language and Framework, and an error or stack trace or a monitor/issue URL - and Evidence lists the observations it rests on plus a `Not run` bullet for each check that could not be run; the handoff stays on the Escalation line. An error line held in logs counts as the error anchor. A cross-reference the ticket already holds counts as a run part of the probe. `incident-root-cause` needs one of those two anchors to start, so where you hold neither, say so on the line and name what the receiving engineer must capture first.
 
 ### Step 4 - Verify Expected Behavior
 
@@ -77,7 +77,7 @@ Use skill: `ops-observability-fetch` for any row whose evidence lives in an APM/
 
 Synthesize what comes back into the `Evidence` bullets with its source named; do not paste raw blocks. A block that comes back needing a parameter is answerable - supply it and refetch; a block with no transport, or whose call errored, makes its check `Not run`; an empty result from a working transport is evidence of absence, not `Not run`.
 
-Where a row names `log-analysis`, hand it the affected service and the failure window, or the request ID with the window it occurred in, which its required inputs need, and fold what it returns into this report: its Key Evidence into `Evidence`, its trigger and causal chain into `Root Finding`, its Log Gaps into `Remaining Uncertainty`.
+Where a row names `log-analysis`, hand it the failure window or a held log/trace/issue URL (its required inputs), plus the affected service, which it needs to fetch a `log_window`, and any request ID; fold what it returns into this report: its Key Evidence into `Evidence`, its trigger and causal chain into `Root Finding`, its Log Gaps into `Remaining Uncertainty`.
 
 Some evidence these rows call for lives outside all six capabilities - DB state, role and entitlement records, flag assignments, migration history. Read those from the systems that hold them, or mark the check `Not run` per the Rules.
 
@@ -120,11 +120,11 @@ Request Type: {Data | Access | Operational | Unexpected behavior | Performance |
 
 Affected Scope: {Single entity | N entities | Single user | N users | Tenant/cohort | Specific feature | All users | None (alert only) | Unknown - probe not run}
 
-Blast Radius Probe: {Confirmed isolated | Confirmed N others affected | Potentially affects N others | Partially run - <which half> | Not run | N/A - no entity or group scope} - {query/source used, or the one recommended}
+Blast Radius Probe: {Confirmed isolated | Confirmed N others affected | Potentially affects N others | Partially run - <which half> | Not run | N/A - no entity, peer group, prior run or downstream consumer} - {query/source used, or the one recommended}
 
-Escalation: {Not met | Not met - <criterion> not run | Escalated - <criterion met>; handoff: stack <stack>, <error or stack trace, or monitor/issue URL held | none held - capture <what> first>}
+Escalation: {Not met | Not met - <criterion> not run | Escalated - <criterion met>; handoff: <symptom>, <scope>, **Stack:** <Language> / <Framework>, <error or stack trace, or monitor/issue URL held | none held - capture <what> first>}
 
-Time Window: {first occurrence | range from first to latest occurrence}{, recurring <cadence>}{, unknown - <what would establish it>}
+Time Window: {first occurrence | first to latest occurrence{, recurring <cadence>}{, continuing} | unknown - <what would establish it>}
 
 ### Expected vs Actual
 - Expected: {what should happen; for alerts, the monitor's intent}
@@ -151,7 +151,7 @@ Time Window: {first occurrence | range from first to latest occurrence}{, recurr
 - [ ] behavioral-principles loaded before Step 1; Step 1: stack taken from the caller or detected
 - [ ] Step 2: request type classified, using the enum verbatim, before evidence collection
 - [ ] Step 3: blast radius probed - confirmed isolated, quantified, partially run, N/A, or marked Not run with the recommended check
-- [ ] Step 3: escalation criteria checked (>=3 distinct users within an hour / error rate over 2x baseline and over 10 errors in that hour / revenue, auth or data-integrity path with confirmed multi-user impact or active error-rate elevation); Escalation line states the outcome, naming any criterion not run
+- [ ] Step 3: escalation criteria checked (>=3 distinct users within an hour / error rate over 2x baseline and over 10 errors in that hour / revenue, auth or data-integrity path with confirmed multi-user impact or active error-rate elevation); Escalation line states the outcome, naming any criterion not run, and carries the handoff when Escalated
 - [ ] Step 4: expected behavior verified before concluding (code for bugs, or the source that stood in for it; monitor intent for alerts), or n/a - Escalated at Step 3
 - [ ] Step 5: fetch performed or deliberately skipped because the ticket already held the evidence; for Data requests, API/UI response compared to DB to isolate the layer; unrunnable checks marked Not run; or n/a - Escalated at Step 3
 - [ ] Step 6: verdict named from the enum; alert verdicts carry the tune-vs-fix decision as an action
@@ -162,5 +162,3 @@ Time Window: {first occurrence | range from first to latest occurrence}{, recurr
 
 - Fishing through logs without a hypothesis - state what signal you needed if absent
 - Handing off a "Bug" verdict without a stack trace or reproduction path
-- Skipping layer isolation on data issues - "the value is wrong" without naming which layer is incorrect
-- Tuning an alert without asking whether the underlying load pattern should change instead

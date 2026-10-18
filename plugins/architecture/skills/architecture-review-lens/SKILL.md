@@ -14,18 +14,18 @@ user-invocable: false
 ## Rules
 
 - Review the artifact as written, not the artifact you would have authored. Facts the reviewer knows that the artifact omits (regulatory scope, hidden consumers) enter as reviewer assumptions in Review Context and may ground findings - cite them as "reviewer context"
-- Every finding cites a specific section, claim, or omission, and carries `F{n}`, a severity, and a recommendation wherever it is raised. Steps that default to a table add three columns for them rather than dropping them; a finding written in the Step 5 format sits under that table as a list
-- Every finding carries a severity: Blocker | Major | Minor | Nit. A finding is a Blocker when the decision cannot be made until it is resolved - that single test covers a load-bearing gap, a contradiction that changes the recommendation, and a Major or a required-factor gap nobody can bound into a specific pre-adoption change
+- Every finding cites a specific section, claim, or omission, and carries `F{n}`, a severity, and a recommendation wherever it is raised. Steps that default to a table add three columns for them rather than dropping them, `-` in each on a row with no finding; a finding written in the Step 5 format sits under that table as a list
+- Every finding carries a severity: Blocker | Major | Minor | Nit. A finding is a Blocker when the decision cannot be made until it is resolved - that single test covers a load-bearing gap, a contradiction that changes the recommendation, a load-bearing factual error, and a Major or a required-factor gap nobody can bound into a specific pre-adoption change
 - Distinguish **Missing** (not present) from **Under-specified** (vague) from **Wrong** (incorrect on the facts). An author-acknowledged TODO is still Missing or Under-specified, at full severity
-- Record each finding once, in the earliest lens step that captures it - the placement rules in Steps 2, 5 and 6 (Wrong goes to Step 3 or 5, an overlapping factor to Step 6) are the specific case and win; number findings (F1, F2, ...) so later steps reference rather than restate them. Assumptions carry their own series (A1, A2, ...); an assumption whose severity-if-wrong is Major or Blocker reaches the verdict only through a finding - a new one, or an existing one raised to that severity, per Step 4
-- The verdict is driven by the highest-severity findings, not their count. Breadth reaches the verdict through one mechanism only: when findings across three or more factors together mean the decision cannot be made, open one Blocker citing them at the top of the Verdict section, and let that Blocker drive the verdict
+- Record each finding once, numbered F1, F2, ... in the order raised across steps (Step 2's table first, then Step 3, and so on), so later steps reference rather than restate. A factor whose claim the artifact contradicts is Present, and the contradiction is its Wrong finding. Placement, in precedence order: a Missing or Under-specified factor is a Step 2 finding; a Wrong claim goes to Step 3 when it contradicts the artifact, otherwise to Step 6 when Step 6 runs and its factor names the same axis as a Step 6 criterion or Step 5 has collapsed, otherwise to Step 5; any other finding on an overlapping factor goes to Step 6, or to Step 5 when Step 6 is skipped; everything else goes to the earliest step that captures it. Assumptions carry their own series (A1, A2, ...); an assumption whose severity-if-wrong is Major or Blocker reaches the verdict only through a finding - a new one, or an existing one raised to that severity, per Step 4
+- The verdict is driven by the highest-severity findings, not their count. Breadth reaches the verdict through one mechanism only: when no finding is itself a Blocker but findings across three or more factors together mean the decision cannot be made, open one Blocker citing them at the top of the Verdict section, and let it drive the verdict
 - Recommend the smallest concrete change that resolves each finding. Propose a redesign only when no targeted change resolves it, and say why
 
 ## Severity
 
 | Severity | Meaning                                                                                |
 | -------- | -------------------------------------------------------------------------------------- |
-| Blocker  | Decision cannot be made until this is resolved - the single test, which a load-bearing factual error meets when the decision rests on it |
+| Blocker  | The single test in Rules: the decision cannot be made until this is resolved           |
 | Major    | Significant gap, contradiction, or risk that must be addressed before adoption         |
 | Minor    | Weak spot the author should improve; on its own does not block adoption (the required-factor gate in Step 8 is separate) |
 | Nit      | Wording, formatting, or style preference                                               |
@@ -49,13 +49,13 @@ Where a factor is also scored in Step 6, the two vocabularies must agree: Missin
 Presence is settled here and quality in Step 5, so a Missing or Under-specified factor is recorded once, here, at the severity floors below; Step 5 then evaluates only what is Present.
 
 - Missing -> Major minimum; Blocker if the decision cannot be made without it (e.g., rollback for a high-blast-radius change) - a distinct test from workflow-marked required, which gates the Approve verdict in Step 8
-- Under-specified -> Minor minimum; Major if the gap forces guesswork on a load-bearing decision
+- Under-specified -> Minor minimum; Major if the gap forces guesswork on a load-bearing decision; Blocker by the single test
 - A reviewer-context fact bearing on a factor already Missing or Under-specified enters that finding's text, not a second finding
-- A factor can be Present yet **Wrong**: mark it Present here and raise the error once - in Step 3 if it contradicts the artifact, otherwise in Step 5, or in Step 6 when Step 5 has collapsed - Major minimum, Blocker by the single test. Arithmetic on the artifact's own numbers counts as artifact evidence, not reviewer context
+- A factor can be Present yet **Wrong**: mark it Present here and raise the error once, where the Rules placement order sends it - Major minimum, Blocker by the single test. Arithmetic on the artifact's own numbers counts as artifact evidence, not reviewer context
 
 ### 3. Internal Consistency
 
-Find contradictions inside the artifact. Quote both sides with section references and state which is correct (or that the author must resolve). Severity: Major by default, Blocker when the decision cannot be made until the author resolves it. With none found, the section reads `No internal contradictions found` and nothing more.
+Find contradictions inside the artifact - an appendix or numbers file the author supplies is part of it. Quote both sides with section references and state which is correct (or that the author must resolve). Severity: Major by default, Blocker when the decision cannot be made until the author resolves it. With none found, the section reads `No internal contradictions found` and nothing more.
 
 Common patterns:
 
@@ -67,7 +67,7 @@ Common patterns:
 
 ### 4. Assumptions Audit
 
-Surface load-bearing assumptions: **Stated** (explicit; verify still plausible) and **Implicit** (the artifact only works if X, but the author did not say so). For each: `A{n}`, the assumption, what fails if wrong, severity if wrong.
+Surface load-bearing assumptions: **Stated** (explicit; verify still plausible) and **Implicit** (the artifact only works if X, but the author did not say so). One table row per assumption: `A{n}` | Stated or Implicit | the assumption | what fails if wrong | severity if wrong (Blocker, Major, Minor or Nit) | the finding it cites or opens, or `-`.
 
 Assumptions live here. Because this step runs after Steps 2 and 3, an assumption that undermines a finding already written cites that finding's number and adds nothing further, except that the cited finding's severity rises to the assumption's severity-if-wrong when that is higher. One that undermines no existing finding and is itself Major or Blocker if wrong opens a finding here, in the Step 5 format with the assumption's own `A{n}` in place of a factor name.
 
@@ -75,9 +75,9 @@ Audit categories to consider: traffic volume and growth; dependency availability
 
 ### 5. Per-Factor Findings
 
-For each factor marked Present, evaluate quality - the factor exists, but is it right? Zero or more findings per factor. The workflow names the atomic skills to compose for deeper checks (e.g., `architecture-guardrail` for boundary rigor, `ops-backward-compatibility` for contract evolution). If a supplied factor names the same axis as a Step 6 criterion (Reversibility = Reversibility; partial overlap does not count), evaluate it once - in Step 6, or here when Step 6 is skipped - and reference it from the other. Standalone (factor list = the Step 6 criteria), this collapses Step 5: attach findings in this section's format under each scored criterion in Step 6 and leave Step 5 as a one-line pointer.
+For each factor marked Present, evaluate quality - the factor exists, but is it right? Zero or more findings per factor. The workflow names the atomic skills to compose for deeper checks (e.g., `architecture-guardrail` for boundary rigor, `ops-backward-compatibility` for contract evolution). If a supplied factor names the same axis as a Step 6 criterion (Reversibility = Reversibility; partial overlap does not count), evaluate it once - in Step 6, or here when Step 6 is skipped - and reference it from the other. Standalone (factor list = the Step 6 criteria), this collapses Step 5: attach findings in this section's format under each scored criterion in Step 6 and leave Step 5 as the one line `Collapsed into Step 6 - findings sit under each criterion`.
 
-Raise a finding when it would change what the author does; stop when the remaining observations would not. A factor with no defect gets one line - `{Factor} - no findings` - and no manufactured Nit. Where this step and Step 6 both cover a factor, the more specific rule wins: the overlap rule places the finding in Step 6, overriding "earliest step".
+Raise a finding when it would change what the author does; stop when the remaining observations would not. A factor with no defect gets one line - `{Factor} - no findings` - and no manufactured Nit.
 
 Format (repeat per finding):
 
@@ -97,7 +97,7 @@ Treat factors authors typically hand-wave (performance, deployment, trade-offs, 
 
 ### 6. Criteria Scoring
 
-Score each as **Strong** / **Adequate** / **Weak** / **Not addressed** / **N/A**, citing artifact evidence. A score is not a finding: a Present factor scoring below Adequate opens a finding in the Step 5 format, attached under the criterion here, while a factor whose gap is already a numbered finding in any earlier step references it and opens nothing - which is also where the overlap rule sends a factor that names the same axis as a criterion, and where the standalone collapse puts all per-factor findings.
+Score each as **Strong** / **Adequate** / **Weak** / **Not addressed** / **N/A**, citing artifact evidence. A score is not a finding: a criterion scoring below Adequate opens a finding in the Step 5 format, attached under the criterion here, unless its gap is already a numbered finding from an earlier step, which it references instead - this is also where the overlap rule sends a factor that names the same axis as a criterion, and where the standalone collapse puts all per-factor findings. In workflow mode a criterion absent from the supplied factor list that scores Not addressed opens its finding at the Step 2 Missing floor.
 
 | Criterion           | What to Assess                                                                                       |
 | ------------------- | ---------------------------------------------------------------------------------------------------- |
@@ -110,7 +110,7 @@ Score each as **Strong** / **Adequate** / **Weak** / **Not addressed** / **N/A**
 
 ### 7. Questions for the Author
 
-Unresolved, answerable questions grouped by purpose (**Clarification**, **Justification**, **Evidence**, **Scope**, **Risk**). Prefer "what happens if X" over "have you thought about X".
+Unresolved, answerable questions grouped by purpose (**Clarification**, **Justification**, **Evidence**, **Scope**, **Risk**); a group with nothing to ask is omitted. Prefer "what happens if X" over "have you thought about X". With none at all, the section reads `No open questions` and nothing more.
 
 ### 8. Verdict
 
@@ -120,7 +120,7 @@ Unresolved, answerable questions grouped by purpose (**Clarification**, **Justif
 | **Approve with changes** | No Blockers; every Major finding, and every required factor that is Under-specified or Missing, is bounded and specifically addressable before the artifact is adopted |
 | **Needs rework**         | One or more Blockers                                                                                  |
 
-Required factors are those the workflow marks required; if unmarked, treat every supplied factor as required. An N/A factor satisfies Approve - it was ruled irrelevant with a stated reason, which is a completed judgment, not a gap. The verdict opens with the breadth Blocker when one was raised, then references the driving findings. Any non-Approve verdict lists its required changes as a checkbox list: for Needs rework the items that clear the Blockers followed by the open Majors as a second group, for Approve with changes the items that close each Major and each unmet required factor.
+Required factors are those the workflow marks required; if unmarked, treat every supplied factor as required. An N/A factor satisfies Approve - it was ruled irrelevant with a stated reason, which is a completed judgment, not a gap. The verdict opens with the breadth Blocker when one was raised, then references the driving findings. Any non-Approve verdict lists its required changes as a checkbox list: for Needs rework the items that clear the Blockers, followed as a second group by the items that close each open Major and each unmet required factor; for Approve with changes the items that close each Major and each unmet required factor.
 
 ## Output Structure
 
@@ -139,6 +139,5 @@ The workflow shapes formatting (tables vs. lists); standalone, default to tables
 ## Avoid
 
 - Reviewing the artifact you wish the author had written
-- Generic critique ("needs more detail") without naming the section
-- Issuing "Approve with changes" without naming the changes
-- Scoring criteria that do not apply; mark N/A with a one-line reason instead
+- Opening a breadth Blocker when a finding is already a Blocker
+- Scoring a criterion Weak or Not addressed without opening or referencing a numbered finding
