@@ -7,7 +7,7 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first to determine the project stack. Category 1 applies when the project uses JPA/Hibernate - `ORM` says so, or, when `ORM` is absent, the build file declares `spring-boot-starter-data-jpa` / `hibernate-core`. Otherwise it reports `No Redundant Validation findings (no JPA provider).`
+> Load `Use skill: stack-detect` first to determine the project stack. Category 1 applies when the project uses JPA/Hibernate - `ORM` says so, or, when `ORM` is absent, any module's build file declares `spring-boot-starter-data-jpa` / `hibernate-core`. Otherwise it reports `No Redundant Validation findings (no JPA provider).`
 
 ## When to Use
 
@@ -18,13 +18,13 @@ user-invocable: false
 ## Rules
 
 - Cite the evidence that makes the code unnecessary - one value from the `Unnecessary because` list in the Output Format, confirmed by a repo search. No evidence, no finding.
-- A database constraint counts only when a hand-written migration (Flyway/Liquibase) has it: a `NOT NULL` column, unique index or FK. `@Column(nullable = false)` and `@ManyToOne(optional = false)` are DDL hints - Hibernate does not check them at runtime when Bean Validation is on the classpath - so they never stand in for the database. When the schema is generated (`ddl-auto`, exported DDL), entity `@NotNull`/`@Size` are where the constraint comes from and stay.
+- A database constraint counts only when a hand-written migration (Flyway/Liquibase) has it: a `NOT NULL` column, unique index or FK. `@Column(nullable = false)` and `@ManyToOne(optional = false)` are DDL hints - Hibernate does not check them at runtime when Bean Validation is on the classpath - so they never stand in for the database. When the schema is generated (`ddl-auto`, exported DDL), entity `@NotNull`/`@Size` are where the constraint comes from and stay. With a migration tool and `ddl-auto: update` both present, `update` still adds the columns the migrations lack to migration-created tables - with `NOT NULL`, unique constraints and FKs taken from the mapping, never altering a column that already exists. Those constraints are generated, not hand-written, so a column only `update` created keeps its entity `@NotNull`/`@Size`.
 - Which layer owns which assertion:
   - **Presence and uniqueness** (`@NotNull`, unique) duplicated by a database constraint are redundant whatever the write paths.
   - **Shape** (`@NotBlank`, `@Size`, `@Email`, `@Pattern`, `@Positive`) on an entity is redundant only when a validated DTO is the sole write path. A second writer that bypasses the DTO (Kafka consumer, scheduled job, admin tool) rescues it. A `NOT NULL` column enforces non-null, not non-blank.
 - Label: a pattern below that states its own label keeps it; otherwise `[Recommend]`, escalated to `[Must]` when keeping the code has a measurable runtime cost (an extra query per call, a masked exception). Then, overriding both: a justification check that could not be run (no repo access, unresolvable search) downgrades the label to `[Recommend]`, with the open assumption stated in `Justified when`.
 - Code matching several patterns gets one finding under the higher label. Several redundant annotations on one field are one finding (its `Unnecessary because` joins the values with `+`); separate fields are separate findings. Callers and write paths mean production code - tests do not rescue anything.
-- Justification checks (constraint in a migration, sole write path, second impl, `final` class, test seam, `@EnableMethodSecurity`) are repo searches, not diff guesses.
+- Justification checks (constraint in a migration, sole write path, second impl, `final` class under JDK proxies, `@EnableMethodSecurity`) are repo searches, not diff guesses.
 - Defects outside the three categories (a wrong mapping, a bug, a missing unique index) are not findings here - name each on one `Out of scope:` line, anchored like a finding, so the caller routes it.
 
 ## Patterns
@@ -79,7 +79,7 @@ The catch must not continue work in the same transaction: it is marked rollback-
 
 ### Category 2 - Defensive impossibility (guards on framework guarantees)
 
-The framework guarantees: required injection points on container-managed beans (constructor parameters and `@Autowired` members not declared `required = false`, `@Nullable`, `Optional` or `ObjectProvider`); fields of a `@Valid` request body under `@NotNull`; an authenticated principal inside a method reached through the proxy whose `@PreAuthorize` expression requires authentication (`isAuthenticated()`, `hasRole`, `hasAuthority`), with `@EnableMethodSecurity` present. A guard that re-checks a guarantee is dead code that implies the guarantee is unreliable; a guard that silently returns or defaults (`if (x == null) return;`) also hides the regression that should fail loudly.
+The framework guarantees: required injection points on container-managed beans (constructor parameters and `@Autowired` members not declared `required = false`, `@Nullable`, `Optional` or `ObjectProvider`); fields of a `@Valid` request body under `@NotNull` / `@NotEmpty` / `@NotBlank`; an authenticated principal inside a method reached through the proxy whose `@PreAuthorize` expression requires authentication (`isAuthenticated()`, `hasRole`, `hasAuthority`), with `@EnableMethodSecurity` present. A guard that re-checks a guarantee is dead code that implies the guarantee is unreliable; a guard that silently returns or defaults (`if (x == null) return;`) also hides the regression that should fail loudly.
 
 ```java
 // Bad - @Valid + @NotNull already returned 400 before this runs
@@ -94,7 +94,7 @@ ResponseEntity<OrderResponse> create(@Valid @RequestBody CreateOrderRequest req)
 }
 ```
 
-A guard is justified when a caller exists that the guarantee does not cover - the security principal read on a `@Scheduled` thread, or an `@Async` one without context propagation (`getAuthentication()` is null there; Boot 4.1 `spring.task.execution.propagate-context=true` or a `ContextPropagatingTaskDecorator` carries it), a method also called outside the proxy. A request-scoped bean read outside a request throws `ScopeNotActiveException` rather than returning null - a null guard there is dead code, and the scheduled path is broken (`Out of scope:`).
+A guard is justified when a caller exists that the guarantee does not cover - the security principal read on a `@Scheduled` thread, or an `@Async` one without context propagation (`getAuthentication()` is null there; Boot 4.1 `spring.task.execution.propagate-context=true` or a `ContextPropagatingTaskDecorator` carries it, both only with `io.micrometer:context-propagation` on the classpath), a method also called outside the proxy. A request-scoped bean read outside a request throws `ScopeNotActiveException` rather than returning null - a null guard there is dead code, and the scheduled path is broken (`Out of scope:`).
 
 **Blanket `catch (Exception)` in a controller, service, or message listener** - `[Must]`. Swallows `DataIntegrityViolationException`, `NullPointerException` and domain exceptions: in controllers it erases `@RestControllerAdvice` status mapping (404/409 collapse to 500); in listeners it defeats retry and the DLT. A `@Scheduled` method is already logged-and-continued by the scheduler's error handler - flag its catch only when it swallows without logging (`Unnecessary because: scheduler error handler`).
 
@@ -111,7 +111,7 @@ return ResponseEntity.ok(service.fulfill(orderId));
 
 ### Category 3 - Premature abstraction
 
-**`@Service` interface with one implementation** - `[Recommend]`. Every refactor touches two files; Mockito mocks concrete classes; without the interface Spring proxies the class itself (CGLIB).
+**`@Service` interface with one implementation** - `[Recommend]`. Every refactor touches two files; Mockito mocks concrete classes; Spring Boot proxies the class with CGLIB whether or not the interface exists (`spring.aop.proxy-target-class` defaults to `true`).
 
 ```java
 // Bad
@@ -122,7 +122,7 @@ public interface OrderService { OrderResponse fulfill(Long id); }
 @Service public class OrderService { ... }
 ```
 
-Justified when: a second implementation exists (a `@Profile` or test-only one counts); the class or its advised methods are `final` (CGLIB cannot proxy them); a pointcut or `@DeclareParents` targets the interface type (`execution(* com.acme.InvoiceGateway+.*(..))`); the interface is a module or port boundary - the implementation lives in a different module from the interface.
+Justified when: a second implementation exists (a `@Profile` or test-only one counts); the class or its advised methods are `final` and the bean gets an interface-based JDK proxy (`spring.aop.proxy-target-class=false`, or `@Proxyable(INTERFACES)` on the bean) - CGLIB cannot proxy them, and under Boot's default the interface does not avoid CGLIB; a pointcut or `@DeclareParents` targets the interface type (`execution(* com.acme.InvoiceGateway+.*(..))`); the interface is a module or port boundary - the implementation lives in a different module from the interface.
 
 **`BaseService<T, ID>` with one or two subclasses** - `[Recommend]`. Abstract only when 3+ services share real cross-cutting behavior (audit, metrics, tenant scoping).
 
@@ -159,7 +159,7 @@ Order: findings grouped by category (Redundant Validation, Defensive Impossibili
 
 For each category with no findings, state `No <category> findings.` so the caller sees the check ran.
 
-Close with a keep-list whenever the request asks what should stay or reviewed code was contested but is justified - one line per element:
+Close with a keep-list whenever the request asks what should stay or reviewed code was contested but is justified - one line per element, `Keep: none` when nothing is:
 
 ```
 Keep: {code element} - {constraint or reason it is necessary}
@@ -173,5 +173,5 @@ Then, when any, `Out of scope: {defect} at {file:line} - {owning concern}` lines
 - Citing `nullable = false` or `optional = false` as the enforcing constraint without the schema constraint behind it
 - Flagging an entity shape annotation without checking for non-DTO write paths
 - Recommending removal of a unique pre-check without confirming the unique index exists
-- Flagging a `@Service` interface before checking for a second impl, a `final` class, an interface-typed pointcut, or a module boundary
+- Flagging a `@Service` interface before checking for a second impl, a `final` class under JDK proxies, an interface-typed pointcut, or a module boundary
 - Treating Optional/stream style preferences as overengineering - this skill judges necessity, not idiom

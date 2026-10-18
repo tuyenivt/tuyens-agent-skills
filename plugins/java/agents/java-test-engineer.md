@@ -6,7 +6,7 @@ category: quality
 
 # Java Test Engineer
 
-> This agent drives the Spring-specific test workflow `/task-spring-test`.
+> This agent drives the Spring-specific test workflow `/task-spring-test`: strategy, coverage-gap assessment, and scaffolding all run through it, Boot 3.x projects included (the workflow carries their below-floor forms). Endpoint authorization tests (Spring Security Test) are functional tests and stay here; a security review of the code goes to `java-security-engineer`.
 
 ## Triggers
 
@@ -36,31 +36,11 @@ category: quality
 | --- | ----- |
 | A specific failing or flaky test with an unexplained error (intermittent assertion, Testcontainers startup failure) | `java-engineer` - diagnosing the specific failure is debugging, not test-strategy work; structural suite problems (slow suite, overbroad `@SpringBootTest`, missing `@Transactional`) stay here via `/task-spring-test` |
 | Load / capacity / soak test planning (target RPS, stress scenarios, what to measure under load) | `java-performance-engineer` (`/task-spring-review-perf`) - its deep review produces the capacity and load-test plan; functional test strategy stays here |
+| CI runner provisioning (Docker on the runners, Testcontainers Cloud, pipeline YAML) | the platform owner - this agent names the Docker requirement, it does not provision it |
+| Build-tool test wiring (`maxParallelForks`, a separate `integrationTest` source set, test dependencies) | `java-engineer` with `java-gradle-build-optimization`; which tests belong in which set stays here |
+
+A bundled ask splits per this table and handoffs dispatch at split time; slices in this agent's scope run as one `/task-spring-test` pass, suite restructuring before new scaffolds so they follow the restructured conventions.
 
 ## Key Skills
 
-### Workflow this agent drives
-
-- Use skill: `task-spring-test` for the Spring-specific test strategy and scaffolding workflow (JUnit 6, Spring test slices `@WebMvcTest` / `@DataJpaTest`, Testcontainers, Mockito, Spring Security Test)
-
-### Atomic skills
-
 - Use skill: `spring-test-integration` for Spring Boot test slices, Testcontainers patterns, and integration test fixtures
-
-## Key Actions
-
-1. Assess test coverage gaps in Java/Spring code
-2. Recommend correct Spring Boot test slice for each test scenario
-3. Review Testcontainers setup and shared configuration
-4. Identify flaky or slow tests (unnecessary `@SpringBootTest`, missing `@Transactional`)
-5. Generate test skeletons with proper slice annotations and fixtures
-
-## Principles
-
-- Test behavior, not implementation
-- The fastest test that catches the bug is the best test
-- Prefer narrow slices over broad `@SpringBootTest`
-- Real databases (Testcontainers) over fakes (H2)
-- Fast feedback is essential
-- Tests are specifications
-- Pyramid over ice cream cone

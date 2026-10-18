@@ -28,7 +28,7 @@ user-invocable: false
 - `spring.jpa.open-in-view=false`. With Boot's default (`true`) the request's EntityManager keeps the connection from the first query until the response is written, so narrowing transactions releases nothing
 - Side effects that must not run on rollback fire after commit; side effects that must survive a crash go through a transactional outbox (`spring-messaging-patterns`)
 - Pass IDs across thread boundaries (`@Async`, virtual threads, executors), never managed entities
-- `timeout` bounds the database statements inside the transaction: each statement gets the remaining time as its JDBC query timeout, so one in flight at the deadline is cancelled and one started after it fails with `TransactionTimedOutException`. It does not interrupt Java code, remote calls, or the commit. Set it on batch and multi-query transactions from the p99 of the queries inside (typically 2-5s); without latency data, estimate from the query shape and say so
+- `timeout` bounds the database statements inside the transaction: each statement gets the remaining time as its JDBC query timeout, so one in flight at the deadline is cancelled (`QueryTimeoutException`; an untranslated `PersistenceException` from a direct `EntityManager` query) and one started after it fails - `TransactionTimedOutException` from `JdbcTemplate` or a direct `EntityManager` query (from a derived repository query, wrapped in Spring Data's `BadJpqlGrammarException`), Hibernate's `TransactionException` ("Transaction timeout expired") for statements Hibernate issues - wrapped in `JpaSystemException` from a repository call (`findById`) and at the commit-time flush, which then rolls back; bare from a lazy load or a direct `EntityManager.find`. It does not interrupt Java code or remote calls. Set it on batch and multi-query transactions from the p99 of the queries inside (typically 2-5s); without latency data, estimate from the query shape and say so
 
 ## Patterns
 
@@ -58,10 +58,10 @@ Prefer a collaborator bean when the inner method has a distinct responsibility; 
 
 A 2-second HTTP call inside `@Transactional` holds a HikariCP connection for 2 seconds. Size from `connections = arrival rate x hold time`: 120 rps x 30ms of DB work needs ~4 connections; the same 120 rps with a 1.5s call inside the transaction needs ~184, and a pool of 20 supports 13 rps. Two amplifiers:
 
-- Every row the long transaction wrote stays locked until its commit, so other requests block on those rows *while holding their own connections* - endpoints that never make the remote call time out too.
-- With `spring.threads.virtual.enabled=true` the 200-thread Tomcat cap is gone (admission is bounded only by `server.tomcat.max-connections`, default 8192), so overload queues at Hikari's 30s `connectionTimeout`. Set `connection-timeout` to fail fast, and bound the remote call itself (read timeout + a concurrency limit) - it is now the only bounded resource.
+- Every row the transaction has already written to the database stays locked until its commit - `JdbcTemplate` and `@Modifying` statements, `IDENTITY` inserts, anything flushed before the call (Hibernate defers dirty-checked updates to the commit flush, so those lock only after the call returns) - so other requests block on those rows *while holding their own connections* - endpoints that never make the remote call time out too. Their wait is hold time as well, so measured exhaustion exceeds `rate x remote latency`; name the difference as lock amplification, `(inferred)` unless lock waits were sampled during the incident.
+- With `spring.threads.virtual.enabled=true` the 200-thread Tomcat cap is gone (admission is bounded only by `server.tomcat.max-connections`, default 8192), so overload queues at Hikari's 30s `connectionTimeout`. Set `connection-timeout` to fail fast, and bound the remote call itself (read timeout + a concurrency limit) - it is now the only bounded resource. A parked HTTP call on a virtual thread still holds the connection bound to that thread.
 
-Confirm before rewriting. PostgreSQL: `pg_stat_activity` shows backends `idle in transaction` with an old `xact_start`, plus backends with `wait_event_type = 'Lock'`. MySQL: `information_schema.innodb_trx` (old `trx_started`) plus `performance_schema.data_lock_waits` (8.0+).
+Confirm before rewriting. PostgreSQL: `pg_stat_activity` shows backends `idle in transaction` with an old `xact_start`, plus backends with `wait_event_type = 'Lock'`; a transaction that has sent no SQL yet (Hibernate defers inserts and dirty updates to the flush) holds its pool connection while its backend shows plain `idle`, so Hikari's active and pending counts are the hold-time evidence. MySQL: `information_schema.innodb_trx` (old `trx_started`) plus `performance_schema.data_lock_waits` (8.0+).
 
 ```java
 // Bad
@@ -89,7 +89,7 @@ void saveOrder(OrderRequest req) {
 void onPlaced(OrderPlacedEvent e) { kafkaTemplate.send("orders", e.orderId()); }
 ```
 
-Pre-tx calls add a compensation duty: if `saveOrder` fails, the reservation leaks - release it in a catch block or reserve with a TTL.
+Pre-tx calls add a compensation duty: if `saveOrder` fails, the reservation leaks - release it in a catch block and, where the remote system offers one, reserve with a TTL as the backstop for a crash before the catch runs (a system you do not own gets whichever of the two it supports). The duty belongs to the method that makes the remote call (the orchestrator); its transactional callees carry none.
 
 ### AFTER_COMMIT listeners
 
@@ -97,8 +97,8 @@ AFTER_COMMIT listeners run in the transaction's `afterCompletion` callback, befo
 
 - A synchronous listener still holds the connection - slow work belongs on `@Async`.
 - An exception thrown by a synchronous listener is caught and logged by Spring and never reaches the caller: the request returns success and the side effect is silently lost. Required effects go through the outbox.
-- A listener that writes needs `@Transactional(propagation = REQUIRES_NEW)`. Spring 6.1+ fails startup when a `@TransactionalEventListener` method or class carries `@Transactional` with any other propagation than `REQUIRES_NEW` / `NOT_SUPPORTED`; and a `REQUIRED` write in a callee joins the completed transaction and never commits.
-- An `@Async` handler that loads by ID is safe only because it runs after commit - dispatching `@Async` work directly from inside the transaction races the commit and can read nothing.
+- A listener that writes needs `@Transactional(propagation = REQUIRES_NEW)`. Spring 6.1+ fails startup when a `@TransactionalEventListener` carries `@Transactional` (on the method; 6.2+ also its class) with any propagation other than `REQUIRES_NEW` / `NOT_SUPPORTED` (6.1.3+; 6.2.10+ exempts `BEFORE_COMMIT`); and a `REQUIRED` write in a callee joins the completed transaction and never commits.
+- An `@Async` handler that loads by ID is safe only because it runs after commit - dispatching `@Async` work directly from inside the transaction races the commit and can read nothing. The same holds for virtual-thread executors and `CompletableFuture` chains: the async method takes the ID, opens its own transaction and re-reads committed state.
 
 ### Remote call whose result must be persisted (payment)
 
@@ -119,10 +119,9 @@ public Order placeOrder(OrderRequest req) {
 }
 ```
 
-- Only a definite decline marks the row failed. An ambiguous gateway error (timeout, 5xx) or a failure in tx 2 leaves it PENDING, and a scheduled reconciliation job resolves PENDING rows against the gateway by idempotency key - so a charged order is never recorded as failed.
+- Only a definite decline marks the row failed. An ambiguous gateway error (timeout, 5xx) or a failure in tx 2 leaves it PENDING, and a scheduled reconciliation job resolves PENDING rows against the gateway by idempotency key - so a charged order is never recorded as failed. Any intermediate claim state of another flow (`SETTLING`, `REFUNDING`) is PENDING under another name and gets the same reconciliation.
+- The idempotency key is generated once per PENDING row in tx 1 and stored on it before the call, so every retry of the call reuses it; a key generated per attempt, or taken from an optional client header (`null` - a unique constraint accepts any number of NULLs), makes every retry a new charge. A client that wraps every failure in one exception type is split first, by the gateway's response code, into declined and ambiguous - until then every failure is ambiguous and stays PENDING.
 - The same shape holds for any tap/terminal flow: `AWAITING_PAYMENT` before the call, a terminal state after, `UNKNOWN` for ambiguous outcomes.
-
-Virtual threads do not change any of this: a parked HTTP call still holds the connection bound to that thread.
 
 ### "Not rolling back" - five causes
 
@@ -146,7 +145,7 @@ void processPayment(Order order) throws PaymentException { ... }
 
 ### Read-only services
 
-`readOnly = true` sets Hibernate's flush mode to MANUAL and marks the JDBC connection read-only. An UPDATE in a `readOnly` method still commits when the method joins a caller's read-write transaction - the flag applies only where the transaction starts. In a transaction that does start read-only, dirty-checked entity changes are dropped silently, and explicit statements (`@Modifying` queries, `saveAndFlush`) fail with a read-only-transaction error. Removing a stray controller-level `@Transactional` flips which method starts the transaction - fix the write method's annotation in the same change.
+`readOnly = true` sets Hibernate's flush mode to MANUAL and marks the JDBC connection read-only. An UPDATE in a `readOnly` method still commits when the method joins a caller's read-write transaction - the flag applies only where the transaction starts. In a transaction that does start read-only, changes to existing entities are dropped silently - whether dirty-checked or passed to `save` / `saveAndFlush`, which merges them into a read-only instance - and so is a new entity passed to `save` whose ID needs no database call (`UUID`, a cached `SEQUENCE` block); only a statement that reaches the database fails with a read-only-transaction error (`@Modifying` queries, `saveAndFlush` of a new entity, an `IDENTITY` insert, PostgreSQL's `nextval()` refilling the sequence block). Removing a stray controller-level `@Transactional` flips which method starts the transaction - fix the write method's annotation in the same change.
 
 ```java
 @Service @Transactional(readOnly = true) @RequiredArgsConstructor
@@ -162,7 +161,7 @@ class OrderQueryService {
 }
 ```
 
-Replica routing: `readOnly` reaches the router only behind a `LazyConnectionDataSourceProxy` (otherwise the connection is taken before the flag is set). `new LazyConnectionDataSourceProxy(primary)` + `setReadOnlyDataSource(replica)` (Spring 6.1.2+) does it without a custom `AbstractRoutingDataSource`. Boot 4.1's `spring.datasource.connection-fetch=lazy` adds only the proxy, with no replica - it defers connection acquisition, it does not route.
+Replica routing: `readOnly` reaches a read replica only behind a `LazyConnectionDataSourceProxy` (otherwise the connection is taken before the flag is set) - `new LazyConnectionDataSourceProxy(primary)` + `setReadOnlyDataSource(replica)` (Spring 6.1.2+), or the proxy around an `AbstractRoutingDataSource` keyed on `TransactionSynchronizationManager.isCurrentTransactionReadOnly()` - Boot 4.1's `spring.datasource.connection-fetch=lazy` adds the proxy with no replica, so it defers acquisition and routes nothing.
 
 ### `REQUIRES_NEW` for records that must survive rollback
 
@@ -174,34 +173,15 @@ class AuditLog {
 }
 ```
 
-It suspends the outer transaction and takes a second connection. Two failure modes: if the inner transaction touches a row the suspended outer one has locked, it waits on itself - no deadlock is detected, it hangs until `lock_timeout` (PostgreSQL, default none) / `innodb_lock_wait_timeout` (MySQL, 50s); and once concurrent callers reach the pool size, each holds one connection waiting for a second - pool deadlock until `connectionTimeout`. Keep it out of loops.
+It suspends the outer transaction and takes a second connection. Two failure modes: if the inner transaction touches a row the suspended outer one has locked, it waits on itself - no deadlock is detected, it hangs until `lock_timeout` (PostgreSQL, default none) / `innodb_lock_wait_timeout` (MySQL, 50s); and once concurrent callers reach the pool size, each holds one connection waiting for a second - pool deadlock until `connectionTimeout`. Keep it out of loops. Decide per record which semantics it needs: an audit of the *attempt* (a declined payment, a rejected request) must survive the rollback - `REQUIRES_NEW`; an audit of the *outcome* belongs to the business transaction - `REQUIRED`, gone with it on rollback.
 
 ### Batch jobs: short transaction per item
 
 A scheduled or batch orchestrator has no transaction of its own (`none - orchestrator, tx lives in callees`) and calls a `@Transactional` per-item (or per-chunk) method, so one bad item neither rolls back nor blocks the rest and no transaction spans the whole run. Overlap between runs is the scheduler's concern (`spring-async-processing`).
 
-### Cross-thread boundaries: pass IDs
-
-```java
-// Bad - managed entity handed to another thread: no Session, lazy fields blow up
-@Transactional
-void process(Long id) {
-    Order order = orderRepository.findById(id).orElseThrow();
-    asyncService.handle(order);
-}
-
-// Good - the async method owns its transaction and re-reads committed state
-void process(Long id) { asyncService.handle(id); }
-
-@Async @Transactional
-void handle(Long orderId) { Order o = orderRepository.findById(orderId).orElseThrow(); ... }
-```
-
-When the ID was created in the current transaction, dispatch from an `AFTER_COMMIT` listener instead. Same rule for virtual-thread executors and `CompletableFuture` chains.
-
 ### Concurrent-write anomalies
 
-Lost updates (two tills selling the last unit) are a locking concern, not a propagation one: an atomic conditional `UPDATE ... WHERE on_hand >= :qty`, optimistic `@Version` + retry, or a pessimistic lock - see `spring-jpa-performance`. `isolation = SERIALIZABLE` is the last resort.
+Lost updates (two tills selling the last unit) are a locking concern, not a propagation one: an atomic conditional `UPDATE ... WHERE on_hand >= :qty`, optimistic `@Version` + retry, or a pessimistic lock - see `spring-jpa-performance`. A transaction that updates several rows (every line's stock) locks them in a fixed order (sorted by ID), or two orders sharing items deadlock. `isolation = SERIALIZABLE` is the last resort.
 
 ### Idempotent writes
 
@@ -225,16 +205,16 @@ Alternative: the insert in a `@Transactional` method on another bean, called fro
 
 ## Output Format
 
-In every mode, emit the `**Engine:**` line once, then one block per method whose transactional configuration or call path the design sets or changes - including methods the fix extracts into new beans and callees whose callers now reach them differently; methods the design leaves exactly as they are get none. Diagnosis answers (an incident's questions, with numbers) go in prose before the findings; a cause established by inference rather than evidence carries `(inferred)`. Carry a current broken value in `Reason` as `was: ...`; a setting considered and rejected (`isolation = SERIALIZABLE`, `REQUIRES_NEW`, outbox) goes in `Reason` as `rejected: <setting> - <why>`. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when it can exhaust the pool, commit a failure, lose a required side effect, or lose an update, `[Recommend]` otherwise - then the blocks for the target design. Close with the `Pool:` line whenever pool sizing or connection hold time is part of the analysis.
+In every mode, emit the `**Engine:**` line once, then one block per method whose transactional configuration or call path the design sets or changes - including methods the fix extracts into new beans and the orchestrator that calls them; a callee that joins its caller's transaction unchanged, every repository method, and methods the design leaves exactly as they are get none; a callee the design changes whose source was not provided gets its block with `unknown - <class> not reviewed` in the slots its source would fill. Diagnosis answers (an incident's questions, with numbers) go in prose before the findings; a cause established by inference rather than evidence carries `(inferred)`. Carry a current broken value in `Reason` as `was: ...`; a setting considered and rejected (`isolation = SERIALIZABLE`, `REQUIRES_NEW`, outbox) goes in `Reason` as `rejected: <setting> - <why>`. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when it can exhaust the pool, commit a failure, lose a required side effect, or lose an update, `[Recommend]` otherwise - then the blocks for the target design. A design request against existing code reviews that code first: findings, then the blocks as the target state; a greenfield request has no findings. Close with the `Pool:` line whenever pool sizing or connection hold time is part of the analysis.
 
 ```
-**Engine:** {PostgreSQL | MySQL | unknown - both variants given}
+**Engine:** {PostgreSQL | MySQL | MariaDB - MySQL syntax | <detected engine> - both variants given | unknown - both variants given}
 ```
 
 ```
 Method: {class.method}
 
-Propagation: {REQUIRED | REQUIRES_NEW | MANDATORY | SUPPORTS | NOT_SUPPORTED | NEVER | NESTED | none - orchestrator, tx lives in callees}
+Propagation: {REQUIRED | REQUIRES_NEW | MANDATORY | SUPPORTS | NOT_SUPPORTED | NEVER | NESTED | none - orchestrator, tx lives in callees | none - no transaction}
 
 Read-Only: {Yes | No | n/a}
 
@@ -246,27 +226,20 @@ External-IO-In-Tx: {Yes | No}
 
 Concurrency: {none needed | atomic conditional UPDATE | @Version + retry | PESSIMISTIC_WRITE | unique constraint | isolation = SERIALIZABLE + retry on serialization failure}
 
-Compensation: {catch-and-release | TTL reservation | reconciliation job | n/a - no IO before the transaction}
+Compensation: {catch-and-release | TTL reservation | catch-and-release + TTL | reconciliation job | none needed - <the call is a read or idempotent> | n/a - this method makes no remote call}
 
 Post-Commit Hooks: {AFTER_COMMIT events | outbox | none}
 
 Reason: {why this configuration; "was: <current setting>" and "rejected: <setting> - <why>" where they apply}
 ```
 
-Closing line, once per deliverable:
+Closing line, once per deliverable - `required` is the cluster-wide figure computed with the designed hold time (the incident's hold time and its product belong in the diagnosis prose), compared with the product:
 
 ```
-Pool: {maximum-pool-size} x {instances}, connection-timeout {s}; required ~ {rate} x {hold time} = {n | unknown - no rate data}
+Pool: {maximum-pool-size} x {instances}, connection-timeout {s}, db max_connections {n | unknown}; required ~ {rate} x {hold time} = {n | unknown - no rate data}
 ```
-
-`Rollback: default` unless a checked exception can cross that boundary.
 
 ## Avoid
 
-- `@Transactional` on controllers or repositories
-- `this.X()` calls to `@Transactional` methods (proxy bypass)
-- Remote IO inside a transaction; OSIV left on
-- Passing managed entities to `@Async`, virtual threads, or executors
 - `REQUIRES_NEW` in loops, or without a written reason
 - Catching `DataIntegrityViolationException` and continuing in the same transaction
-- Omitting `timeout` on batch or long multi-query transactions

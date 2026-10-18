@@ -27,7 +27,7 @@ user-invocable: false
 - Shared logic via convention plugins in `build-logic/`, never `allprojects {}` / `subprojects {}`; single-module builds apply plugins directly and introduce `build-logic/` with the second module
 - Spring Boot plugin only on application modules: it adds `bootJar` (which fails on a module with no main class) and reclassifies `jar` as `-plain`
 - One BOM mechanism per build, used in every module: `platform(libs.spring.boot.bom)` (default; pins with `strictly`) or the `io.spring.dependency-management` plugin (property overrides like `extra["jackson-bom.version"]`). `platform()` covers only the configuration it is declared on - add it to every configuration carrying version-less deps, `annotationProcessor` included; the plugin covers all configurations. The plugin imports Boot's BOM by itself only alongside `org.springframework.boot`; in a library module it imports nothing until `dependencyManagement { imports { mavenBom(SpringBootPlugin.BOM_COORDINATES) } }` (with `alias(libs.plugins.spring.boot) apply false` on the classpath and `import org.springframework.boot.gradle.plugin.SpringBootPlugin`)
-- Scopes: `implementation` by default; `api` only when a type appears in the module's public API; `runtimeOnly` for deps never referenced at compile time (JDBC drivers, Flyway DB modules); `annotationProcessor` for processors (MapStruct, `spring-boot-configuration-processor`); Lombok on both `compileOnly` and `annotationProcessor`
+- Scopes: `implementation` by default; `api` only when a type appears in the module's public API (and only with the `java-library` plugin applied - without it `api(...)` fails evaluation); `runtimeOnly` for deps never referenced at compile time (JDBC drivers, Flyway DB modules); `annotationProcessor` for processors (MapStruct, `spring-boot-configuration-processor`); Lombok on both `compileOnly` and `annotationProcessor`
 - Toolchain declared with the foojay resolver so CI auto-provisions the JDK
 - Commit `gradlew` / `gradle-wrapper.jar`; CI invokes only `./gradlew`
 
@@ -46,22 +46,25 @@ When `test` dominates and the log shows many Spring contexts started, the lever 
 | `<parent>spring-boot-starter-parent` / `<dependencyManagement>` BOM | `platform(libs.spring.boot.bom)` |
 | `<properties><x.version>` override of one Boot-managed artifact | `strictly` pin (see Dependency management) |
 | `<properties><x-bom.version>` override of a whole family (`jackson-bom.version`: Jackson 3 on Boot 4; Jackson 2 there is `jackson-2-bom.version`) | a second platform: `implementation(platform("tools.jackson:jackson-bom:<version>"))` (Jackson 2: `com.fasterxml.jackson:jackson-bom`) - the higher version wins across the family |
+| `<optional>true</optional>` (Lombok, `spring-boot-configuration-processor`) | Lombok: `compileOnly` + `annotationProcessor`; `spring-boot-configuration-processor`: `annotationProcessor` only |
 | `<modules>` | `include()` in `settings.gradle.kts` |
 | Profile activated on demand (`-Pit`) | Separate task invoked explicitly in CI, not wired into `check` |
 | Profile active by default | Task wired into `check` |
 | `maven-failsafe-plugin` | `integrationTest` suite (below) |
 | `jacoco-maven-plugin` | `jacoco` plugin + `tasks.jacocoTestReport { dependsOn(tasks.test) }` |
 | `frontend-maven-plugin` | `com.github.node-gradle.node` plugin (below) |
-| `mvnw` | `gradle wrapper --gradle-version <v>` once (Boot 4 supports Gradle 8.14+ and 9.x; a Java 25 toolchain needs 9.1+; Gradle 9 runs on JDK 17+), then commit the wrapper |
+| `mvnw` | `gradle wrapper --gradle-version <v>` once (Boot 4 supports Gradle 8.14+ and 9.x; a Java 25 toolchain needs 9.1+; Gradle 9 runs on JDK 17+; Boot 3.4/3.5: Gradle 7.6.4+ or 8.4+, Boot 3.0-3.3: Gradle 7.5+ or 8.x), then commit the wrapper |
 
-Frontend build (node-gradle): the `npm_run_<script>` rule tasks declare no outputs, so register one that does:
+Frontend build (node-gradle): the `npm_run_<script>` rule tasks declare no outputs, so register one that does. With repositories declared in `settings.gradle.kts`, `download.set(true)` would add a project-level Node.js repository that makes Gradle ignore the settings ones (every Maven dependency in the module stops resolving) - set `distBaseUrl` to null and declare the Node distribution repository in settings instead:
 
 ```kotlin
-node { download.set(true); version.set("22.11.0"); nodeProjectDir.set(file("web")); npmInstallCommand.set("ci") }
+// settings.gradle.kts, inside dependencyResolutionManagement { repositories { ... } }
+ivy { name = "Node.js"; setUrl("https://nodejs.org/dist/"); patternLayout { artifact("v[revision]/[artifact](-v[revision]-[classifier]).[ext]") }
+      metadataSources { artifact() }; content { includeModule("org.nodejs", "node") } }
+// app module
+node { download.set(true); version.set("22.11.0"); nodeProjectDir.set(file("web")); npmInstallCommand.set("ci"); distBaseUrl.set(null as String?) }
 val buildFrontend by tasks.registering(com.github.gradle.node.npm.task.NpmTask::class) {
-    dependsOn(tasks.npmInstall)
-    args.set(listOf("run", "build"))
-    inputs.dir("web/src"); outputs.dir("web/dist")
+    dependsOn(tasks.npmInstall); args.set(listOf("run", "build")); inputs.dir("web/src"); outputs.dir("web/dist")
 }
 tasks.processResources { from(buildFrontend) { into("static") } }
 ```
@@ -75,7 +78,6 @@ Order for modernizing any existing multi-module build (Maven or Groovy DSL): ver
 ```toml
 [versions]
 spring-boot = "4.1.1"            # pin the current 4.1.x patch
-dependency-analysis = "2.19.0"
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -85,10 +87,9 @@ spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-bo
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
-dependency-analysis = { id = "com.autonomousapps.dependency-analysis", version.ref = "dependency-analysis" }
 ```
 
-Boot-managed libraries get no `version` (the BOM aligns them); pin a version only for deps outside Boot's BOM.
+Boot-managed libraries get no `version` (the BOM aligns them; `dependencyInsight` shows a BOM-managed version as `by constraint`); pin a version only for deps outside Boot's BOM.
 
 ### Toolchain with foojay auto-provisioning
 
@@ -222,18 +223,20 @@ dependencies {
 // the usual reason a scanner still reports the old version in one module.
 ```
 
-The pin value is the first fixed version from the advisory, and it must be at or above the version the BOM already manages - a pin below it downgrades. Confirm with `dependencyInsight`; when the fixed version is unknown, write the block with `(version to confirm)` rather than a guess. Multi-module: put the pin where every module sees it (the convention plugin, with the version from `gradle.properties`). On every Boot upgrade, delete pins the new BOM already clears.
+The pin value is the first fixed version from the advisory, and it must be at or above the version the BOM already manages - a pin below it downgrades. Confirm with `dependencyInsight`; when the fixed version is unknown, write the block with `(version to confirm)` rather than a guess. Multi-module: put the pin where every module sees it (the convention plugin, with the version from `gradle.properties`). On every Boot upgrade, delete pins the new BOM already clears. Jackson 2 artifacts next to Jackson 3 on Boot 4 are justified only by a named dependency that still needs them; otherwise they are removed, not pinned (a `scope` block) - except `com.fasterxml.jackson.core:jackson-annotations`, which Jackson 3 itself still depends on.
 
 ```kotlin
 dependencyLocking { lockAllConfigurations() }
-// ./gradlew dependencies --write-locks  (commit gradle.lockfile) - reproducible builds, relock on every bump
+// ./gradlew :app:dependencies :domain:dependencies --write-locks  (one <module>:dependencies per module - the root
+// `dependencies` task locks nothing in a multi-module build; commit each gradle.lockfile) - relock on every bump
 ```
 
 ### Dependency hygiene
 
 ```kotlin
-// root build.gradle.kts - the plugin must be applied at the root (per-project application is optional)
-plugins { alias(libs.plugins.dependency.analysis) }
+// settings.gradle.kts plugins {} - the settings plugin applies the analysis to every project (applied at the root
+// only, buildHealth reports "No project health reports found"); literal version, no catalog here
+plugins { id("com.autonomousapps.build-health") version "2.19.0" }
 // ./gradlew buildHealth
 ```
 
@@ -241,9 +244,7 @@ Surfaces unused deps and `api`/`implementation` misdeclarations the `api()` rule
 
 ### Spring Boot bootJar (application module only)
 
-Layering is on by default - never present `layered {}` as an optimization. The Docker-rebuild benefit needs a Dockerfile that extracts layers: `java -Djarmode=tools -jar app.jar extract --layers --launcher` (Boot 3.3+; older 3.x uses `-Djarmode=layertools`, which Boot 4.1 removed).
-
-AOT: `processAot` exists only when `org.springframework.boot.aot` is applied - directly, or by the Boot plugin when `org.graalvm.buildtools.native` is applied alongside it; it is enabled by default then. Native image: apply the native plugin and run `./gradlew nativeCompile`.
+Layering is on by default - never present `layered {}` as an optimization. The Docker-rebuild benefit needs a Dockerfile that extracts layers: `java -Djarmode=tools -jar app.jar extract --layers --launcher` (Boot 3.3+; older 3.x uses `-Djarmode=layertools`, which Boot 4.1 removed). `processAot` exists only when `org.springframework.boot.aot` is applied (the Boot plugin applies it when `org.graalvm.buildtools.native` is present); `nativeCompile` exists only when `org.graalvm.buildtools.native` is applied.
 
 ### Integration tests (JVM Test Suite)
 
@@ -262,28 +263,28 @@ configurations["integrationTestImplementation"].extendsFrom(configurations.testI
 configurations["integrationTestRuntimeOnly"].extendsFrom(configurations.testRuntimeOnly.get())
 ```
 
-Sources live in `src/integrationTest/java`. Wire `integrationTest` into `check` only when it should run on every build. A non-default suite uses JUnit Jupiter at Gradle's bundled version - pin it to the BOM's (`useJUnitJupiter("<BOM junit version>")`) when they differ, or launcher/engine skew breaks discovery.
+Sources live in `src/integrationTest/java`. Wire `integrationTest` into `check` only when it should run on every build. A non-default suite requests JUnit Jupiter at Gradle's bundled version; with the `extendsFrom` lines above the module's BOM platform reaches the suite and raises it to the BOM's version. Pin with `useJUnitJupiter("<BOM junit version>")` only for a suite that does not extend a configuration carrying the BOM, or launcher/engine skew breaks discovery.
 
 ### CI
 
-Default: `gradle/actions/setup-gradle@v4` - it caches the dependency and wrapper caches, and with `cache-encryption-key` set it also saves the configuration cache across ephemeral runners.
+Default: `gradle/actions/setup-gradle@v5` - it caches the dependency and wrapper caches, and with `cache-encryption-key` set it also saves the configuration cache across ephemeral runners (v6 dropped that save and moved its default caching into a separately licensed component - on v6 use `cache-provider: basic`).
 
 ```yaml
-- uses: actions/setup-java@v4
+- uses: actions/setup-java@v5
   with: { distribution: temurin, java-version: '25' }
-- uses: gradle/actions/setup-gradle@v4
+- uses: gradle/actions/setup-gradle@v5
   with:
     cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 - run: ./gradlew check
 - run: ./gradlew integrationTest
 ```
 
-CI runs only `./gradlew` - never a `gradle` from the runner's PATH or an install step masked with `|| true`. Flags already set in `gradle.properties` (`--parallel`, `--build-cache`) need not be repeated. `--no-daemon` only stops a daemon from lingering after the build; when `org.gradle.jvmargs` differs from the client JVM, Gradle still forks a single-use daemon. Keep the daemon on self-hosted runners that persist across jobs.
+CI runs only `./gradlew` - never a `gradle` from the runner's PATH or an install step masked with `|| true`. `build` already runs `test` (via `check`) - a second `:<module>:test` step reruns the suite. Flags already set in `gradle.properties` (`--parallel`, `--build-cache`) need not be repeated. `--no-daemon` only stops a daemon from lingering after the build; when `org.gradle.jvmargs` differs from the client JVM, Gradle still forks a single-use daemon. Keep the daemon on self-hosted runners that persist across jobs.
 
 Fallback without the action - key on every build-defining file, and expect stale entries to accumulate under `restore-keys`:
 
 ```yaml
-- uses: actions/cache@v4
+- uses: actions/cache@v5
   with:
     path: |
       ~/.gradle/caches
@@ -313,14 +314,14 @@ buildCache {
 
 ## Output Format
 
-Emit in this order: the `**Stack:**` line (Gradle version from `distributionUrl` in `gradle/wrapper/gradle-wrapper.properties`, DSL from the build-script extension, `unknown` when absent), the measurement commands (on a migration, the Maven baseline command and the post-migration `--scan`), the full contents of every file the change needs (when the input is fragments, the touched sections), then one block per optimization.
+Emit in this order: the `**Stack:**` line (Gradle version from `distributionUrl` in `gradle/wrapper/gradle-wrapper.properties`, DSL from the build-script extension, `unknown` when absent), the measurement commands (on a migration, the Maven baseline command and the post-migration `--scan`), the full contents of every file the change needs (when the input is fragments, the touched sections), then one block per optimization. A review of an existing build emits the same: each block names what is wrong in `Change` (`was: ...`) and the fix.
 
 ```
 **Stack:** {Gradle <version> (Kotlin DSL | Groovy DSL) | Maven -> Gradle migration}, {single-module | <n> modules}
 ```
 
 ```
-Optimization: {dsl-migration | version-catalog | build-cache-local | build-cache-remote | configuration-cache | parallel | convention-plugin | scope | bom-platform | security-pin | conflict-resolution | locking | dependency-analysis | toolchain | test-sourceset | ci-cache | ci-workflow | other:<label>}
+Optimization: {dsl-migration | version-catalog | build-cache-local | build-cache-remote | configuration-cache | parallel | convention-plugin | scope | bom-platform | security-pin | conflict-resolution | locking | dependency-analysis | toolchain | wrapper | test-sourceset | ci-cache | ci-workflow | other:<label>}
 
 File: {repo path(s) - every touched file for a multi-file optimization}
 
@@ -335,7 +336,7 @@ Expected Impact: {clean delta | incremental delta | ci delta | maintainability |
 Risk: {None | Plugin-incompat | Behavior-change}
 ```
 
-One block per optimization; a file may appear in several blocks. `other:<label>` when no enum value fits. Priority: High = direct build-time win on its own, or a build-breaking / security fix; Medium = enabler or hygiene with indirect effect; Low = maintainability only. Expected Impact numbers come from `--scan`/`--profile` data; without it, append `(unmeasured estimate)`.
+One block per optimization; a file may appear in several blocks. `other:<label>` when no enum value fits; `wrapper` covers a missing or uncommitted `gradlew` / `gradle-wrapper.jar` and a wrapper bump. Priority: High = direct build-time win on its own, or a build-breaking / security fix; Medium = enabler or hygiene with indirect effect; Low = maintainability only. Expected Impact numbers come from `--scan`/`--profile` data; without it, append `(unmeasured estimate)`.
 
 Close with `Aggregate: estimated clean-build reduction ~X%; incremental/no-op reduction ~Y%; CI reduction ~Z%` (terms with no contributing block omitted) when at least one block's Expected Impact is a build-time delta; otherwise `Aggregate: no build-time change - correctness/maintainability only`.
 

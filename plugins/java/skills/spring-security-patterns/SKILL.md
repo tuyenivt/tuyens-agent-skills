@@ -20,7 +20,8 @@ user-invocable: false
 ## Rules
 
 - One `SecurityFilterChain` bean per `securityMatcher` path scope, ordered with `@Order`. Declaring any chain removes Boot's default, so a path matched by no chain runs with **no security filters at all**. The last chain (largest `@Order`) is matcher-less and closes with `anyRequest()`; permit `/error` there - the ERROR dispatch is filtered too, and denying it replaces every real error response with a 401/403
-- CORS: every browser-facing chain calls `.cors(withDefaults())` explicitly (automatic application depends on exactly one `UrlBasedCorsConfigurationSource` bean and is not worth relying on); without it preflight is rejected before CORS is evaluated. A same-origin SPA needs no CORS configuration at all. Never wildcard origins with credentials
+- A `Filter` declared as a bean (`@Component`, `@Bean`) is registered by Boot in the servlet container, outside every `SecurityFilterChain`: it runs on every request whatever the matchers say, and if it is also `addFilterBefore(...)`'d a plain `Filter` runs twice (a `OncePerRequestFilter` skips the second pass but still runs on paths outside its chain). A security filter is added to its chain as a plain `new` instance, or its servlet registration is disabled with a `FilterRegistrationBean` (`setEnabled(false)`)
+- CORS: every browser-facing chain calls `.cors(withDefaults())` explicitly (automatic application fires only when a `UrlBasedCorsConfigurationSource`-typed bean exists and is not worth relying on); without it preflight is rejected before CORS is evaluated. A same-origin SPA needs no CORS configuration at all. Never wildcard origins with credentials
 - STATELESS APIs: `csrf(AbstractHttpConfigurer::disable)` and `sessionCreationPolicy(STATELESS)` together
 - Stateful sessions: keep CSRF on. SPAs reading the token cookie use `csrf.spa()` (Security 7; Security 6 form in the CSRF pattern); server-rendered forms keep the default session repository + hidden field
 - Method security needs `@EnableMethodSecurity` on a `@Configuration`; use `@PreAuthorize`/`@PostAuthorize` with SpEL. `@Secured` is off under it unless `securedEnabled = true` - existing `@Secured` methods are unenforced today; convert them to `@PreAuthorize`
@@ -78,7 +79,7 @@ public class SecurityConfig {
 }
 ```
 
-Prometheus scraping: serve actuator on a separate `management.server.port` that is not exposed outside the cluster/VPC and permit `/actuator/prometheus` in the actuator chain; network placement is the control, so say so in `Cross-cutting`.
+Prometheus scraping: serve actuator on a separate `management.server.port` that is not exposed outside the cluster/VPC and permit `/actuator/prometheus` in the actuator chain; network placement is the control, so say so in `Cross-cutting`. `management.endpoints.web.exposure.include` lists only what is consumed (`health,prometheus`): `*` publishes `beans`, `conditions`, `configprops`, `env`, `mappings`, `threaddump` and a writable `loggers` (`env`/`configprops` values stay masked while `show-values` keeps its `never` default - changing that default is what leaks secrets; `heapdump` is exposed by `*` on Boot 3.4 and from Boot 3.5 (Boot 4 included) also needs `management.endpoint.heapdump.access`, default `none`), so `include: "*"` beyond local is a `[Must]`.
 
 Role hierarchy (ADMIN implies MANAGER implies USER):
 
@@ -100,9 +101,9 @@ spring.security.oauth2.resourceserver.jwt:
   authority-prefix: ROLE_
 ```
 
-Properties cover top-level claims and audience; Boot 4.1 also maps a nested claim - `authorities-claim-expressions: "[realm_access][roles].![toUpperCase()]"` with `authority-prefix: ROLE_` (SpEL over the claims map; exclusive with `authorities-claim-name`; a missing claim yields no authorities). Security 7 validates the JWT `typ` header by default: `JWT` or absent passes, anything else is 401 - an IdP issuing RFC 9068 `at+jwt` tokens needs `JwtValidators.createAtJwtValidator()`. A custom `JwtDecoder` bean makes Boot's decoder auto-configuration back off (including the `audiences` property), and a `JwtAuthenticationConverter` bean makes it ignore `authorities-claim-name` / `authority-prefix` - use the properties or the bean, never both, and inject bean values from properties.
+Properties cover top-level claims and audience; Boot 4.1 also maps a nested claim - `authorities-claim-expressions: "[realm_access][roles].![toUpperCase()]"` with `authority-prefix: ROLE_` (SpEL over the claims map; exclusive with `authorities-claim-name` and `authorities-claim-delimiter`; a missing claim yields no authorities). Security 7 validates the JWT `typ` header by default: `JWT` or absent passes, anything else is 401. For an IdP issuing RFC 9068 `at+jwt` tokens, either declare a `JwtTypeValidator` bean (`new JwtTypeValidator("at+jwt", "application/at+jwt")`), which Boot adds to its decoder in place of the default `JWT` check, or use a custom `JwtDecoder` with `decoder.setJwtValidator(JwtValidators.createAtJwtValidator().issuer(issuer).audience(aud).build())` - `createAtJwtValidator()` is a builder whose `build()` fails without `issuer` and `audience`, and its result registered as a bean does not help because the default `JWT` check still runs. Security 6.4/6.5 (Boot 3.4/3.5) rejects `at+jwt` inside Nimbus before any validator runs (6.4 has neither `JwtTypeValidator` nor `createAtJwtValidator()`; 6.5 has both, but they see an `at+jwt` token only after `.validateType(false)` on the builder) - on either: `NimbusJwtDecoder.withIssuerLocation(issuer).jwtProcessorCustomizer(p -> p.setJWSTypeVerifier(new DefaultJOSEObjectTypeVerifier<>(new JOSEObjectType("at+jwt"), new JOSEObjectType("application/at+jwt")))).build()`. A custom `JwtDecoder` bean makes Boot's decoder auto-configuration back off (including the `audiences` property), and a `JwtAuthenticationConverter` bean makes it ignore `authorities-claim-name` / `authority-prefix` - use the properties or the bean, never both, and inject bean values from properties.
 
-Nested claims (Keycloak `realm_access.roles`) are not resolvable by `JwtGrantedAuthoritiesConverter` - it silently yields zero authorities and every `hasRole` fails. One prefix applies to every claim it maps, so roles *and* scopes need a custom converter (as does a nested claim on Boot 4.0 / 3.x). Make it a named class so tests can feed it:
+Nested claims (Keycloak `realm_access.roles`) are not resolvable by `JwtGrantedAuthoritiesConverter` - it silently yields zero authorities and every `hasRole` fails. One prefix applies to every claim it maps, so roles *and* scopes need a custom converter; a nested claim alone is, on Boot 4.0 and Boot 3.4/3.5 (Security 6.4+), an `ExpressionJwtGrantedAuthoritiesConverter` - `new ExpressionJwtGrantedAuthoritiesConverter(new SpelExpressionParser().parseExpression("[realm_access][roles].![toUpperCase()]"))` plus `setAuthorityPrefix("ROLE_")` (its default prefix is `SCOPE_`) - inside a `JwtAuthenticationConverter` bean, and below Boot 3.4 a custom converter. Make it a named class so tests can feed it:
 
 ```java
 public class KeycloakRealmRoleConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
@@ -131,7 +132,7 @@ JwtAuthenticationConverter jwtAuthenticationConverter() {
 
 ### Multi-tenant (issuer allowlist)
 
-Stock option: `JwtIssuerAuthenticationManagerResolver.fromTrustedIssuers(Predicate<String>)`, wired with `.oauth2ResourceServer(o -> o.authenticationManagerResolver(resolver))`. It checks the allowlist before any discovery call, builds per-issuer managers lazily and caches them; a predicate backed by a refreshable source (DB table, config server) adds tenants without a restart. It applies no audience validator and ignores the app's `JwtAuthenticationConverter` bean - when you need either, build per-issuer providers yourself:
+A chain is selected by path, never by token: two IdPs serving the same path scope (staff Keycloak and a partner's Entra tenant on `/api/**`) share one chain with an issuer resolver; separate chains only when their path scopes differ. Stock option: `JwtIssuerAuthenticationManagerResolver.fromTrustedIssuers(Predicate<String>)`, wired with `.oauth2ResourceServer(o -> o.authenticationManagerResolver(resolver))`. It checks the allowlist before any discovery call, builds per-issuer managers lazily and caches them; a predicate backed by a refreshable source (DB table, config server) adds tenants without a restart. It applies no audience validator and ignores the app's `JwtAuthenticationConverter` bean - when you need either, build per-issuer providers yourself:
 
 ```java
 @Bean
@@ -153,7 +154,7 @@ AuthenticationManagerResolver<HttpServletRequest> tenantResolver(TenantRegistry 
 // TenantRegistry: an issuer allowlist read live from a store; a removed issuer stops matching on the next call.
 ```
 
-`iss` must match byte-for-byte, trailing slash included. A discovery failure for a trusted-but-down IdP must surface as 5xx, not 401 - a valid token is not an invalid one (test: a registry entry pointing at an unreachable issuer returns 5xx). A registry backed by a DB table, or `@RefreshScope` configuration (Spring Cloud), adds tenants without a restart; removals must take effect on the next request. Keep IdP role values' case as issued and write `hasRole` checks to match (normalise only when an IdP is known to lowercase, as Keycloak realm roles are). Per-IdP claim shapes (Entra `roles`, Okta `groups`) are one converter that reads whichever claim is present.
+`iss` must match byte-for-byte, trailing slash included. A discovery failure for a trusted-but-down IdP must surface as 5xx, not 401 - a valid token is not an invalid one (test: a registry entry pointing at an unreachable issuer returns 5xx). A registry backed by a DB table, or `@RefreshScope` configuration (Spring Cloud), adds tenants without a restart; removals must take effect on the next request. Keep IdP role values' case as issued and write `hasRole` checks to match (normalise only when an IdP is known to lowercase, as Keycloak realm roles are). Per-IdP claim shapes (Entra `roles`, Okta `groups`) are one converter that reads whichever claim is present; a per-issuer `typ` difference (`at+jwt` from one IdP) is that issuer's `JwtValidators.createAtJwtValidator().issuer(i).audience(aud).build()` in place of `createDefaultWithIssuer(i)` in this resolver (`createDefaultWithIssuer` keeps the `JWT`-only check; Security 6.4/6.5 use the `jwtProcessorCustomizer` decoder above).
 
 ### Method security
 
@@ -221,14 +222,10 @@ UrlBasedCorsConfigurationSource corsConfigurationSource(CorsProperties props) { 
 
 `@Value` cannot bind a YAML sequence - bind lists through `@ConfigurationProperties` (or use a comma-separated string with `@Value`).
 
-### CSRF
+### CSRF (stateful SPA)
 
 ```java
-// STATELESS API (JWT in the Authorization header)
-http.csrf(AbstractHttpConfigurer::disable)
-    .sessionManagement(s -> s.sessionCreationPolicy(STATELESS));
-
-// Stateful SPA: JS-readable cookie token (CookieCsrfTokenRepository.withHttpOnlyFalse()), echoed in X-XSRF-TOKEN.
+// JS-readable cookie token (CookieCsrfTokenRepository.withHttpOnlyFalse()), echoed in X-XSRF-TOKEN.
 // spa() keeps BREACH (XOR) protection for rendered tokens, accepts the raw cookie value from the header,
 // and loads the token on every request so the cookie is written on the first GET. Security 7.0+; on
 // Security 6 hand-write the same CsrfTokenRequestHandler (plain + XOR delegates, header decides).
@@ -237,18 +234,11 @@ http.csrf(csrf -> csrf.spa());
 
 ### Security headers
 
-Every chain already writes `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, cache-control, and HSTS (1 year, includeSubDomains, on HTTPS requests only). Browser-facing chains add a CSP:
-
-```java
-http.headers(h -> h.contentSecurityPolicy(csp ->
-    csp.policyDirectives("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'")));
-```
-
-Behind a TLS-terminating proxy, set `server.forward-headers-strategy` so requests are recognized as secure and HSTS is written.
+Every chain already writes `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, cache-control, and HSTS (1 year, includeSubDomains, on HTTPS requests only); browser-facing chains add a CSP - `http.headers(h -> h.contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'; script-src 'self'")))`. Behind a TLS-terminating proxy, set `server.forward-headers-strategy` so requests are recognized as secure and HSTS is written.
 
 ### Webhook endpoints
 
-External webhooks authenticate by signature, not JWT: a dedicated chain with `permitAll`, verification in the controller or a filter. Verify per the provider's scheme - raw-body HMAC (Stripe, GitHub) takes the body as `@RequestBody byte[]` (a `String` is charset-decoded and a DTO re-serialized, both changing the signed bytes); field-signature schemes (Adyen notifications sign selected fields, carried in the payload) verify over the parsed fields exactly as the provider documents. Compare in constant time (`MessageDigest.isEqual`). An unverifiable payload is 400 (not a server fault); providers that retry non-2xx will retry it, which is harmless because it keeps failing - alert on verification failures (a rotated secret fails genuine events too). Adyen's Java library ships `HMACValidator` for its notification signatures - use the provider's validator where one exists.
+External webhooks authenticate by signature, not JWT: a dedicated chain with `permitAll`, verification in the controller or a filter. Verify per the provider's scheme - raw-body HMAC (Stripe, GitHub) takes the body as `@RequestBody byte[]` (a `String` is charset-decoded and a DTO re-serialized, both changing the signed bytes); field-signature schemes (Adyen notifications sign selected fields, carried in the payload) verify over the parsed fields exactly as the provider documents. Compare in constant time (`MessageDigest.isEqual`) - the same rule for API keys checked in a filter. An unverifiable payload is 400 (not a server fault); providers that retry non-2xx will retry it, which is harmless because it keeps failing - alert on verification failures (a rotated secret fails genuine events too). Adyen's Java library ships `HMACValidator` for its notification signatures - use the provider's validator where one exists.
 
 ```java
 @Bean @Order(0)
@@ -293,7 +283,7 @@ class OrderControllerSecurityTest {
 
 ## Output Format
 
-In every mode, emit the `**Stack:**` line once, then one block per `SecurityFilterChain`, in order, listing its endpoints and mapping each method-security rule into the block of the chain that serves it, then the `Cross-cutting:` block. A request to fix existing configuration is a review: findings, then the target state. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when it allows an auth bypass or IDOR, exposes data or endpoints, weakens credential storage or a signature check (a non-constant-time compare included), or breaks an auth flow, `[Recommend]` otherwise - then the blocks of the target state. A missing matcher-less catch-all is itself a finding. Vulnerabilities outside Spring Security's surface seen in passing (SQL injection, SSRF) get one `Out of scope: {issue} at {file:line}` line each.
+In every mode, emit the `**Stack:**` line once, then one block per `SecurityFilterChain`, in order, listing its endpoints and mapping each method-security rule into the block of the chain that serves it, then the `Cross-cutting:` block. A request to fix or extend existing configuration is a review: findings, then the target state. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when it allows an auth bypass or IDOR, exposes data or endpoints, weakens credential storage or a signature check (a non-constant-time compare included), or breaks an auth flow, `[Recommend]` otherwise - then the blocks of the target state. A missing matcher-less catch-all is itself a finding. Vulnerabilities outside Spring Security's surface seen in passing (SQL injection, SSRF) get one `Out of scope: {issue} at {file:line}` line each.
 
 ```
 **Stack:** Spring Security {version | unknown} on {MVC | WebFlux}
@@ -302,9 +292,9 @@ In every mode, emit the `**Stack:**` line once, then one block per `SecurityFilt
 ```
 Chain: {securityMatcher pattern | no securityMatcher - catch-all} (order {n})
 
-Auth: {JWT | httpBasic | form | signature - <scheme> | none}
+Auth: {JWT | httpBasic | form | api-key - <header> | signature - <scheme> | none}
 
-CSRF: {enabled - <repository/handler> | disabled - reason}
+CSRF: {enabled - <repository/handler> | enabled - default | disabled - reason}
 
 Session: {STATELESS | IF_REQUIRED}
 
@@ -331,8 +321,4 @@ Cross-cutting:
 ## Avoid
 
 - `WebSecurityConfigurerAdapter`, `antMatchers()` (removed in Spring Security 6), `and()`, `authorizeRequests()`, `AntPathRequestMatcher` / `MvcRequestMatcher` (removed in 7), `@EnableGlobalMethodSecurity` (deprecated)
-- Disabling CSRF on stateful (session-based) apps
-- JWT in `localStorage`
-- Wildcard CORS origins with credentials
-- Hardcoded secrets, issuer URIs, audiences, allowed origins
 - Testing roles with literal `.authorities(...)` instead of the production converter

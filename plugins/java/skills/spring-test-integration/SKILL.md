@@ -27,7 +27,7 @@ Written for Boot 4: slice annotations live in per-technology modules (`org.sprin
 - Testcontainers with the production DB engine and major version - H2 silently passes or fails differently on engine-specific SQL (JSONB, partial indexes, `ON CONFLICT`, window functions, locking)
 - `@MockitoBean` / `@MockitoSpyBean` (Boot 3.4+; Boot 4 removed `@MockBean` / `@SpyBean`), declared on the test class or a shared base class - never inside a `@Configuration` / `@TestConfiguration` class
 - Mockito strict stubbing (the `MockitoExtension` default); fix `UnnecessaryStubbingException` by deleting the stub, not by `lenient()`
-- AssertJ over `assertEquals`; `@ActiveProfiles("test")` explicit
+- AssertJ over `assertEquals`; `@ActiveProfiles("test")` explicit. The test profile lives in `src/test/resources/application-test.yml` - a test-classpath `application.yml` replaces the main one entirely (every main key disappears), so a test suite that still passes with one is running without the production configuration
 - No `Thread.sleep()` in async tests - use Awaitility
 - No `@DirtiesContext` - redesign or clean up explicitly
 - Context-cache fragmentation is the dominant cost in a slow suite, ahead of containers. Every distinct combination of `@MockitoBean`, `@TestPropertySource`, `@DynamicPropertySource`, `@EmbeddedKafka` and `@Import` is a separate cache key and a separate context build - declare them on shared base classes so classes collapse onto a handful of contexts, and count the target number before restructuring
@@ -52,7 +52,7 @@ Boot 4's `@SpringBootTest` wires no client by itself: `@AutoConfigureMockMvc` fo
 
 ### `@DataJpaTest` with `@ServiceConnection`
 
-`@ServiceConnection` wires the container into Spring's connection properties - no `@DynamicPropertySource` glue. It works on `PostgreSQLContainer`, `MySQLContainer`, `RabbitMQContainer`, Kafka containers and Redis (`new GenericContainer<>("redis:7").withExposedPorts(6379)`).
+`@ServiceConnection` wires the container into Spring's connection properties - no `@DynamicPropertySource` glue. It works on `PostgreSQLContainer`, `MySQLContainer`, `RabbitMQContainer`, the `org.testcontainers.kafka` containers and Redis (`new GenericContainer<>("redis:7").withExposedPorts(6379)`).
 
 ```java
 @Testcontainers @DataJpaTest
@@ -92,22 +92,7 @@ class OrderControllerTest {
 }
 ```
 
-### `@JsonTest` for serialization contracts
-
-```java
-@JsonTest
-class OrderDtoJsonTest {
-    @Autowired JacksonTester<OrderDto> json;
-
-    @Test
-    void serializesAmount() throws Exception {
-        // BigDecimal serializes as a JSON number by default; assert a string only when the
-        // field declares @JsonFormat(shape = STRING)
-        assertThat(json.write(new OrderDto(1L, 1L, PAID, new BigDecimal("99.99"))))
-            .extractingJsonPathNumberValue("$.totalAmount").isEqualTo(99.99);
-    }
-}
-```
+`@JsonTest` + `JacksonTester<OrderDto>` covers a serialization contract on its own: `assertThat(json.write(dto)).extractingJsonPathNumberValue("$.totalAmount").isEqualTo(99.99)` - `BigDecimal` is a JSON number unless the field declares `@JsonFormat(shape = STRING)`.
 
 ### Plain JUnit for service logic
 
@@ -143,7 +128,7 @@ public abstract class AbstractIntegrationTest {
 }
 ```
 
-Each Gradle/Maven fork is its own JVM with its own singleton containers, so parallel forks do not share data. `withReuse(true)` + `testcontainers.reuse.enable=true` in `~/.testcontainers.properties` keeps containers across runs and shares them between forks - local only, and then keep `maxParallelForks = 1` or give each fork its own schema.
+The base class carries no slice annotation and no `@SpringBootTest`: a slice (`@DataJpaTest`) cannot extend a `@SpringBootTest` base - the two annotations conflict - so one base holds the containers, and `@SpringBootTest` classes extend a second base that adds the shared `@MockitoBean`s. Each Gradle/Maven fork is its own JVM with its own singleton containers, so parallel forks do not share data. `withReuse(true)` + `testcontainers.reuse.enable=true` in `~/.testcontainers.properties` keeps containers across runs and shares them between forks - local only, and then keep `maxParallelForks = 1` or give each fork its own schema.
 
 ### Test dependencies (H2 -> Testcontainers migration)
 
@@ -156,11 +141,11 @@ testImplementation 'org.springframework.boot:spring-boot-testcontainers'        
 testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
 testImplementation 'org.testcontainers:testcontainers-postgresql'   // or -mysql; -rabbitmq / -kafka per broker
 testImplementation 'org.springframework.boot:spring-boot-starter-kafka-test'   // spring-kafka-test: ContainerTestUtils, @EmbeddedKafka
-testImplementation 'org.wiremock:wiremock-standalone:3.10.0'       // not in the Boot BOM - pin it
+testImplementation 'org.wiremock:wiremock-standalone:3.13.2'       // not in the Boot BOM - pin it
 // remove: testRuntimeOnly 'com.h2database:h2'
 ```
 
-Maven: the same coordinates with `<scope>test</scope>` (versions from the Boot parent except WireMock). Removing H2 is the enforcement step: any test still pointing at an H2 URL then fails loudly.
+Maven: the same coordinates, `<scope>test</scope>`, versions from the Boot parent except WireMock. Removing H2 is the enforcement step: any test still pointing at an H2 URL then fails loudly.
 
 ### Security tests
 
@@ -199,7 +184,7 @@ class OrderControllerSecurityTest {
 }
 ```
 
-`jwt()` alone maps only `scope`/`scp` to `SCOPE_*`; role rules need the production converter's authorities, which is also the only form that catches a broken claim mapping (a nested claim like Keycloak `realm_access.roles` needs a custom converter - `JwtGrantedAuthoritiesConverter` cannot reach it). `hasRole` matching is case-sensitive: a fixture whose role values differ in case from the rule is a mapping bug, not a test to paper over. A route guarded by both a URL rule and `@PreAuthorize` needs a token satisfying both - test each layer's denial separately.
+`jwt()` alone maps only `scope`/`scp` to `SCOPE_*`; role rules need the production converter's authorities, which is also the only form that catches a broken claim mapping (a nested claim like Keycloak `realm_access.roles` needs a custom converter - `JwtGrantedAuthoritiesConverter` cannot reach it). `hasRole` matching is case-sensitive: a fixture whose role values differ in case from the rule is a mapping bug, not a test to paper over. A route guarded by both a URL rule and `@PreAuthorize` needs a token satisfying both - test each layer's denial separately. A session-based principal that carries domain scope (a `UserDetails` with `storeId`) is built by `@WithUserDetails("<username>")` against the real `UserDetailsService`, or by a custom `@WithSecurityContext` factory - `@WithMockUser` produces a plain `User` with no scope field, so a store-scoped rule cannot be exercised with it (a SpEL `principal.storeId` check throws `IllegalArgumentException: Failed to evaluate expression` instead of denying).
 
 ### Transactions in tests
 
@@ -212,7 +197,7 @@ Cleanup: `@Sql(executionPhase = AFTER_TEST_METHOD)` when a script exists; otherw
 ```sql
 -- PostgreSQL
 TRUNCATE orders, order_lines, shipments RESTART IDENTITY CASCADE;
--- MySQL: FOREIGN_KEY_CHECKS is per session, so run all four on one connection (an @Sql script, or
+-- MySQL: FOREIGN_KEY_CHECKS is per session, so run all five on one connection (an @Sql script, or
 -- jdbc.execute((ConnectionCallback<Void>) c -> {...}))
 SET FOREIGN_KEY_CHECKS = 0; TRUNCATE TABLE order_lines; TRUNCATE TABLE shipments; TRUNCATE TABLE orders; SET FOREIGN_KEY_CHECKS = 1;
 ```
@@ -235,7 +220,7 @@ void waitForAssignment() {   // publishing before the consumer owns its partitio
 }
 ```
 
-Declare test topics as `@TestConfiguration` `NewTopic` beans with an explicit partition count (`TopicBuilder.name(...).partitions(1).build()`) and set `spring.kafka.consumer.auto-offset-reset: earliest`. Kafka containers: `org.testcontainers.kafka.KafkaContainer` (`apache/kafka-native`) or `ConfluentKafkaContainer` - the old `org.testcontainers.containers.KafkaContainer` is deprecated. `@EmbeddedKafka` is fine for listener contract tests, and each distinct configuration is another context key. RabbitMQ: wait until the listener containers report `isRunning()`, then assert the effect with Awaitility.
+Declare test topics as `@TestConfiguration` `NewTopic` beans with an explicit partition count (`TopicBuilder.name(...).partitions(1).build()`) and set `spring.kafka.consumer.auto-offset-reset: earliest`. Kafka containers: `org.testcontainers.kafka.KafkaContainer` (`apache/kafka-native`) or `ConfluentKafkaContainer` - the old `org.testcontainers.containers.KafkaContainer` is deprecated and Boot 4 ships no `@ServiceConnection` factory for it, so migrate it to one of the two. In the singleton base: `@ServiceConnection static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka-native:4.0.0");`. Asserting a published record from a test: a `KafkaConsumer` built from `KafkaTestUtils.consumerProps(KAFKA.getBootstrapServers(), "test-group", true)` with deserializers matching the producer (the props default the key to `IntegerDeserializer`, so String keys need `new KafkaConsumer<>(props, new StringDeserializer(), new StringDeserializer())`), subscribed to the topic, then `KafkaTestUtils.getSingleRecord(consumer, topic, Duration.ofSeconds(10))` - never a listener added to the application for the test. `@EmbeddedKafka` is fine for listener contract tests, and each distinct configuration is another context key. RabbitMQ: wait until the listener containers report `isRunning()`, then assert the effect with Awaitility.
 
 ### Async with Awaitility
 
@@ -254,7 +239,7 @@ Asserting that work did *not* happen (a duplicate was skipped, a rollback fired 
 
 ### WireMock for outbound HTTP
 
-Exercises the real `RestClient` / `WebClient` config (timeouts, retries, deserialization) rather than bypassing it with a mocked client. One server per JVM, like the singleton containers - a `@RegisterExtension` server stops after each class and restarts on a new port, while the cached context still points at the old one:
+Exercises the real `RestClient` / `WebClient` config (timeouts, retries, deserialization) rather than bypassing it with a mocked client. One server per JVM, like the singleton containers - a `@RegisterExtension` server stops after each class and restarts on a new port, while the cached context still points at the old one; a `@WireMockTest` extension exposes its dynamic port only through an injected `WireMockRuntimeInfo`, which a static `@DynamicPropertySource` cannot reach - hence the manual server:
 
 ```java
 public abstract class AbstractHttpIntegrationTest extends AbstractIntegrationTest {
@@ -296,7 +281,7 @@ class PaymentIntegrationTest extends AbstractHttpIntegrationTest {
 }
 ```
 
-The timeout test fails if the read timeout is ever widened or dropped - the regression a mocked client cannot catch. Setting the timeout is the production change: `var f = new SimpleClientHttpRequestFactory(); f.setReadTimeout(Duration.ofSeconds(2)); RestClient.builder().requestFactory(f)`. A `@WireMockTest` extension exposes its dynamic port only through an injected `WireMockRuntimeInfo`, which a static `@DynamicPropertySource` cannot reach - hence the manual server.
+The timeout test fails if the read timeout is ever widened or dropped - the regression a mocked client cannot catch. Setting the timeout is the production change: `var f = new SimpleClientHttpRequestFactory(); f.setReadTimeout(Duration.ofSeconds(2)); RestClient.builder().requestFactory(f)`.
 
 ### Fixtures
 
@@ -308,7 +293,7 @@ assertThat(actual).usingRecursiveComparison().ignoringFields("id", "createdAt", 
 
 ## Output Format
 
-In every mode, emit the header block once (Engine, production changes, suite-level artifacts: build-file changes, test properties, shared base classes), then one block per test class of the target suite. Base classes and fixtures get no block. `Containers` lists every container the class uses, inherited ones included; `Mocking` lists every mechanism. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when a test passes for the wrong reason, is flaky, or cannot catch the regression it names, `[Recommend]` otherwise (deprecated-but-working APIs included) - then the blocks for the target suite.
+In every mode, emit the header block once (Engine, production changes, suite-level artifacts: build-file changes, test properties, shared base classes), then one block per test class of the target suite. Base classes and fixtures get no block. `Containers` lists every container the class uses, inherited ones included; `Mocking` lists every mechanism. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when a test passes for the wrong reason, is flaky, or cannot catch the regression it names, `[Recommend]` otherwise (deprecated-but-working APIs included) - then the blocks for the target suite. A request to write or migrate tests against an existing suite reviews that suite first: findings, then the blocks as the target suite; a greenfield request has no findings.
 
 ```
 **Engine:** {PostgreSQL <major> | MySQL <major> | <other engine> <major> | unknown - <assumed version> | none}
@@ -336,10 +321,6 @@ A suite restructuring (or a review of one) closes with `Contexts: {n}` - scoped 
 
 ## Avoid
 
-- `@SpringBootTest` when a slice suffices
-- H2 for apps whose production engine is not H2
-- `Thread.sleep()` in async tests
-- `@DirtiesContext` (kills suite speed)
 - `lenient()` to silence strict stubbing - delete the unused stub
 - `@Transactional` on tests of commit-gated, async or `REQUIRES_NEW` paths
 - Testing implementation details over behavior

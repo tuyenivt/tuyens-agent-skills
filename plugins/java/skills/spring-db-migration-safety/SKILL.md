@@ -26,7 +26,7 @@ user-invocable: false
 - DDL that takes a table lock (ALTER TABLE, plain CREATE INDEX) on a hot table sets a lock timeout so a blocked statement cannot queue all traffic behind it. PostgreSQL: `SET LOCAL lock_timeout = '5s'` in transactional scripts; in `executeInTransaction=false` scripts `SET lock_timeout`, then `RESET lock_timeout` at the end (a session setting leaks to later scripts and pooled app connections). MySQL: `SET SESSION lock_wait_timeout = 5`, then `SET SESSION lock_wait_timeout = DEFAULT` at the end. Not on `CREATE INDEX CONCURRENTLY`: it blocks no DML, and its waits on older transactions would hit the timeout and leave an INVALID index. A timeout abort on a PostgreSQL transactional script leaves nothing behind - re-run once the blocker clears; on MySQL or a non-transactional script, recover per Failed migrations below.
 - Anything expected to outlast the readiness probe window is an ops step, not a startup migration: batched backfills, `CREATE INDEX CONCURRENTLY` / `VALIDATE CONSTRAINT` on a large table, MySQL INPLACE rebuilds of a large table. It holds the migration lock while every other new pod fails startup. Run it out of band, then record it as a guarded, idempotent versioned file (`CREATE INDEX CONCURRENTLY IF NOT EXISTS`; constraints via a `DO` block, below) so a fresh environment reproduces the schema from the files alone.
 - A `NOT VALID` CHECK or FK applies to every new write immediately. It ships only after the release that populates the column is fully rolled out, or still-running N-1 pods start failing inserts.
-- `spring.jpa.hibernate.ddl-auto: validate` beyond local; never `update`. `validate` fails startup when a mapped column is missing or has an incompatible type - so a column is dropped or renamed only after no running release maps it. It does not check length or nullability.
+- `spring.jpa.hibernate.ddl-auto: validate` beyond local; never `update`. `validate` fails startup when a mapped column is missing or has an incompatible type - so a column is dropped or renamed only after no running release maps it. It does not check length or nullability. An `update` found beyond local is a `[Must]` config finding: it may already have created the columns the migrations are about to add - write those guarded - PostgreSQL `ADD COLUMN IF NOT EXISTS`; MySQL 8.0 has no `IF NOT EXISTS` on `ADD COLUMN`, so test `information_schema.columns` and run the ALTER through a prepared statement (`SET @s = (SELECT IF(COUNT(*) = 0, 'ALTER TABLE orders ADD COLUMN region VARCHAR(16), ALGORITHM=INSTANT', 'DO 0') FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'orders' AND column_name = 'region'); PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;`); Liquibase on either engine: a `<not><columnExists/></not>` precondition with `onFail="MARK_RAN"` - and switch to `validate` in the same release.
 - Forward-only: never edit a migration that succeeded anywhere (checksum validation fails downstream). Ship a new `Vx__revert_*.sql`. Liquibase: declare `<rollback>` for every non-auto-reversible changeset.
 
 ## Patterns
@@ -88,16 +88,15 @@ Mirror unconditionally in one direction: a fill-the-null guard (`if (a == null) 
 
 ### Indexes
 
-PostgreSQL - `CREATE INDEX CONCURRENTLY` cannot run in a transaction; opt out per file. On a small table it can run at startup; on a large one it is an ops step and the file below is its guarded record:
+PostgreSQL - `CREATE INDEX CONCURRENTLY` cannot run in a transaction. Flyway detects it and runs the script outside a transaction on its own; make that explicit with a sidecar config file (a `-- flyway:executeInTransaction=false` comment is not a directive and is ignored). On a small table the build can run at startup; on a large one it is an ops step and the file below is its guarded record:
 
 ```sql
--- V20__idx_orders_customer.sql
--- flyway:executeInTransaction=false
+-- V20__idx_orders_customer.sql   (+ V20__idx_orders_customer.sql.conf containing: executeInTransaction=false)
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 ```
 
 - A failed `CREATE INDEX CONCURRENTLY` leaves an INVALID index (`SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid`). `IF NOT EXISTS` sees the name and skips it - `DROP INDEX CONCURRENTLY` first, then re-run.
-- Flyway 9.1.2+ on PostgreSQL holds its migration lock in an open transaction by default, which a concurrent index build waits on - set `spring.flyway.postgresql.transactional-lock: false` when any script runs `CONCURRENTLY`.
+- Flyway 9.1.0+ on PostgreSQL holds its migration lock in an open transaction by default, which a concurrent index build waits on - set `spring.flyway.postgresql.transactional-lock: false` when any script runs `CONCURRENTLY`.
 - Liquibase: `runInTransaction="false"` on the changeset.
 
 MySQL (InnoDB): `ALTER TABLE orders ADD INDEX idx_orders_customer (customer_id), ALGORITHM=INPLACE, LOCK=NONE;` - online, but long on a large table (ops step). Its guarded record in Liquibase: `<preConditions onFail="MARK_RAN"><not><indexExists tableName="orders" indexName="idx_orders_customer"/></not></preConditions>`.
@@ -130,7 +129,7 @@ MySQL 8.0.16+ enforces CHECK, has no `NOT VALID`, and adding one copies the tabl
 ### Failed migrations
 
 - PostgreSQL transactional script: rolled back, nothing recorded - fix the cause and re-run.
-- Non-transactional script (`executeInTransaction=false`) or any MySQL DDL: Flyway records the migration as failed and every later `migrate` stops ("Detected failed migration"). Undo partial effects (drop the INVALID index; check which statements committed), correct the file if needed - a migration that never succeeded anywhere has no checksum at stake - then `flyway repair` (removes the failed row) and re-run. Pods crash-loop until then; old pods keep serving.
+- PostgreSQL non-transactional script: with `transactional-lock: false` Flyway records it as failed and every later `migrate` stops ("Detected failed migration"); with the default lock nothing is recorded and the next startup re-runs the script against its partial effects - a guarded `CREATE INDEX CONCURRENTLY IF NOT EXISTS` then skips the INVALID index and records success, usually on the pod's own restart - so after any failure run the `pg_index WHERE NOT indisvalid` check; an INVALID index whose file is already recorded as successful is dropped with `DROP INDEX CONCURRENTLY` and rebuilt out of band (a successful row never runs again). Any MySQL DDL: recorded as failed. Recovery from a recorded failure: undo partial effects (drop the INVALID index; check which statements committed), correct the file if needed - a migration that never succeeded anywhere has no checksum at stake - then `flyway repair` (removes the failed row) and re-run. Pods crash-loop until then; old pods keep serving.
 - Liquibase: a failed changeset is not recorded in `DATABASECHANGELOG`; undo partial effects, fix, re-run. Release a stuck lock with `liquibase release-locks` only after confirming no update is running.
 
 ### Rollback strategy
@@ -141,42 +140,17 @@ Flyway Community has no automatic undo; schema is forward-only:
 - Mistakes ship as a forward `Vx__revert_*.sql`.
 - "Rollback tested" means: migration applied on a Testcontainers clone of prod-shape data, revert applied, N-1 app boots and passes smoke tests.
 
-Liquibase: prefer auto-reversible changes (`addColumn`, `addNotNullConstraint`, `createIndex`); `sql` / `dropColumn` need an explicit `<rollback>`. MySQL online options on a declarative ALTER (`addNotNullConstraint`, `modifyDataType`): `<modifySql dbms="mysql"><append value=", ALGORITHM=INPLACE, LOCK=NONE"/></modifySql>`; `addColumn`/`dropColumn`/`renameColumn` append `, ALGORITHM=INSTANT`; `createIndex` renders `CREATE INDEX` and takes ` ALGORITHM=INPLACE LOCK=NONE` without the comma. Auto-rollback is kept, and forcing the algorithm makes an impossible online change fail fast instead of silently copying the table.
+Liquibase: prefer auto-reversible changes (`addColumn`, `addNotNullConstraint`, `createIndex`); `sql`, `dropColumn` and `modifyDataType` need an explicit `<rollback>`. `modifyDataType` re-emits only the type, so on MySQL its `MODIFY` drops the column's NOT NULL and DEFAULT - use `sql` with the full column definition in one statement (`ALTER TABLE orders MODIFY region VARCHAR(32) NOT NULL DEFAULT 'NEW'`, plus its `<rollback>`); restating with `addNotNullConstraint` then `addDefaultValue` works only in that order (`addNotNullConstraint` is itself a `MODIFY` and drops the default) and is three DDL statements in one changeset. MySQL online options on a declarative ALTER (`addNotNullConstraint`, `modifyDataType`): `<modifySql dbms="mysql"><append value=", ALGORITHM=INPLACE, LOCK=NONE"/></modifySql>`; `addColumn`/`dropColumn`/`renameColumn` append `, ALGORITHM=INSTANT`; `createIndex` renders `CREATE INDEX` and takes ` ALGORITHM=INPLACE LOCK=NONE` without the comma. Auto-rollback is kept, and forcing the algorithm makes an impossible online change fail fast instead of silently copying the table.
 
 ### CI validation
 
 Boot 4 auto-configures Flyway / Liquibase only through their Boot module - `spring-boot-starter-flyway` / `spring-boot-starter-liquibase`, or `spring-boot-starter-classic`, which bundles every module: a bare `flyway-core` / `liquibase-core` without either runs no migration at startup and the app boots against whatever schema exists - a `[Must]` config finding. Flyway 10+ also needs the database module on the classpath (`org.flywaydb:flyway-database-postgresql`, or `flyway-mysql`) or startup fails with "Unsupported Database".
 
-```java
-@SpringBootTest @Testcontainers
-class MigrationIntegrityTest {
-    @Container @ServiceConnection
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine");   // Testcontainers 2: org.testcontainers.postgresql;
-                                                                                    // Boot 3 / TC 1.x: PostgreSQLContainer<?> ... new PostgreSQLContainer<>(...)
-
-    @Autowired Flyway flyway;
-    @Autowired JdbcTemplate jdbc;
-
-    // Boot already ran migrate() during context startup - re-invoking it asserts on a no-op.
-    @Test
-    void allMigrationsApplyAndValidate() {
-        flyway.validate();   // checksum + ordering
-    }
-
-    // Guarded ops-step record files are no-ops in prod, so assert the end state, not the file list.
-    @Test
-    void schemaMatchesIntent() {
-        assertThat(jdbc.queryForObject("""
-                SELECT is_nullable FROM information_schema.columns
-                WHERE table_schema = current_schema() AND table_name = 'orders' AND column_name = 'region'""", String.class))   // MySQL: DATABASE()
-            .isEqualTo("NO");
-    }
-}
-```
+A `@SpringBootTest` on a Testcontainers database at the production major (`@ServiceConnection`) boots the app, so Boot runs the migrations and `ddl-auto: validate` checks the mapping; one test calls `flyway.validate()` (checksums and ordering) and asserts the end state through `information_schema.columns` - guarded ops-step records are no-ops in prod, so assert the schema, not the file list.
 
 ### Flyway conventions
 
-Versioned: `V{yyyyMMdd}_{HHmm}__{description}.sql`; repeatable `R__{description}.sql` for views/functions/triggers. The `V1`/`V2` names above are shorthand. With timestamp versions, a branch merged after a newer migration already ran is "ignored" and fails `validate-on-migrate` - re-stamp the file at merge rather than enabling `spring.flyway.out-of-order` (which hides dev/CI/prod ordering drift).
+Versioned: `V{yyyyMMdd}_{HHmm}__{description}.sql`; repeatable `R__{description}.sql` for views/functions/triggers. The `V1`/`V2` names above are shorthand. With timestamp versions, a branch merged after a newer migration already ran is "ignored" and fails `validate-on-migrate` - re-stamp the file at merge rather than enabling `spring.flyway.out-of-order` (which hides dev/CI/prod ordering drift; an existing `out-of-order: true` is a `[Recommend]` config finding).
 
 ```yaml
 spring:
@@ -203,7 +177,7 @@ Type: {DDL | DML | METADATA}
 
 Operation: {CREATE_TABLE | ADD_COLUMN | MODIFY_COLUMN | ADD_INDEX | DROP_INDEX | CONSTRAINT | VALIDATE_CONSTRAINT | BACKFILL | RENAME | DROP_COLUMN | DROP_TABLE | REPEATABLE_OBJECT | REPAIR | CONFIG | unknown - file not supplied}
 
-Table: {name}
+Table: {name | n/a - config}
 
 Phase: {expand | migrate | contract}
 
@@ -218,13 +192,10 @@ Backward Compatible With N-1: {yes | no - what changes with code release}
 Rollback: {auto-reversible | liquibase-rollback | forward-fix | restore-from-backup}
 ```
 
-Legend. `Type`: `METADATA` is a schema-history operation (`flyway repair`, Liquibase `release-locks` / `changelog-sync`); a metadata-only ALTER is still `DDL`. `Operation`: SET NOT NULL, CHECK and FK are `CONSTRAINT`; `R__` views/functions/triggers are `REPEATABLE_OBJECT`. `Phase` is what the statement does, as written: `expand` adds structure (columns, tables, indexes, widening, NOT VALID constraints); `migrate` moves data (backfills, validation); `contract` removes or tightens (drop, rename completion, SET NOT NULL, an immediately-validated constraint); `METADATA` and config rows take the phase of the step they unblock. `Locks Table`: `CONCURRENTLY` builds and `VALIDATE CONSTRAINT` take SHARE UPDATE EXCLUSIVE - `no` (DML continues). `Concurrency Safe`: `yes-batched` is a batched DML job (short per-batch row locks); `no` is a statement that blocks traffic. `Startup Safe` covers the other failure: a statement that blocks no traffic can still stall the rollout by holding the migration lock past the probe window - the window is `initialDelaySeconds + periodSeconds x failureThreshold`.
+Legend. `Type`: `METADATA` is a schema-history operation (`flyway repair`, Liquibase `release-locks` / `changelog-sync`) or a config row; a metadata-only ALTER is still `DDL`. `Operation`: SET NOT NULL, CHECK and FK are `CONSTRAINT`; `R__` views/functions/triggers are `REPEATABLE_OBJECT`. `Phase` is what the statement does, as written: `expand` adds structure (columns, tables, indexes, widening, NOT VALID constraints); `migrate` moves data (backfills, validation); `contract` removes or tightens (drop, rename completion, SET NOT NULL, an immediately-validated constraint); `METADATA` and config rows take the phase of the step they unblock. `Release`: `ops step during <release>` names the release whose rollout must be complete before the step runs (a backfill after N is `ops step during N`; the guarded record that follows it is an N+1 file). `Locks Table`: `CONCURRENTLY` builds and `VALIDATE CONSTRAINT` take SHARE UPDATE EXCLUSIVE - `no` (DML continues). `Concurrency Safe`: `yes-batched` is a batched DML job (short per-batch row locks); `no` is a statement that blocks traffic. `Startup Safe` covers the other failure: a statement that blocks no traffic can still stall the rollout by holding the migration lock past the probe window - the window is `initialDelaySeconds + periodSeconds x failureThreshold`.
 
 ## Avoid
 
 - `ADD COLUMN ... NOT NULL DEFAULT <volatile expr>` on a large PostgreSQL table (full rewrite under lock)
-- Dropping or renaming a column while any running release still maps it
-- Blocking index creation on large tables (no `CONCURRENTLY` / `INPLACE`)
-- Editing a migration that succeeded anywhere
 - Unbounded `UPDATE` for backfill - batch by primary key range
 - `flyway.clean()` outside ephemeral test containers

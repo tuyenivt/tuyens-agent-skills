@@ -9,7 +9,7 @@ user-invocable: false
 
 # Async Processing
 
-> Load `Use skill: stack-detect` first to determine the project stack. The rules below branch on the JDK version (pinning), the Boot version, and whether `spring.threads.virtual.enabled=true` is set. Read the JDK from `java.toolchain.languageVersion` / `<java.version>` / `sourceCompatibility`, Boot from the plugin or parent version, and the flag from `application*.yml`/`.properties`; write `unknown` for any that is absent (an unknown JDK is treated as < 24).
+> Load `Use skill: stack-detect` first to determine the project stack. The rules below branch on the JDK version (pinning), the Boot version, and whether `spring.threads.virtual.enabled=true` is set. Read the JDK from `java.toolchain.languageVersion` / `<java.version>` / `sourceCompatibility`, Boot from the plugin or parent version, and the flag from `application*.yml`/`.properties`; write `unknown` for a JDK or Boot version that is absent (an unknown JDK is treated as < 24); an absent flag is `off` (Boot's default).
 
 ## When to Use
 
@@ -20,6 +20,7 @@ user-invocable: false
 
 ## Rules
 
+- `@Async` needs `@EnableAsync` and `@Scheduled` needs `@EnableScheduling` on a configuration class; absent from the application (not only from the reviewed files - an enabler that may live in an unseen class is `unknown - enabler not reviewed`), the annotation is inert - a `[Must]` finding, carried as `Executor: none - @EnableAsync absent` or `Overlap Policy: N/A - @EnableScheduling absent, never runs`
 - While Boot's `applicationTaskExecutor` is active, an auto-configured `AsyncConfigurer` routes unnamed `@Async` to it (an application `AsyncConfigurer` whose `getAsyncExecutor()` returns `null` falls back to it too). It is VT-per-task when `spring.threads.virtual.enabled=true`, otherwise a `ThreadPoolTaskExecutor` with 8 core threads and an unbounded queue - no back-pressure. Once it backs off, Framework resolution applies: the single `TaskExecutor` bean if exactly one exists, else a bean named `taskExecutor`, else a `SimpleAsyncTaskExecutor` (one new platform thread per task, unbounded). Boot 4 registers no `taskExecutor` alias
 - Declaring any `Executor` bean - a `ThreadPoolTaskScheduler` or a plain `ExecutorService` included - backs off `applicationTaskExecutor`. One added `ThreadPoolTaskExecutor` then silently becomes the target of every unnamed `@Async` (unless `@EnableScheduling`'s auto-configured `taskScheduler`, also a `TaskExecutor`, makes two); two, or a plain `Executor`/`ExecutorService`, drop unnamed `@Async` to the unbounded `SimpleAsyncTaskExecutor`. Keep the global default by declaring extra executors `@Bean(defaultCandidate = false)` (pattern below), or set `spring.task.execution.mode=force`; an application `AsyncConfigurer` whose `getAsyncExecutor()` returns an executor overrides both. (Boot 3.x: re-declare the default under the names `applicationTaskExecutor` and `taskExecutor`, or use `mode=force` on 3.5.) Symptom split: platform-thread counts in the thousands mean unnamed `@Async` fell to the thread-per-task `SimpleAsyncTaskExecutor`; slow delivery at a stable thread count means it was retargeted into another pool's queue
 - Name an executor (`@Async("name")`) whenever the workload differs from the global default. Pick by workload: bounded `ThreadPoolTaskExecutor` (queue + back-pressure) for CPU-bound or rate-limited work; virtual threads for IO-bound fan-out
@@ -29,7 +30,7 @@ user-invocable: false
 - Configure `AsyncUncaughtExceptionHandler` - unchecked exceptions from `void` async methods are otherwise only logged by the default handler; `CompletableFuture` returns surface failures to the caller (`.exceptionally(...)`)
 - `@TransactionalEventListener(AFTER_COMMIT)` over `@EventListener` when the handler must not run on rollback
 - On JDK < 24, `synchronized` around blocking IO inside code that may run on a virtual thread pins the carrier (JEP 491 removes this in JDK 24+). On Java 21-23 use `ReentrantLock`, `StampedLock`, or concurrent collections
-- `@Scheduled(fixedRate)` and `cron` on the VT scheduler (`SimpleAsyncTaskScheduler`) run each tick on a new thread and overlap themselves when a run exceeds the period. `fixedDelay` never self-overlaps, but on that scheduler fixed-delay tasks run on its single scheduler thread and a long one delays every other scheduled task. ShedLock prevents overlap on the same node and across replicas while the run stays under `lockAtMostFor`. A platform `ThreadPoolTaskScheduler` (VT off) never runs the same task concurrently
+- `@Scheduled(fixedRate)` and `cron` on the VT scheduler (`SimpleAsyncTaskScheduler`) run each tick on a new thread and overlap themselves when a run exceeds the period. `fixedDelay` never self-overlaps, but on that scheduler fixed-delay tasks run on its single scheduler thread and a long one delays every other scheduled task. ShedLock prevents overlap on the same node and across replicas while the run stays under `lockAtMostFor`. A platform `ThreadPoolTaskScheduler` (VT off) never runs the same task concurrently, and at Boot's default `spring.task.scheduling.pool.size=1` any long task delays every other scheduled task
 
 ## Patterns
 
@@ -86,7 +87,7 @@ class AsyncConfig implements AsyncConfigurer {
 }
 ```
 
-At its concurrency limit a `SimpleAsyncTaskExecutor` blocks the submitting thread (here the request thread behind an `AFTER_COMMIT` listener); `setRejectTasksWhenLimitReached(true)` (Framework 6.2+) rejects instead - pair it with a drop-and-count path.
+At its concurrency limit a `SimpleAsyncTaskExecutor` blocks the submitting thread (here the request thread behind an `AFTER_COMMIT` listener); `setRejectTasksWhenLimitReached(true)` (Framework 6.2.6+) rejects instead - pair it with a drop-and-count path.
 
 Virtual threads do not help CPU-bound work. Size a CPU-bound pool from the rate it must sustain: threads ~ arrival rate x service time (30/s x 0.4 s = 12), capped at the pod's cores - excess queues. A bounded pool caps concurrency per pod only: an account-wide external limit across N replicas needs a shared limiter (Redis-backed token bucket) or a per-pod share of limit/N, stated as such.
 
@@ -132,7 +133,7 @@ AFTER_COMMIT listeners run in the transaction's `afterCompletion` callback. Thre
 
 - An exception thrown by a synchronous listener is caught and logged by Spring - it never reaches the caller, and the side effect is silently lost.
 - A synchronous listener still holds the request's JDBC connection (released after the callbacks), so slow work belongs on `@Async`.
-- A synchronous listener that writes needs `@Transactional(propagation = REQUIRES_NEW)`: a `REQUIRED` write in a callee joins the completed transaction and never commits. Spring 6.1+ fails startup when a `@TransactionalEventListener` method carries `@Transactional` with any other propagation than `REQUIRES_NEW` / `NOT_SUPPORTED` - an invalid combination is a finding, carried in the block's `Event Phase` as `AFTER_COMMIT - invalid @Transactional(<propagation>)`. An `@Async` listener already runs outside the committed transaction; its callee's plain `@Transactional` starts a new one.
+- A synchronous listener that writes needs `@Transactional(propagation = REQUIRES_NEW)`: a `REQUIRED` write in a callee joins the completed transaction and never commits. Spring 6.1+ fails startup when a `@TransactionalEventListener` carries `@Transactional` (on the method; 6.2+ also its class) with any propagation other than `REQUIRES_NEW` / `NOT_SUPPORTED` (6.1.3+); 6.2.10+ exempts the `BEFORE_COMMIT` phase - an invalid combination is a finding, carried as `Event Phase: <phase> - invalid @Transactional(<propagation>)`. An `@Async` listener already runs outside the committed transaction; its callee's plain `@Transactional` starts a new one.
 
 ### Durable async work (must survive a pod dying)
 
@@ -156,7 +157,7 @@ class Mailer {                                          // bean B - retry advice
 }
 ```
 
-"`@Retryable` never retries" - check, in order: `@EnableResilientMethods` on a configuration class (a project still on Spring Retry: `@EnableRetry`, an explicit `spring-retry` version, and AspectJ via `spring-boot-starter-aspectj` - on Boot 3.x the BOM manages `spring-retry`, AspectJ comes from `spring-boot-starter-aop`, and the form is `@Retryable(retryFor, maxAttempts, backoff = @Backoff(...))` + `@Recover`); `includes` matches the exception actually thrown (a `RestClient` throws `RestClientException` subtypes, not your domain type - translate at the client or list the client's types); the call goes through the proxy (no self-invocation). `@Async` needs `@EnableAsync`. An exhausted retry behind a `void` `@Async` method with no catch reaches only the `AsyncUncaughtExceptionHandler`.
+"`@Retryable` never retries" - check, in order: `@EnableResilientMethods` on a configuration class (a project still on Spring Retry: `@EnableRetry`, an explicit `spring-retry` version, and AspectJ via `spring-boot-starter-aspectj` - on Boot 3.x the BOM manages `spring-retry`, AspectJ comes from `spring-boot-starter-aop`, and the form is `@Retryable(retryFor, maxAttempts, backoff = @Backoff(...))` + `@Recover`); `includes` matches the exception actually thrown (a `RestClient` throws `RestClientException` subtypes, not your domain type - translate at the client or list the client's types); the call goes through the proxy (no self-invocation). An exhausted retry behind a `void` `@Async` method with no catch reaches only the `AsyncUncaughtExceptionHandler`.
 
 ### `@Scheduled`: overlap, time zone, errors
 
@@ -176,22 +177,20 @@ public void reconcileInventory() { ... }
 public void nightlySettlement() { ... }
 ```
 
-- ShedLock needs `net.javacrumbs.shedlock:shedlock-spring` plus a provider (`shedlock-provider-jdbc-template` and its `shedlock` table), a `LockProvider` bean, and `@EnableSchedulerLock(defaultLockAtMostFor = ...)` - the bare annotation is a silent no-op. `lockAtMostFor` above the worst-case run and below the interval; `lockAtLeastFor` covers clock skew so a fast run cannot re-fire on another replica. `fixedDelay` + ShedLock only when a run may exceed `lockAtMostFor`
+- ShedLock needs `net.javacrumbs.shedlock:shedlock-spring` plus a provider (`shedlock-provider-jdbc-template` and its `shedlock` table), a `LockProvider` bean, and `@EnableSchedulerLock(defaultLockAtMostFor = ...)` - the bare annotation is a silent no-op. `lockAtMostFor` sits above the worst-case run: it is the bound after which a dead node's lock expires, so a run that outlives it lets another replica start a second run. `lockAtLeastFor` covers clock skew so a fast run cannot re-fire on another replica. A run that may outlast the interval uses `fixedDelay` + ShedLock (the VT-scheduler caveat below applies)
 - `cron` fires in the JVM default zone, which varies per container - set `zone` explicitly, and derive any business date inside the job from the same zone (`LocalDate.now(ZoneId.of("Asia/Tokyo"))`)
 - Exceptions from a `@Scheduled` method go to the scheduler's `ErrorHandler` (default: log, schedule continues) - the tick's work is lost, so make jobs idempotent/resumable and alert from the `ErrorHandler` when a lost tick matters
-- Long `fixedDelay` jobs on the VT scheduler: declare a `ThreadPoolTaskScheduler` bean with `setPoolSize(n > 1)` - it is an `Executor`, so it backs off `applicationTaskExecutor`; pair it with `spring.task.execution.mode=force` - or use `cron`/`fixedRate` with ShedLock
+- Long `fixedDelay` jobs on the VT scheduler, or any long job on the platform scheduler at its default pool size 1, delay every other task: raise `spring.task.scheduling.pool.size` (platform), or declare a `ThreadPoolTaskScheduler` bean with `setPoolSize(n > 1)` - it is an `Executor`, so it backs off `applicationTaskExecutor`; pair it with `spring.task.execution.mode=force` - or, on the VT scheduler only, use `cron`/`fixedRate` with ShedLock
 
 ### Context propagation across the async boundary
 
-- **Trace / MDC**: `ContextPropagatingTaskDecorator` copies the values registered with Micrometer's `ContextRegistry` - the observation scope, so `traceId`/`spanId` reach MDC through the tracing bridge. Other MDC keys need their own `ThreadLocalAccessor`. Boot applies `TaskDecorator` beans to every executor and scheduler built from its builders (the auto-configured ones included); a `new`-built executor calls `setTaskDecorator`. Boot 4.1's `spring.task.execution.propagate-context=true` registers the decorator for you when `io.micrometer:context-propagation` is on the classpath (`micrometer-tracing` brings it)
+- **Trace / MDC**: `ContextPropagatingTaskDecorator` copies the values registered with Micrometer's `ContextRegistry` - the observation scope, so `traceId`/`spanId` reach MDC through the tracing bridge; other MDC keys need their own `ThreadLocalAccessor`. Boot applies `TaskDecorator` beans to every executor and scheduler built from its builders (the auto-configured ones included); a `new`-built executor calls `setTaskDecorator`. Boot 4.1's `spring.task.execution.propagate-context=true` registers the decorator for you when `io.micrometer:context-propagation` is on the classpath (`micrometer-tracing` brings it). `InheritableThreadLocal` is not a substitute - it copies only at thread creation
 - **SecurityContext**: Spring Security 6.5+ registers `SecurityContextHolderThreadLocalAccessor` through ServiceLoader, so the `ContextPropagatingTaskDecorator` carries it; below 6.5 wrap the executor in `DelegatingSecurityContextAsyncTaskExecutor`
-- **Scheduled and batch triggers** have no inbound request: each tick starts its own trace (Boot observes `@Scheduled` methods when an `ObservationRegistry` is present); log a job-run id alongside it
-- `InheritableThreadLocal` copies only at thread creation - stale or foreign values on pooled executors, a shared mutable reference on per-task threads. Use a `TaskDecorator`
-- **JPA Session**: not propagated. The async method re-fetches by ID and opens its own transaction
+- **JPA Session**: not propagated. The async method takes IDs, never a managed entity (its lazy fields fail on the closed Session), re-fetches and opens its own transaction. A scheduled tick has no inbound request: it starts its own trace - log a job-run id alongside it
 
 ## Output Format
 
-In every mode, emit the `**Stack:**` line once, before the first block, then one block per async or scheduled operation (configuration beans are not operations - their effect lands in each operation's `Executor` slot). When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, emit one finding per deviation - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when it loses work, duplicates a side effect, exhausts threads, carriers or the pool, fails startup, or runs a job on the wrong schedule, `[Recommend]` otherwise - then the blocks as the target state, carrying the current value as `was: ...` in each slot that changes. A cross-cutting gap (context propagation, a missing enabler) is one finding plus the affected slot in each block. A callee outside the reviewed files is `unknown - <callee> not reviewed` in the slot it affects.
+In every mode, emit the `**Stack:**` line once, before the first block, then one block per async or scheduled operation (configuration beans are not operations - their effect lands in each operation's `Executor` slot; a synchronous callee such as a `@Retryable` bean has no block - its retry lands in its caller's `Error Handling`). When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, emit one finding per deviation - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when it loses work, duplicates a side effect, exhausts threads, carriers or the pool, fails startup, or runs a job on the wrong schedule, `[Recommend]` otherwise - then the blocks as the target state, carrying the current value as `was: ...` in each slot that changes. A cross-cutting gap (context propagation, a missing enabler) is one finding plus the affected slot in each block. A callee outside the reviewed files is `unknown - <callee> not reviewed` in the slot it affects. Request-path code that is neither async nor scheduled (an HTTP client) gets no block; its pinning or blocking is a finding only. `Overlap Policy` and `Context` take several values joined with ` + ` when several apply.
 
 ```
 **Stack:** Java {n | unknown}, Spring Boot {x.y | unknown}, virtual threads {on | off}
@@ -200,32 +199,26 @@ In every mode, emit the `**Stack:**` line once, before the first block, then one
 ```
 Operation: {what runs async/scheduled}
 
-Executor: {bean name | global VT | applicationTaskExecutor - 8 threads, unbounded queue | retargeted to <bean> - sole TaskExecutor | SimpleAsyncTaskExecutor fallback - unbounded platform threads | scheduler | none - @Async bypassed by self-invocation}
+Executor: {bean name | global VT | applicationTaskExecutor - 8 threads, unbounded queue | retargeted to <bean> - sole TaskExecutor | SimpleAsyncTaskExecutor fallback - unbounded platform threads | scheduler | none - @Async bypassed by self-invocation | none - @EnableAsync absent | unknown - enabler not reviewed}
 
 Workload: {IO-bound | CPU-bound | rate-limited}
 
-Event Phase: {AFTER_COMMIT | AFTER_ROLLBACK | AFTER_COMPLETION | BEFORE_COMMIT | @EventListener - runs on rollback | none - direct call inside the transaction | N/A}
+Event Phase: {AFTER_COMMIT | AFTER_ROLLBACK | AFTER_COMPLETION | BEFORE_COMMIT | <phase> - invalid @Transactional(<propagation>) | @EventListener - runs on rollback | none - direct call inside the transaction | N/A}
 
-Overlap Policy: {fixedDelay | ShedLock | fixedDelay + ShedLock | scheduler-serialised - ThreadPoolTaskScheduler, single replica | claim-based - SKIP LOCKED | none - overlaps <itself \| across replicas \| both> | N/A - not scheduled}
+Overlap Policy: {fixedDelay | ShedLock | fixedDelay + ShedLock | scheduler-serialised - ThreadPoolTaskScheduler, single replica | claim-based - SKIP LOCKED | none - overlaps itself | none - overlaps across replicas | none - overlaps itself and across replicas | N/A - @EnableScheduling absent, never runs | unknown - enabler not reviewed | N/A - not scheduled}
 
 Error Handling: {AsyncUncaughtExceptionHandler | exceptionally | caller catch after @Retryable | @Recover - Spring Retry | scheduler ErrorHandler | none}
 
-Idempotent: {Yes - mechanism | No - rationale | N/A - no redelivery path}
+Idempotent: {Yes - mechanism | No - rationale | N/A - no redelivery path exists or is being added}
 
-Context: {ContextPropagatingTaskDecorator | DelegatingSecurityContextAsyncTaskExecutor | SecurityContextHolderThreadLocalAccessor | missing - <what is lost> | not needed} - `+`-join when several apply
+Context: {ContextPropagatingTaskDecorator | DelegatingSecurityContextAsyncTaskExecutor | SecurityContextHolderThreadLocalAccessor | missing - <what is lost> | not needed}
 
 Pinning Risk: {None | None - JDK 24+ | Unknown - JDK not determined, treated as < 24 | Present - unfixed | Fixed - synchronized -> ReentrantLock | Fixed - synchronized -> StampedLock | Fixed - synchronized -> concurrent collection}
 ```
 
-`Idempotent: N/A` only when redelivery is structurally impossible; write `No` when retry or a broker exists or is being added.
-
 ## Avoid
 
-- `@Async` without an explicit executor name when the workload differs from the global default
-- Declaring an `Executor` bean without `defaultCandidate = false` (or `mode=force`)
-- Calling `@Async` methods via `this.X()` (proxy bypass, silent no-op)
-- `synchronized` around blocking IO in code that may run on virtual threads on JDK < 24
-- `@Scheduled(fixedRate)` or `cron` on the VT scheduler for jobs that must not overlap themselves; `cron` without `zone`
 - CPU-bound work on Virtual Threads
-- Required side effects in an AFTER_COMMIT listener without a durable record
+- `cron` without `zone`
+- `CallerRunsPolicy` behind an `AFTER_COMMIT` listener (the rejected task lands on the response path)
 - Relying on `InheritableThreadLocal` or `MODE_INHERITABLETHREADLOCAL` to carry context

@@ -25,7 +25,7 @@ user-invocable: false
 - The dedup insert and the business effect share one transaction, so they commit or roll back together - a separately committed dedup row makes a failed effect skip its own redelivery. The insert must not throw on a duplicate: on PostgreSQL any failed statement aborts the whole transaction (under JPA it is also marked rollback-only), so use `INSERT ... ON CONFLICT DO NOTHING` (MySQL: `INSERT IGNORE`) and read the update count (0 = already seen). An effect outside the database (HTTP call) is not rolled back - pass the event ID to it as an idempotency key.
 - Every Kafka / RabbitMQ listener and DB-queue handler has a DLT / DLQ; permanent failures skip retry.
 - A publish that must follow a DB commit goes through the **transactional outbox**. Never call `send()` inside `@Transactional` without it: a rollback leaves a phantom event - and a checked exception does not roll back by default (`spring-transaction`), so "failed" paths can still commit and publish.
-- Payloads are records / primitives. Never serialize JPA entities (lazy proxies, schema coupling).
+- Payloads are records / primitives. Never serialize JPA entities (lazy proxies, schema coupling). An event another team consumes is a contract, written in the design before code: owning team, payload record with a version field, the `eventId` header, the key and what it orders, topic retention, and who owns and drains the DLT.
 - Ack only after successful processing. Kafka: the default container ack mode (`BATCH`; `enable.auto.commit` defaults to false unless set explicitly - never set it true) already commits offsets only after the listener returns, and the error handler commits only recovered records - use `ack-mode: manual_immediate` only when acking conditionally, and then ack on every path, DLT handlers included. RabbitMQ: container `AUTO` acks on return and nacks on exception - correct as long as failures throw; `acknowledge-mode: manual` only when acking mid-method.
 - Catch only what you can handle in a listener; let unknowns reach the retry / DLT machinery.
 - Trace context crosses the broker only with observation enabled - it is off by default in Spring Kafka and Spring AMQP: `spring.kafka.template.observation-enabled` / `spring.kafka.listener.observation-enabled`, `spring.rabbitmq.template.observation-enabled` / `spring.rabbitmq.listener.simple.observation-enabled`, plus a Micrometer Tracing bridge on the classpath.
@@ -121,12 +121,13 @@ spring:
     byType.put(byte[].class, new ByteArraySerializer());          // DLT republish of raw bytes
     byType.put(String.class, new StringSerializer());             // outbox payloads, already JSON
     byType.put(Object.class, new JacksonJsonSerializer<>());      // typed events (Jackson 3; 3.x: JsonSerializer)
-    return pf -> pf.setValueSerializer(new DelegatingByTypeSerializer(byType, true));
+    return pf -> ((DefaultKafkaProducerFactory<Object, Object>) pf)   // the customizer receives <?, ?>
+        .setValueSerializer(new DelegatingByTypeSerializer(byType, true));
 }
 ```
 
   Without the `byte[]` entry the DLT receives a base64 JSON string instead of the original bytes.
-- `@RetryableTopic` auto-creates `order.placed-retry-0`, `-retry-1`, `order.placed-dlt`; `exclude` sends non-retryable exceptions straight to the DLT.
+- `@RetryableTopic` auto-creates `order.placed-retry-1000`, `order.placed-retry-2000` (suffixed with the delay by default) and `order.placed-dlt`; `exclude` sends non-retryable exceptions straight to the DLT.
 
 ### RabbitMQ with DLQ
 
@@ -248,7 +249,7 @@ class OutboxPublisher {
 }
 ```
 
-The consumer reads the JSON string without a `__TypeId__` header - pair it with `spring.json.use.type.headers: false` and the per-listener default type. The claim lease must exceed a batch's worst case (100 sends x `delivery.timeout.ms`), or lower the batch size / timeout - an expired lease re-publishes rows still in flight, which consumer dedup absorbs. Prune `published` rows and the dedup table on a schedule.
+The consumer reads the JSON string without a `__TypeId__` header - pair it with `spring.json.use.type.headers: false` and the per-listener default type. The claim lease must exceed a batch's worst case (batch size x per-send worst case: up to `max.block.ms` blocked inside `send()` for metadata or buffer space - 60 s by default - plus `delivery.timeout.ms` - 120 s by default, never below `request.timeout.ms` + `linger.ms`, about 30 s); the 60-second lease shown covers less than one send at the defaults, so raise the lease, or lower `max.block.ms` / `delivery.timeout.ms` and shrink the batch - an expired lease re-publishes rows still in flight, which consumer dedup absorbs. The claim query needs an index on `(published, created_at)` (PostgreSQL: partial, `WHERE published = false`) or every poll scans the table. Prune `published` rows and the dedup table on a schedule.
 
 RabbitMQ relay - send the stored bytes, bypassing the JSON converter (it would re-encode the string), with the header the consumer reads:
 
@@ -288,28 +289,9 @@ RETURNING id;
 
 The outbox is still the answer and the queue moves into the database: fan the outbox row out to a `jobs` table keyed `(handler, dedup_key UNIQUE)`, claimed with the same `FOR UPDATE SKIP LOCKED` query. `status = 'DEAD'` after N attempts is the DLQ - alert on its depth and never auto-consume it. Every replica polls; SKIP LOCKED makes that safe without leader election. Long handlers run **outside** any transaction: claim in a short tx, work untransacted, complete in a second short tx, with the claim lease above the handler's worst-case runtime. Nothing auto-instruments this hop - carry `traceparent` on the row and restore it in the worker.
 
-### Spring Application Events (in-process, same JVM)
+### Spring Application Events: required vs best-effort side effects
 
-`AFTER_COMMIT` so listeners never see uncommitted state. No crash survival - use the outbox when it matters.
-
-```java
-public record OrderCreatedEvent(Long orderId, BigDecimal total) {}
-
-@Transactional
-public Order create(CreateOrderRequest req) {
-    Order o = orderRepo.save(Order.from(req));
-    events.publishEvent(new OrderCreatedEvent(o.getId(), o.getTotal()));
-    return o;
-}
-
-@TransactionalEventListener(phase = AFTER_COMMIT)
-@Transactional(propagation = REQUIRES_NEW)   // it writes; Spring 6.1+ accepts only REQUIRES_NEW or NOT_SUPPORTED here
-public void onOrderCreated(OrderCreatedEvent e) { auditService.record(e); }
-```
-
-### Required vs best-effort side effects
-
-An exception in an `AFTER_COMMIT` listener is caught and logged by the transaction machinery and never retried - required delivery goes through the outbox (written inside the transaction); only best-effort effects stay in the listener:
+In-process, same JVM, `AFTER_COMMIT` so listeners never see uncommitted state; a listener that writes takes `@Transactional(propagation = REQUIRES_NEW)` (Spring 6.1+ fails startup on any other propagation on the listener - `NOT_SUPPORTED` also accepted from 6.1.3, a class-level `@Transactional` checked from 6.2 - `spring-async-processing`). An exception in an `AFTER_COMMIT` listener is caught and logged by the transaction machinery and never retried, and nothing survives a crash - required delivery goes through the outbox (written inside the transaction); only best-effort effects stay in the listener:
 
 ```java
 public record PaymentCompletedEvent(UUID paymentId, String phone) {}          // in-process, best-effort
@@ -346,7 +328,7 @@ public ResponseEntity<Void> stripe(@RequestBody byte[] raw, @RequestHeader("Stri
 
 ## Output Format
 
-In every mode, emit the `**Engine:**` line once, then one block per message flow - each consumed or published topic/queue, one block per queue on a fan-out, including a terminal DLQ nothing consumes. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when it loses messages, duplicates an effect, stalls a consumer, accepts forged input, or deserializes untrusted types (`trusted.packages: "*"`), `[Recommend]` otherwise - then per flow (one per queue or topic, all symptoms on it together) an as-is block and a target block. A class outside the reviewed files is `unknown - <class> not reviewed` in the slot it affects. An effect over HTTP carries the event ID as its idempotency key: `restClient.post().uri(...).header("Idempotency-Key", eventId)`.
+In every mode, emit the `**Engine:**` line once, then one block per message flow - each consumed or published topic/queue, one block per queue on a fan-out, including a terminal DLQ nothing consumes. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when it loses messages, duplicates an effect, stalls a consumer, accepts forged input, or deserializes untrusted types (`trusted.packages: "*"`), `[Recommend]` otherwise - then per flow (one per queue or topic, all symptoms on it together) an as-is block and a target block; a flow the target state introduces gets a target block only. A design or authoring request against existing code reviews that code first: findings, then the blocks as the target state; a greenfield request has no findings. A class outside the reviewed files is `unknown - <class> not reviewed` in the slot it affects. An effect over HTTP carries the event ID as its idempotency key: `restClient.post().uri(...).header("Idempotency-Key", eventId)`.
 
 ```
 **Engine:** {PostgreSQL | MySQL | <other> - adapt the SQL | unknown - PostgreSQL shown, MySQL variant given | none - publish-only service}
@@ -357,19 +339,21 @@ Broker: {Kafka | RabbitMQ | Spring Events | DB queue - outbox/jobs | Webhook (HT
 
 Topic/Queue: {name}
 
+Contract: {owner, payload record + version, eventId header, key + what it orders, retention, DLT owner | internal - producer and consumer share a team}
+
 Producer: {class | external - <provider>}
 
 Consumer: {class | none by design - reason}
 
 Publish: {outbox relay | synchronous send, failure propagates | fire-and-forget - lost on failure | n/a - inbound}
 
-Delivery: {at-least-once | at-most-once | effectively-once - outbox + consumer dedup}
+Delivery: {at-least-once | at-most-once - <what loses the message> | effectively-once - outbox + consumer dedup}
 
-Idempotency: {dedup key + storage}
+Idempotency: {dedup key + storage | none - duplicates repeat the effect}
 
-DLT/DLQ: {topic/queue name | not needed - reason}
+DLT/DLQ: {topic/queue name | not needed - reason | none - failures requeue or are dropped}
 
-Retry: {attempts, backoff, excluded exceptions | claim-expiry policy for an outbox relay | provider-owned redelivery} - a flow with several states lists each
+Retry: {attempts, backoff, excluded exceptions | claim-expiry policy for an outbox relay | provider-owned redelivery | none - provider does not redeliver, reconcile via <API> | none - failures swallowed} - a flow with several states lists each
 
 Observability: {observation-enabled | manual instrumentation | none}
 ```

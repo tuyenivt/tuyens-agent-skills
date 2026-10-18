@@ -9,7 +9,7 @@ user-invocable: false
 
 # Exception Handling
 
-> Load `Use skill: stack-detect` first to confirm Spring Boot; then read the build file's starters yourself - stack-detect does not report them. MVC vs WebFlux decides the base class and several rows: WebFlux when `spring-boot-starter-webflux` is declared without `spring-boot-starter-webmvc` (or its deprecated name `spring-boot-starter-web`). The 401/403 rows apply when any Spring Security starter is present (`spring-boot-starter-security`, `-security-oauth2-resource-server`, `-security-oauth2-client`, or the deprecated `-oauth2-*` names). Written for Spring Framework 7 / Boot 4.
+> Load `Use skill: stack-detect` first to confirm Spring Boot; then read the build file's starters yourself - stack-detect does not report them. MVC vs WebFlux decides the base class and several rows: WebFlux when `spring-boot-starter-webflux` is declared without `spring-boot-starter-webmvc` (or its deprecated name `spring-boot-starter-web`). The 401/403 rows apply when any Spring Security starter is present (`spring-boot-starter-security`, `-security-oauth2-resource-server`, `-security-oauth2-client`, or the deprecated `-oauth2-*` names). Written for Spring Framework 7 / Boot 4; the Boot version read from the build file anchors the inline Boot 3 notes.
 
 ## When to Use
 
@@ -32,8 +32,8 @@ user-invocable: false
 
 | Exception                                                | Status |
 | -------------------------------------------------------- | ------ |
-| `MethodArgumentNotValidException`, `HandlerMethodValidationException`, `jakarta.validation.ConstraintViolationException`, `HttpMessageNotReadableException`, `MethodArgumentTypeMismatchException`, `MissingServletRequestParameterException`, `ServletRequestBindingException` | 400 |
-| Webhook signature verification failure (domain)          | 400 - the provider must not keep retrying a forged payload |
+| `MethodArgumentNotValidException`, `HandlerMethodValidationException`, `jakarta.validation.ConstraintViolationException` (from `@Validated` beans), `HttpMessageNotReadableException`, `MethodArgumentTypeMismatchException`, `MissingServletRequestParameterException`, `ServletRequestBindingException` | 400 |
+| Webhook signature verification failure (domain)          | 400 - a client error; a forged payload has no provider behind it to retry (a genuine delivery failing verification, e.g. after a secret rotation, is redelivered like any non-2xx) |
 | `AuthenticationException` (from the filter chain)        | 401    |
 | `PaymentDeclinedException` (domain)                      | 402    |
 | `AccessDeniedException` (filter chain or `@PreAuthorize`) | 403 (authenticated); 401 via the entry point (anonymous) |
@@ -45,16 +45,17 @@ user-invocable: false
 | `HttpMediaTypeNotSupportedException`                     | 415    |
 | `DomainException` subtype built with `UNPROCESSABLE_ENTITY` (well-formed request violating a business rule regardless of current state) | 422 |
 | `RateLimitedException` (domain - *our* throttle, not an upstream 429) | 429 |
-| Unhandled `Exception`, unclassified `DataIntegrityViolationException` | 500 |
+| Unhandled `Exception`, unclassified `DataIntegrityViolationException`, entity Bean Validation failure (bare `ConstraintViolationException` from an in-call flush; `TransactionSystemException` from a commit-time flush) | 500 |
 | Vendor-gateway wrapper (unclassified upstream failure, e.g. `PaymentGatewayException`) | 502 |
 | `RetryableException` subtypes (transient upstream failure) | 503  |
 
 - **502 vs 503 at the integration boundary, on the cause.** Timeout, connection failure, upstream 429 and upstream 5xx are transient -> `RetryableException` -> 503. Everything else the vendor returns is unclassified -> gateway wrapper -> 502. An upstream 429 never becomes our 429 (the client is not throttled). An upstream 400 means our request was malformed - our bug, 502 plus an ERROR log. Classify by exception type or by the status code the SDK exposes, whichever it offers.
+- **Webhooks.** The provider reads the status - 2xx acknowledges, anything else schedules a redelivery, so a transient handler failure returns 5xx - and some also read the body: Adyen's classic notifications expect the literal `[accepted]`; Stripe ignores it.
 - **`DataIntegrityViolationException` is translated where the write happens.** Identify the constraint by name - the cause's `org.hibernate.exception.ConstraintViolationException.getConstraintName()` (JPA; match by suffix, MySQL/Oracle qualify it) or the SQLSTATE of an R2DBC cause; the name comes from the migration that created it. A constraint the client can act on (unique key) becomes a `CONFLICT` domain exception; everything else (FK to a missing parent, NOT NULL) stays 500 - it is our bug.
-- **409 vs 422.** 409 when the request collides with current state that can change (duplicate, out of stock, stale version); 422 when it violates a rule no state change would satisfy.
-- **Method validation (Framework 6.1+ / Boot 3.2+):** constraints on `@RequestParam`/`@PathVariable`/`@RequestHeader` parameters raise `HandlerMethodValidationException` - and once a handler has one, its `@Valid @RequestBody` errors raise it too. Override `handleHandlerMethodValidationException` so both shapes share one body. `ConstraintViolationException` reaches the advice only from `@Validated` beans (AOP method validation).
+- **409 vs 422.** 409 when the request collides with current state that can change (duplicate, out of stock, stale version); 422 when it violates a rule no state change would satisfy. 404 is for the addressed resource only - an entity the body references (the customer of a new order) that does not exist is 422.
+- **Method validation (Framework 6.1+ / Boot 3.2+):** constraints on `@RequestParam`/`@PathVariable`/`@RequestHeader` parameters raise `HandlerMethodValidationException` - and once a handler has one, its `@Valid @RequestBody` errors raise it too. Override `handleHandlerMethodValidationException` so both shapes share one body. `jakarta.validation.ConstraintViolationException` reaches the advice from two sources: `@Validated` beans (AOP method validation) - a 400 - and Hibernate's Bean Validation of an entity when the flush runs inside the repository call (IDENTITY insert, `saveAndFlush`, explicit `flush`) - invalid data reached `persist`, our bug, 500 plus an ERROR log. When the flush runs at commit (SEQUENCE ids, dirty-checked updates) it arrives as `TransactionSystemException` (cause `RollbackException` <- `ConstraintViolationException`), which the catch-all already renders 500.
 - **Security exceptions.** Filter-chain failures (bad or expired token, URL-level denial) never reach the advice - the entry point and denied handler render them. Method-security denials (`@PreAuthorize` throws `AuthorizationDeniedException`, Security 6.3+) and `AuthenticationCredentialsNotFoundException` do reach an `@ExceptionHandler`; rethrow them from the advice so `ExceptionTranslationFilter` picks 401 (anonymous) or 403 (authenticated) and writes the entry-point envelope. A catch-all `@ExceptionHandler(Exception.class)` without that rethrow turns every denial into a 500.
-- **WebFlux.** Extend `org.springframework.web.reactive.result.method.annotation.ResponseEntityExceptionHandler`; every `WebRequest` parameter becomes `ServerWebExchange` and return types become `Mono<ResponseEntity<Object>>`; override `handleWebExchangeBindException` for body validation. Servlet rows swap for their reactive equivalents: `WebExchangeBindException` (400), `ServerWebInputException` / `MissingRequestValueException` (400), `MethodNotAllowedException` (405), `NotAcceptableStatusException` (406), `UnsupportedMediaTypeStatusException` (415), the reactive `NoResourceFoundException` (404); there is no multipart-size 413 row. `DataAccessException` rows stay - `DatabaseClient` translates R2DBC errors. Security: `ServerAuthenticationEntryPoint` / `ServerAccessDeniedHandler`.
+- **WebFlux.** Extend `org.springframework.web.reactive.result.method.annotation.ResponseEntityExceptionHandler`; `WebRequest` parameters become `ServerWebExchange`, return types `Mono<ResponseEntity<Object>>`; override `handleWebExchangeBindException` for body validation. Servlet rows swap for their reactive equivalents: `WebExchangeBindException` (400), `ServerWebInputException` / `MissingRequestValueException` (400), `MethodNotAllowedException` (405), `NotAcceptableStatusException` (406), `UnsupportedMediaTypeStatusException` (415), the reactive `NoResourceFoundException` (404); no multipart-size 413 row. `DataAccessException` rows stay - `DatabaseClient` translates R2DBC errors. Security: `ServerAuthenticationEntryPoint` / `ServerAccessDeniedHandler`.
 
 ## Patterns
 
@@ -71,11 +72,12 @@ public abstract class DomainException extends RuntimeException {
     protected DomainException(String msg, Throwable cause, HttpStatus status, String errorCode) {
         super(msg, cause); this.status = status; this.errorCode = errorCode;
     }
-    public HttpStatus getStatus() { return status; }
-    public String getErrorCode() { return errorCode; }
+    public HttpStatus getStatus() { return status; }   public String getErrorCode() { return errorCode; }
 }
 
-// Intermediate abstracts fix the status per family; callers branch on type, never on messages
+// Intermediate abstracts fix the status per family; callers branch on type, never on messages.
+// Existing checked exceptions on the service boundary become unchecked subtypes of this hierarchy (a checked
+// type also skips @Transactional rollback - spring-transaction); a vendor's checked type is wrapped at its boundary.
 public abstract class NotFoundException extends DomainException {
     protected NotFoundException(String msg, String code) { super(msg, NOT_FOUND, code); }
 }
@@ -131,8 +133,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     protected ResponseEntity<Object> handleHandlerMethodValidationException(HandlerMethodValidationException ex,
             HttpHeaders headers, HttpStatusCode status, WebRequest request) {
         var fieldErrors = new LinkedHashMap<String, String>();
-        ex.getParameterValidationResults().forEach(r -> r.getResolvableErrors().forEach(e ->
-            fieldErrors.putIfAbsent(r.getMethodParameter().getParameterName(), Objects.requireNonNullElse(e.getDefaultMessage(), "invalid"))));
+        ex.getParameterValidationResults().forEach(r -> {
+            if (r instanceof ParameterErrors pe)   // @Valid @RequestBody result: field-level errors, keyed by field
+                pe.getFieldErrors().forEach(fe -> fieldErrors.putIfAbsent(fe.getField(), Objects.requireNonNullElse(fe.getDefaultMessage(), "invalid")));
+            else                                   // scalar parameter: keyed by the parameter name
+                r.getResolvableErrors().forEach(e -> fieldErrors.putIfAbsent(r.getMethodParameter().getParameterName(), Objects.requireNonNullElse(e.getDefaultMessage(), "invalid")));
+        });
         var pd = ProblemDetails.of(BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed");
         pd.setProperty("fieldErrors", fieldErrors);
         return ResponseEntity.badRequest().body(pd);
@@ -144,9 +150,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.badRequest().body(ProblemDetails.of(BAD_REQUEST, "MALFORMED_REQUEST", "Request body is malformed"));
     }
 
-    // @Validated beans (AOP method validation) - not covered by ResponseEntityExceptionHandler
+    // @Validated beans (AOP method validation, 400) and in-call entity flush validation (500) - not covered by ResponseEntityExceptionHandler
     @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
     ProblemDetail handleConstraint(jakarta.validation.ConstraintViolationException ex) {
+        if (ex.getConstraintViolations().stream().anyMatch(v -> v.getRootBeanClass().isAnnotationPresent(Entity.class))) {
+            log.error("Invalid entity reached flush", ex);   // Hibernate's entity validation: our bug, not the client's
+            return ProblemDetails.of(INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "An unexpected error occurred");
+        }
         var fieldErrors = new LinkedHashMap<String, String>();
         ex.getConstraintViolations().forEach(v -> {
             String path = v.getPropertyPath().toString();
@@ -236,7 +246,7 @@ class StripePaymentGateway implements PaymentGateway {
     public PaymentResult charge(PaymentRequest req) {
         try {
             var opts = RequestOptions.builder().setIdempotencyKey("order-" + req.orderId()).build();
-            return PaymentResult.success(stripe.paymentIntents().create(toParams(req), opts).getId());
+            return PaymentResult.success(stripe.v1().paymentIntents().create(toParams(req), opts).getId());
         } catch (CardException e) {                                   // decline - subtypes before StripeException
             throw new PaymentDeclinedException(req.orderId(), publicDeclineCode(e.getDeclineCode()), e);
         } catch (RateLimitException | ApiConnectionException e) {     // upstream 429, network failure, timeout
@@ -253,14 +263,14 @@ class StripePaymentGateway implements PaymentGateway {
 
 ## Output Format
 
-In every mode, emit the `**Stack:**` line once, then one block per exception type that reaches the web layer or the security handlers in the target design - including types today's code never lets reach it; vendor exceptions wrapped at the boundary are covered by their wrapping domain type's block. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when an error leaks internals, lands in the wrong status class (4xx vs 5xx), or is swallowed, `[Recommend]` otherwise (a wrong code within the right class included) - then the blocks as the target state, carrying the current value as `was: ...` in each slot that changes. A finding that is not a mapping (a swallowed exception) has no block.
+In every mode, emit the `**Stack:**` line once, then one block per exception type that reaches the web layer or the security handlers in the target design - including types today's code never lets reach it; vendor exceptions wrapped at the boundary are covered by their wrapping domain type's block; framework exceptions sharing status, code, log level and detail share one block that lists the types in `Exception`. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when an error leaks internals, lands in the wrong status class (4xx vs 5xx), or is swallowed, `[Recommend]` otherwise (a wrong code within the right class included) - then the blocks as the target state, carrying the current value as `was: ...` in each slot that changes. A finding that is not a mapping (a swallowed exception) has no block.
 
 ```
-**Stack:** {Spring MVC | WebFlux}{ + Spring Security}
+**Stack:** {Spring MVC | WebFlux}{ + Spring Security}, Boot {x.y | unknown}
 ```
 
 ```
-Exception: {fully-qualified class | AuthenticationEntryPoint - <trigger> | AccessDeniedHandler - <trigger>}
+Exception: {fully-qualified class, or several comma-separated | AuthenticationEntryPoint - <trigger> | AccessDeniedHandler - <trigger>}
 
 HTTP Status: {code and reason}
 
@@ -275,9 +285,4 @@ When the change replaces an existing error envelope, close with one line: `Envel
 
 ## Avoid
 
-- Try/catch in controllers for response shaping
-- Custom error envelopes when `ProblemDetail` is available
-- Logging expected client errors (400, 404, 409) at `ERROR`
-- Leaking vendor exception types or messages past the integration boundary
-- A catch-all `@ExceptionHandler(Exception.class)` that also swallows security exceptions
 - Per-subclass handlers when the `DomainException` base handler suffices

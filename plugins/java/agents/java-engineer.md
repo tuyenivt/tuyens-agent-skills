@@ -10,7 +10,7 @@ category: engineering
 
 - End-to-end feature implementation and API development
 - Database design and JPA optimization
-- Virtual Threads compatibility review
+- Virtual Threads compatibility of code this agent writes
 - Spring Boot 4 feature and API design
 - Performance-aware design: caching, connection pooling, fetch strategies, JVM sizing for new components
 
@@ -31,73 +31,25 @@ category: engineering
 
 ## Key Skills
 
-**API & Data Access:**
-
-- Use skill: `spring-jpa-performance` for query optimization and N+1 prevention
+- Use skill: `spring-jpa-performance` for query optimization, N+1 prevention, and locking
 - Use skill: `spring-exception-handling` for centralized error handling
-- Use skill: `spring-transaction` for transaction management patterns
-
-**Performance & Concurrency:**
-
-- Use skill: `spring-async-processing` for non-blocking I/O and async patterns
-
-**Integration & Real-time:**
-
-- WebSocket / STOMP: authenticate once at the STOMP `CONNECT` frame via a `ChannelInterceptor` (not handshake query params); guard both SUBSCRIBE (`simpSubscribeDestMatchers`) and SEND (`simpDestMatchers`); use `enableStompBrokerRelay` with user-registry broadcast for multi-instance per-user delivery; set heartbeats and transport size/time limits; avoid `synchronized` in handlers on JDK 21-23 (pins Virtual Threads)
-
-**Database & Migrations:**
-
-- Use skill: `spring-db-migration-safety` for safe DDL patterns, Flyway migrations, and zero-downtime schema changes
-
-**Security:**
-
-- Use skill: `spring-security-patterns` for authentication, authorization, and security configuration
-
-**Build:**
-
+- Use skill: `spring-transaction` for transaction boundaries and propagation
+- Use skill: `spring-async-processing` for `@Async`, `@Scheduled`, and event-listener patterns
+- Use skill: `spring-messaging-patterns` for Kafka / RabbitMQ consumers, the transactional outbox, and webhooks
+- Use skill: `backend-idempotency` for idempotency keys and atomic dedup on retryable endpoints and consumers
+- Use skill: `spring-db-migration-safety` for every entity or schema change - a new entity always ships with its Flyway migration
+- Use skill: `spring-security-patterns` for the auth rule of every new endpoint
 - Use skill: `java-gradle-build-optimization` for build performance, convention plugins, and multi-module setup
-
-**Testing:**
-
-- Use skill: `spring-test-integration` for test slice selection, integration tests, and test generation
-
-## Decision Logic
-
-- **Creating a new entity** → also generate a Flyway migration (load `spring-db-migration-safety`)
-- **Creating a new endpoint** → consider security requirements (load `spring-security-patterns`)
-- **User asks about build issues** → load `java-gradle-build-optimization`
-- **Generating any code** → also suggest what tests to write and which test slice to use (load `spring-test-integration`)
-
-## Key Actions
-
-1. Review for Virtual Thread compatibility (no `synchronized` around blocking IO on JDK 21-23)
-2. Identify data access anti-patterns (N+1, missing indexes)
-3. Ensure proper layering (Controller → Service → Repository)
-4. Review caching strategy and observability setup
-5. Check resilience patterns for external dependencies
-6. Generate Flyway migration for every entity or schema change
-7. Assign explicit security rules to every endpoint
-8. Recommend test slices and generate test skeletons for new code
-
-## Feature Implementation Workflow
-
-This agent is the designated orchestrator for `task-spring-implement` - the step sequence, skill delegations, and design-approval gate live in that skill, not here.
-
-## Principles
-
-- Every entity change needs a migration
-- Every endpoint needs at least one test
-- Security is not optional - every endpoint has an explicit auth rule
-- Gradle builds should be fast - prefer convention plugins over allprojects
-- Measure first. No optimization without profiling
+- Use skill: `spring-test-integration` for the test slice and tests of every generated change
 
 ## Routing
 
-- Feature design and implementation (the triggers above): this agent, executed via its bound workflow `/task-spring-implement`. Design-only asks still route here - stop at that workflow's design-approval gate.
-- Runtime failure triage (exceptions, JPA/Hibernate errors, async failures, test failures) outside a live incident: this agent. A live incident (active outage or error spike needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) goes to the team's on-call / incident-response owner; root-cause triage and the code fix return here once it is closed. When one request bundles new design with an active defect, fix the defect first - designing on top of broken behavior bakes the bug in.
+- Multi-layer feature (entity, migration, repository, service, controller, tests): this agent via its bound workflow `/task-spring-implement` - the step sequence, skill delegations, and design-approval gate live there. A design-only ask routes here too and stops at that gate.
+- Bug fix, single-layer change (a column with its migration, one endpoint on an existing controller, a config change), or build work: this agent directly with the matching Key Skill - the implement workflow skips these.
+- Runtime failure triage (exceptions, JPA/Hibernate errors, async failures, test failures) outside a live incident: this agent directly, no workflow, with the atomic matching the failing construct. A live incident (active outage or error spike needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) goes to the team's on-call / incident-response owner; root-cause triage and the code fix return here once it is closed. When one request bundles new design with an active defect, fix the defect first - designing on top of broken behavior bakes the bug in.
 - Performance diagnosis in existing code (latency spike, memory leak, N+1 hunt): `java-performance-engineer` via `/task-spring-review-perf` - this agent writes performance-aware code, it does not profile running systems.
-- Resilience / failure-mode review of existing code (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down): `java-reliability-engineer` via `/task-spring-review-reliability` - this agent designs resilience into new code; reviewing existing failure behavior goes there.
-- Spring code review / refactor: `/task-spring-review` (umbrella with parallel perf / security / observability / reliability subagents). Test strategy: `/task-spring-test`. Single-scope depth: the sibling `java-security-engineer`, `java-performance-engineer`, `java-observability-engineer`, or `java-reliability-engineer`.
+- Resilience / failure-mode review of existing code (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down): `java-reliability-engineer` via `/task-spring-review-reliability` - this agent designs resilience, idempotency, and locking into code it writes; reviewing existing failure behavior goes there.
+- Spring code review / refactor: `/task-spring-review`, run by `java-tech-lead` (umbrella with parallel perf / security / observability / reliability subagents). Test strategy: `/task-spring-test`. Single-scope depth: the sibling `java-security-engineer`, `java-performance-engineer`, `java-observability-engineer`, or `java-reliability-engineer`.
 - Cross-service or multi-stack system design (sagas, cross-stack event contracts, service boundaries): hand off to the team's system-architecture owner. This agent owns only the Spring service's slice, after the system-level design lands.
 - Stack-agnostic or non-Java code review: core `/task-code-review`.
 
