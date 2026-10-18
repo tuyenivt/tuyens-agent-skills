@@ -40,8 +40,8 @@ Classify each piece of state before choosing a tool:
 | Local UI     | Single component            | Open/closed, hover, input value   | Component state (`useState`)      |
 | Shared UI    | Siblings/cousins            | Active tab, selected item, filter | Nearest common ancestor           |
 | Global UI    | App-wide                    | Theme, locale, sidebar collapsed  | Global store or context           |
-| Server       | Cached backend data         | User profile, product list        | Server Component props; client query cache for interactive data |
-| URL          | Synced to URL               | Page, query, sort                 | URL search params (`searchParams` page prop, `useSearchParams`) |
+| Server       | Cached backend data         | User profile, product list, the signed-in user (a Context only carries it to Client Components) | Server Component props; client query cache for interactive data |
+| URL          | Synced to URL               | Page, query, sort                 | URL search params (`await searchParams` page prop, `useSearchParams`) |
 | Form         | Inputs, validation, dirty   | Field values, errors, touched     | Form library or local state       |
 | Transient    | Ephemeral, never persisted  | Animation progress, scroll pos    | A non-reactive holder (React `useRef`, a plain variable) |
 
@@ -54,7 +54,7 @@ URL is the one owner the user can write directly - back button, pasted link, boo
 Lift only when:
 1. Two or more children read the same value
 2. A child must update a value a sibling reads
-3. State must survive a child's mount/unmount - not route navigation under `cacheComponents: true`, where Activity already keeps a left route's state (up to 3 routes)
+3. State must survive a child's mount/unmount - not route navigation under `cacheComponents: true`, where Activity already keeps a left route's state (Next keeps up to 3 route entries per layout segment, the visible one included, so at most 2 left routes stay hidden)
 
 ```
 // Bad: every UI flag in a global store
@@ -73,7 +73,7 @@ function ProductPage() {
 }
 ```
 
-Lifting can create prop drilling. Passing through 2-3 layers is fine; deeper, escalate in order: component composition (`children`), then context for low-frequency values. Drilling depth alone never reaches a store - a store needs the lift conditions above plus a genuinely app-wide reader.
+Lifting can create prop drilling. Passing through 2-3 layers is fine; deeper, escalate in order: component composition (`children`), then context for low-frequency values. Drilling depth alone never reaches a store - a store needs the lift conditions above plus a genuinely app-wide reader (the one exception: a high-frequency external feed, Next.js Bindings).
 
 ### Derived State
 
@@ -89,7 +89,7 @@ const itemCount = useStore((s) => s.items.length)
 const totalPrice = useStore((s) => s.items.reduce((n, i) => n + i.price, 0))
 ```
 
-Memoize expensive derivations (large filter/sort/group) with selectors (`useMemo`, `createSelector`). Trivial derivations (`.length`, booleans) need no memoization.
+Memoize expensive derivations (large filter/sort/group): Redux `createSelector`; in Zustand, select the source slice and derive with `useMemo` - `useShallow` only stabilises a small derived array or object (it prevents the loop, not the recomputation), and a selector that returns a new array or object on every call loops in Zustand 5 (`Maximum update depth exceeded`). Trivial derivations (`.length`, booleans) need no memoization.
 
 ### Selector Pattern
 
@@ -155,7 +155,7 @@ Migrate by slice, never wholesale: move server state out first - into Server Com
 
 - `useState`/`useReducer` local; Zustand or Redux Toolkit for app-wide client state; Context (`<ThemeContext value={...}>`) for low-frequency global values (theme, auth)
 - Server data in Server Components; TanStack Query for interactive client data
-- Stores exist only in Client Components; a module-scope store is shared across server requests, so create it per request behind a provider (`react-state-patterns` owns the details)
+- Stores exist only in Client Components; a module-scope store is shared across server requests, so create it per request behind a provider (`react-state-patterns` owns the details). A new feature's slices join the existing store of their domain; a new store needs a different lifetime or persistence, never just a new feature. A high-frequency external feed (WebSocket presence, remote cursors) is the one Shared UI value whose Owner is a store, because update frequency, not reader count, decides it: the socket handler writes it outside React (`store.setState` in Zustand, `store.dispatch` in Redux Toolkit) and readers subscribe by selector. While `pages/` and `app/` both serve routes, each tree mounts that provider (`_app` and the root layout) over the same store factory
 
 ---
 
@@ -168,7 +168,7 @@ Consuming workflow skills depend on this structure.
 
 **Stack:** {Framework and Language as a display name (`Next.js 16.3 / TypeScript` for stack-detect's `React (Next.js)`) - the major.minor from the owning app's `package.json` (`^16.3.0` -> 16.3); with no `tsconfig.json`, the extensions of the files in scope decide JS vs TS, overriding stack-detect's Language; in a monorepo, the app owning the reviewed code; `unknown` for a part that is inconclusive}
 
-**State library:** {detected or recommended library; list each when more than one is in use and mark any that is installed but unread `(unused)` - a library reached through an import in scope counts as read; write `{current} -> {target}` in migration mode}
+**State library:** {detected or recommended library; list each when more than one is in use and mark any that is installed but unread `(unused)` - a library reached through an import in scope counts as read; a theming or query library counts only when it owns a State Map row; write `{current} -> {target}` in migration mode}
 
 ### State Map
 
@@ -180,32 +180,28 @@ Consuming workflow skills depend on this structure.
 
 - {recommendation with rationale}
 
-### Issues Found
+### Issues Found {when at least one finding}
 
 - [Severity: High | Medium | Low] {description}
-  - Location: {file}:{line}, or `design` for a planned owner with no file yet
+  - Location: {file}:{line}[, {file}:{line}], or `design` for a planned owner with no file yet
   - Problem: {what is wrong}
   - Fix: {concrete correction for the detected stack}
 
-### No Issues Found
+### No Issues Found {instead, when none}
 
-{Emit only when Issues Found is empty: in review mode state that the state management is adequate; in design mode that the proposed placement carries no residual risk; in migration mode that the target placement introduces no new owner or stored derivation}
+{one sentence: in review mode, state management is adequate for the scope reviewed; in design mode, the proposed placement carries no residual risk; in migration mode, the target placement introduces no new owner or stored derivation}
 
 Not assessed: {input the review needed but never saw - a file referenced but not provided, a module whose behaviour decides a severity, a symptom whose trigger lies outside scope; never a guessed finding; omit when none}
 
 Notes: {observations outside this skill's concern, each naming the owning concern; omit when none}
 ```
 
-Include exactly one of `Issues Found` / `No Issues Found`. A clean run emits every header field, the in-scope table, `Recommendations` when any apply, and `No Issues Found`; only the `Issues Found` blocks are omitted. Order Issues Found by severity, highest first; within a band, file order (the order the input lists the files; ascending line within a file). `Location` may list several `file:line` entries (or several lines of one file), comma-separated, when one root cause spans them; lead with the file the fix changes (the recommended owner's file when the fix is an owner decision; the earliest in file order on a tie), and sort the finding by that lead file. `stack-detect` has no field for this (it carries versions only when a `## Tech Stack` section declares them): read `State library` from `package.json` dependencies (the owning app's manifest in a monorepo) and the imports in the files in scope. Two owners merging keep the one most readers already use; the Fix names it. The State Map covers the state in scope - the change's touched state when reviewing, the feature's state when designing or migrating - never a whole-app inventory. In review mode, `Owner` is the current owner; the recommended owner goes in the issue's Fix. In migration mode, write `Owner` as `{current} -> {target}` so the table is the migration map, and Issues Found carries the architecture problems the migration would otherwise carry over. In design mode (new feature, no code yet), `Owner` is the planned owner and Issues Found carries residual risks knowingly accepted. When the build or design touches existing code, defects already in it are ordinary Issues Found entries marked `(pre-existing)` at their own severity; the residual-risk reading covers only the new work. Severity calibration: High = correctness or staleness bugs (duplicated server state, stored derived values, multiple owners); Medium = performance or maintainability (form drafts in global store, whole-store subscriptions, missing memoization of expensive derivations, URL-shaped state held outside the URL, two client-state libraries serving overlapping concerns); Low = style and minor structure.
+Order Issues Found by severity, highest first; within a band, file order (the order the input lists the files; ascending line within a file). `Location` lists every `file:line` one root cause spans, comma-separated; the lead file is the one the fix changes (the recommended owner's file when the fix is an owner decision; the earliest in file order on a tie), and the finding sorts by it. `stack-detect` has no field for this: read `State library` from `package.json` dependencies (the owning app's manifest in a monorepo) and the imports in the files in scope. Two owners merging keep the one most readers already use (reader counts unknown: the one in the category's `Lives In` column; where that column offers two, the one its condition selects - Server: Server Component props unless the client fetches the data interactively - else the one already in use in scope); the Fix names it. The State Map covers the state in scope - the change's touched state when reviewing, the feature's state when designing or migrating - never a whole-app inventory. In review mode, `Owner` is the current owner; the recommended owner goes in the issue's Fix. In migration mode, write `Owner` as `{current} -> {target}` so the table is the migration map, and Issues Found carries the architecture problems the migration would otherwise carry over (all pre-existing by definition, so the marker is omitted; a field nothing reads or an action nothing dispatches is Low, Fix `remove`). In design mode (new feature, no code yet), `Owner` is the planned owner and Issues Found carries residual risks knowingly accepted. In review or design mode, when the build or design touches existing code, defects already in it are ordinary Issues Found entries marked `(pre-existing)` at their own severity; the residual-risk reading covers only the new work. Severity calibration: High = correctness or staleness bugs (server data held in a UI store, stored derived values, multiple owners of one piece of state - including a URL value copied into `useState`; a Zustand selector returning a new array or object that `useShallow` does not stabilise - none applied, or fresh objects inside it - a render loop); Medium = performance or maintainability (form drafts in global store, whole-store subscriptions, missing memoization of expensive derivations, URL-shaped state held outside the URL, two client-state libraries in use with no piece of state held in both); Low = style and minor structure.
 
 ---
 
 ## Avoid
 
 - Global state for values only one component reads
-- Storing derived values instead of computing them
-- Mixing server and client state in one store
-- Duplicating entity data across stores or nested structures
 - Context for high-frequency updates (re-renders all consumers)
 - Spinning up a new global store per feature (proliferation)
-- In-place mutation of `useState` values or of Redux / Zustand state outside the store's update mechanism (breaks change detection and devtools)

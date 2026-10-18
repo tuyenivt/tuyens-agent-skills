@@ -23,17 +23,17 @@ user-invocable: false
 - Test user-visible behavior, not implementation details (internal state, method calls)
 - Prefer Testing Library queries that mirror user perception (role, label, text) over selectors or test IDs
 - Tests are independent: no shared mutable state, no order dependencies
-- Mock at the network boundary (MSW or HTTP interceptors), not at the module level for your own code (API modules, stores, hooks - set a store's state instead)
+- Mock at the network boundary (MSW or HTTP interceptors), not at the module level for your own code (API modules, stores, hooks - set a store's state instead); a `global.fetch` stub is the same defect, it skips your HTTP wiring
 - Snapshots only for stable leaf components used as regression detection; never large trees or churning UI
 - E2E covers critical user journeys only; do not duplicate unit/integration coverage there
 
-Module-level mocking is acceptable only for third-party SDKs you cannot drive from the DOM - those rendering in an iframe (Stripe Elements, reCAPTCHA) or loaded from an external script whose output has no semantic DOM (Google Maps). Browser APIs without test equivalents (IntersectionObserver, ResizeObserver, geolocation) are globals, not modules: stub them on `globalThis`/`navigator` in setup, which module mocking cannot do.
+Module-level mocking is acceptable only for third-party SDKs you cannot drive from the DOM - those rendering in an iframe (Stripe Elements, reCAPTCHA) or loaded from an external script whose output has no semantic DOM (Google Maps). Browser APIs without test equivalents (IntersectionObserver, ResizeObserver, geolocation) are globals, not modules: stub them on `globalThis`/`navigator` in setup, which module mocking cannot do. Framework hooks with no provider under jsdom (`next/navigation`'s `useRouter` throws `invariant expected app router to be mounted`; `useSearchParams` and `usePathname` return `null`) are stubbed at module level with `vi.hoisted` spies - harness, not a mock of your code.
 
 ### Server-rendered components
 
 A component that runs only on the server (React Server Components) has no client lifecycle to render into and often no network boundary to intercept - it calls the database or filesystem directly. The client-side rules do not transfer:
 
-- Extract the data access and unit-test it directly against a test database or a fake repository; the component's own job is then shaped from that data.
+- Extract the data access and unit-test it directly against a test database or a fake repository; the component's own job is then shaped from that data. Server Actions and Route Handlers are server tests (`react-server-testing`), not component tests.
 - Async server components cannot be rendered by Testing Library's `render()` - test their output through E2E. A synchronous one renders with `render()` like any component once any `server-only` import in its graph is mocked (it throws when imported outside the react-server condition).
 - MSW intercepts HTTP, so it applies only where the server component actually makes an HTTP call to another service.
 - The Client Components beneath it follow every rule above - the boundary between them is where normal component testing resumes.
@@ -49,7 +49,7 @@ A component that runs only on the server (React Server Components) has no client
 | Unit        | Pure functions, hooks (`renderHook`), utilities | Vitest / Jest     | Many     |
 | Component   | Single component render + events   | Testing Library + Vitest/Jest  | Many     |
 | Integration | Multi-component flows with state   | Testing Library + MSW          | Moderate |
-| E2E         | Full user journeys in a browser    | Playwright (preferred)         | Few      |
+| E2E         | Full user journeys in a browser    | Playwright (preferred for a new suite; an existing Cypress suite stays) | Few      |
 
 ### Test Behavior, Not Implementation
 
@@ -95,7 +95,7 @@ export const handlers = [
 
 // setup file - without this the handlers are never installed and nothing is intercepted
 export const server = setupServer(...handlers)
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }))
+beforeAll(() => server.listen({ onUnhandledFrame: "error" })) // MSW 3 key (a fresh install); MSW 2 takes onUnhandledRequest - each major's types reject the other's (TS2353)
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -148,25 +148,23 @@ Use Playwright with a page object pattern, run against a stable seeded environme
 SDKs you cannot drive from your own DOM - those in an iframe (Stripe Elements, PayPal, reCAPTCHA) or loaded from an external script whose output has no semantic DOM (Google Maps) - cannot be queried with Testing Library. Mock them at the module level and test your integration boundary:
 
 ```
-// Hoist every spy the factory closes over - a hoisted factory cannot see module imports.
+import { createElement as h } from "react" // read lazily inside the returned bodies, so a plain import is fine
+
+// vi.mock is hoisted above this file's imports: anything the factory reads WHILE IT RUNS must come from
+// vi.hoisted (or an await import inside it). Hoist the spies so the test asserts on the same instances.
 const { createPaymentMethod, getElement } = vi.hoisted(() => ({ createPaymentMethod: vi.fn(), getElement: vi.fn() }))
 
-vi.mock("@stripe/react-stripe-js", async (importOriginal) => {
-  const { createElement: h } = await import("react") // a hoisted block cannot rely on require()
-  return {
-    ...(await importOriginal<typeof import("@stripe/react-stripe-js")>()),
-    // a checkbox: clicking a text input fires no change event, so onChange would never run
-    CardElement: (props: { onChange?: (e: { complete: boolean }) => void }) =>
-      h("input", { type: "checkbox", "data-testid": "mock-card", onChange: () => props.onChange?.({ complete: true }) }),
-    useStripe: () => ({ createPaymentMethod }),
-    useElements: () => ({ getElement }),
-  }
-})
+vi.mock("@stripe/react-stripe-js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@stripe/react-stripe-js")>()),
+  // a checkbox: clicking a text input fires no change event, so onChange would never run
+  CardElement: (props: { onChange?: (e: { complete: boolean }) => void }) =>
+    h("input", { type: "checkbox", "data-testid": "mock-card", onChange: () => props.onChange?.({ complete: true }) }),
+  useStripe: () => ({ createPaymentMethod }),
+  useElements: () => ({ getElement }),
+}))
 
-beforeEach(() => {
-  vi.clearAllMocks()
-  createPaymentMethod.mockResolvedValue({ paymentMethod: { id: "pm_test" } })
-})
+// Vitest 5 clears call history between tests by default (clearMocks: true), so no vi.clearAllMocks(); clearing keeps implementations, so reset the success default here for tests that override it
+beforeEach(() => createPaymentMethod.mockResolvedValue({ paymentMethod: { id: "pm_test" } }))
 
 // Test YOUR code reacting to the SDK's success/failure paths. Drive the mock element first,
 // or a form gated on card completeness never enables its submit button.
@@ -197,9 +195,9 @@ const outOfStock = createMockProduct({ inStock: false })
 
 ## Output Format
 
-Consuming workflow skills depend on this structure. Include exactly one of `Issues Found` / `No Issues Found`. A clean run emits every header field, the Test Strategy table, `Tests to Write` when any apply, and `No Issues Found`; only the `Issues Found` blocks are omitted. Order Issues Found by severity, highest first; within a band, file order (the order the input lists the files; ascending line within a file). When the project defines no coverage norms, default targets to 80% for unit and component, key flows for integration, critical paths for e2e.
+Consuming workflow skills depend on this structure. Order Issues Found by severity, highest first; within a band, file order (the order the input lists the files; ascending line within a file). `Location` lists every `file:line` one root cause spans, comma-separated, leading with the file the fix changes; the finding sorts by that lead file. When the project defines no coverage norms, default targets to 80% for unit and component, key flows for integration, critical paths for e2e.
 
-When a coverage report shows the baseline below those targets, or no report exists, a global number is a wish, not a plan: write the Coverage Target cell as a ratchet with the baseline in it (`80% on changed files, baseline 12%`), or `80% on changed files, baseline unmeasured` when no coverage report exists - never invent a baseline number. Order `Tests to Write` as an adoption sequence - E2E over the one or two revenue-critical journeys first (largest safety net per test), then component tests at the files that change most often (with no history in the input, the files every route or request passes through), then backfill. The `Adoption step` slot says which step the project is on, rather than listing 400 components: the earliest step not yet done - no E2E over a revenue journey is `E2E safety net`, E2E present but hot files untested is `hot-file component tests`, both done or coverage at target is `backfill`.
+When a coverage report shows the baseline below those targets, or no report exists, a global number is a wish, not a plan: write the Unit and Component Coverage Target cells as a ratchet with the baseline in it (`80% on changed files, baseline 12%`), or `80% on changed files, baseline unmeasured` when no coverage report exists - never invent a baseline number. Order `Tests to Write` as an adoption sequence - E2E over the one or two revenue-critical journeys first (largest safety net per test), then component tests at the files that change most often (with no history in the input, the files every route or request passes through), then backfill. The `Adoption step` slot says which step the project is on, rather than listing 400 components: the earliest step not yet done - no E2E over a revenue journey is `E2E safety net`, E2E present but hot files untested is `hot-file component tests`, both done or coverage at target is `backfill`.
 
 ```
 ## Frontend Testing Assessment
@@ -212,47 +210,41 @@ When a coverage report shows the baseline below those targets, or no report exis
 
 | Level       | Coverage Target  | Tools  |
 | ----------- | ---------------- | ------ |
-| Unit        | {target %}       | {tool} |
-| Component   | {target %}       | {tool} |
+| Unit        | {target % or ratchet} | {tool} |
+| Component   | {target % or ratchet} | {tool} |
 | Integration | {target % or key flows} | {tool} |
 | E2E         | {critical paths} | {tool} |
 
-### Tests to Write
+### Tests to Write {when at least one applies}
 
 **Adoption step:** {E2E safety net | hot-file component tests | backfill}
 
 - {component/feature}: {test description} ({unit | component | integration | e2e})
 
-### Issues Found
+### Issues Found {when at least one finding}
 
 - [Severity: High | Medium | Low] {description}
-  - Location: {file}:{line}
+  - Location: {file}:{line}[, {file}:{line}]
   - Problem: {what is wrong}
   - Fix: {concrete correction}
 
-### No Issues Found
+### No Issues Found {instead, when none}
 
-{State explicitly if testing is adequate - do not omit this section silently}
+{one sentence: testing is adequate for the scope reviewed}
 
 Not assessed: {input the review needed but never saw - a file referenced but not provided, a module whose behaviour decides a severity, a symptom whose trigger lies outside scope; never a guessed finding; omit when none}
 
-Notes: {defects in the code under test rather than the tests, each naming the concern that owns it; omit when none}
+Notes: {defects in the code under test rather than the tests, and observations outside this skill's concern, each naming the concern that owns it; omit when none}
 ```
 
 `Issues Found` covers the test code in scope, including its harness and config (a missing setup import, an unreset handler, a raised retry count). A defect in the code under test goes in the trailing `Notes:` line naming the owning concern, not in `Issues Found`; the `Not assessed:` and `Notes:` lines follow whichever of the two sections was emitted.
 
-Severity calibration: High = false confidence (implementation-detail assertions, reflexively updated snapshots, own code mocked out at module level, a harness defect that stops tests exercising what they claim - handlers never installed, a missing setup import, a raised retry count masking a race); Medium = fragile or incomplete (brittle selectors, missing error/loading states, order dependence, fixed sleeps - High when the sleep is what makes a racing test pass); Low = maintainability (inline literals over factories, naming, duplication). A large-tree snapshot rates Medium as fragile; it escalates to High when the history shows reflexive updating (a snapshot regenerated alongside unrelated changes, or a script that passes the update flag - `-u`, `--updateSnapshot` on Jest, `--update` on Vitest) - rate the evidence, not the trajectory.
+Severity calibration: High = false confidence (implementation-detail assertions, reflexively updated snapshots, own code mocked out at module level, a harness defect that stops tests exercising what they claim - handlers never installed, a missing setup import whose absence no test notices, a raised retry count masking a race); Medium = fragile or incomplete (brittle selectors, a missing loading, empty, or error state test, order dependence, a broken harness that fails loudly (jest-dom matchers in Jest `setupFiles` stop every suite with `expect is not defined`; they belong in `setupFilesAfterEnv`), fixed sleeps (High when the sleep is what makes a racing test pass, Medium when nothing shows it does)); Low = maintainability (inline literals over factories, naming, duplication). A large-tree snapshot rates Medium as fragile; it escalates to High when the history shows reflexive updating (a snapshot regenerated alongside unrelated changes, or a script that passes the overwriting update flag - `-u` / `--updateSnapshot` on Jest, `-u` / `--update` / `--update=all` on Vitest; `--update=new` and `--update=none` overwrite nothing) - rate the evidence, not the trajectory.
 
 ---
 
 ## Avoid
 
-- Asserting on internal state, method calls, or component internals
-- CSS selectors or test IDs as the primary query strategy
-- Module-level mocking for your own API code (use MSW); allowed only for third-party SDKs you cannot drive from the DOM. Browser globals are stubbed on `globalThis`, not module-mocked
-- Snapshots on large or fast-moving component trees
-- Duplicating component-level assertions in e2e
-- Order-dependent or shared-state tests
 - Fixed sleeps or raised retry counts in e2e instead of auto-retrying assertions
 - Testing third-party library behavior instead of your integration with it
-- Skipping error/loading state tests on data-fetching components
+- Reflexive `-u` after a snapshot breaks, without reading the diff

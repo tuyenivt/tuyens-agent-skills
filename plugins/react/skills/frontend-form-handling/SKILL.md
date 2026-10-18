@@ -40,6 +40,7 @@ user-invocable: false
 | React Hook Form + Zod  | Client-validated forms: uncontrolled inputs, schema resolver |
 | `useActionState` + Zod | Server Action forms that must work before hydration |
 | Native HTML            | Trivial forms (1-3 fields, no complex rules)     |
+| Formik + Yup           | Only where already in use: controlled inputs re-render the form per keystroke; review its forms by the same rules, recommend no new adoption |
 
 Share a schema (Zod, Yup, Valibot) between client and server so validation rules don't drift.
 
@@ -58,6 +59,8 @@ Share a schema (Zod, Yup, Valibot) between client and server so validation rules
   }}
 />
 ```
+
+Formik validates on every change by default; gating error display on `touched[field]` (set on blur) gives the same on-blur-then-on-change behaviour.
 
 ### Async Validation
 
@@ -97,7 +100,7 @@ Form-level (server errors):
 5. Server error: map field errors back to inputs, show summary, re-enable button
 6. Network error: show retry option, preserve form data, re-enable button
 
-With `cacheComponents: true` in `next.config`, a route left by navigation is hidden with React `<Activity>`, not unmounted: inputs, submission results and status messages are still there when the user comes back. Where each visit must start fresh, reset in the submit handler before navigating, and clear a success/error message explicitly rather than relying on unmount.
+With `cacheComponents: true` in `next.config`, a route left by navigation is hidden with React `<Activity>`, not unmounted (Next keeps up to 3 route entries per layout segment, the visible one included, so at most 2 left routes stay hidden): inputs, submission results and status messages are still there when the user comes back. Where each visit must start fresh, reset in the submit handler before navigating, and clear a success/error message explicitly rather than relying on unmount.
 
 ```
 <button onClick={submit} disabled={isSubmitting} aria-busy={isSubmitting}>
@@ -109,7 +112,7 @@ With `cacheComponents: true` in `next.config`, a route left by navigation is hid
 
 Repeating groups (line items, contacts) use the library's array primitive (RHF `useFieldArray`) so each row keeps a stable key. Never index rows by array position for React keys: removing row 1 re-indexes everything below and the wrong inputs keep the wrong errors.
 
-A rule spanning fields (totals against a cap, end date after start date, "at least one contact") has no single owning input, so it needs a home that is neither the field slot nor the server-error summary: render it at the boundary it constrains - under the array for a total, under the pair for a date range - with `role="alert"`, and validate it at the schema level (Zod `.refine`, or `.superRefine()` / `.check()` for multi-issue cases) so client and server agree.
+A rule spanning fields (totals against a cap, end date after start date, "at least one contact") needs a home that is neither a field slot nor the server-error summary: render it at the boundary it constrains - under the array for a total, under the pair for a date range - with `role="alert"`; when the rule reads as a requirement on one field given another ("a paid deck needs a description"), set the issue `path` to the required field and render it in that field's slot. Validate it at the schema level (Zod `.refine`, or `.superRefine()` / `.check()` for multi-issue cases) so client and server agree.
 
 Server errors on array paths (`items[3].amount`) map back by index to that row's input; when the index no longer exists because the user removed the row, the error goes to the summary.
 
@@ -126,14 +129,14 @@ Server errors on array paths (`items[3].amount`) map back by index to that row's
 Payment, identity, PCI data require extra care:
 
 - **Tokenize**: use provider widgets (Stripe Elements, Braintree Drop-in) so raw card data stays in their iframe, never in your form state or server. This is the default; the `autocomplete` guidance below applies only when you own the inputs
-- **Never persist**: exclude sensitive fields from any draft persistence; clear them from form state when the user leaves the form (not between steps of the same wizard)
+- **Never persist**: exclude sensitive fields from any draft persistence; clear them from form state explicitly on submit and in a mount-only `useEffect` cleanup (`useEffect(() => () => clearSensitive(), [])`; not between steps of the same wizard) - under `cacheComponents` a hidden route keeps its state and only its effects are cleaned up, so unmount cannot be relied on to discard them
 - **Use proper `autocomplete`**: on the rare form that does own its card fields, set `cc-number`, `cc-exp` and `cc-csc` so browsers autofill them; most users will still type the security code (only some browsers, Chrome among them, save it, and only on opt-in). With provider widgets these attributes live inside the provider's iframe and are not yours to set
 
 ### File Uploads
 
 Decide when the bytes move, because everything else follows from it:
 
-- **Upload on selection** (recommended for large or multiple files): each file uploads immediately to its own progress bar with cancel and remove; the form field then holds a returned file id, so a failed submit costs nothing and re-submitting does not re-upload. Orphaned uploads need a server-side sweep for files whose form was never submitted.
+- **Upload on selection** (recommended for large or multiple files): each file uploads immediately to its own progress bar with cancel and remove (`fetch` reports no upload progress - use `XMLHttpRequest` with `upload.onprogress`, or the storage provider's upload client); the form field then holds a returned file id, so a failed submit costs nothing and re-submitting does not re-upload. Orphaned uploads need a server-side sweep for files whose form was never submitted.
 - **Upload on submit** (fine for one small file): simpler, but submit now takes as long as the transfer, and any validation failure discards every byte the user just waited for. A Server Action accepts a 1MB body by default (`experimental.serverActions.bodySizeLimit`); a larger file either raises that limit (and `experimental.proxyClientMaxBodySize` too when `proxy.ts` matches the page - proxy truncates any matched request body past it, 10MB by default) or goes out of band (a Route Handler outside the matcher, or a presigned URL straight to storage).
 
 Validate size and type client-side before the transfer starts - it is the one validation that saves the user real time - and again on the server, since the client check is a courtesy, not a control. Accept the `accept` attribute's limits as a hint only; browsers do not enforce it.
@@ -167,7 +170,7 @@ useEffect(() => {
 <Link href="/orders" onNavigate={(e) => { if (isDirty && !confirm("Discard changes?")) e.preventDefault() }}>Orders</Link>
 // Layout-nav links are caught only when every <Link> is a wrapper whose onNavigate reads a blocker context
 // the form sets; router.push and browser back/forward never are;
-// with cacheComponents the hidden route keeps the draft instead (Activity, up to 3 routes).
+// with cacheComponents the hidden route keeps the draft instead (Activity; see Submission Flow for the cap).
 ```
 
 ### Schema-Based Validation
@@ -180,7 +183,7 @@ const userSchema = z.object({
 })
 
 // Client
-const form = useForm({ resolver: zodResolver(userSchema), mode: "onTouched" }) // validates on blur, then on every change once touched - the default "onSubmit" never validates on blur
+const form = useForm({ resolver: zodResolver(userSchema), mode: "onTouched" }) // nearest RHF mode to the Rule: first blur, then every change of a touched field (valid or not); the default "onSubmit" never validates on blur
 
 // Server Action
 const parsed = userSchema.safeParse(Object.fromEntries(formData))
@@ -211,44 +214,37 @@ Consuming workflow skills depend on this structure.
 
 | Form        | Fields  | Validation        | Multi-step | Dirty Tracking |
 | ----------- | ------- | ----------------- | ---------- | -------------- |
-| {form name} | {count, as `<fixed>` or `<fixed> + N x <per-row>` for a repeating group} | {client + server \| client only \| server only \| none; append `(broken)` when the wiring exists but does not work, `(not submitted)` when the values never reach a server} | {Yes \| No} | {Yes \| No} |
+| {form name - one row per submit boundary: a wizard is one row, three components posting separately are three} | {count, as `<fixed>` or `<fixed> + N x <per-row>` for a repeating group} | {client + server \| client only \| server only \| none; append `(broken)` when the wiring exists but does not work, `(not submitted)` when the values never reach a server, `(server ignores body)` when the endpoint reads none of it, `(server not in scope)` when the receiving endpoint was not provided} | {Yes \| No} | {Yes \| No} |
 
 ### Recommendations {when at least one applies}
 
 - {recommendation with rationale}
 
-### Issues Found
+### Issues Found {when at least one finding}
 
 - [Severity: High | Medium | Low] {description}
-  - Location: {file}:{line}
+  - Location: {file}:{line}[, {file}:{line}]
   - Problem: {what is wrong}
   - Fix: {concrete correction for the detected stack}
 
-### No Issues Found
+### No Issues Found {instead, when none}
 
-{State explicitly if form handling is adequate - do not omit this section silently}
+{one sentence: form handling is adequate for the scope reviewed}
 
 Not assessed: {input the review needed but never saw - a file referenced but not provided, a module whose behaviour decides a severity, a symptom whose trigger lies outside scope; never a guessed finding; omit when none}
 
 Notes: {observations outside this skill's concern, each naming the owning concern; omit when none}
 ```
 
-Severity: High = data loss (including values collected but never submitted), security exposure, or blocked/duplicate submission (a stuck submit button, a submit with no double-submit guard at all, and a hand-rolled flag that contradicts the framework's pending state all land here), and a mutation with no server-side validation; Medium = broken validation timing, error-display UX (including per-keystroke validation and a server error mapped to the wrong field), a missing or placeholder-only label, or field-array rows keyed by index so errors follow the wrong row; Low = polish (debounce values, focus order, copy). A defect not named here takes the band whose description fits; when two fit, the higher wins.
+Severity: High = data loss (values collected but never submitted or never read by the server; a hydrated dirty form lost on reload, tab close or a navigation Activity does not preserve, with no warning or draft), security exposure, or blocked/duplicate submission (a stuck submit button, a submit with no double-submit guard at all, and a hand-rolled flag that contradicts the framework's pending state all land here), and a mutation with no server-side validation; Medium = broken validation timing, error-display UX (including per-keystroke validation and a server error mapped to the wrong field), a missing or placeholder-only label, or field-array rows keyed by index so errors follow the wrong row; Low = polish (debounce values, focus order, copy). A defect not named here takes the band whose description fits; when two fit, the higher wins.
 
-Include either `Issues Found` or `No Issues Found`, never both. A clean run emits every header field, the in-scope table, `Recommendations` when any apply, and `No Issues Found`; only the `Issues Found` blocks are omitted. Order Issues Found by severity, highest first; within a band, file order (the order the input lists the files; ascending line within a file). A review reports every defect in the files in scope, not only the reported symptom. `Location` may list several `file:line` entries (or several lines of one file), comma-separated, when one root cause spans them; lead with the file the fix changes, and sort the finding by that lead file. In implement or design mode (building a form, not reviewing), the Form Design table documents what was built or planned, and Issues Found carries residual risks knowingly accepted. When the build or design touches existing code, defects already in it are ordinary Issues Found entries marked `(pre-existing)` at their own severity; the residual-risk reading covers only the new work. `stack-detect` has no field for this (it carries versions only when a `## Tech Stack` section declares them): read the form and validation libraries from `package.json` dependencies (the owning app's manifest in a monorepo) and the imports in the files in scope.
+Order Issues Found by severity, highest first; within a band, file order (the order the input lists the files; ascending line within a file). A review reports every defect in the files in scope, not only the reported symptom. `Location` lists every `file:line` one root cause spans, comma-separated, the file the fix changes first; the finding sorts by that lead file. In implement or design mode (building a form, not reviewing), the Form Design table documents what was built or planned, and Issues Found carries residual risks knowingly accepted. When the build or design touches existing code, defects already in it are ordinary Issues Found entries marked `(pre-existing)` at their own severity; the residual-risk reading covers only the new work. `stack-detect` has no field for this: read the form and validation libraries from `package.json` dependencies (the owning app's manifest in a monorepo) and the imports in the files in scope.
 
 ---
 
 ## Avoid
 
-- Placeholder as the only label
-- Validating on every keystroke
-- Generic errors like "Invalid input" or "Error"
-- Allowing double submission with no guard at all - a form that must work pre-hydration needs the server-side one, a hydrated form needs the disabled button
-- Losing form data on navigation without warning, wherever client JS is running to give one
 - Client-only validation without server enforcement
 - Resetting the entire form on a single field's server error
-- Multi-step forms that drop data on "Back"
 - Showing all validation errors on page load
-- Persisting sensitive data (card numbers, CVV, SSN) to local/session storage
 - Handling raw card data in form state instead of using provider tokenization

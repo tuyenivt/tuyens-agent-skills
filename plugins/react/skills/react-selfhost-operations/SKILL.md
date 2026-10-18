@@ -22,7 +22,7 @@ user-invocable: false
 - Build with `output: "standalone"`. It emits a minimal server and only the traced dependencies, which is the difference between a small image and shipping `node_modules`.
 - **Build in CI, never on the production host.** A production build peaks well above a gigabyte and will contend with the database for memory on a small machine.
 - `NEXT_PUBLIC_` variables are **inlined at build time**. One image cannot serve two environments that differ in any public variable. Anything that must vary per environment is read at runtime on the server and passed down.
-- **Caches are per instance.** The ISR cache is on local disk and `"use cache"` entries live in process memory, so revalidation on one instance leaves the others stale. More than one instance requires every Multi-Instance Prerequisite below: shared cache handlers, one Server Action encryption key, and a `deploymentId`.
+- **Caches are per instance.** The ISR cache is on local disk and `"use cache"` entries live in process memory, so revalidation on one instance leaves the others stale. More than one instance requires every Multi-Instance Prerequisite below: shared cache handlers, one Server Action encryption key, and a `deploymentId`. A single-host rolling deploy that overlaps the outgoing and incoming containers (two builds) needs only the key and the `deploymentId`; the cache handlers wait for a second durable instance.
 - The CDN must bypass cache when the session cookie is present - matched **by name** as a prefix (the app's observed cookie: `authjs.session-token` under Auth.js v5 (still beta), prefixed `__Secure-` on HTTPS; `next-auth.session-token` on the v4 line, which also takes the `__Secure-` prefix on HTTPS; a session over ~4 KB splits into `.0`, `.1` chunks, which an exact-name rule misses. When the auth stack is unknown, state the bypass requirement and flag the cookie name unverified). A path-only rule serves an authenticated page to the next visitor; an any-cookie rule lets consent and analytics cookies bypass every request.
 - Image optimization consumes origin CPU per distinct source and size. On a small host this saturates before anything else.
 - Handle the termination signal: keep serving through the load balancer's deregistration delay, let in-flight requests finish, close the database pool, then exit.
@@ -38,7 +38,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+# Both are read at build and frozen into the standalone server: the id as --build-arg, the key as a BuildKit secret (ARG/ENV would also put it in the build stage's history and cache and in max-mode provenance; the build output embeds it regardless, so the run image is secret-bearing).
+ARG DEPLOYMENT_VERSION
+RUN --mount=type=secret,id=actions_key,required=true,env=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY npm run build
 
 FROM node:22-alpine AS run
 WORKDIR /app
@@ -67,7 +69,7 @@ Good  read on the server at request time, pass to the client as props
 ```tsx
 // A prerendered component bakes process.env in exactly like NEXT_PUBLIC_. `await connection()` defers
 // the read to request time. Under Cache Components only the subtree below it (inside <Suspense>) renders
-// per request, so call it in the leaf that needs the value; without it the whole route becomes dynamic.
+// per request, so call it in the leaf that needs the value; without Cache Components, `connection()` makes the whole route dynamic.
 import { connection } from "next/server";
 
 export async function CheckoutWidget() {
@@ -86,20 +88,20 @@ One instance: the on-disk ISR cache and the in-memory `"use cache"` store are co
 | ------- | ---------- | --- |
 | ISR / fetch cache | A write revalidates only the instance that handled it; the others serve stale copies until their own entries expire | `cacheHandler` (singular) on shared storage, `cacheMaxMemorySize: 0` |
 | `"use cache"` entries (Cache Components) | Per-process memory, never shared, lost on restart - `cacheHandler` does not cover them | `cacheHandlers` (plural) on shared storage: a `default` handler shares plain `"use cache"`; a `remote` handler serves `"use cache: remote"` |
-| Tag invalidation | `revalidateTag` / `updateTag` expires the tag on the local instance only | Each `cacheHandlers` handler implements `updateTags()` (writes the invalidation to shared storage) and `refreshTags()` (reads it before each request; catch its errors, or every request fails) |
-| Server Action encryption key | The default key is generated per build; a rolling deploy, a per-stage rebuild or a second image build gives instances different keys, and actions fail with "Failed to find Server Action" | One `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` (base64 of 16, 24 or 32 bytes: `openssl rand -base64 32`) set at `next build`, where it is embedded |
-| Version skew | A rolling deploy serves old clients new assets and unknown Server Action IDs | `deploymentId` (or `NEXT_DEPLOYMENT_ID`), one value per deployment; a mismatched client hard-reloads |
+| Tag invalidation | `revalidateTag` / `updateTag` expires the tag on the local instance only | ISR pages: the singular `cacheHandler` implements `revalidateTag(tags)` against shared storage (delete the tagged entries, or record tag expiry and check it in `get()`). `"use cache"` entries: each `cacheHandlers` handler implements `updateTags()` (writes the invalidation to shared storage) and `refreshTags()` (runs once per request before its first cached read; catch its errors, or every cached read fails), and applies that state in `get()` (the entry's tags) and `getExpiration()` (path tags from `revalidatePath`) |
+| Server Action encryption key | The default key is generated per build (inside Docker; elsewhere a `.next/cache/.rscinfo` that survives between builds reuses it for up to 14 days); a rolling deploy, a per-stage rebuild or a second image build gives instances different keys, and actions fail with "Failed to find Server Action" | One `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` (base64 of 16, 24 or 32 bytes: `openssl rand -base64 32`) set at `next build`, where it is embedded |
+| Version skew | A rolling deploy serves old clients new assets and unknown Server Action IDs | `deploymentId` (or `NEXT_DEPLOYMENT_ID`), one value per deployment, `[A-Za-z0-9_-]` only (a git SHA; a dotted semver fails `next build`); a mismatched client hard-reloads |
 
 ```ts
 // next.config.ts
 import type { NextConfig } from "next";
 const config: NextConfig = {
   output: "standalone",
-  deploymentId: process.env.DEPLOYMENT_VERSION,                          // same on every instance of one deploy
+  deploymentId: process.env.DEPLOYMENT_VERSION,                          // frozen at build: the Dockerfile ARG above supplies it
   cacheHandler: require.resolve("./cache-handler.mjs"),                  // ISR + fetch cache, Redis-backed
   images: { customCacheHandler: true },                                  // optimized images through it too
   cacheMaxMemorySize: 0,                    // disables BOTH built-in memory caches - plain "use cache" too, so replace `default`
-  cacheHandlers: {                           // shared storage; implements updateTags() + refreshTags()
+  cacheHandlers: {                           // shared storage; implements updateTags() + refreshTags() + getExpiration()
     default: require.resolve("./use-cache-handler.mjs"),                  // plain "use cache"
     remote: require.resolve("./use-cache-handler.mjs"),                   // "use cache: remote"
   },
@@ -116,7 +118,7 @@ Treat these as the trigger condition for horizontal scaling: until they exist, t
 | Content page, no session cookie  | Cache, `_rsc` in the key | Identical for every visitor; one URL serves HTML and RSC payloads |
 | Session cookie present (by name) | **Bypass**  | Personalized; caching it leaks between users |
 | `/_next/static/*`                | Cache 1 year | Content-hashed filenames                     |
-| `/_next/image*`                  | Cache long, query string and `Accept` in the key | Each miss costs origin CPU; `url`/`w`/`q` and AVIF/WebP negotiation vary the response |
+| `/_next/image*`                  | Cache long, query string and `Accept` in the key | Each miss costs origin CPU; `url`/`w`/`q` and `Accept` negotiation (WebP by default, AVIF when `images.formats` adds it) vary the response - a key dropping any of them serves one variant for all (`RscCacheKeyMissing`, image form) |
 | Server Action POST               | Bypass       | Mutations                                    |
 
 "Cache" means honor the origin `Cache-Control` - ISR pages already emit `s-maxage`, dynamically rendered pages `private, no-cache, no-store, max-age=0, must-revalidate`; never force an edge TTL onto HTML the origin marked `no-store`. The `rsc` request header selects HTML or the RSC payload for one URL: forward it and keep the `_rsc` query parameter in the cache key (some CDNs drop query strings from it by default), or one variant answers the other's request and client navigation breaks (`RscCacheKeyMissing`); cache both variants under one TTL and one purge, or client navigation shows a different render than the page load. A default edge TTL that applies only when the origin sends no header is not forcing - `ForcedEdgeTtlOnHtml` fires when a floor or override discards the origin header. Bypass means the response is not served from cache at all, and the edge must skip the lookup itself: an origin returning `Cache-Control: private, no-store` only stops authenticated responses being stored, while a request carrying the cookie still gets the cached anonymous copy. On CloudFront, behaviors select by path, not cookie, so a caching-disabled behavior works only for paths that are authenticated-only; shared paths need a viewer-request CloudFront Function or Lambda@Edge that makes cookie-bearing requests key separately (rewrite the URI to an uncached prefix, or add a marker header or query value the cache policy keys on) - a function cannot move a request to another behavior, and changing its origin does not skip the cache lookup. Keying on the session cookie itself is safe only while every authenticated response is `no-store` (and every chunk name is listed, since cache policies match cookie names exactly); one cacheable authenticated response then stores an object per token, so prefer the explicit bypass. Forwarding a cookie to the origin (origin request policy) and keying on it (cache policy) are separate settings; neither one alone is a bypass.
@@ -131,11 +133,12 @@ The optimizer runs on the origin CPU, once per unique source and size combinatio
 
 ```ts
 // Merge the chosen option into next.config.ts's exported config.
+import type { NextConfig } from "next";
 // Option 1 - pre-size at upload, serve directly
-const optionA = { images: { unoptimized: true } };
+const optionA = { images: { unoptimized: true } } satisfies NextConfig;
 
-// Option 2 - delegate to the CDN's image service
-const optionB = { images: { loader: "custom", loaderFile: "./cdn-loader.ts" } };
+// Option 2 - delegate to the CDN's image service (`satisfies` keeps the loader literal typed)
+const optionB = { images: { loader: "custom", loaderFile: "./cdn-loader.ts" } } satisfies NextConfig;
 ```
 
 Keep the default only when the image set is small and mostly cached. Measure before assuming it is. The defaults bound the work - `images.qualities` is `[75]` (one variant per width), `minimumCacheTTL` 4 hours, `maximumRedirects` 3 - and block sources that resolve to a private IP: behind a VPC or split-horizon DNS the optimizer returns 400 until `images.dangerouslyAllowLocalIP: true` is set deliberately (an SSRF trade-off).
@@ -147,22 +150,27 @@ Keep the default only when the image set is small and mostly cached. Measure bef
 // routes during its deregistration delay are refused - then awaits in-flight requests and pending after()
 // callbacks. This handler replaces it: nothing awaits after() work, so the sleep must cover it too.
 // instrumentation.ts cannot reach the listener, so it keeps serving and waits.
-// instrumentation.ts
+// instrumentation.ts - the dynamic import keeps process.on out of the edge bundle
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;   // defensive: process.on is Node-only
-  process.on("SIGTERM", async () => {
-    await sleep(LB_DEREGISTRATION_MS + LONGEST_REQUEST_MS); // bounded, after() work included; keep it under the grace period
-    await db.$disconnect();    // close the pool only after the last response
-    process.exit(0);
-  });
+  if (process.env.NEXT_RUNTIME === "nodejs") await import("./instrumentation-node");
 }
+
+// instrumentation-node.ts
+import { setTimeout as sleep } from "node:timers/promises";
+import { db } from "@/server/db";                       // the ORM client; Prisma shown
+const DRAIN_MS = Number(process.env.LB_DEREGISTRATION_MS ?? 10_000) + Number(process.env.LONGEST_REQUEST_MS ?? 5_000);
+process.on("SIGTERM", async () => {
+  await sleep(DRAIN_MS);     // bounded, after() work included; the defaults total 15 s - set stop_grace_period (Compose default 10 s) / terminationGracePeriodSeconds (default 30 s) above DRAIN_MS
+  await db.$disconnect();    // close the pool only after the last response
+  process.exit(0);
+});
 ```
 
 Without this the old container holds its pool through the deploy overlap, which is the input that breaks the arithmetic in `backend-connection-pooling`.
 
 ## Output Format
 
-When setting up a deployment (authoring), emit each artifact under a `### <file path>` heading with a one-line comment in the file itself carrying the justification, then this assessment block covering what the artifacts do not settle - a concern the artifacts resolve is not a Finding, and a path an artifact assumes but the repo lacks (`public/`) is left out of the artifact and named in `Not assessed:`. CDN rules take the CDN's config-as-code form when the repo has one (Terraform, `wrangler.toml`), else a rules table. Authoring the first self-host artifacts for a project on a managed platform is in scope; the gate below applies to reviews and diagnoses. When diagnosing a reported symptom (high origin CPU, stale pages after publish, one user seeing another's content), emit the block with `Findings` ordered by how well each explains the symptom (several symptoms: group the findings by order under the symptom each explains - no group headings - best explanation first within a group, then file-evidenced latent findings), and `{file or config location}` naming the configuration responsible; when the input does not contain it, name the artifact that would and put it in `Not assessed:`. When reviewing, emit the block alone: findings ordered by severity, user-facing blast radius breaking ties (cross-user exposure, then stale serving, then capacity), one finding per root cause (a config defect with several symptoms is one finding carrying them in Risk; two Issue values in one config block are two findings); then the `Not assessed:` and `Notes:` slots as templated. Outside the artifacts and their inline comments, no prose beyond the template.
+When setting up a deployment (authoring), emit each artifact (Dockerfile, the `next.config` change (its cache-handler lines and `cacheMaxMemorySize: 0` only together with the stubs), the two instrumentation files, the cache handler stubs when more than one durable instance is in scope, CDN rules when a CDN is present or planned, and the compose file or deploy manifest when the target names one) under a `### <file path>` heading with a one-line comment in the file itself carrying the justification, then this assessment block covering what the artifacts do not settle - a concern the artifacts resolve is not a Finding, and a path an artifact assumes but the repo lacks (`public/`) is left out of the artifact and named in `Not assessed:`. CDN rules take the CDN's config-as-code form when the repo has one (Terraform, `wrangler.toml`), else a rules table. Authoring the first self-host artifacts for a project on a managed platform is in scope; the gate below applies to reviews and diagnoses. When diagnosing a reported symptom (high origin CPU, stale pages after publish, one user seeing another's content), emit the block with `Findings` ordered by how well each explains the symptom (several symptoms: group the findings by order under the symptom each explains - no group headings - best explanation first within a group, a finding explaining several symptoms in the first group it explains, then file-evidenced latent findings), and `{file or config location}` naming the configuration responsible; when the input does not contain it, name the artifact that would and put it in `Not assessed:`. When reviewing, emit the block alone: findings ordered by severity, user-facing blast radius breaking ties (cross-user exposure, then stale serving, then capacity), one finding per root cause - a config defect with several symptoms is one finding carrying them in Risk, the same Issue in the same form in two layers (nginx and the CDN both lacking a bypass) is one finding whose location lists both, its two forms (absent in one layer, over-broad in the other) are two, two Issue values in one config block are two findings; a file in scope the review could not read is `Not assessed:` once, with its path and every symptom it would settle; then the `Not assessed:` and `Notes:` slots as templated. Outside the artifacts and their inline comments, no prose beyond the template.
 
 ```
 ## Self-Host Assessment
@@ -173,31 +181,31 @@ When setting up a deployment (authoring), emit each artifact under a `### <file 
 
 **CDN:** {present | absent | unknown - CDN config not in scope (list it under Not assessed)}
 
-### Findings
+### Findings {when at least one finding}
 
-- [Severity: High | Medium | Low] {file or config location} - {description}
+- [Severity: High | Medium | Low] {file or config location}[, {location}] - {description}
   - Issue: {NotStandalone | BuildOnHost | PublicEnvBakedIn | UnsharedIsrCache | ActionKeyUnshared | NoDeploymentId | CdnCookieBypassMissing | ForcedEdgeTtlOnHtml | RscCacheKeyMissing | FullPurgeOnPublish | StreamingBuffered | ImageOptimizerUnbounded | MissingStaticCopy | NoGracefulShutdown}
   - Risk: {what fails in production}
   - Fix: {concrete change; reference a Pattern by name}
 
-Not assessed: {surfaces the input never showed - Dockerfile, shutdown handling, image config; omit when all shown}
+### No Findings {instead, when none}
 
-Notes: {single line - out-of-scope observations, each naming the concern that owns it (`connection pool sizing`, `rollout sequencing`, `application security`) rather than a skill filename; omit when none}
+{one sentence: the deployment configuration is sound for the scope reviewed}
 
-### No Findings
+Not assessed: {surfaces the input never showed or could not be read - Dockerfile, shutdown handling, image config, an unreadable env file; omit when all shown}
 
-{State explicitly when the deployment configuration is sound - do not omit silently.}
+Notes: {observations outside this skill's concern, each naming the owning concern (`connection pool sizing`, `rollout sequencing`, `application security`); omit when none}
 ```
 
 Severity:
 
-- **High**: CDN caching authenticated responses; a CDN key or forwarding rule that drops `_rsc` or the `rsc` header (`RscCacheKeyMissing`); more than one instance without a shared cache handler for a cache the app uses, or without `updateTags()` / `refreshTags()` coordination (`UnsharedIsrCache`, which covers `"use cache"` entries too); more than one instance, or separately built images, without one `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` (`ActionKeyUnshared`); building on the production host.
-- **Medium**: `NEXT_PUBLIC_` values that must vary per environment; rolling deploys without a `deploymentId` (`NoDeploymentId`); full purge on publish; a buffering proxy in front of a streaming app (`StreamingBuffered`); unbounded image optimization on a small host; missing graceful shutdown.
-- **Low**: not using standalone output; missing static asset copy in an image not yet serving traffic (High once deployed - it is a no-CSS outage).
+- **High**: CDN caching authenticated responses (`CdnCookieBypassMissing`); a CDN key or forwarding rule that drops `_rsc` or the `rsc` header, or an image key dropping `url`/`w`/`q`/`Accept` (`RscCacheKeyMissing`); more than one durable instance (a rolling-deploy overlap is not one) without a shared cache handler for a cache the app uses, or without tag coordination (`UnsharedIsrCache`, which covers `"use cache"` entries too); more than one instance, or separately built images, without one `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` (`ActionKeyUnshared`; one image tag on every replica with an overlapping rolling deploy included); building on the production host (`BuildOnHost`); `ForcedEdgeTtlOnHtml`; `MissingStaticCopy` on an image serving traffic (a no-CSS outage).
+- **Medium**: `NEXT_PUBLIC_` values that must vary per environment (`PublicEnvBakedIn`); rolling deploys without a `deploymentId` (`NoDeploymentId`); full purge on publish (`FullPurgeOnPublish`); a buffering proxy in front of a streaming app (`StreamingBuffered`, Suspense present or not); unbounded image optimization on a small host (`ImageOptimizerUnbounded`); missing graceful shutdown, or a grace period shorter than the drain (`NoGracefulShutdown`); `CdnCookieBypassMissing` in its over-broad form.
+- **Low**: not using standalone output (`NotStandalone`); missing static asset copy (`MissingStaticCopy`) in an image not yet serving traffic.
 
-No Issue value is left unscored, and where a value appears in more than one band the band naming your defect's condition wins; `ForcedEdgeTtlOnHtml` is High, since a floor or override that discards the origin header serves stale or personalized HTML. A bypass rule matching any cookie rather than the session cookie by name is also `CdnCookieBypassMissing` - the value covers a bypass that is absent or wrongly scoped in either direction; the over-broad form caches nothing and leaks nothing, so it is Medium (lost cache hit rate).
+No Issue value is left unscored; where a value appears in more than one band the band naming your defect's condition wins. `CdnCookieBypassMissing` covers a bypass absent or wrongly scoped in either direction; a rule matching any cookie caches nothing and leaks nothing, hence Medium (lost cache hit rate).
 
-Omit "No Findings" when findings were listed. When instance count is unknown, assume one and say so. If the project is not self-hosted Next.js, emit `No self-host findings (managed platform).` bare - no envelope - and stop; one `Notes:` line naming the evidence read and any handoff may follow. The gate reads deployed state: platform config (`vercel.json`, Netlify/Amplify config) with no self-host artifact stops; any self-host artifact (Dockerfile, compose file, `output: "standalone"`), even beside a platform config, gets the full assessment of that artifact.
+When instance count is unknown, assume one and say so; compose `deploy.replicas` or a Kubernetes `replicas` value is the count. If the project is not self-hosted Next.js, emit `No self-host findings (managed platform).` bare - no envelope - and stop; one `Notes:` line (evidence read, handoff) may follow. The gate reads deployed state: platform config (`vercel.json`, Netlify/Amplify config) with no self-host artifact stops; any self-host artifact (Dockerfile, compose file, `output: "standalone"`), even beside a platform config, gets the full assessment of that artifact.
 
 ## Avoid
 

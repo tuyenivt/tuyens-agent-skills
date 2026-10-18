@@ -9,7 +9,7 @@ user-invocable: false
 
 # Next.js Server Testing
 
-> Load `Use skill: stack-detect` first to determine the project stack. Component, hook, and browser testing are owned by `react-testing-patterns`. This skill owns tests that exercise server code or touch a database. Server surface means in-app server code - Server Actions, Route Handlers, `pages/api/**` routes, `src/server/`; an API the app only calls over HTTP (a sibling monorepo app with its own test framework included) is tested in its own codebase. The truncation and container recipes below are PostgreSQL's; the `Engine` slot records which truncation variant applies (Isolation table), and on MySQL the Testcontainers module swaps to `@testcontainers/mysql` (SQLite needs none).
+> Load `Use skill: stack-detect` first to determine the project stack. Component, hook, and browser testing are owned by `react-testing-patterns`. This skill owns tests that exercise server code or touch a database. Server surface means in-app server code - Server Actions, Route Handlers, `pages/api/**` routes, `src/server/`; an API the app only calls over HTTP (a sibling monorepo app with its own test framework included) is tested in its own codebase. The truncation and container recipes below are PostgreSQL's; the `Engine` slot records which truncation variant applies (Isolation table), on MySQL the Testcontainers module swaps to `@testcontainers/mysql` (SQLite needs none), and `unknown`, or an engine with no recipe here (SQL Server), takes the PostgreSQL recipes as written, said so (`<engine> (PostgreSQL recipes applied - adapt truncation)`).
 
 ## When to Use
 
@@ -22,9 +22,9 @@ user-invocable: false
 - Test service functions directly. They are plain async functions with no request context, which is what makes them the cheapest thing in the codebase to test.
 - **Use a real database, never a mocked ORM.** A mocked client asserts that you called it the way you expected, which is the one thing that was never in doubt. Constraints, cascades, transactions, and `null` handling are what break.
 - Every test starts from a known state and leaves none behind. Choose one isolation mechanism and apply it everywhere.
-- Mock at the network edge only: external HTTP, payment providers, mail - plus two sanctioned stubs: the session boundary (`requireUser`/`requireAdmin`, or the auth library's own session entry) and Next framework modules with request-scoped side effects, which throw outside a request: `next/cache` (`revalidatePath`, `revalidateTag`, and the Server-Action-only `updateTag` and `refresh`; when `cacheComponents` is set in `next.config`, also `cacheLife` and `cacheTag` as no-ops, since Vitest does not compile `'use cache'` and they throw outside its scope) and `next/headers`. The `next/headers` stub is async like the real API (`cookies: vi.fn(async () => store)`) - a sync stub lets a missing `await` pass the test and fail in production. Assert `revalidateTag` with its two-argument `(tag, profile)` form. Never mock other own modules to make a test pass.
+- Mock at the network edge only: external HTTP, payment providers, mail - plus two sanctioned stubs: the session boundary (`requireUser`/`requireAdmin`, or the auth library's own session entry) and Next framework modules with request-scoped side effects, which throw outside a request: `next/cache` (`revalidatePath`, `revalidateTag`, and the Server-Action-only `updateTag` and `refresh`; `cacheLife` and `cacheTag` as no-ops where the code calls them, since they throw without the `__NEXT_USE_CACHE` build flag Vitest never sets; `unstable_cache` where used as a passthrough `(fn) => fn`, so the test exercises the wrapped read) and `next/headers`. The `next/headers` stub is async like the real API (`cookies: vi.fn(async () => store)`) - a sync stub lets a missing `await` pass the test and fail in production. Assert `revalidateTag` with its two-argument `(tag, profile)` form. Never mock other own modules to make a test pass.
 - **Async Server Components are not unit-testable** with a component renderer. Test the data function underneath, and cover the rendered page with a browser test.
-- Route Handlers are tested by constructing the request type the handler declares - a `NextRequest` from `next/server` when its first parameter is typed `NextRequest` (a plain `Request` fails `tsc` there), else a `Request` - and calling the exported method. No HTTP server is needed. A dynamic-segment handler also takes a context whose `params` is a Promise (typed with the global `RouteContext<'/api/reports/[id]'>`): pass `{ params: Promise.resolve({ id }) }`. A handler that reads `cookies()` or `headers()` from `next/headers` needs the session-boundary stub or a `next/headers` stub. Webhook handlers run real signature verification against a test-signed payload (e.g. Stripe's test header helper), never a mocked verifier, and get a replay test: the same event delivered twice, the second a no-op - which forces event-id dedupe in the handler.
+- Route Handlers are tested by constructing the request type the handler declares - a `NextRequest` from `next/server` when its first parameter is typed `NextRequest` (a plain `Request` fails `tsc` there), else a `Request` - and calling the exported method. No HTTP server is needed. A dynamic-segment handler also takes a context whose `params` is a Promise (typed with the global `RouteContext<'/api/reports/[id]'>`, which exists only after `next typegen` / `next dev` / `next build` - run `next typegen` before `tsc` in CI): pass `{ params: Promise.resolve({ id }) }`. A `pages/api` handler takes `(req, res)`: build them with `node-mocks-http` (`createMocks`) and read `res._getStatusCode()` / `res._getJSONData()`. A handler that reads `cookies()` or `headers()` from `next/headers` needs the session-boundary stub or a `next/headers` stub. Webhook handlers run real signature verification against a test-signed payload (e.g. Stripe's test header helper), never a mocked verifier, and get a replay test: the same event delivered twice, the second a no-op - which forces event-id dedupe in the handler.
 - A Server Action's authorization path is a required test case, not an optional one. Assert that an unauthorized caller is rejected before asserting that an authorized one succeeds.
 
 ## Patterns
@@ -34,7 +34,7 @@ user-invocable: false
 | Mechanism             | Speed  | Catches                             | Cost                                                    |
 | --------------------- | ------ | ------------------------------------- | --------------------------------------------------------- |
 | Transaction rollback  | Fast   | Most logic bugs                     | Cannot test code that commits its own transaction       |
-| Truncate between tests | Medium | Everything, including commits       | PostgreSQL: one `TRUNCATE ... CASCADE` covers FK order, names need quoting. MySQL: no CASCADE - `SET FOREIGN_KEY_CHECKS=0`, truncate each. SQLite: `DELETE FROM` each table |
+| Truncate between tests | Medium | Everything, including commits       | PostgreSQL: one `TRUNCATE ... CASCADE` covers FK order, names need quoting. MySQL: no CASCADE - in one interactive `$transaction` (the setting is per connection): `SET FOREIGN_KEY_CHECKS=0`, truncate each, `SET FOREIGN_KEY_CHECKS=1` in a `finally`, or a failed truncate returns the pooled connection with FK checks off for later tests. SQLite: `DELETE FROM` each table |
 | Fresh container per file | Slow | Everything, including migrations    | Only worth it for the migration suite                   |
 
 Default to truncation. Transaction rollback is faster but silently cannot test the transaction boundary itself, which is exactly where the expensive bugs live.
@@ -43,11 +43,14 @@ Default to truncation. Transaction rollback is faster but silently cannot test t
 
 ```ts
 // vitest.server.config.ts - own node-env project beside the jsdom component config
-export default defineConfig({                 // from "vitest/config"
-  plugins: [tsconfigPaths()],                 // vite-tsconfig-paths: resolves the `@/` imports below
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  // tsconfigPaths resolves the `@/` imports below (Vite 8 built-in; replaces the vite-tsconfig-paths plugin).
   // server-only throws unless resolved under the react-server condition, which Vitest never sets;
   // test/empty.ts is `export {};` (Jest's nextJest maps `^server-only$` to an empty mock already)
-  resolve: { alias: { "server-only": fileURLToPath(new URL("./test/empty.ts", import.meta.url)) } },
+  resolve: { tsconfigPaths: true, alias: { "server-only": fileURLToPath(new URL("./test/empty.ts", import.meta.url)) } },
   test: {
     environment: "node", globals: true,       // typed per react-testing-patterns, or import it/expect/vi from "vitest"
     fileParallelism: false, globalSetup: ["test/global-setup.ts"], setupFiles: ["test/setup.ts"],
@@ -59,14 +62,18 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 
 export default async function () {
   const container = await new PostgreSqlContainer("postgres:16-alpine").start();
-  process.env.DATABASE_URL = container.getConnectionUri();
-  await runMigrations();                      // e.g. execSync("npx prisma migrate deploy") - the real migrations, not db push
+  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL = container.getConnectionUri();   // the marker the setup file's guard checks
+  await runMigrations();                      // e.g. execSync("npx prisma migrate deploy") - the real migrations, not db push;
+                                              // with no prisma/migrations yet, one committed `migrate dev --name init` is the baseline (a Gap until then; a database built by `db push` also gets `prisma migrate resolve --applied <timestamp>_init`)
   return async () => { await container.stop(); };
 }
 ```
 
 ```ts
 // test/setup.ts - per test file
+if (process.env.NODE_ENV !== "test") throw new Error("refusing to truncate outside NODE_ENV=test"); // Vitest and Jest default it to "test" when unset
+if (process.env.DATABASE_URL !== process.env.TEST_DATABASE_URL) throw new Error("DATABASE_URL is not the test container"); // the race the High band names
+
 beforeEach(async () => {
   // Introspect information_schema for BASE TABLEs only (views cannot be truncated),
   // excluding _prisma_migrations; a hand-maintained list rots silently.
@@ -80,9 +87,13 @@ The container starts in `globalSetup` because that runs in the main process befo
 
 Running the real migrations rather than a schema sync means the test suite also verifies that the migrations produce the schema the code expects, which is otherwise only discovered in production.
 
+A module reading `process.env` at import (a payment SDK client) takes its test value from `setupFiles` or `test.env`, before the import. On Jest (`next/jest`): `maxWorkers: 1` replaces `fileParallelism: false`, `globalTeardown` the returned stop function (a separate module - stash the container on `globalThis` in `globalSetup` and stop it there; Jest ignores the returned function), `setupFilesAfterEnv` the `setupFiles` entry, and `jest.mock` / `jest.mocked` the `vi.*` calls.
+
 One shared database plus parallel workers race on truncation: set `fileParallelism: false`. Per-worker schemas are the faster alternative but need more than a name: `globalSetup` migrates the default schema only, so each worker must create its own schema and run the migrations against it, then rewrite `DATABASE_URL` before the client module is imported.
 
 ### Testing a Service Function
+
+Seed helpers (`test/helpers.ts`) write through the service layer or the ORM with the production constraints in force, never raw inserts.
 
 ```ts
 it("publishes only reviewed questions", async () => {
@@ -145,11 +156,11 @@ Bad   render(<DeckPage params={...} />)      -- async component, renderer cannot
 Good  test getDeckBySlug() directly, then cover the page with one browser test
 ```
 
-Splitting the page's data function out of the component, as `react-server-data-layer` requires, is what makes this workable. A page whose query is inlined has no unit-testable surface at all.
+Splitting the page's data function out of the component, as `react-server-data-layer` requires, is what makes this workable. A page whose query is inlined has no unit-testable surface at all. A browser test closes only that rendered-page case; it never closes a server Gap.
 
 ## Output Format
 
-When standing up testing (authoring), emit in this order: the chosen isolation mechanism with a one-line reason drawn from the Isolation table's Catches and Cost cells; each setup file in full under a `### <file path>` heading; a `### Tests to Write` list naming, for every surface in scope, the test and the assertion that matters (the authorization case first wherever one applies); then this assessment block covering what the authored setup does not yet cover, its headers describing that setup. Authoring into a repo that already has server tests or setup files, name each existing file and whether the new setup extends or replaces it. When the build or design touches existing code, defects already in that code are ordinary Gaps marked `(pre-existing)` at their own severity. Where a required case cannot pass against the code as written - an authorization test on a function with no authorization - list the test in `Tests to Write` marked `(fails until <the change it forces>)` and raise the underlying defect as a Gap. When assessing, headers describe the layer as found: a split suite lists each observed value (`mocked (unit) / real (containerized, integration)`); with no server tests, Isolation is `none` and Database is `none - no server tests exist`. Open the block with `Scope: <files assessed>` directly under the heading and, when the caller asked a direct question (a yes/no or either/or ask), one `Verdict:` line answering it. Order gaps by severity, the infrastructure gap first within its band, then blast radius breaking ties (payment and webhook surfaces first), one gap per exported function or route - two functions in one file are two gaps, and merge only when a single test would close both. Absent or defective infrastructure is one gap of its own listing each defect, named `test harness` (or the setup file's path) in the function-or-route slot; per-surface gaps assume it lands.
+When standing up testing (authoring), emit the block below with, between `**Client-side coverage:**` and `### Gaps` or `### No Gaps Found` (`Scope:` lists the files in scope plus the files written): the chosen isolation mechanism with a one-line reason drawn from the Isolation table's Catches and Cost cells; each new file (setup, helpers, runner config) in full and each edited file's changed section under a `### <file path>` heading; a `### Tests to Write` list naming, for every surface in scope, the test and the assertion that matters (the authorization case first within each surface); the header fields and Gaps then cover what the authored setup does not yet settle. Authoring into a repo that already has server tests or setup files, name each existing file and whether the new setup extends or replaces it. When the build or design touches existing code, defects already in that code are ordinary Gaps marked `(pre-existing)` at their own severity. Where a required case cannot pass against the code as written - an authorization test on a function with no authorization - list the test in `Tests to Write` only, marked `(fails until <the change it forces>)`, and raise the underlying defect as a Gap. When assessing, headers describe the layer as found: a split suite lists each observed value (`mocked (unit) / real (containerized, integration)`); with no server tests, Isolation is `none` and Database is `none - no server tests exist`. Open the block with `Scope: <files assessed>` directly under the heading and, when the caller asked a direct question (a yes/no or either/or ask), one `Verdict:` line answering it. Order gaps by severity; within a band: the infrastructure gap, then payment and webhook surfaces, then the rest by blast radius; one gap per exported function or route - two functions in one file are two gaps, and merge only when a single test would close both. Absent or defective infrastructure is one gap of its own listing each defect, named `test harness` (or the setup file's path) in the function-or-route slot; per-surface gaps assume it lands. An exported async helper in a `"use server"` file is an endpoint and gets the same authorization Gap as an action; the export itself goes in `Notes:` for Next.js patterns (a non-async export there fails the build: `Notes:` only).
 
 ```
 ## Server Test Assessment
@@ -158,24 +169,26 @@ Scope: {files assessed}
 
 Verdict: {the answer to the caller's direct question} {only when one was asked}
 
-**Engine:** {the Database stack-detect reports - PostgreSQL, MySQL, SQLite, or `unknown` - which selects the truncation variant and container module}
+**Engine:** {the Database stack-detect reports - PostgreSQL, MySQL, SQLite, or, for `unknown` or an engine with no recipe here, `<engine> (PostgreSQL recipes applied - adapt truncation)` - which selects the truncation variant and container module}
 
 **Isolation:** {transaction rollback | truncate | fresh container | none}
 
-**Database:** {real (containerized) | real (shared test DB) | mocked | not isolated - <what the tests actually hit> | none - no server tests exist; name each when the suite is split, e.g. `mocked (unit) / real (containerized, integration)`}
+**Database:** {real (containerized) | real (shared test DB) | mocked | not isolated - <what the tests actually hit> | none - no server tests exist}
 
 **Client-side coverage:** {present (not assessed - client testing is a separate concern) | none present | n/a (authoring server tests)}
 
-### Gaps
+### Gaps {when at least one gap}
 
 - [Severity: High | Medium | Low] {function or route}{ (pre-existing)} - {gap description}
   - Missing: {one or more of: authorization case | database-backed test | isolation | migration coverage | error path | edge case | ownership/IDOR case | replay/idempotency case | sanctioned-mock breach (a verifier, ORM, or own module mocked where the real thing must run) | harness (container lifecycle, env race, stale table list)}
   - Risk: {what ships broken}
   - Recommendation: {concrete test to add}
 
-### No Gaps Found
+### No Gaps Found {instead, when none}
 
-{State explicitly when server coverage is adequate - do not omit silently.}
+{one sentence: server coverage is adequate for the scope assessed}
+
+Notes: {observations outside this skill's concern or unconfirmed from the input, each naming the owning concern (a schema defect -> data layer; an exported helper in a `"use server"` file -> Next.js patterns); omit when none}
 ```
 
 Severity:
@@ -184,11 +197,10 @@ Severity:
 - **Medium**: happy path only; a surface with no database-backed test at all (read-only included); migrations not exercised; ownership and IDOR paths untested, a read returning user-scoped data included; a read-only surface with no authorization test; a replay/idempotency case missing on a non-payment surface (a double-submitted action); another sanctioned-mock breach (a mocked verifier or own module); another harness defect (container lifecycle, stale table list, a jsdom config whose `include` also matches the server tests).
 - **Low**: missing edge cases on an otherwise covered function.
 
-Omit "No Gaps Found" when gaps were listed. A clean run still emits `Scope:`, the `Verdict:` line when one was asked for, all four header fields, and `No Gaps Found`; only the gap entries are omitted. If the project has no server surface, emit `Scope:`, the `Verdict:` line when one was asked for, and `No server test findings (no server surface).` - the header fields and the gap list are omitted; a `Verdict:` answers the server-test question only, naming any part of the caller's ask that falls outside this skill.
+A clean run still emits `Scope:`, the `Verdict:` line when one was asked for, all four header fields, the authored sections when authoring, `No Gaps Found` and `Notes:` when it has content; only the gap entries are omitted. If the project has no server surface, emit `Scope:`, the `Verdict:` line when one was asked for, and `No server test findings (no server surface).` - the header fields and the gap list are omitted, a `Notes:` line may follow; a `Verdict:` answers the server-test question only, naming any part of the caller's ask that falls outside this skill.
 
 ## Avoid
 
-- Asserting that the ORM was called with particular arguments; assert the resulting state instead
 - Sharing one database state across an ordered test file, which makes a single failure cascade
 - Testing Server Actions through the browser only; the authorization cases are hard to reach and slow to run there
 - Seeding through raw inserts that bypass the constraints the production write path must satisfy

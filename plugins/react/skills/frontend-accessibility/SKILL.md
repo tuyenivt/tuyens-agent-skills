@@ -20,11 +20,13 @@ user-invocable: false
 
 ## Rules
 
-Cite the WCAG criterion for every violation: in the `WCAG Criterion` column when emitting the audit block, in parentheses when mentioning one in prose. A Minor deviation that fails no success criterion writes `best practice (<source, e.g. ARIA in HTML>)` there.
+Cite the WCAG criterion for every violation: in the `WCAG Criterion` column when emitting the audit block, in parentheses when mentioning one in prose. A Minor deviation that fails no success criterion writes `best practice (<source, e.g. Using ARIA, WAI-ARIA APG>)` there.
 
 - Use native HTML semantics first (`button`, `a`, `nav`, `dialog`); ARIA only when no native element fits (the First Rule of ARIA Use - cite 4.1.2 only when the name, role or value is missing or wrong)
 - Every interactive element must be keyboard-operable (2.1.1) and have a visible focus indicator (2.4.7)
-- Every form input must have a programmatically associated visible label (1.3.1, 3.3.2)
+- Every form input must have a programmatically associated visible label (1.3.1, 3.3.2); identity and payment fields carry `autocomplete` tokens (1.3.5); an error names the field and the problem in text (3.3.1) and, when a correction is known, how to fix it (3.3.3)
+- Actions that make a legal commitment or a financial transaction, modify or delete user-controllable stored data, or submit test responses are reversible, checked for input errors, or confirmed before they commit (3.3.4)
+- Every page declares `<html lang>` (3.1.1), exposes a bypass mechanism - landmarks (`<main>`, `<nav>`) or a "Skip to main content" link as the first focusable element (2.4.1; with landmarks present, a missing skip link is a Minor best practice, technique G1) - and sets a descriptive title, distinct per route (2.4.2)
 - Every image must have `alt` (decorative: `alt=""`) (1.1.1)
 - Never convey information by color alone (1.4.1)
 - Repeated controls need names that identify their target, alone or through programmatic context such as the product card around an "Add" button (2.4.6; 2.4.4 for links); identical bare names with no such context are a Minor best practice
@@ -94,15 +96,12 @@ After dynamic changes: move focus to next item (deletion) or trigger (toast dism
 
 Client navigation (`next/link`, `router.push`) is announced by Next's built-in route announcer, which reads `document.title`, else the first `<h1>`, and announces only when that text changes - two routes sharing a title navigate with no announcement. Give every route a unique, descriptive title through the Metadata API (`metadata` / `generateMetadata`) (2.4.2); a shared or missing title is the defect, not a missing hand-rolled focus move.
 
-Provide a "Skip to main content" link as the first focusable element.
-
 ### Color and Status
 
 - Text contrast: 4.5:1 normal, 3:1 large - large means 18pt/24px+, or 14pt/18.66px+ bold (1.4.3)
 - UI component contrast: 3:1 against adjacent colors (1.4.11)
-- Compute the ratio when both colors are declared in code (classes, tokens - Tailwind palette classes count, their values are fixed); when either depends on rendered context - a photo, a background set outside the files in scope - list it under Not assessed rather than guessing a row
+- Compute the ratio when both colors are declared in code (classes, tokens - Tailwind palette classes count: their values come from the project's `@theme` overrides, else the default palette); when either depends on rendered context - a photo, a background set outside the files in scope - list it under Not assessed rather than guessing a row
 - Over an image, gradient, or translucent overlay there is no single background color: measure the worst pixel behind the text box - the darkest for dark text, the lightest for light text, since that is where the ratio collapses - after compositing the overlay. Passing against the overlay's nominal color while failing over the photo behind it is the usual way a hero section ships broken; a solid scrim or a text-shaped backdrop fixes it.
-- Never use color alone for state - pair with text/icon (1.4.1)
 
 ```jsx
 {/* Bad: color-only success */}
@@ -110,11 +109,13 @@ Provide a "Skip to main content" link as the first focusable element.
 
 {/* Good: the state is carried by text and an icon, not colour alone (1.4.1),
     and the change is announced (4.1.3). role="status" already implies aria-live="polite". */}
-<button onClick={addToCart}>Add to Cart</button>
-<p role="status" className={status === "failed" ? "text-red-700" : "text-green-700"}>
-  {status === "added" && <><CheckIcon aria-hidden="true" /> In your cart</>}
-  {status === "failed" && <><AlertIcon aria-hidden="true" /> Could not add</>}
-</p>
+<>
+  <button onClick={addToCart}>Add to Cart</button>
+  <p role="status" className={status === "failed" ? "text-red-700" : "text-green-700"}>
+    {status === "added" && <><CheckIcon aria-hidden="true" /> In your cart</>}
+    {status === "failed" && <><AlertIcon aria-hidden="true" /> Could not add</>}
+  </p>
+</>
 {/* status: "idle" | "added" | "failed" - idle renders an empty region, so nothing claims failure before a try */}
 ```
 
@@ -135,7 +136,7 @@ Provide a "Skip to main content" link as the first focusable element.
 
 ## Next.js Bindings
 
-- Lint: `eslint-config-next` enables only 6 `jsx-a11y` rules, all at `warn` (`alt-text`, ARIA props and roles); add `eslint-plugin-jsx-a11y`'s `recommended` flat config for the interactive-element and label rules (`<div onClick>`, unlabeled inputs). `next lint` is removed and `next build` no longer lints, so the rules run only where something invokes `eslint` (a script, CI, the editor) against a flat `eslint.config.*`
+- Lint: `eslint-config-next` enables only 6 `jsx-a11y` rules, all at `warn` (`alt-text`, ARIA props and roles), and already registers the plugin - so add `eslint-plugin-jsx-a11y`'s recommended rules as `{ rules: jsxA11y.flatConfigs.recommended.rules }` after it (spreading the whole `flatConfigs.recommended` object throws `Cannot redefine plugin "jsx-a11y"`) for the interactive-element and label rules (`<div onClick>`, a `<label>` with no associated control; a bare `<input>` with no label is not caught - recommended leaves `control-has-associated-label` off, and its preset options ignore `input` and `textarea` - so the audit checks inputs by hand). `next lint` is removed and `next build` no longer lints, so the rules run only where something invokes `eslint` (a script, CI, the editor) against a flat `eslint.config.*`
 - `useId()` for label and description pairing
 - Radix or Headless UI for accessible primitives (Radix ships no combobox - use Headless UI `Combobox` or React Aria for autocompletes)
 
@@ -143,9 +144,9 @@ Provide a "Skip to main content" link as the first focusable element.
 
 ## Output Format
 
-When building, apply Rules and Patterns as constraints and emit the code alone - the block below is the audit deliverable, never a self-assessment of code just written. When auditing, emit the block; invoked standalone, order rows Critical first; within a band, file order (the order the input lists the files; ascending line within a file). Consuming workflow skills depend on this structure.
+When building, apply Rules and Patterns as constraints and emit the code alone - the block below is the audit deliverable, never a self-assessment of code just written. When auditing, emit the block; invoked standalone, order rows Critical first; within a band, file order (the order the input lists the files; ascending line within a file; a row spanning several files sorts by the file the fix changes). Consuming workflow skills depend on this structure.
 
-Severity: Critical = blocks task completion for a user relying on a keyboard, assistive technology, or sufficient contrast; Major = significant barrier with a workaround; Minor = friction or best-practice deviation.
+Severity: Critical = blocks task completion for a user relying on a keyboard, assistive technology, or sufficient contrast (an invisible focus indicator on a control the task needs included); Major = significant barrier with a workaround (a modal whose focus escapes behind it, which Escape still closes); Minor = friction or best-practice deviation.
 
 A row is one criterion failing one way: a dialog missing both its role and its focus trap is two rows, because each cites a different criterion and takes its own fix, while the same criterion failing the same way on several elements is one row listing them all.
 
@@ -156,39 +157,36 @@ A row is one criterion failing one way: a dialog missing both its role and its f
 
 **Standard:** WCAG 2.1 AA
 
-### Audit Results
+### Audit Results {when at least one row}
 
 | Issue         | WCAG Criterion | Severity                   | Element/Component       |
 | ------------- | -------------- | -------------------------- | ----------------------- |
-| {description} | {e.g., 1.1.1}  | {Critical \| Major \| Minor} | {component or selector} |
+| {description} | {e.g., 1.1.1}  | {Critical \| Major \| Minor} | {component or selector; for a missing element, the file that should carry it} |
 
-### Recommendations
+### No Issues Found {instead, when none}
+
+{one sentence: accessibility is adequate for the scope reviewed}
+
+### Recommendations {when at least one applies}
 
 - {recommendation with rationale and code example}
 
-### Not assessed
+### Not assessed {when anything went unverified}
 
-- {anything the input never showed or that could not be verified from it - a contrast ratio needing the rendered pixels, a component whose markup is produced by an external call, a file named in scope but not provided. A statement of missing input, never a guessed issue. Omit this section when nothing applies}
+- {anything the input never showed or that could not be verified from it - a contrast ratio needing the rendered pixels, a component whose markup is produced by an external call, a file named in scope but not provided. A statement of missing input, never a guessed issue}
 
 Notes: {observations outside this skill's concern, each naming the owning concern; omit when none}
-
-### No Issues Found
-
-{Emit this section only when Audit Results is empty, and state explicitly that accessibility is adequate. When issues were found, omit it entirely}
 ```
 
-A clean run emits **Stack**, **Standard**, an empty Audit Results table, `Recommendations` when any apply, `Not assessed` when anything went unverified, and `No Issues Found`; only the issue rows are omitted. `Not assessed` is independent of whether any issue was found.
+`Not assessed` is independent of whether any issue was found.
 
-Design-phase requests (no code yet): keep the same structure, but read the `Issue` column as the required behaviour for the planned component, with Element/Component naming the planned element. Severity rates the impact of shipping without that behaviour, which makes most rows Critical or Major. Order by severity when invoked standalone; within a band, put the behaviours a framework primitive supplies for free last, so the ordering still separates what needs design attention from what comes with the library. `No Issues Found` never applies in this mode - there is no code to call adequate - so omit it.
+Design-phase requests (no code yet): keep the same structure, but read the `Issue` column as the required behaviour for the planned component, with Element/Component naming the planned element. Severity rates the impact of shipping without that behaviour, which makes most rows Critical or Major. Order by severity when invoked standalone; at the end of each band, put the behaviours a framework primitive supplies for free, marked `(supplied by <primitive>)` in Element/Component, so the ordering still separates what needs design attention from what comes with the library. `No Issues Found` never applies in this mode - there is no code to call adequate - so omit it.
 
 ---
 
 ## Avoid
 
-- `div`/`span` for interactive elements instead of `button`, `a`, `input`
-- Redundant ARIA on elements that already have native semantics
 - `tabindex > 0` (breaks natural tab order)
 - Hiding focus indicators (`outline: none`) without a visible replacement
-- `aria-hidden="true"` on focusable elements
-- Color-only state, `placeholder` as the only label, `title` as the only accessible name
+- `placeholder` as the only label, `title` as the only accessible name
 - Auto-focusing on page load without user intent

@@ -23,7 +23,7 @@ Next.js 16 App Router projects:
 - Review test pyramid balance for an app
 - Diagnose suite health: a test that passes alone or locally and fails intermittently in CI or the full suite (isolation, concurrency, retries)
 
-**Not for:** a test that fails on every run (debug the code under test), general code review (`task-react-review`).
+**Not for:** a test that fails on every run (debug the code under test; one reported as flaky that the read shows failing every run is still listed under `Broken tests` as broken), general code review (`task-react-review`).
 
 ## Workflow
 
@@ -35,22 +35,22 @@ Use skill: `behavioral-principles`. These rules govern every step that follows.
 
 Use skill: `stack-detect`. Accept a pre-confirmed stack. If neither `Framework` nor an `Additional` entry is React, stop and name the detected stack so the user can invoke that stack's test workflow. With no `next` dependency in the owning package's `package.json`, print `task-react-test covers Next.js App Router projects only; <project framework> is out of scope.` and stop.
 
-Record `Framework` as `Next.js <version>`, suffixed ` (Pages Router)` when routes exist only under `pages/` or ` (App + Pages Router)` when both `app/` and `pages/` hold routes (detection only - guidance stays App Router), and `Runner` (Vitest / Jest) for the output; the React and TypeScript versions come from `package.json` in Step 3. In a polyglot repo `stack-detect` keys the primary stack on the root manifest and may list React only under `Additional`; when the request sits inside one package (a React app under `apps/<name>`), confirm React against that package's `package.json`, scope the run to it, and name it in the deliverable's `**Stack:**` line (`(package: apps/admin)`). Greenfield (no runner installed): record the Step 3 default suffixed `(greenfield default)`; an installed runner is kept, even with no tests written yet.
+Record `Framework` as `Next.js <version>`, suffixed ` (Pages Router)` when routes exist only under `pages/` or ` (App + Pages Router)` when both `app/` and `pages/` hold routes (detection only - guidance stays App Router), and `Runner`, for the output; the React and TypeScript versions come from `package.json` in Step 3. `Runner` is `stack-detect`'s `Test framework` normalised to `Vitest` / `Jest`; whenever Step 2 scoped the run to a package, read it from that package's `package.json` instead (`stack-detect`'s scalar fields describe the primary stack only). Any other unit runner (`mocha`) is recorded as found, and scaffolds and the Strategy Doc then target Vitest beside it, listing it in the Scaffolds' dev dependencies and the Strategy Doc's `**Tooling:**` line. In a polyglot repo `stack-detect` keys the primary stack on the root manifest and may list React only under `Additional`; when the request sits inside one package (a React app under `apps/<name>`), confirm React against that package's `package.json`, scope the run to it, and name it in the deliverable's `**Stack:**` line (`(package: apps/admin)`). Greenfield (no `vitest`, `jest` or other unit runner installed in the owning package's `package.json` - a `Test framework` declared but not installed, or naming only an E2E runner such as `Playwright` / `Cypress`, is still greenfield for `Runner`): record the Step 3 default suffixed `(greenfield default)`; an installed runner is kept, even with no tests written yet.
 
 ### Step 3 - Read code under test and existing tests
 
 Before producing output, read both production code and a representative sample of tests so output matches project convention. Convention wins on naming, file layout, factories and helper imports. It does not win on the practices this skill's `Avoid` list names - an existing test using `fireEvent` or a full-tree snapshot is a reason to flag it, not to copy it.
 
-- `package.json`: which testing packages are installed, and the React / Next.js / runner versions. A declared `next` < 16.3 or `react` < 19 puts `<package> <declared> is below the plugin floor (Next.js 16.3, React 19); output targets Next.js 16.3 and React 19 - upgrade first.` in the deliverable's stack slot (the below-floor line in the templates; `<package>` is `Next.js` or `React`, and both below is one line, `Next.js 15.5 and React 18.3 are below the plugin floor ...`); the run continues with Next.js 16 / React 19 output. `<declared>` is the version the lockfile resolves for `next` / `react`, else the lower bound of the `package.json` range (`^16.1.0` -> `16.1.0`). Record the full version, not the major.
+- `package.json`: which testing packages are installed, and the React / Next.js / runner versions. A declared `next` < 16.3 or `react` < 19.2 puts `<package> <declared> is below the plugin floor (Next.js 16.3, React 19.2); output targets Next.js 16.3 and React 19.2 - upgrade first.` in the deliverable's stack slot (the below-floor line in the templates; `<package>` is `Next.js` or `React`, and both below is one line, `Next.js 15.5.4 and React 18.3.1 are below the plugin floor ...`); the run continues with Next.js 16 / React 19 output. Every recorded version (`<declared>` and TypeScript included) is the one the nearest lockfile at or above the package resolves for it (its own, else the workspace root's), else the lower bound of the `package.json` range (the package's, else the root's for a hoisted dependency; `^16.1.0` -> `16.1.0`), written in full, not as the major; a package with no `tsconfig.json` of its own records `JavaScript` in place of `TypeScript <version>`. On a branch-scoped ask the files under review are those `git diff --name-only <base>...<branch>` lists (`<branch>` the branch under review, `HEAD` when checked out; `<base>` the base the ask names, else the default branch).
 - Target module: component shape (Server vs Client), props, hooks, data fetching, event handlers
 - One component test, one hook test (if any), one Playwright spec, setup files (`vitest.setup.ts`, `playwright.config.ts`)
 - `vitest.config.{mts,ts,js}` / `jest.config.{ts,js}`: `setupFiles`, `test.environment` (Vitest) or `testEnvironment` (Jest), any project/workspace split, path aliases, coverage thresholds
 - `src/test/setup.ts`: MSW `setupServer`, `@testing-library/jest-dom` matchers, shared `renderWithProviders`
 - Providers mounted in `app/**/layout.tsx` - the render helper must replicate them
 
-Greenfield - or any single missing piece of tooling: state choices explicitly, do not invent silently. Defaults for what is missing: Vitest + RTL + `user-event`, installed as `vitest vite @vitejs/plugin-react jsdom @testing-library/react @testing-library/dom @testing-library/user-event @testing-library/jest-dom vite-tsconfig-paths` (Vitest 5 takes `vite` as a required peer); Vitest 5, jsdom 30 and `@testing-library/jest-dom` 7 need Node 22.22.2+ or 24.15+ (jsdom 30's engines) - below that (Node 20 is EOL) list the Node upgrade under Setup; MSW with `onUnhandledRequest: 'error'`; Playwright for journeys; `vitest-axe` (matchers registered with `expect.extend` from `vitest-axe/matchers` plus a `declare module "vitest"` augmentation, per `react-testing-patterns`); `renderWithProviders` in `src/test/render.tsx`; factories in `src/test/factories/`. On Jest the same plan maps as: the config wrapped in `nextJest({ dir: './' })` from `next/jest.js` (SWC transform, `.env` and `next.config` loading, CSS / image / `next/font` mocks); `testEnvironment: 'jest-fixed-jsdom'` (MSW 2 needs the fetch globals stock `jest-environment-jsdom` strips; both install separately); `jest.fn` / `jest.mocked` / `jest.doMock` for their `vi.` forms; a `jest.mock` factory reads outer variables only if they are `mock`-prefixed and only lazily (`fn: (...a) => mockFn(...a)`), since Jest has no `vi.hoisted`; `jest.requireActual` where Vitest uses `importOriginal`; `advanceTimers: jest.advanceTimersByTime`; `@testing-library/jest-dom` (Vitest: `/vitest`); `jest-axe`; `--maxWorkers` for concurrency.
+Greenfield - or any single missing piece of tooling: state choices explicitly, do not invent silently. Defaults for what is missing: Vitest + RTL + `user-event`, installed as `vitest vite @vitejs/plugin-react jsdom @testing-library/react @testing-library/dom @testing-library/user-event @testing-library/jest-dom msw vitest-axe` (Vitest 5 takes `vite` as a required peer; path aliases via Vite 8's `resolve.tsconfigPaths: true`, not `vite-tsconfig-paths`); jsdom 30 needs Node `^22.22.2 || ^24.15.0 || >=26` (Vitest 5 and MSW 3 need 22.12+, jest-dom 7 needs 22+, so jsdom sets the floor) - below that (Node 20 is EOL) list the Node upgrade under Setup; MSW with `onUnhandledFrame: 'error'` (the MSW 3 key, what a fresh install gets; an installed MSW 2 takes `onUnhandledRequest` - each major's types reject the other's key (TS2353) and its runtime falls back to `warn`); Playwright for journeys; `vitest-axe` (matchers registered with `expect.extend` from `vitest-axe/matchers` plus a `declare module "vitest"` augmentation, per `react-testing-patterns`); `renderWithProviders` in `src/test/render.tsx`; factories in `src/test/factories/`. On Jest the same plan maps as: the config wrapped in `nextJest({ dir: './' })` from `next/jest.js` (SWC transform, `.env` and `next.config` loading, CSS / image / `next/font` mocks); `testEnvironment: 'jest-fixed-jsdom'` (MSW's own environment - it restores the fetch globals stock `jest-environment-jsdom` strips) plus the ESM-only packages listed in `next.config` `transpilePackages` (`nextJest` only appends to `transformIgnorePatterns` after its own `/node_modules/` entry, so a pattern there cannot admit them): on MSW 2 `rettime`, `until-async`, `@open-draft/deferred-promise`; on MSW 3, itself ESM-only, `msw`, `@mswjs/interceptors`, `@msw/url`, `@open-draft/until`, `rettime`, `cookie`, `until-async` plus a `setupFiles` polyfill `globalThis.setImmediate ??= require('timers').setImmediate` - or pin `msw@^2` on Jest; verify the project's Jest + MSW setup runs before scaffolding against it; `jest.fn` / `jest.mocked` / `jest.doMock` for their `vi.` forms; a `jest.mock` factory reads outer variables only lazily (`fn: (...a) => mockFn(...a)`), since Jest has no `vi.hoisted` (the `mock` prefix matters only under babel-jest; `nextJest`'s SWC transform has no such check); `jest.requireActual` where Vitest uses `importOriginal`; `advanceTimers: jest.advanceTimersByTime`; `@testing-library/jest-dom` (Vitest: `/vitest`); `jest-axe`; `--maxWorkers` for concurrency.
 
-Use skill: `react-testing-patterns` for the canonical forms it actually defines: the provider wrapper, the `next/navigation` stub, MSW handler reset, TanStack Query isolation via a fresh `QueryClient`, the mocked-import Server Action flavor, the four-state data-component requirement, the `axe(container)` a11y assertion, and timer-driven behavior (fake timers plus the `userEvent.setup({ advanceTimers })` wiring debounce and throttle hooks need). The React 19 form primitives are **not** in that skill - Step 5 below is their only source.
+Use skill: `react-testing-patterns` for the canonical forms it actually defines: the provider wrapper, the `next/navigation` stub, MSW handler reset, TanStack Query isolation via a fresh `QueryClient`, the mocked-import Server Action flavor, the four-state data-component requirement, the `axe(container)` a11y assertion, and timer-driven behavior (`vi.useFakeTimers({ shouldAdvanceTime: true })`, which debounce and throttle tests driven by user-event need; `userEvent.setup({ advanceTimers })` is optional). `useFormStatus` / `useOptimistic` are **not** in that skill - Step 5 below is their only source.
 
 When the project has a server surface (an ORM client, `src/server/**`, Server Actions, Route Handlers or `pages/api/**` routes), additionally Use skill: `react-server-testing` for database-backed integration tests, per-test isolation, Route Handler and Server Action tests, and the async-Server-Component testing boundary. Stated project constraints win over that skill's defaults (e.g., team rules out Testcontainers): follow the constraint and name the coverage forfeited.
 
@@ -74,26 +74,26 @@ When the project has a server surface (an ORM client, `src/server/**`, Server Ac
 
 **Queries and interactions:** `getByRole` / `getByLabelText` / `getByText`; `getByTestId` only as last resort. `const user = userEvent.setup(); await user.click(...)` over `fireEvent` (real focus, key, dispatch). Async: `await screen.findBy*` or `waitFor`, never `setTimeout`.
 
-**Provider wrapping:** one shared render helper with a fresh `QueryClient` per call, built as `new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })` - both options live under `queries`, and a flat object is silently ignored so the tests keep retrying. `react-testing-patterns` defines it as a one-argument `renderWithProviders(ui)` wrapping `QueryClientProvider` only; extend that signature to `(ui, options)` and add the theme, auth and other context providers the project's own layout supplies (the router is the `next/navigation` stub, not a provider), rather than assuming they are already there.
+**Provider wrapping:** one shared render helper with a fresh `QueryClient` per call, built as `new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })` - both options live under `queries`, and a flat object is a TS2353 error under `tsc` and is silently ignored at runtime (Vitest does not type-check), so the tests keep retrying. `react-testing-patterns` defines it as a one-argument `renderWithProviders(ui)` wrapping `QueryClientProvider` only; extend that signature to `(ui, options)` and add the theme, auth and other context providers the project's own layout supplies (the router is the `next/navigation` stub, not a provider), rather than assuming they are already there.
 
 **`vi.mock` hoisting.** `vi.mock` is hoisted above the imports, so a factory that references an outer `const` throws "Cannot access before initialization". Put anything the factory needs inside `vi.hoisted(() => ({ ... }))` and read it from there. To vary behaviour per test, keep the hoisted `vi.mock` returning `vi.fn()`s and set them per test with `vi.mocked(fn).mockResolvedValue(...)`. Reach for `vi.doMock` plus a dynamic `await import()` only when the module's shape must differ at import time.
 
 **MSW for HTTP:**
 
-- `setupServer(...handlers)` in `src/test/setup.ts`; `server.listen({ onUnhandledRequest: 'error' })`
+- `setupServer(...handlers)` in `src/test/setup.ts`; `server.listen({ onUnhandledFrame: 'error' })` (`onUnhandledRequest` on MSW 2)
 - `server.resetHandlers()` in `afterEach` so per-test overrides do not leak (order-dependent failures otherwise)
 - Per-test overrides: `server.use(http.get('/api/orders', () => HttpResponse.json(...)))`
 
 **Server Action tests (Next.js).** Run both flavors when the action has validation AND a UI surface:
 
-- _Direct unit:_ `await updateProfile(formData)` with constructed `FormData` (`await updateProfile(initialState, formData)` when the action is wired through `useActionState`). Mock the session wrapper, plus `next/cache` (`revalidatePath`, `revalidateTag`, the Server-Action-only `updateTag` / `refresh`, and `cacheLife` / `cacheTag` as no-ops when `cacheComponents` is set) and, when the action reads cookies or headers, `next/headers` with async stubs (`cookies: vi.fn(async () => store)`) - both throw outside a request. Assert `revalidateTag` in its two-argument `(tag, profile)` form. When a server surface exists, the action runs against the real test database per `react-server-testing`, which overrides `react-testing-patterns`' DB mock. Assert validation error shape, authz rejection, happy-path mutation. Intentionally anonymous action: replace the authz case with its actual guard (uniqueness, rate limit, idempotency key) and say so. Action ending in `redirect()`: it throws `NEXT_REDIRECT`. Pick one strategy, not both - either leave `redirect` real and assert `await expect(action(fd)).rejects.toThrow(/NEXT_REDIRECT/)`, or mock `next/navigation` and assert the `redirect` spy was called with the expected path (a mocked `redirect` returns `undefined` and throws nothing).
+- _Direct unit:_ `await updateProfile(formData)` with constructed `FormData` (`await updateProfile(initialState, formData)` when the action is wired through `useActionState`). Mock the session wrapper, plus `next/cache` (`revalidatePath`, `revalidateTag`, the Server-Action-only `updateTag` / `refresh`, `cacheLife` / `cacheTag` as no-ops, and `unstable_cache` as a passthrough `(fn) => fn` - a factory missing an export the action imports throws `[vitest] No "<name>" export is defined on the "next/cache" mock`) and, when the action reads cookies or headers, `next/headers` with async stubs (`cookies: vi.fn(async () => store)`) - both throw outside a request. Assert `revalidateTag` in its two-argument `(tag, profile)` form. When a server surface exists, the action runs against the real test database per `react-server-testing`, which overrides `react-testing-patterns`' DB mock. Assert validation error shape, authz rejection, happy-path mutation. Intentionally anonymous action: replace the authz case with its actual guard (uniqueness, rate limit, idempotency key) and say so. Action ending in `redirect()`: it throws `NEXT_REDIRECT`. Pick one strategy, not both - either leave `redirect` real and assert `await expect(action(fd)).rejects.toThrow(/NEXT_REDIRECT/)`, or mock `next/navigation` and assert the `redirect` spy was called with the expected path (a mocked `redirect` returns `undefined` and throws nothing).
 - _Component wiring:_ `vi.mock('./actions', () => ({ createOrder: vi.fn() }))`. After `await user.click(submit)`, assert action called with expected args. Pair with `useFormStatus` / `useOptimistic` checks.
 
 **React 19 form primitives:**
 
 - `useFormStatus`: it reads the **ancestor** `<form>` submitted through `action={fn}`, so render the component inside that form (not an `onSubmit` form) or `pending` is `false` forever and the assertion passes without testing anything. Hold the mocked action on a deferred promise; assert in-flight UI (`aria-disabled`, spinner) via `findByRole`; resolve it; then assert the resolved state.
 - `useOptimistic`: the optimistic value only survives while the transition is pending, so hold the mocked action on an unresolved promise, assert the row appears, then resolve. It reverts when the action settles either way, so a rejection test asserts the row disappears *and* that the component surfaced the failure - have the action return an error state rather than throw, or the rejection reaches the nearest boundary instead. The rollback branch is the most under-tested; do not skip it.
-- `use()` data unwrapping: the common shape is a Server Component passing an unawaited promise to a Client Component that calls `use()`, and that **is** RTL-testable - render the client component with a promise prop inside `<Suspense>`. Only the Server Component half needs the data-function test plus Playwright.
+- `use()` data unwrapping: the common shape is a Server Component passing an unawaited promise to a Client Component that calls `use()`, and that **is** RTL-testable - render the client component with a promise prop inside `<Suspense>`, awaiting the render (`await act(async () => { render(...) })` - a bare `render()` leaves the fallback up). Only the Server Component half needs the data-function test plus Playwright.
 
 **TanStack Query:** fresh `QueryClient` per test via the render helper; `retry: false`; assert the refetched UI after `useMutation` resolves rather than spying on `invalidateQueries` - the visible result is the contract.
 
@@ -101,12 +101,14 @@ When the project has a server surface (an ORM client, `src/server/**`, Server Ac
 
 **Router harness:** stub `next/navigation` (`useRouter` / `useSearchParams` / `usePathname`) at module level per `react-testing-patterns`; assert navigation on its hoisted `router.push`.
 
-**Error tracker mock:** a factory replaces the whole module, so keep the rest of it:
+**Error tracker mock:** a factory replaces the whole module, and under Vitest spreading `importOriginal()` of `@sentry/nextjs` drops its re-exported core API (`withScope`, `setUser` resolve on the module but are not own keys, so `...actual` loses them), so list every Sentry function the code under test calls:
 
 ```ts
-vi.mock("@sentry/nextjs", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@sentry/nextjs")>()),
+vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
+  captureMessage: vi.fn(),
+  withScope: vi.fn((cb) => cb({ setTag: vi.fn(), setExtra: vi.fn(), setContext: vi.fn(), setLevel: vi.fn() })),
+  setUser: vi.fn(),
 }));
 ```
 
@@ -157,46 +159,48 @@ Run this **before** scaffolding whenever coverage is thin - more than five uncov
 - [ ] `vitest-axe` matchers registered via `expect.extend` (from `vitest-axe/matchers`) and typed through a `declare module "vitest"` augmentation when it is used
 - [ ] Runner environment key - `test.environment` on Vitest, `testEnvironment` on Jest (`jest-fixed-jsdom` with MSW) - set to a DOM environment for components / hooks and `node` for pure utilities; split them with a `// @vitest-environment node` comment per file, or `test.projects`
 - [ ] `@testing-library/jest-dom` matchers registered in setup
-- [ ] MSW `setupServer` with `onUnhandledRequest: 'error'`; `resetHandlers()` in `afterEach`
+- [ ] MSW `setupServer` with `onUnhandledFrame: 'error'` (`onUnhandledRequest` on MSW 2); `resetHandlers()` in `afterEach`
 - [ ] `userEvent.setup()` per test (not module singleton)
 - [ ] Strict TypeScript in tests; no `as any` in mocks; typed `vi.mock` / `jest.mock` factory shape
 - [ ] Coverage (`v8` / `istanbul`) wired to CI with documented exclusions
-- [ ] Playwright: `retries: 2` on CI / `0` locally at top level; `use: { trace: 'on-first-retry' }` and `storageState` under `use` (per project), not as bare top-level keys
+- [ ] Playwright: `retries: 2` on CI / `0` locally at top level; `use: { trace: 'on-first-retry' }` and `storageState` under `use` (per project), not as bare top-level keys (Cypress: `retries` in `cypress.config`, auth via `cy.session`)
 - [ ] No real network (MSW unhandled fails); no real filesystem in component tests
 - [ ] Visual regression gated to `main`-branch builds, not every PR
-- [ ] Storybook if present: stories double as tests via `play` plus `@storybook/addon-vitest` (10.6 peers Vitest 3-4, so it holds the project on `vitest@4`) - propose when stories already exist; do not impose
+- [ ] Storybook if present: stories double as tests via `play` plus `@storybook/addon-vitest` (pin 10.6.1+, which peers Vitest 3-5; 10.6.0 stops at Vitest 4) - propose when stories already exist; do not impose
 
 ## Output Format
 
 **Which output:**
 
-- "what tests are missing?" / "review coverage" -> Coverage Assessment (Step 5 pattern detail is reference-only; Step 7 bands drive the output)
+- "what tests are missing?" / "review coverage" -> Coverage Assessment (Step 5 pattern detail is reference-only; Step 7 bands drive the output; an ask scoped to a branch limits gaps to Step 3's changed-file list and says so on `**Scope:**`)
 - "write tests for X" / "scaffold tests" -> Test Scaffolds (Step 5 pattern detail is load-bearing)
 - "test strategy" / "test plan", or thin coverage per Step 7 with no scaffold request -> Strategy Doc
-- "passes alone / locally, fails intermittently in CI or the full suite" (suite health) -> Coverage Assessment: each flaky test under `**Broken tests:**` with its cause (shared mutable state, a missing reset, a parallel database race, leaked fake timers) and fix; gap tiers not examined read `not assessed`
+- "passes alone / locally, fails intermittently in CI or the full suite" (suite health) -> Coverage Assessment: each flaky test under `**Broken tests:**` with its cause (shared mutable state, a missing reset, a parallel database race, leaked fake timers) and fix - a reported-flaky test the read shows failing on every run is listed there as broken, with that as its finding; gap tiers not examined read `not assessed`
 - Multiple deliverables in one ask -> produce in order separated by `---`: Coverage Assessment, Strategy Doc, Test Scaffolds. Do not silently drop one.
 - Unclear -> Strategy Doc as default.
 
 Precedence when one ask matches several rows: an explicit verb ("write/scaffold" -> Scaffolds; "strategy/plan" -> Strategy Doc) wins over the coverage-threshold heuristic. "Review coverage" combined with low coverage (no scaffold/strategy verb) is one ask matching two rows: lead with the Coverage Assessment - its Prioritization block already answers "what to write first" - and append the Strategy Doc only if a forward plan was also requested.
 
-The formats below are the only envelope; consulted atomics' own output blocks (e.g., `react-testing-patterns`' Testing Plan) stay internal. Every deliverable ends with a `**Notes:**` line for application defects found while reading that are not test problems (a card number persisted to `localStorage`, an XSS sink), each naming the workflow that owns it; `none` when there are none. Two exceptions. When Step 3 loaded `react-server-testing` during an assessment ask, append its Server Test Assessment block after the Coverage Assessment, separated by `---`, and do not repeat under `Server Action` / `Server integration` any gap that block already lists - cite it instead. And when reviewing coverage turns up a defect in an **existing** test (a `vi.mock` factory that cannot run, a missing provider wrapper, an unhandled request), that is not a coverage gap: list it under `**Broken tests:**` in the Coverage Assessment with its `file:line` and what it fails to assert.
+The formats below are the only envelope; consulted atomics' own output blocks (e.g., `react-testing-patterns`' Testing Plan) stay internal. Every deliverable ends with a `**Notes:**` line for application defects found while reading that are not test problems (a card number persisted to `localStorage`, an XSS sink), each naming the workflow that owns it (`task-react-review`, or its `-security` / `-perf` / `-observability` / `-reliability` lens); `none` when there are none. Two exceptions. When Step 3 loaded `react-server-testing` during an assessment ask, append its Server Test Assessment block after the Coverage Assessment, separated by `---`, and do not repeat under `Server Action` / `Server integration` any gap that block already lists - cite it instead. And when reviewing coverage turns up a defect in an **existing** test (a `vi.mock` factory that cannot run, a missing provider wrapper, an unhandled request), that is not a coverage gap: list it under `**Broken tests:**` in the Coverage Assessment with its `file:line` and what it fails to assert.
 
 **Coverage Assessment:**
 
 ```markdown
 ## React Test Coverage Assessment
 
-**Stack:** React <version> / TypeScript <version> _(from `package.json` in Step 3; `not detected` for either; `(package: <path>)` when scoped in Step 2)_
+**Stack:** React <version> / TypeScript <version> _(Step 3 record - lockfile-resolved; `JavaScript` replaces `TypeScript <version>` with no `tsconfig.json`; `not detected` for either; `(package: <path>)` when scoped in Step 2)_
 
-<package> <declared> is below the plugin floor (Next.js 16.3, React 19); output targets Next.js 16.3 and React 19 - upgrade first. {only when Step 3 found `next` < 16.3 or `react` < 19}
+<package> <declared> is below the plugin floor (Next.js 16.3, React 19.2); output targets Next.js 16.3 and React 19.2 - upgrade first. {only when Step 3 found `next` < 16.3 or `react` < 19.2}
 
 **Framework:** Next.js <version>{ <Step 2 router suffix>}
 
-**Runner:** Vitest | Jest _(suffix `(greenfield default)` when none is installed)_
+**Runner:** Vitest | Jest | <other runner, as found> _(suffix `(greenfield default)` when none is installed)_
+
+**Scope:** whole app | files changed on <branch> vs <base>
 
 **Tooling present:** <the testing packages actually in `package.json`, read in Step 3; name the missing ones as gaps rather than asserting them>
 
-**Broken tests:** [existing tests, or the setup files they share, that do not assert what they appear to (a broken test that is a layer's only coverage leaves that layer's gap open too), or that use an idiom this skill's `Avoid` list names (`fireEvent`, full-tree snapshots, `getByTestId` as the entry point), with `file:line`; `none`. On a Scaffolds or Strategy ask, report these in a short `## Broken tests` block ahead of the deliverable rather than dropping them.]
+**Broken tests:** [existing tests, or the setup files they share, that do not assert what they appear to (a broken test that is a layer's only coverage leaves that layer's gap open too), or that use an idiom this skill's `Avoid` list names (`fireEvent`, full-tree snapshots, `getByTestId` as the entry point), or that fail on every run though reported as flaky, with `file:line`; `none`. On a Scaffolds or Strategy ask, report these in a short `## Broken tests` block ahead of the deliverable rather than dropping them.]
 
 **Coverage gaps:**
 
@@ -224,7 +228,7 @@ _Counts are test files found by globbing the suite (`**/*.{test,spec}.*`, plus t
 **Notes:** [application defects outside testing, each with `file:line` and its owning workflow; `none`]
 ```
 
-**Test Scaffolds:** open with `## React Test Scaffolds` (preceded by `## Broken tests` when there are any) and one line naming `Framework` / `Runner` / `React` / `TypeScript` (followed by the below-floor line when Step 3 fired it), then any missing setup files (render helper, MSW server, setup file) and the dev dependencies to install, then ready-to-run <Runner> / <E2E runner> files using project conventions, ordered by Step 7 band with the band on each file's heading when Step 7 ran, and end with the `**Notes:**` line. The render helper wraps the project's own data layer (a `QueryClientProvider`, an `SWRConfig`, or both). Each scaffold:
+**Test Scaffolds:** open with `## React Test Scaffolds` (preceded by `## Broken tests` when there are any) and one line naming `Framework` / `Runner` / `React` / `TypeScript` (or `JavaScript` per Step 3; followed by the below-floor line when Step 3 fired it), then any missing setup files (render helper, MSW server, setup file) and the dev dependencies to install, then ready-to-run <Runner> (Vitest when `Runner` is another unit runner) / <E2E runner> files using project conventions (a target that already has a test file gets cases added to that file, not a replacement; its defects go under `## Broken tests`), ordered by Step 7 band with the band on each file's heading when Step 7 ran, and end with the `**Notes:**` line. The render helper wraps the project's own data layer (a `QueryClientProvider`, an `SWRConfig`, or both). Each scaffold:
 
 - Right test type (unit / hook / component / integration / E2E)
 - Factories for data (no raw object literals)
@@ -241,15 +245,15 @@ _Counts are test files found by globbing the suite (`**/*.{test,spec}.*`, plus t
 ```markdown
 ## React Test Strategy
 
-**Stack:** React <version> / TypeScript <version> / <Framework> / Runner: <Runner> _(Step 2 record; greenfield defaults suffixed)_
+**Stack:** React <version> / TypeScript <version> / <Framework> / Runner: <Runner> _(Steps 2-3 record; `JavaScript` replaces `TypeScript <version>` with no `tsconfig.json`; greenfield defaults suffixed)_
 
-<package> <declared> is below the plugin floor (Next.js 16.3, React 19); output targets Next.js 16.3 and React 19 - upgrade first. {only when Step 3 found `next` < 16.3 or `react` < 19}
+<package> <declared> is below the plugin floor (Next.js 16.3, React 19.2); output targets Next.js 16.3 and React 19.2 - upgrade first. {only when Step 3 found `next` < 16.3 or `react` < 19.2}
 
 **Objective:** [what this strategy achieves]
 
 **Pyramid balance:** the same five tiers as the Coverage Assessment, in test-file counts - target shape is many unit + component, some integration, few E2E
 
-**Tooling:** <Runner>, React Testing Library, `user-event`, MSW, <E2E runner>, `vitest-axe` or `jest-axe` _(installed tools, greenfield defaults suffixed `(greenfield default)`)_
+**Tooling:** <Runner> (plus Vitest when `Runner` is another unit runner), React Testing Library, `user-event`, MSW, <E2E runner>, `vitest-axe` or `jest-axe` _(installed tools, greenfield defaults suffixed `(greenfield default)`)_
 
 **Setup:** [missing infra to install and wire - runner config, setup file, render helper, CI step; `in place` when none]
 
@@ -280,12 +284,12 @@ _Empty bands are skipped, not padded._
 
 - [ ] Step 1 - `behavioral-principles` loaded before any other step
 - [ ] Step 2 - Stack confirmed as React (against the package's own manifest in a monorepo); a project without a `next` dependency stopped with the scope line; `Framework` and `Runner` recorded
-- [ ] Step 3 - Code under test, a sample of existing tests, and setup files read directly; React / TypeScript versions recorded from `package.json` (`not detected` where absent); below-floor line emitted when `next` < 16.3 or `react` < 19; `react-testing-patterns` consulted; `react-server-testing` consulted when the project has an ORM client, `src/server/**`, Server Actions, Route Handlers or `pages/api/**` routes
+- [ ] Step 3 - Code under test, a sample of existing tests, and setup files read directly; React / TypeScript versions recorded as Step 3 resolves them (lockfile first; `JavaScript` with no `tsconfig.json`; `not detected` where absent); on a branch-scoped ask the changed-file list taken from `git diff --name-only <base>...<branch>` and, on a Coverage Assessment, `**Scope:**` filled from it; below-floor line emitted when `next` < 16.3 or `react` < 19.2; `react-testing-patterns` consulted; `react-server-testing` consulted when the project has an ORM client, `src/server/**`, Server Actions, Route Handlers or `pages/api/**` routes
 - [ ] Step 4 - Pyramid mapped to React idioms; async Server Component strategy explicit (data function + Playwright, not RTL)
 - [ ] Step 5 - Patterns applied: user-centric queries; `userEvent` over `fireEvent`; `findBy*` / `waitFor` for async; MSW `resetHandlers` in `afterEach`; `renderWithProviders` with fresh `QueryClient`; Server Action both flavors when both apply; `useFormStatus` pending + `useOptimistic` rollback covered; `next/navigation` mocked for App Router
 - [ ] Step 6 - Boundaries respected (no E2E for what a component test covers; framework internals not tested); multi-step wizard covers forward + backward-preserves-state + cross-step + submit
 - [ ] Step 7 - Risk bands applied when coverage is low; multi-band targets covered on both axes
-- [ ] Step 8 - Infra hygiene checks pass (MSW `onUnhandledRequest: 'error'` + `resetHandlers`, fresh `userEvent.setup()`, no real network, strict TS, runner environment key, coverage wired, Playwright keys under `use`)
+- [ ] Step 8 - Infra hygiene checks pass (MSW `onUnhandledFrame: 'error'` keyed to the installed major + `resetHandlers`, fresh `userEvent.setup()`, no real network, strict TS, runner environment key, coverage wired, Playwright keys under `use`)
 - [ ] Output Format - the router selected the deliverable(s) the ask calls for, in the stated order, with the precedence rule applied to a multi-row ask; the `react-server-testing` block appended when its exception fired; `**Notes:**` line present
 
 ## Avoid
@@ -300,7 +304,7 @@ _Empty bands are skipped, not padded._
 - Snapshot tests for visual layout - churn on every restyle; reserve for stable contracts (HTML renderer output)
 - Rendering an async Server Component in RTL, directly or by awaiting it and rendering the result - Vitest and Jest do not support it and it leads to mocking React internals; test the data function or use Playwright
 - Skipping Server Action tests because "they're just functions" - validation, authz, side effects must be exercised
-- Real network in component tests - flaky and slow; MSW with `onUnhandledRequest: 'error'` enforces the boundary
+- Real network in component tests - flaky and slow; MSW with `onUnhandledFrame: 'error'` (its MSW 2 key `onUnhandledRequest`) enforces the boundary
 - Sharing mutable fixtures across tests - leaks state, order-dependent failures
 - Asserting CSS class names (`toHaveClass('text-red-500')`) - couples tests to styling; assert visible behavior or a11y properties
 - `as any` to silence TypeScript in mocks - defeats strict mode; use typed `vi.mock` factories

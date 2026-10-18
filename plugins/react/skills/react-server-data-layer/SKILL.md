@@ -24,9 +24,9 @@ Examples are Prisma 7. Caching forks on one observable: `cacheComponents: true` 
 
 - The ORM client is a singleton created in one module that imports `server-only`. Never construct it per request, per component, or per action.
 - **In development, cache the client on `globalThis`.** Hot module replacement re-evaluates modules on every edit, and a plain module-scope client leaks a new connection pool each time until the database refuses connections. A process-restart watcher (`tsx watch`, nodemon) is exempt: each restart is a fresh process, the guard is inert there, and its absence is not a finding.
-- All database access lives under `src/server/<module>/`. Components, actions, and route handlers call those functions; none of them touch the ORM directly.
+- All database access lives under `src/server/`: the client in `src/server/db.ts`, queries and mutations in `src/server/<module>/`. Components, actions, and route handlers call those functions; none of them touch the ORM directly.
 - Every exported service function is callable without a request context. Read cookies and headers in the caller and pass the resolved identity as an argument, or the same function cannot be reused by a Route Handler later. The identity resolver itself (`requireAdmin`, `getSession`) is the caller-side exception: it exists to read the request.
-- Never return an ORM row across the client boundary. Select the fields the client needs, or map to an explicit shape.
+- Never return an ORM row across the client boundary. Select the fields the client needs, or map to an explicit shape; a Prisma `Decimal` crosses as a string through `toJSON()` (no throw; development logs an error), so convert it (`.toNumber()` / `.toString()`) in the mapping.
 - Fetch shared data once per request with request memoization, not once per component that needs it.
 - Distinguish the two caches by lifetime: request memoization deduplicates within one render, the data cache persists across requests and needs explicit invalidation.
 
@@ -109,8 +109,10 @@ export const getDeckQuestions = (deckId: string) => db.question.findMany({
   select: { id: true, stem: true, choices: { select: { id: true, body: true } } },
 });
 // parent component
-const questions = await getDeckQuestions(deckId);
-{questions.map((q) => <QuestionRow key={q.id} question={q} />)}
+export async function QuestionList({ deckId }: { deckId: string }) {
+  const questions = await getDeckQuestions(deckId);
+  return questions.map((q) => <QuestionRow key={q.id} question={q} />);
+}
 ```
 
 Request memoization does not save you here: the arguments differ per row, so each call is a distinct cache entry and a distinct query.
@@ -160,40 +162,43 @@ export async function publish(batchId: string) {
 }
 ```
 
-The action authorizes, delegates to a service function, then invalidates - `updateTag` for read-your-writes, `revalidateTag(tag, "max")` when stale reads are acceptable, `refresh()` when no tag is involved but the client router must re-render (it revalidates nothing). It contains no ORM call of its own. Invalidation happens after the write returns, never inside the transaction that performed it.
+The action authorizes, delegates to a service function, then invalidates - `updateTag` for read-your-writes, `revalidateTag(tag, "max")` when stale reads are acceptable, `refresh()` when no tag is involved but the client router must re-render (it revalidates nothing). A Route Handler has neither `updateTag` nor `refresh`: it expires with `revalidateTag(tag, { expire: 0 })`. It contains no ORM call of its own. Invalidation happens after the write returns, never inside the transaction that performed it.
 
 ## Output Format
 
-Emit one block per finding, ordered by severity. A finding is one defect with its own fix; when several Issue values describe the same root cause, emit one block carrying the most specific value at the highest applicable severity (the singleton-module trio `ClientNotSingleton`/`MissingHotReloadGuard`/`MissingServerOnly` is one root cause). Repeated call sites of one Issue with one fix pattern merge into one block listing each Location, even when each site is edited separately. Otherwise two defects are separable - and stay separate blocks, different Issue values on one line included - when fixing one leaves the other in place; the singleton trio merges because one fix (a single guarded `server-only` client module that every caller imports) clears all three. Open with `Scope: <files reviewed>` whenever this skill produces its own output; a consuming workflow that supplies its own scope line takes precedence, and synthesizes its own summary, so do not duplicate one for it. After the last finding come, in this order: any `Not assessed:` line (required-but-unseen infrastructure, not a guessed finding), any `Notes:` line (off-enum observations, e.g. an authorization gap -> `task-react-review-security`), for a reuse consult only, `Reuse readiness: {ready | not ready - <blocker>}` grounded in the service-layer and no-request-context rules (a sound service with no HTTP entry point yet is `ready`, the missing endpoint named in the justifying sentence), one verdict per surface when the consult names several (`order history: ready; cancel order: not ready - <blocker>`), one or two justifying sentences may follow, then `Tally: <N> findings (<B> Blocker, <H> High, <M> Medium, <L> Low)` last.
+Emit one block per finding, ordered by severity. A finding is one defect with its own fix; when several Issue values describe the same root cause, emit one block under the value in the highest band (the singleton-module trio `ClientNotSingleton`/`MissingHotReloadGuard`/`MissingServerOnly` is one root cause: `MissingServerOnly` at Blocker with a client import observed, else `ClientNotSingleton` at High when a second construction is observed, else `MissingHotReloadGuard` at High when the guard is missing (`MissingServerOnly` alone with no client import stays Medium); a Client Component importing the ORM is `MissingServerOnly`, never `OrmInComponent`). Repeated call sites of one Issue with one fix pattern merge into one block listing each Location, leading with the file the fix changes, even when each site is edited separately. Otherwise two defects are separable - and stay separate blocks, different Issue values on one line included - when fixing one leaves the other in place; the singleton trio merges because one fix (a single guarded `server-only` client module that every caller imports) clears all three. Open with `Scope: <files reviewed>` whenever this skill produces its own output; a consuming workflow that supplies its own scope line takes precedence, and synthesizes its own summary, so do not duplicate one for it. After the last finding come, in this order: any `Not assessed:` line (required-but-unseen infrastructure, not a guessed finding), any `Notes:` line, the `Reuse readiness` block for a reuse consult only - verdicts grounded in the service-layer and no-request-context rules (a sound service with no HTTP entry point yet is `ready`, the missing endpoint named under Seam), one line per surface when the consult names several, each with its own four sub-bullets (`none` where a sub-bullet has nothing to say) and a blank line between surfaces - then the `Tally` line last.
 
 ```
 Scope: <files reviewed>
 
-- Location: <file>:<line or symbol>
-  Issue: {OrmInComponent | ClientNotSingleton | MissingHotReloadGuard | MissingServerOnly | RawRowToClient | OverbroadSelect | RscNPlusOne | WrongCacheScope | PerUserDataCached | ActionBypassesService | RequestContextInService | MissingRevalidation}
-  Severity: {Blocker | High | Medium | Low}
-  Evidence: <quoted snippet or symbol>
-  Fix: <one-line action; reference a Pattern by name>
+- Location: {file}:{line or symbol}[, {file}:{line}]
+  - Issue: {OrmInComponent | ClientNotSingleton | MissingHotReloadGuard | MissingServerOnly | RawRowToClient | OverbroadSelect | RscNPlusOne | WrongCacheScope | PerUserDataCached | ActionBypassesService | RequestContextInService | MissingRevalidation}
+  - Severity: {Blocker | High | Medium | Low}
+  - Evidence: <quoted snippet or symbol>
+  - Fix: <one-line action; reference a Pattern by name>
 
 Not assessed: <required-but-unseen infrastructure, or a referenced module whose behaviour decides a severity; omit when none>
 
-Notes: <off-enum observations naming the owning concern; omit when none>
+Notes: {observations outside this skill's concern, each naming the owning concern (an authorization gap, unvalidated input or hardcoded credential -> application security; an exported non-action helper in a `"use server"` file (application security too: every export there is a callable endpoint), a `"use cache"` scope with no `cacheLife`, or a segment export conflicting with `cacheComponents` -> Next.js patterns); omit when none}
 
-Reuse readiness: {ready | not ready - <blocker>}
+Reuse readiness: {<surface>: ready | not ready - <blocker>} {only for a reuse consult; one line per surface named, each followed by its own four sub-bullets, a blank line between surfaces}
+  - Seam: {the service functions the new client calls, or the module to extract; the HTTP endpoint still to add, when none exists}
+  - Moves: {logic to pull out of pages, actions or route handlers into the service}
+  - Cache per caller: {reads that stay cached for the new client; per-user reads that cannot}
+  - Invalidation: {how the new client's writes invalidate - `revalidateTag(tag, "max")` or `{ expire: 0 }` from a Route Handler; `updateTag` is Server-Action-only}
 
 Tally: <N> findings (<B> Blocker, <H> High, <M> Medium, <L> Low)
 ```
 
 Severity:
 
-- **Blocker**: per-user data cached under a key that omits the user, or a request-time read inside a cache scope (`PerUserDataCached`); an ORM row containing secret fields returned across the client boundary (`RawRowToClient`); ORM client imported into a Client Component (`MissingServerOnly` with the client import observed).
-- **High**: ORM client constructed per file or without the hot-reload guard (`ClientNotSingleton` / `MissingHotReloadGuard`); database access outside `src/server/` (`OrmInComponent` in view code, `ActionBypassesService` in any HTTP-facing entry - action, route handler, controller; `OrmInComponent` also covers a shared non-entry module, such as a cache wrapper or helper, that queries the ORM outside `src/server/`); a Server Action mutating tag-cached content without a following `updateTag` / `revalidateTag` / `revalidatePath` (`MissingRevalidation`, which a `refresh()` alone does not clear; a write that touches no cached surface has nothing to revalidate, and a one-argument `revalidateTag(tag)` is `react-nextjs-patterns`' `DeprecatedApi`, named in `Notes:`); a whole row with no secret fields crossing the client boundary (`RawRowToClient` - with the model's fields unknown, name the Blocker escalation in the block).
-- **Medium**: RSC N+1; a service function reading cookies or headers directly; wrong or absent cache scope with no leak (`WrongCacheScope` covers a per-render lookup duplicated for want of `cache()`); a server module missing `import "server-only"` with no observed client import.
+- **Blocker**: per-user data cached under a key that omits the user, or a request-time read inside a cache scope (`PerUserDataCached`); an ORM row containing secret fields (credentials, tokens, internal flags, internal-only values such as cost prices) returned across the client boundary (`RawRowToClient`); ORM client imported into a Client Component (`MissingServerOnly` with the client import observed).
+- **High**: ORM client constructed per file or without the hot-reload guard (`ClientNotSingleton` / `MissingHotReloadGuard`); database access outside `src/server/` (`OrmInComponent` in view code, `ActionBypassesService` in any HTTP-facing entry - action, route handler, controller; `OrmInComponent` also covers a shared non-entry module, such as a cache wrapper or helper, that queries the ORM outside `src/server/`); a Server Action or Route Handler mutating tag-cached content without a following `updateTag` / `revalidateTag` / `revalidatePath` (`MissingRevalidation`, which a `refresh()` alone does not clear; a write that touches no cached surface has nothing to revalidate; a one-argument `revalidateTag(tag)` still expires the tag but is a type error and runtime warning - Next.js patterns' `DeprecatedApi`, named in `Notes:`; a Pages API route writing tag-cached content is this finding (`revalidateTag` throws there - no work store), with the Fix moving the write to a Route Handler); a whole row with no secret fields crossing the client boundary, or a `Decimal` arriving as a string in a row or alone (`RawRowToClient` - with the model's fields unknown, name the Blocker escalation in the block).
+- **Medium**: RSC N+1 (`RscNPlusOne`); a service function reading cookies or headers directly (`RequestContextInService`); wrong or absent cache scope with no leak (`WrongCacheScope`: a published-content read under request memoization or nothing where the data cache fits, or a per-render lookup duplicated for want of `cache()`); a server module missing `import "server-only"` with no observed client import (`MissingServerOnly`).
 - **Low**: an over-broad select whose rows never cross the client boundary (`OverbroadSelect`; a crossing makes it `RawRowToClient`).
 
 ## Avoid
 
 - Passing an ORM client or a transaction handle as a prop
-- `select: undefined` on a model holding credentials, tokens, or internal flags
 - Reaching for the data cache to fix an N+1; the fix is one query, not a cached bad query
-- Service functions that call `cookies()` or `headers()`, which makes them unusable from any other caller
+- Invalidating inside the transaction that performed the write
