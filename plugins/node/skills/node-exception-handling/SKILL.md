@@ -23,7 +23,7 @@ Single owner for the application-wide rescue contract. `node-nestjs-patterns` / 
 
 - One global exception filter (NestJS `@Catch()`) or one terminal error middleware (Express) - never per-controller / per-route ad hoc. Express detects error middleware by **arity**: exactly four parameters, and registered after every router. Three parameters silently makes it an ordinary handler whose `res` is really `next`; registering it early makes it unreachable and orphans every `next(err)`
 - Domain errors extend a typed `AppError`; HTTP translation lives at the boundary, not in services. Services throw typed errors and never re-catch one domain error to rewrap it as another
-- Driver, ORM, and vendor-SDK errors (`P2002`, `P2025`, `QueryFailedError`, `StripeCardError`) are translated to domain errors once, at the adapter that owns the dependency (repository, vendor wrapper). Never leak Prisma / TypeORM / SDK types to controllers
+- Driver, ORM, and vendor-SDK errors (`P2002`, `P2025`, `QueryFailedError`, `StripeCardError`) are translated to domain errors once, at the adapter that owns the dependency (repository, vendor wrapper; a service that calls the client directly is that adapter). Never leak Prisma / TypeORM / SDK types to controllers
 - `Result<T, E>` only when the caller branches on several failure shapes that carry data (a card decline vs insufficient funds). Default to throw - it preserves the stack and lets the filter centralize the response shape
 - BullMQ processors decide per error: resolve when a retry finds the work already done; stop without retry on a non-retryable `AppError` (`retryable === false`); let everything else throw so BullMQ applies `attempts` + `backoff`
 - Sentry captures each error exactly once, at the **process's** outermost boundary: the global filter / middleware for HTTP, `worker.on('failed')` for a queue, the backstops for the rest. A standalone worker has no filter - wiring only the filter leaves every exhausted job dark. Don't `Sentry.captureException` in the service, then re-throw - the boundary doubles it
@@ -86,8 +86,12 @@ In a worker the HTTP column is unused; `retryable` is the only column that decid
 ### NestJS Global Filter
 
 ```typescript
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import type { Request, Response } from 'express';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';   // PinoLogger takes (obj, msg); nestjs-pino's Logger is Nest-shaped (msg, context)
+import * as Sentry from '@sentry/node';
+import { AppError } from './errors';
 
 @Catch()
 export class AppExceptionFilter implements ExceptionFilter {
@@ -122,18 +126,20 @@ export class AppExceptionFilter implements ExceptionFilter {
 { provide: APP_FILTER, useClass: AppExceptionFilter }
 ```
 
+Without `nestjs-pino`, Nest's `Logger` (`error(message, stack?, context?)`) prints an Error passed as the message through `util.inspect`, `[cause]` chain included, as plain text rather than a structured `err` field: pass `ex` itself (never `ex.message`), or adopt pino for structured logs.
+
 ### Express Terminal Middleware
 
 ```typescript
 // Registered LAST, after all routes
 const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
-  if (res.headersSent) return next(err);           // mid-stream failure: let Node close the response
+  if (res.headersSent) return next(err);           // mid-stream failure: Express's default handler closes the connection
   // body-parser and other http-errors carry their own 4xx (malformed JSON 400, too large 413)
   const status = err instanceof AppError ? err.status
     : Number.isInteger(err?.status) && err.status >= 400 && err.status < 500 ? err.status : 500;
   if (status >= 500) {
     req.log.error({ err }, 'unhandled');
-    Sentry.captureException(err);
+    Sentry.captureException(err);                    // v8-10's capture site; v11's expressIntegration captures 5xx here itself and dedupes this call
   } else {
     req.log.warn({ err }, 'client error');
   }
@@ -154,8 +160,10 @@ try {
   return await this.prisma.user.create({ data });
 } catch (e) {
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-    const t = e.meta?.target;                        // field names on PostgreSQL, the index name string on MySQL
-    throw new ConflictError(`duplicate ${Array.isArray(t) ? t.join(',') : String(t ?? '')}`, e);
+    // Prisma 7: the constraint sits under meta.driverAdapterError.cause.constraint - { index: <constraint name> } on MySQL and on PostgreSQL from
+    // adapter-pg 7.10, { fields } on SQLite and PostgreSQL before 7.10; Prisma 5-6 exposed it as meta.target
+    const c = (e.meta?.driverAdapterError as { cause?: { constraint?: { fields?: string[]; index?: string } } } | undefined)?.cause?.constraint;
+    throw new ConflictError(`duplicate ${c?.fields?.join(',') ?? c?.index ?? ''}`, e);
   }
   throw e;     // unknown - let the global filter handle it
 }
@@ -169,6 +177,7 @@ try {
   const code = e instanceof QueryFailedError ? (e.driverError as { code?: string }).code : undefined;
   if (code === '23505' || code === 'ER_DUP_ENTRY') throw new ConflictError('unique violation', e);
   if (code === '23503' || code === 'ER_NO_REFERENCED_ROW_2') throw new ValidationError('referenced row does not exist', e);
+  // on a delete / parent-key update path the parent is still referenced: 23503 (PostgreSQL, same code) or ER_ROW_IS_REFERENCED_2 (MySQL 1451) -> ConflictError('row is still referenced', e)
   throw e;
 }
 ```
@@ -176,13 +185,13 @@ try {
 | Violation   | PostgreSQL (`pg`) | MySQL (`mysql2`)          | Prisma  |
 |-------------|-------------------|---------------------------|---------|
 | Unique      | `23505`           | `ER_DUP_ENTRY` (1062)     | `P2002` |
-| Foreign key | `23503`           | `ER_NO_REFERENCED_ROW_2` (1452) | `P2003` |
+| Foreign key | `23503` (both directions) | `ER_NO_REFERENCED_ROW_2` (1452) child, `ER_ROW_IS_REFERENCED_2` (1451) parent | `P2003` |
 
 Never let `Prisma.PrismaClientKnownRequestError` or `QueryFailedError` reach the controller - they leak schema details and bypass the domain error contract.
 
 ### Vendor SDK Errors
 
-Translate at the vendor wrapper, same as ORM errors. Stripe as the example:
+Translate at the vendor wrapper, same as ORM errors. A hand-rolled client (axios, fetch) maps by status class the same way - 4xx to `ValidationError` or `InternalError` by whose fault it is, 429 / 5xx / timeout to `UpstreamError`; the wrapper, its retry budget, and the idempotency key are `node-http-client-patterns`'. Stripe as the example:
 
 | stripe-node error | Domain | Why |
 |-------------------|--------|-----|
@@ -195,7 +204,7 @@ Translate at the vendor wrapper, same as ORM errors. Stripe as the example:
 
 ### Result vs Throw
 
-Default to throw. Use `Result<T, E>` only when the caller branches on several failure shapes that carry data:
+The `Result` shape for the case Rule 4 allows:
 
 ```typescript
 type ChargeResult =
@@ -206,7 +215,7 @@ const r = await this.payments.charge(...);
 if (!r.ok) return this.askForAnotherCard(r.declineCode);   // user-facing flow keyed on the decline
 ```
 
-A queue processor whose every failure means "retry or stop" throws - its caller is BullMQ, which only understands throw vs resolve.
+A queue processor whose every failure means "retry or stop" throws - its caller is BullMQ, which only understands throw vs resolve. A Nest app booted with `NestFactory.createApplicationContext` (no HTTP adapter) is the `NestJS worker` stack: it has no filter, and `@OnWorkerEvent('failed')` is its capture site; `@Processor`s hosted inside the HTTP app stay `NestJS`, and their job errors never reach the filter either.
 
 ### BullMQ Retry Propagation
 
@@ -224,7 +233,7 @@ export class OrderProcessor extends WorkerHost {
     try {
       await this.orders.fulfill(job.data.orderId);
     } catch (e) {
-      if (e instanceof AlreadySatisfiedError) return;          // duplicate delivery - the work is done
+      if (e instanceof AlreadySatisfiedError) return;          // duplicate delivery - the work is done; the adapter owning the replay's unique key throws this sentinel, not ConflictError
       if (e instanceof AppError && !e.retryable) {
         // Retry won't help. Record it only if nothing newer won (at-least-once).
         await this.orders.markFailedIfPending(job.data.orderId, e.code);   // UPDATE ... WHERE status = 'PENDING'
@@ -250,23 +259,12 @@ export class OrderProcessor extends WorkerHost {
 
 ### Sentry Capture-Once
 
-```typescript
-// Bad - double capture
-try { await this.orders.fulfill(id); }
-catch (e) {
-  Sentry.captureException(e);     // first capture
-  throw e;                         // global filter captures again
-}
-
-// Good - capture only at the process boundary (filter / middleware / worker 'failed' / backstop)
-```
-
-For context on an intermediate failure, log it or add `Sentry.addBreadcrumb` - never `captureException` from inside the call path. `span.recordException(err)` + `span.setStatus({ code: SpanStatusCode.ERROR })` on the active span is trace annotation, allowed at the failing layer; it does not count against capture-once. `@sentry/node` 8 must initialise before anything it instruments: `Sentry.init` in its own `instrument.ts`, imported (or `--import`ed) first.
+For context on an intermediate failure, log it or add `Sentry.addBreadcrumb` - never `captureException` from inside the call path. `span.recordException(err)` + `span.setStatus({ code: SpanStatusCode.ERROR })` on the active span is trace annotation, allowed at the failing layer; it does not count against capture-once. `@sentry/node` 8+ must initialise before anything it instruments: `Sentry.init` in its own `instrument.ts`, imported first (`node --import ./dist/instrument.js`; v11 warns that `--require` preloads are unsupported). `@sentry/nestjs` ships `SentryGlobalFilter` for apps with no catch-all filter; `SentryModule.forRoot()` does not register it. With a hand-written `@Catch()` filter, that filter is the single capture site (`captureException` there, or `@SentryExceptionCaptured()` on `catch()`) - never register both, since Nest runs only the first matching filter.
 
 ### Last-Resort Backstops
 
 ```typescript
-// @sentry/node 8's default onUncaughtException / onUnhandledRejection integrations already capture
+// @sentry/node 8+'s default onUncaughtException / onUnhandledRejection integrations already capture
 // both events - the backstop only logs, flushes, and exits
 const fatal = (err: unknown, kind: string) => {
   logger.fatal({ err }, kind);
@@ -280,29 +278,31 @@ Crash and let the orchestrator (PM2, k8s, systemd) restart. Don't try to keep ru
 
 ## Output Format
 
-Every mode opens with the `Stack:` line. When authoring, emit one block per layer touched; a design request over existing code is both - the findings for what exists, then the authoring blocks for the layer that replaces it. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file) followed by `Issue:` and `Fix:` lines, `[Must]` first - `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise - and then its block, with `Translation` and `Capture` describing the current behaviour. A defect spanning two files that act as one boundary (a service and its vendor client) anchors to the file where the translation should live and names the other in `Issue:`. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright (throw or `Result`?) gets one `Ruling:` line; both precede the findings.
+Every mode opens with the `Stack:` line once; each block starts at `Layer:`. A file the task names that was not in the read set gets `unknown - <file> not read` where its value would go. When authoring, emit one block per layer touched; a design request over existing code is both - the findings for what exists, then the authoring blocks for the layer that replaces it. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file) followed by `Issue:` and `Fix:` lines, `[Must]` first - `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise - and then its block, with `Translation`, `Capture`, and `Retry Behavior` describing the current behaviour and the `Fix:` line the target. Defects outside the error contract seen in the read set go on one `Out of scope:` line naming the owning skill. A defect spanning two files that act as one boundary (a service and its vendor client) anchors to the file where the translation should live and names the other in `Issue:`. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright (throw or `Result`?) gets one `Ruling:` line; both precede the findings.
 
 ```
-**Stack:** {NestJS | Express 4 | Express 5 | standalone worker} + {Prisma | TypeORM (<engine>) | <driver> (no ORM) | none}
+**Stack:** {NestJS | NestJS worker (createApplicationContext) | Express 4 | Express 5 | standalone worker} + {Prisma | TypeORM (<engine>) | <driver> (no ORM) | none}
 
-Layer: {NestJS Filter | Express Middleware | Route Handler | Service | Repository Boundary | Vendor SDK Boundary | BullMQ Processor | Worker Event Handler | Bootstrap | Backstop}
+Symptom: {as reported} -> {each cause at file:line} {one per reported symptom; diagnosis only}
 
-Error Type: {AppError subclass | generic untyped `Error` | HttpException | Prisma P-code | QueryFailedError | vendor SDK error | worker sentinel (AlreadySatisfiedError \| UnrecoverableError) | Result variant (returned, not thrown) | none - wiring defect | unknown}
+Ruling: {the answer to the question asked} {only when the request asks one}
 
-Translation: {source error -> domain error, or "none - leaks as-is"}
+{findings, each followed by its block}
 
-Capture: {logger.warn | logger.error | logger.fatal | Sentry | OTel span.recordException | console.* (defect) | none} - list every one that applies
+Layer: {NestJS Filter | Express Middleware | Route Handler | Service | Repository Boundary | Vendor SDK Boundary | BullMQ Processor | Worker Event Handler | Bootstrap | Backstop | Error Hierarchy | unknown - <file> not read}
 
-Retry Behavior: {idempotent success (resolve) | terminal, no retry (UnrecoverableError) | transient (throw; attempts + backoff apply) | one-shot (no retry configured on this path)}
+Error Type: {AppError subclass | generic untyped `Error` | HttpException | Prisma P-code | QueryFailedError | vendor SDK error | worker sentinel (AlreadySatisfiedError or UnrecoverableError) | Result variant (returned, not thrown) | none - wiring defect | unknown{ - <file> not read}}
+
+Translation: {source error -> domain error | none - leaks as-is | n/a - wiring defect | unknown - <file> not read}
+
+Capture: {logger.warn | logger.error | logger.fatal | Sentry | OTel span.recordException | console.* (defect) | none{ (no capture transport installed)} | unknown - <file> not read} - list every one that applies
+
+Retry Behavior: {idempotent success (resolve) | terminal, no retry (UnrecoverableError) | transient (throw; attempts + backoff apply) | one-shot (no retry configured on this path) | unknown - <file> not read}
+
+Out of scope: {file:line defect -> owning skill}{; ...} {when at least one}
 ```
 
 ## Avoid
 
-- Per-controller / per-route try/catch that duplicates the global filter
-- Catching to log + rethrow at intermediate layers (doubles Sentry / log volume)
-- Leaking `Prisma.PrismaClientKnownRequestError` / `QueryFailedError` past the repository boundary
-- `Result<T, E>` everywhere - default to throw; `Result` only for branched failure shapes
-- BullMQ processors that retry validation / not-found errors (wastes attempts, hides bugs)
 - Sniffing `error.message` strings instead of typed subclasses or error codes
-- `catch (e) { throw e }` no-op rethrow - add `{ cause: e }` context or delete
 - Trying to recover after `uncaughtException` - exit and let the orchestrator restart

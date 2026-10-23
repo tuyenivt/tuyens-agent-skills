@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
-
 # Node.js Reliability Review
 
 Node.js-aware reliability review naming `AbortSignal.timeout`, `opossum` / `cockatiel`, `p-limit` / `bottleneck`, BullMQ `attempts` / failed set / `jobId`, the Prisma / TypeORM pool, and `SIGTERM` draining directly. Reliability = behavior under failure and saturation: a dependency slow or down, a load spike, a process killed mid-flight. On one event loop, one unbounded wait or one blocked tick stalls every in-flight request, so the bar is bounded, contained, and recoverable. Stack-specific delegate of `task-code-review-reliability`.
@@ -48,17 +46,17 @@ Defaults to the current branch vs its base; fails fast on trunk. As a subagent o
 
 - Scope is the paths the request named - plus the code they call into and the lifecycle and config files that govern them (the bootstrap file, `SIGTERM` handling, the `DataSource` / Prisma client, deployment config) - or the service's source root when none is named.
 - Steps 4-10 read the in-scope code in full; every "diff" wording reads "in scope". Findings cite current code at `HEAD` via `git show HEAD:<path>`, each Location carrying `_(pre-existing)_` - the expected provenance, not a de-escalation.
-- Depth is as invoked; on a sweep, "new or changed dependency" reads "each external dependency and shared resource in scope". No precondition check, no round gate, no writer: print `Running a reliability sweep at HEAD (<branch>); findings cite current code.`, verify inline (Step 10), and emit the report body as the response. Summary `Target:` names the scope.
+- Depth is as invoked; on a sweep, "new or changed dependency" reads "each external dependency and shared resource in scope". No precondition check, no round gate (a repository-root `review-*.md` is ignored), no writer: print `Running a reliability sweep at HEAD (<branch>); findings cite current code.`, verify inline (Step 10), and emit the report body as the response. Summary `Target:` names the scope.
 
 ## Workflow
 
 ### Step 1 - Behavioral Principles
 
-Use skill: `behavioral-principles`. Accept the parent's confirmation when invoked as a subagent.
+Use skill: `behavioral-principles` - as a subagent too, unless the spawning prompt inlines its Rules section.
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect`; accept a pre-confirmed stack from a parent. Not Node -> stop and route to `/task-code-review-reliability`. Record from evidence: `Framework` (NestJS, Express, `mixed`, or `other` - the Express rows at its equivalent sites); `ORM` (Prisma with its major - Prisma 7 / `@prisma/adapter-*` pools through the adapter; TypeORM with its driver, `pg` or `mysql2`; both, each on its own files; or `other` / `none`); and the module format (ESM `"type": "module"` or CJS). A stack fact that conflicts across files (`.nvmrc` vs `engines`) goes in Notes.
+Use skill: `stack-detect`; accept a pre-confirmed stack from a parent. Not Node -> stop and route to `/task-code-review-reliability`. Record from evidence: `Framework` (NestJS, Express, `mixed`, or `other` - the Express rows at its equivalent sites); `ORM` (Prisma with its major - Prisma 7 / `@prisma/adapter-*` pools through the adapter; TypeORM with its driver, `pg` or `mysql2`; both, each on its own files; or `other` / `none`); and the module format (ESM `"type": "module"` or CJS); for the Summary line, the Node version from `engines.node`, else `.nvmrc`, else `.node-version` (`unknown` when none; a later file whose version the first does not admit - `engines.node` as a range, `.nvmrc` as a version prefix (`22` admits `22.11.0`), an alias such as `lts/*` never admitted - is appended after it as ` (<file>: <value>)`) and, when stack-detect reports TypeScript, the `typescript` version `package.json` declares, as written (`unknown` when it lists none), else JavaScript. Any other stack fact that conflicts across files goes in Notes.
 
 ### Step 3 - Resolve the Diff (standalone only)
 
@@ -66,7 +64,7 @@ Use skill: `review-precondition-check` with the invocation's target argument, an
 
 **Round gate.** Capture `base_sha` / `head_sha` via `git rev-parse` on the handle's refs and decide the round before reading anything else: a valid `prior_checkpoint` whose `head_sha` and `base_sha` equal the captured ones and whose `depth` covers the resolved one (`deep` covers `standard`) -> print `No new commits on <head_short_name> since prior reliability review at <sha_short>. Prior report unchanged.` (`<sha_short>` = first 7 chars of `head_sha`) and stop. Otherwise `round` = its `round` + 1 and `prior_head_sha` = its `head_sha`; no `prior_checkpoint`, or `legacy` (the Step 11 write overwrites the file) -> `round: 1`, no `prior_head_sha`.
 
-Then read once: `git diff <base_ref>...<head_ref>`, `git diff --name-status <base_ref>...<head_ref>`, `git log --oneline <base_ref>..<head_ref>`. Every file outside the diff is read with `git show <head_ref>:<path>`.
+Then read once: `git diff <base_ref>...<head_ref>`, `git diff --name-status <base_ref>...<head_ref>`, `git log --oneline <base_ref>..<head_ref>`. Every file outside the diff is read with `git show <head_ref>:<path>`. Repository-root `review-*.md` files in the name-status are checkpoints: never reviewed, never a changed file for attribution, and read only through the handle (another lens's checkpoint is not this run's).
 
 ### Step 4 - Read the Reliability Surface
 
@@ -88,7 +86,7 @@ Use skill: `node-http-client-patterns` when the surface has an outbound call; ea
 - [ ] **A total deadline on every outbound call** - `AbortSignal.timeout(ms)` on `fetch` / `undici.request` / axios `signal`, or `got` `timeout.request`. axios `timeout` and undici `headersTimeout` / `bodyTimeout` (300 s) are idle timers: a body trickled one chunk at a time never trips them; a vendor SDK with no `signal` option takes its own `timeout` client option. A missing total deadline is an unbounded hang
 - [ ] **Client-disconnect cancellation, reads only** - abort downstream work when the client leaves via `AbortSignal.any([ac.signal, AbortSignal.timeout(ms)])` (Node 20.3+), with `res.on('close', () => { if (!res.writableFinished) ac.abort(); })` - the request's own `close` fires once its body is consumed, not on disconnect. GET / HEAD only: wiring cancellation into a non-idempotent write turns an accepted charge into an unknown outcome, and recommending it on a POST / PATCH is itself a finding
 - [ ] **Budget on chained calls** - a request fanning out to several downstreams caps total time; a slow first call leaves budget for the rest or fails fast
-- [ ] **Retries bounded and safe** - capped attempts, exponential backoff with jitter, `Retry-After` honored. Retry 408 / 425 / 429 (and a 409 carrying `Retry-After`), 500 / 502 / 503 / 504, timeouts, and transport errors (`ECONNRESET`); no other status. A non-idempotent POST retries only with an `Idempotency-Key`, or for a failure proven to precede acceptance. `p-retry` (v5+) and `p-limit` (v4+) are ESM-only - a CJS build loads them through `await import()` (a TypeScript build needs `module: node16` / `nodenext`, since `commonjs` rewrites it to `require`) or Node 20.19+ / 22.12+ `require(esm)`; `cockatiel` (retry, breaker, bulkhead) is the CJS-friendly choice. `opossum` is a breaker with timeout and fallback - it has no retry
+- [ ] **Retries bounded and safe** - capped attempts, exponential backoff with jitter, `Retry-After` honored. Retry 408 / 425 / 429 (and a 409 carrying `Retry-After`), 500 / 502 / 503 / 504, timeouts, and transport errors (`ECONNRESET`); no other status, except a 401 after one token refresh and a 412 / 423 after re-reading the state (per `ops-resiliency`). A non-idempotent POST retries only with an `Idempotency-Key`, or for a failure proven to precede acceptance. `p-retry` (v5+) and `p-limit` (v4+) are ESM-only - a CJS build loads them through `await import()` (a TypeScript build needs `module: node16` / `nodenext`, since `commonjs` rewrites it to `require`) or Node 20.19+ / 22.12+ `require(esm)`; `cockatiel` (retry, breaker, bulkhead) is the CJS-friendly choice. `opossum` is a breaker with timeout and fallback - it has no retry
 - [ ] **Retry amplification** - chained retries share one per-request budget; in-process retry is seconds (2-3 attempts), and waits of minutes belong to BullMQ, which owns scheduling
 - [ ] **Breaker per external dependency** - `opossum` (`errorThresholdPercentage`, `resetTimeout`) or a `cockatiel` policy with a half-open probe; its state change hooked (`breaker.on('open', ...)` / `onBreak`). A breaker shared across dependencies, or with no state hook, counts as missing
 - [ ] **Bounded concurrency per dependency** - `p-limit` / `bottleneck` / a `cockatiel` bulkhead; independent workloads on separate BullMQ queues so one slow dependency cannot starve the rest. The libuv threadpool is shared, so saturating it (`fs`, `dns.lookup`, `crypto.pbkdf2`, `zlib`) starves unrelated work
@@ -102,19 +100,19 @@ Use skill: `backend-transaction-patterns`, then `node-transaction-patterns`; Use
 - [ ] **Stall model** - a worker renews its lock on a timer, so a long non-blocking job is safe; a CPU-bound handler that blocks the loop past `lockDuration` stops renewal, and the job re-runs concurrently with the original (up to `maxStalledCount`). Fix: a sandboxed processor or a raised `lockDuration`; the idempotent side effect is what makes a stall safe
 - [ ] **Consumer idempotency** - the side effect itself is idempotent (a unique key, the vendor's idempotency key, a conditional update guarded on the prior state); an early-return status read is an optimization, not the guard - two concurrent runs both pass it
 - [ ] **No in-transaction dual write** - `queue.add`, a payment call, or `mailer.send` inside `$transaction` / `dataSource.transaction` can roll back the row while the effect survives (charged, no order), holds a pooled connection across the network call, or lets a worker read before `COMMIT`. Post-commit dispatch for best-effort effects; an outbox for at-least-once delivery; call-then-record (a pending row, the call outside any transaction, then the result recorded) for a charge whose result is written back
-- [ ] **Write transactions bounded** - `SET LOCAL lock_timeout` / `statement_timeout` inside the transaction (Prisma: plus `maxWait` / `timeout`, which does not cancel a statement blocked on a lock; TypeORM: plus `idle_in_transaction_session_timeout`); a plain `SET` leaks to the next borrower of the pooled connection
+- [ ] **Write transactions bounded** - PostgreSQL: `SET LOCAL lock_timeout` / `statement_timeout` inside the transaction (Prisma: plus `maxWait` / `timeout`, which does not cancel a statement blocked on a lock; TypeORM: plus `idle_in_transaction_session_timeout`); a plain `SET` leaks to the next borrower of the pooled connection. MySQL has no transaction-scoped `SET` (`SET LOCAL` is `SET SESSION` and outlives `COMMIT`): `SET SESSION innodb_lock_wait_timeout` on the transaction's own connection, restored in `finally`, plus the driver query timeout (`max_execution_time` bounds only `SELECT`)
 
 ### Step 7 - Degradation and Fallbacks
 
 - [ ] **Fallback per critical dependency** - `opossum` `.fallback(...)` / a `cockatiel` fallback returning cached, default, or partial data, or an explicit fast 503 - never an unbounded wait
 - [ ] **`Promise.allSettled` for optional fan-out** - `Promise.all` rejects the batch on the first failure
-- [ ] **Fallbacks log the original failure** at `warn` with context (`node-exception-handling`); no silent swallow
+- [ ] **Fallbacks log the original failure** at `warn` with context (`ops-resiliency`; Node form in `node-http-client-patterns`); no silent swallow
 - [ ] **Partial responses** - an optional downstream (recommendations, enrichment) failing degrades the response, not the request
 - [ ] **Load shedding and backpressure** - saturation returns 429 / 503 rather than queueing unboundedly; large payloads stream via `stream.pipeline`; a request wall-clock cap (a custom RxJS `timeout()` interceptor on NestJS) is paired with an `AbortSignal` on reads, while a write's downstream call keeps its own deadline and completes or reconciles
 
 ### Step 8 - Resource Exhaustion
 
-- [ ] **Pool bounded and failing fast** - Use skill: `node-connection-pool-sizing`. Prisma 5-6: `connection_limit` and `pool_timeout` in the URL (unset `connection_limit` is `num_physical_cpus * 2 + 1` of the **host**, not the container). Prisma 7 / driver adapter: the adapter's `max` and `connectionTimeoutMillis` (URL pool params are read by nothing). TypeORM on node-`pg`: `extra.max` (else `poolSize`, else 10) and `extra.connectionTimeoutMillis` - node-`pg` defaults it to `0`, which waits forever; mysql2: `connectionLimit` (default 10) - acquisition waits unbounded (`queueLimit: 0`), so cap the queue or bound the call. Summed worker `concurrency` per process (x fan-out) + 2 <= the pool. A ceiling not in scope (`max_connections`, replica count) is read from repo config; still unknown -> run the check and state it in `Assumption:` (`verify: max_connections unknown`)
+- [ ] **Pool bounded and failing fast** - Use skill: `node-connection-pool-sizing`. Prisma 5-6: `connection_limit` and `pool_timeout` in the URL (unset `connection_limit` is `num_physical_cpus * 2 + 1` of the **host**, not the container). Prisma 7 / driver adapter: `adapter-pg`'s `max` and `connectionTimeoutMillis` (no URL pool param is read; node-`pg` defaults 10 and `0`), `adapter-mariadb`'s `connectionLimit` and `acquireTimeout` (defaults 10 and 10 s; its options object, or these camelCase params on a URL string); Prisma's `connection_limit` / `pool_timeout` are read by neither adapter. TypeORM on node-`pg`: `extra.max` (else `poolSize`, else 10) and `extra.connectionTimeoutMillis` - node-`pg` defaults it to `0`, which waits forever; mysql2: `extra.connectionLimit` (else `poolSize`, else 10) - acquisition waits unbounded (`queueLimit: 0`), so cap the queue (`extra.queueLimit`) or bound the call. Summed worker `concurrency` per process (x fan-out) + 2 <= the pool. A ceiling not in scope (`max_connections`, replica count) is read from repo config; still unknown -> run the check and state it in `Assumption:` (`verify: max_connections unknown`)
 - [ ] **No unbounded `Promise.all`** over a user-sized or large array - it opens N sockets or queues N pool requests at once; bound it (`p-limit`)
 - [ ] **No event-loop blocking on request or job paths** - `fs.readFileSync`, `crypto.pbkdf2Sync`, large `JSON.parse`, catastrophic regex stall every in-flight request; presence is the reliability finding, tuning depth belongs to perf
 - [ ] **No unbounded accumulation** - an in-memory `Map` / `Set` / cache / buffer growing with load has a bound or eviction (`lru-cache`)
@@ -128,7 +126,7 @@ Cross-aggregate consistency (inlined; `node-transaction-patterns` carries the bo
 
 - [ ] **Graceful shutdown drains in-flight work** - on `SIGTERM`: stop accepting (`app.close()` / `server.close()`), await in-flight requests, `await worker.close()`, `await prisma.$disconnect()` / `dataSource.destroy()`. NestJS needs `app.enableShutdownHooks()` for any of it to run; without a drain, every deploy drops in-flight requests and re-queues in-flight jobs
 - [ ] **Crash safety** - a multi-step side effect interrupted mid-way leaves recoverable state (a pending row a sweeper resolves, an outbox row), not a half-applied change
-- [ ] **No unhandled-rejection surface** - fire-and-forget async (`void run()` with no `.catch`, a `setInterval` callback returning a promise) becomes an `unhandledRejection`; `process.on('unhandledRejection')` / `process.on('uncaughtException')` are registered once as log-and-exit backstops (Use skill: `node-exception-handling`)
+- [ ] **No unhandled-rejection surface** - fire-and-forget async (`void run()` with no `.catch`, a `setInterval` callback returning a promise) becomes an `unhandledRejection`; `process.on('unhandledRejection')` / `process.on('uncaughtException')` are registered once as log-flush-exit backstops - an error tracker's default integrations capture both events but do not exit on a rejection, and their listener switches off Node's default crash, so the app's own pair is still required: a missing pair is the finding (Use skill: `node-exception-handling`)
 - [ ] **Readiness reflects own-pod dependencies** - `/ready` gates on this pod's pool, Redis, and queue connection; never a third-party ping (probe depth belongs to observability)
 - [ ] **Migration rollout** - write-path migrations are expand-then-contract so a rollback does not corrupt in-flight writes; a write-blocking lock on a large table and a migration runner that races across replicas are High (Use skill: `node-migration-safety` and `ops-backward-compatibility` when a migration is in scope)
 
@@ -136,9 +134,9 @@ Cross-aggregate consistency (inlined; `node-transaction-patterns` carries the bo
 
 **One construct, one finding.** Defects removed by one fix are one finding at the worst tier - every defect named in its Issue, each with its own numbered item under `Fix:`; defects needing different fixes stay separate, even in one file. A root cause shared by several call sites files once where the fix lands (one backstop, one config), naming the other sites in its Location. **A defect this lens does not own is reported, never dropped:** one `- **out of lens:** file:line - <the defect, and the workflow that owns it>` line per defect, at the end of `## Findings`, for a defect outside this lens that would break the build, corrupt, lose, or expose data, or block legitimate traffic (anything else is left to `task-node-review`), untiered and uncounted.
 
-Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the `Label` and `Annotation` columns, and fill `Findings verified:` in the atomic's Summary form. Subagent runs skip verification - the parent verifies the merged set. A sweep skips it too (with no diff every finding attributes as pre-existing and every `[Must]` would de-escalate): re-read each cited `file:line` at `HEAD`, drop what the code contradicts, mark what cannot be settled in-tree `_(unverified: <reason>)_`, and report `Findings verified: inline (no diff)`.
+Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the `Label` and `Annotation` columns, and fill `Findings verified:` in the atomic's Summary form. On a standalone run, a published finding on a file the name-status does not list carries `_(pre-existing)_`, written first, when verify gave it no group opening `pre-existing` (an `Unverified` row gets none) - added at publish time, never in a projection. Subagent runs skip verification - the parent verifies the merged set. A sweep skips it too (with no diff every finding attributes as pre-existing and every `[Must]` would de-escalate): re-read each cited `file:line` at `HEAD`, drop what the code contradicts, mark what cannot be settled in-tree `_(unverified: <reason>)_`, and report `Findings verified: inline (no diff)`.
 
-**Round 2+ (standalone, after verification).** Project the prior report at the handle's `report_path` into reconcile's parse shape: one `## High-Impact Findings` section, and per prior finding (every tier) a `### [<Label>] <file:line>` heading - the label from its bold `[Must]` / `[Recommend]` token (a prior report with none: the label its tier maps to), the `file:line` prefix of its Location, each Location annotation as its own group (`_(pre-existing; newly reachable via ...)_` split into `_(pre-existing)_ _(newly reachable via ...)_`), a prior `_(carried from round <N>)_` kept - followed by its Issue line as `Issue:`. Then Use skill: `review-prior-findings-reconcile` with that projection, the diff, the name-status, `head_sha`, and `git ls-tree -r --name-only <head_sha>` as `head_files`. Its table, note line, and tally render as `## Prior Round Reconciliation`. A row is re-derived when this round's findings hold one on the same construct with the same smell. A `Still open` or `Needs re-check` row this round re-derived publishes once, at this round's label; one it did not re-derive republishes its prior block verbatim in its prior tier - every field, the Location with all its annotation groups - at its prior label, with `_(carried from round <N>)_` after the label unless the block already carries one (`<N>` = the round it first appeared), outside the verify tally, plus a Next Steps entry suffixed `(open since round <N>)`. A prior label outside `[Must]` / `[Recommend]` stays verbatim in the table and maps before publication: `[Blocker]`, `[High]`, `[Critical]` -> `[Must]`; anything else -> `[Recommend]`; `[Praise]` is never carried.
+**Round 2+ (standalone, after verification).** Project the prior report at the handle's `report_path` into reconcile's parse shape: one `## High-Impact Findings` section, and per prior finding (every tier) a `### [<Label>] <file:line>` heading - the label from its bold `[Must]` / `[Recommend]` token (a prior report with none: the label its tier maps to), the `file:line` prefix of its Location, each Location annotation as its own group (`_(pre-existing; newly reachable via ...)_` split into `_(pre-existing)_ _(newly reachable via ...)_`), a prior `_(carried from round <N>)_` kept - followed by its Issue line as `Issue:`. Then Use skill: `review-prior-findings-reconcile` with that projection, the diff, the name-status, `head_sha`, and `git ls-tree -r --name-only <head_sha>` as `head_files`. Its table, note line, and tally render as `## Prior Round Reconciliation`. A row is re-derived when this round's findings hold one on the same construct with the same smell. `<N>` is the round a finding first appeared: the prior heading's carried group, else the prior round. A `Still open` or `Needs re-check` row this round re-derived publishes once, at this round's label and `file:line`, with `_(carried from round <N>)_` after the label; one it did not re-derive republishes its prior block verbatim in its prior tier - every field, the Location with all its annotation groups - at its prior label, with `_(carried from round <N>)_` after the label unless the block already carries one, outside the verify tally. Both get a Next Steps entry suffixed `(open since round <N>)`. A prior label outside `[Must]` / `[Recommend]` stays verbatim in the table and maps before publication: `[Blocker]`, `[High]`, `[Critical]` -> `[Must]`; anything else -> `[Recommend]`; `[Praise]` is never carried.
 
 ### Step 11 - Write Report
 
@@ -146,7 +144,7 @@ Use skill: `review-finding-verify` with this lens's findings, the diff already r
 
 **Sweep:** emit the report body as the response; no writer.
 
-**Standalone:** Use skill: `review-report-writer` with `report_type: review-reliability`, `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` as the handle emitted them, `base_sha` / `head_sha` from the round gate, `scope: +rel`, `depth` as resolved, `stack = node-typescript`, `mode: full`, `round` and `prior_head_sha` from the round gate, and `pr_url` when the request carried one, else `prior_checkpoint.pr_url` when present. Emit the body, then the writer's confirmation line.
+**Standalone:** Use skill: `review-report-writer` with `report_type: review-reliability`, `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` as the handle emitted them, `base_sha` / `head_sha` from the round gate, `scope: +rel`, `depth` as resolved, `stack` = `<language>-<framework>` from stack-detect, version tokens and their leading space dropped, lowercased, remaining spaces as `-`, a segment reported `unknown` dropped (`typescript-nestjs`, `javascript-express`), `mode: full`, `round` and `prior_head_sha` from the round gate, and `pr_url` when the request carried one, else `prior_checkpoint.pr_url` when present. Emit the body, then the writer's confirmation line.
 
 ## Output Format
 
@@ -156,12 +154,12 @@ Emit `report_body` as raw Markdown; the fence delimits the template for display 
 
 **Labels.** High -> `[Must]`; Medium / Low -> `[Recommend]` - unless the verify pass returned a different `Label`, which wins: a finding sits in its tier's section while its label is the published one. A sweep keeps the tier labels. No other label is written.
 
-**Envelope precedence.** Every atomic this workflow loads (`ops-resiliency`, `node-http-client-patterns`, `backend-transaction-patterns`, `node-transaction-patterns`, `backend-idempotency`, `node-bullmq-patterns`, `node-connection-pool-sizing`, `node-exception-handling`, `node-migration-safety`, `ops-backward-compatibility`, `failure-propagation-analysis`) feeds findings into this template, re-rated on this Severity rubric (an atomic's `[Must]` or `Compatible: No` -> High, `[Recommend]` -> Medium); none of their envelopes is emitted, except `failure-propagation-analysis`'s paths, which fill the deep Map.
+**Envelope precedence.** Every atomic this workflow loads feeds findings into this template, re-rated on this Severity rubric: an atomic's `[Must]`, a `Compatible: No` or `No (unverified)`, and a pool `Verdict` (any value, read without its `(assumed)` suffix) of `Unbounded` or `Breaches ...` start at High; `Over target at steady state` starts at Medium; a `[Severity: X]` line starts at X; a `[Recommend]` lands Medium or Low by the rubric. None of their envelopes is emitted, except `failure-propagation-analysis`'s paths, which fill the deep Map.
 
 ```markdown
 ## Node.js Reliability Review Summary
 
-- **Stack:** Node.js <version> / TypeScript <version> / <NestJS | Express | mixed | other> / <Prisma <major> | TypeORM (<driver>) | both | other | none>
+- **Stack:** Node.js <version | unknown>{ (<file>: <value>)} / <TypeScript <version | unknown> | JavaScript> / <NestJS | Express | mixed | other> / <Prisma <major> | TypeORM (<driver>) | both | other | none>
 - **Target:** <base_ref>...<head_ref> | <the swept scope at HEAD>
 - **Depth:** standard | deep
 - **Round:** <N>   {round 2+ only}
@@ -208,14 +206,15 @@ Emit `report_body` as raw Markdown; the fence delimits the template for display 
 
 ## Failure-Mode and Blast-Radius Map   {deep only}
 
-<per new or changed dependency: what happens when it is down or slow, the shared resource on the propagation path, and the loop-breaker that contains it>
+<per new or changed dependency or shared-resource coupling, in `failure-propagation-analysis`'s path form: what happens when it is down or slow, the shared resource on the propagation path, and the loop-breaker that contains it; when Step 9 traced none, one sentence saying so>
 
 ## Next Steps
 
 1. **[Implement]** [Must] <file:line> - <action>
 2. **[Delegate]** [Recommend] [scope: platform] - <action>
+3. **[Delegate]** [Recommend] <file:line> - <defect> -> `<owning workflow>` (out of lens)
 
-{one entry per finding, a carried one suffixed ` (open since round <N>)`, and on standalone and sweep runs a `[Delegate]` per `out of lens` line naming the owning workflow; `[Implement]` for a local fix, `[Delegate]` for cross-cutting, platform, or infra work; ordered Must > Recommend, carryovers first among equals; omit when nothing is actionable}
+{one entry per finding, a prior `Still open` / `Needs re-check` one - carried or re-derived - suffixed ` (open since round <N>)` (`<N>` = the round it first appeared), and on standalone and sweep runs a `[Delegate]` `[Recommend]` per `out of lens` line, after the finding entries; `[Implement]` for a local fix, `[Delegate]` for cross-cutting, platform, or infra work; ordered Must > Recommend, prior rows first among equals; omit when nothing is actionable}
 ```
 
 **Merging into `task-node-review`.** The parent maps `Failure Mode` -> `Impact` (plus `(assumes: <Assumption>)`) and `Blast Radius` -> `System Risk`. This per-finding `Blast Radius` is free text, not the parent Summary's `Blast Radius` enum.
@@ -225,7 +224,7 @@ Emit `report_body` as raw Markdown; the fence delimits the template for display 
 Mark a line N/A when the in-scope code has no matching surface.
 
 - [ ] Step 1: `behavioral-principles` loaded (subagent: loaded, or rules inlined in the spawning prompt)
-- [ ] Step 2: stack confirmed; `Framework`, `ORM` (major / driver), module format recorded
+- [ ] Step 2: stack confirmed; `Framework`, `ORM` (major / driver), module format, and the Node / TypeScript versions recorded
 - [ ] Step 3: `review-precondition-check` ran with `report_type: review-reliability`; round decided from the handle before the diff was read (or the stop line printed); subagent / sweep: step skipped
 - [ ] Step 4: surface read, unchanged callees included; `ops-resiliency` loaded when any outbound call is in scope; `package.json` read for Resilience Libraries
 - [ ] Step 5: total deadlines, disconnect cancellation (reads only), budgets, retry safety, breakers, bounded concurrency
@@ -235,7 +234,7 @@ Mark a line N/A when the in-scope code has no matching surface.
 - [ ] Step 9: failure-propagation traced when a dependency or shared resource changed; compensation rule; shutdown drain, crash safety, rejection backstops, readiness, migration rollout
 - [ ] Step 10: one construct filed once; verify ran with its tally (or the subagent / sweep carve-out); round 2+ projected and reconciled, unresolved rows carried
 - [ ] Step 11: standalone report written with every writer field; subagent: findings (+ Resilience Libraries, + deep Map) returned, no file; sweep: body emitted
-- [ ] Every finding names its failure mode and blast radius; `deep` filled the Map
+- [ ] Every finding names its failure mode and blast radius; `deep` filled the Map (or its none sentence)
 
 ## Avoid
 
@@ -245,6 +244,6 @@ Mark a line N/A when the in-scope code has no matching surface.
 - Treating BullMQ `attempts` as a substitute for an idempotent side effect
 - Approving `queue.add` / a payment call / `mailer.send` inside `$transaction` / `dataSource.transaction`
 - Client-disconnect cancellation on a POST / PATCH
-- node-`pg` knobs on a Prisma 5-6 URL, or URL pool params on Prisma 7 or TypeORM
+- node-`pg` knobs on a Prisma 5-6 URL, Prisma's `connection_limit` / `pool_timeout` on Prisma 7, or any URL pool param on `adapter-pg` or TypeORM
 - Deferring a blocking call with `setTimeout(..., 0)` / `setImmediate` - it still blocks when it runs; chunk it or move it to a worker thread
 - Entering the sweep because the user was on trunk by accident

@@ -9,8 +9,6 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
-
 # Node.js Security Review
 
 Stack-specific delegate of `task-code-review-security`. Names NestJS Guards / Passport / `@nestjs/jwt`, `ValidationPipe` + class-validator / Zod, Express middleware auth, ORM parameterization, and Node-specific risks (prototype pollution, ReDoS, SSRF, RCE via `eval` / `vm`) directly.
@@ -21,7 +19,7 @@ Stack-specific delegate of `task-code-review-security`. Names NestJS Guards / Pa
 - Pre-deploy hardening pass on auth, authz, upload, payment, or PII paths
 - Periodic guard / validation drift sweep, or a JWT / Passport flow audit (audit mode, below)
 
-**Not for:** performance (`task-node-review-perf`), general review (`task-node-review`).
+**Not for:** performance (`task-node-review-perf`), reliability (`task-node-review-reliability`), observability (`task-node-review-observability`), general review (`task-node-review`).
 
 **Depth.** This lens always runs every step - security consequences are cliff-edged, so it scopes by file, not by depth. A depth argument changes nothing that runs; the writer records `depth: deep`.
 
@@ -42,17 +40,17 @@ When exploitation needs two independent preconditions, rate one tier lower; firi
 
 Defaults to the current branch vs its base; fails fast on trunk. A trailing `standard | deep` is accepted and ignored. `task-code-review-security` dispatches here as a standalone run. `task-node-review` spawns this workflow as its `+Sec` subagent: Step 3 is pre-satisfied and Step 11 takes its subagent branch.
 
-**Audit mode** - decided before Step 3: the request asks for a drift sweep or flow audit with no PR, or says `audit`. A bare invocation on trunk is not an audit - Step 3 runs and fails fast. Scope is the named surface, read as the code that implements it: an authz / validation sweep covers every router or controller plus the guards, middleware, and DTOs / schemas they use; a flow audit covers credential issuance and verification (auth module, strategies, guards, login / refresh / reset handlers). Run Steps 4-10 against current code read via `git show HEAD:<path>`; every "diff" wording reads "the resolved surface", and a step with no matching surface states its skip. Tiers keep their meaning as fix priority. No precondition check, no round gate, no writer: Step 10 verifies inline and the report body is the response. Summary `Target:` names the surface.
+**Audit mode** - decided before Step 3: the request asks for a drift sweep or flow audit with no PR, or says `audit`. A bare invocation on trunk is not an audit - Step 3 runs and fails fast. Scope is the named surface, read as the code that implements it: an authz / validation sweep covers every router or controller plus the guards, middleware, and DTOs / schemas they use; a flow audit covers credential issuance and verification (auth module, strategies, guards, login / refresh / reset handlers). Run Steps 4-10 against current code read via `git show HEAD:<path>`; every "diff" wording reads "the resolved surface" (the triage verdict `no signal in diff` keeps its literal spelling), and a step with no matching surface states its skip. Tiers keep their meaning as fix priority. No precondition check, no round gate, no writer: Step 10 verifies inline and the report body is the response. Summary `Target:` names the surface.
 
 ## Workflow
 
 ### Step 1 - Behavioral Principles
 
-Use skill: `behavioral-principles`. Accept the parent's confirmation when invoked as a subagent.
+Use skill: `behavioral-principles` - as a subagent too, unless the spawning prompt inlines its Rules section.
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect`; accept a pre-confirmed stack from a parent. Not Node -> stop and route to `/task-code-review-security`. Record `Framework` (NestJS, Express, `mixed` - each app's files under its own idioms - or `other` (Fastify, Koa, Hono): the Express middleware checks at its equivalent sites) and `ORM` (Prisma, TypeORM, both - each file under its own ORM's idiom - or `other` / `none`); steps branch on both.
+Use skill: `stack-detect`; accept a pre-confirmed stack from a parent. Not Node -> stop and route to `/task-code-review-security`. Record `Framework` (NestJS, Express, `mixed` - each app's files under its own idioms - `other` (Fastify, Koa, Hono: the Express checks at their equivalent sites), or `unknown` (undetected: both the NestJS and Express checks)) and `ORM` (Prisma, TypeORM, both - each file under its own ORM's idiom - or `other` / `none`); steps branch on both. For the Summary line, the Node version from `engines.node`, else `.nvmrc`, else `.node-version` (`unknown` when none; a later file whose version the first does not admit - `engines.node` as a range, `.nvmrc` as a version prefix (`22` admits `22.11.0`), an alias such as `lts/*` never admitted - is appended after it as ` (<file>: <value>)`) and, when stack-detect reports TypeScript, the `typescript` version `package.json` declares, as written (`unknown` when it lists none), else JavaScript.
 
 ### Step 3 - Resolve the Diff (standalone only)
 
@@ -60,7 +58,7 @@ Use skill: `review-precondition-check` with the invocation's target argument, an
 
 **Round gate.** Capture `base_sha` / `head_sha` via `git rev-parse` on the handle's refs and decide the round before reading anything else: a valid `prior_checkpoint` whose `head_sha` and `base_sha` equal the captured ones and whose `depth` is `deep` -> print `No new commits on <head_short_name> since prior security review at <sha_short>. Prior report unchanged.` (`<sha_short>` = first 7 chars of `head_sha`) and stop. Otherwise `round` = its `round` + 1 and `prior_head_sha` = its `head_sha`; no `prior_checkpoint`, or `legacy` (the Step 11 write overwrites the file) -> `round: 1`, no `prior_head_sha`.
 
-Then read once: `git diff <base_ref>...<head_ref>`, `git diff --name-status <base_ref>...<head_ref>`, `git log --oneline <base_ref>..<head_ref>`.
+Then read once: `git diff <base_ref>...<head_ref>`, `git diff --name-status <base_ref>...<head_ref>`, `git log --oneline <base_ref>..<head_ref>`. Repository-root `review-*.md` files in the name-status are checkpoints: never reviewed, never a changed file for attribution, and read only through the handle (another lens's checkpoint is not this run's).
 
 ### Step 4 - Read the Security Surface
 
@@ -85,13 +83,13 @@ Triage only; findings are raised in Steps 6-10, never duplicated here. One verdi
 | ---------------------------- | ---------- |
 | A01 Broken Access Control | Every endpoint declares authz (`@UseGuards` + `@Roles`, a global `APP_GUARD` without `@Public()`, or `requireAuth` + `requireRole`); object and tenant scope in the query; SSRF - outbound URLs from user input |
 | A02 Security Misconfiguration | `helmet()`; CORS allowlist, never reflecting the request origin with credentials; Swagger / `/api-docs` gated or absent in production; error responses leak no stack or internals |
-| A03 Software Supply Chain Failures | Dependency and lockfile changes checked for advisories; `csurf` (deprecated) or an unmaintained sandbox (`vm2`) flagged; CI / build integrity when touched |
+| A03 Software Supply Chain Failures | Dependency and lockfile changes checked for advisories; `csurf` (deprecated) or an in-process JS sandbox (`vm2` - a record of escapes, never a security boundary) flagged; CI / build integrity when touched |
 | A04 Cryptographic Failures | `argon2id` or `bcrypt` for passwords, never a bare fast hash (md5 / sha1 / sha256); keys from config, not source; TLS enforced |
 | A05 Injection | Prisma tagged `$queryRaw` / `$executeRaw` and `...Unsafe(sql, ...values)` bind, while an interpolated string passed to `$queryRawUnsafe` / `$executeRawUnsafe`, or `Prisma.raw(input)`, does not; TypeORM `repository.query(sql, [params])` binds positionally, `:name` is QueryBuilder-only; no `exec(string)`; `eval` / `new Function` / `vm` on input; XSS - EJS `<%-`, Handlebars `{{{ }}}` / `SafeString`, Nunjucks `\| safe`; JSON is safe only as `application/json` with `nosniff` |
 | A06 Insecure Design | Default-deny (`APP_GUARD` global, or `requireAuth` mounted before the routers); rate limits on credential and costly endpoints |
 | A07 Authentication Failures | JWT verification (algorithms, issuer, audience, expiry); session cookie flags; CSRF for cookie-carried credentials; no credential in the repo |
 | A08 Software or Data Integrity Failures | Webhook signatures over the raw body; mass assignment; prototype pollution; unsafe deserialization |
-| A09 Logging and Alerting Failures | No password / token / authorization / cookie in logs; auth failures logged |
+| A09 Security Logging and Alerting Failures | No password / token / authorization / cookie in logs; auth failures logged |
 | A10 Mishandling of Exceptional Conditions | No fail-open: a guard whose `catch` returns `true`, an exception filter that answers 200, a verification error treated as success |
 
 ### Step 6 - Authentication
@@ -114,7 +112,7 @@ Triage only; findings are raised in Steps 6-10, never duplicated here. One verdi
 
 ### Step 8 - Input Validation and Mass Assignment
 
-- [ ] **NestJS** - a global `ValidationPipe` (in `main.ts` or as `APP_PIPE`) with `whitelist: true` and `forbidNonWhitelisted: true`; every `@Body()` typed by a DTO class, never `any` / `Record<string, unknown>`; field constraints on every user-supplied field; nested DTOs carry `@ValidateNested()` + `@Type(() => ChildDto)` (`{ each: true }` on arrays) or `whitelist` never reaches them; numeric params through `ParseIntPipe`
+- [ ] **NestJS** - a global `ValidationPipe` (in `main.ts` or as `APP_PIPE`) with `whitelist: true` and `forbidNonWhitelisted: true`; every `@Body()` typed by a DTO class, never `any` / `Record<string, unknown>`; field constraints on every user-supplied field; nested DTOs carry `@ValidateNested()` + `@Type(() => ChildDto)` (an array property is validated element by element either way) or `whitelist` never reaches them; numeric params through `ParseIntPipe`
 - [ ] **Express** - Zod (or equivalent) on body, query, and params; the **parse result** flows onward, never `req.body` (`z.object()` strips unknown keys, so the vector is passing `req.body`); `.strict()` / `z.strictObject()` on write schemas; `.passthrough()` / `z.looseObject()` never on a write path
 - [ ] **Privilege fields are a class, not a list** - any field the server assigns (ownership, tenancy, role, entitlement, price, status, requested-by) never comes from input; an admin path uses its own DTO. A spread of a DTO or `req.body` into `create` / `update` is mass assignment
 - [ ] **Sensitive columns never reach the wire** - a Prisma result is a plain object, so `@Exclude()` does nothing there: project with `select` / `omit`, or `plainToInstance(Dto, row, { excludeExtraneousValues: true })` with `@Expose()` per field
@@ -124,7 +122,7 @@ Triage only; findings are raised in Steps 6-10, never duplicated here. One verdi
 
 ### Step 9 - Node Vulnerability Patterns
 
-Use skill: `node-security-patterns` (JWT, object-level authorization, mass-assignment DTOs, prototype pollution, SSRF guard, uploads, webhook signatures, secrets, `eval` / `vm`, injection, open redirect, `child_process`, TLS, password storage, error disclosure, CSRF). Flag deviations from it; the extras it does not cover:
+Use skill: `node-security-patterns` (JWT, object-level authorization, mass-assignment DTOs, prototype pollution, SSRF guard, uploads, webhook signatures, secrets, `eval` / `vm`, injection, open redirect, `child_process`, TLS, password storage, error disclosure, CSRF). Flag deviations from it; the rows below refine it:
 
 - [ ] **Body limits** - body-parser defaults every parser (`json`, `raw`, `text`, `urlencoded`) to `100kb`; the finding is a raised `limit` or `Infinity`
 - [ ] **ReDoS** - a pattern built at runtime from input (`new RegExp(req.query.q)`), or a catastrophic literal applied to unbounded input; `re2` for user-supplied patterns
@@ -139,11 +137,11 @@ Use skill: `node-security-patterns` (JWT, object-level authorization, mass-assig
 - [ ] **TLS / HSTS** - `helmet()` sends HSTS by default; flag only when it is disabled or `maxAge` lowered
 - [ ] **Secrets** from a secret manager or env through a validated config module that fails fast at startup; `.env` ignored by git
 
-**One construct, one finding.** A construct carrying several defects (a handler that is both unauthorized and mass-assignable) files once at the worst tier, naming the others in its Issue and numbering the fixes. When an exploit chains two constructs, file it once where the fix lands and name the other in the attack scenario. **A defect this lens does not own is reported, never dropped:** one `- **out of lens:** file:line - <the defect, and the workflow that owns it>` line per defect, at the end of `## Findings`, for a defect outside this lens that would break the build, corrupt, lose, or expose data, or block legitimate traffic (anything else is left to `task-node-review`), untiered and uncounted; a control that fails closed (it blocks legitimate traffic, opens no exploit) is one. On standalone and audit runs, each also gets a `[Delegate]` Next Step naming the owning workflow. Security-adjacent correctness bugs (a broken comparison, a double body read) stay here.
+**One construct, one finding.** A construct carrying several defects (a handler that is both unauthorized and mass-assignable) files once at the worst tier, naming the others in its Issue and numbering the fixes. When an exploit chains two constructs, file it once where the fix lands and name the other in the attack scenario; a control missing for several routes at once (no global `APP_GUARD`, no mounted `requireAuth`) files once where the fix lands, the routes named. **A defect this lens does not own is reported, never dropped:** one `- **out of lens:** file:line - <the defect, and the workflow that owns it>` line per defect, at the end of `## Findings`, for a defect outside this lens that would break the build, corrupt, lose, or expose data, or block legitimate traffic (anything else is left to `task-node-review`), untiered and uncounted; a control that fails closed (it blocks legitimate traffic, opens no exploit) is one. On standalone and audit runs, each also gets a `[Delegate]` Next Step naming the owning workflow. Security-adjacent correctness bugs (a broken comparison, a double body read) stay here.
 
-Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the `Label` and `Annotation` columns, and fill `Findings verified:` in the atomic's Summary form. Subagent runs skip it - the parent verifies the merged set. Audit mode skips it too: re-read each cited `file:line` at `HEAD`, drop what the code contradicts, mark what cannot be settled in-tree `_(unverified: <reason>)_`, and report `Findings verified: inline (no diff)`.
+Use skill: `review-finding-verify` with this lens's findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, carrying the `Label` and `Annotation` columns, and fill `Findings verified:` in the atomic's Summary form. On a standalone run, a published finding on a file the name-status does not list carries `_(pre-existing)_`, written first, when verify gave it no group opening `pre-existing` (an `Unverified` row gets none) - added at publish time, never in a projection. Subagent runs skip verification - the parent verifies the merged set. Audit mode skips it too: re-read each cited `file:line` at `HEAD`, drop what the code contradicts, mark what cannot be settled in-tree `_(unverified: <reason>)_`, and report `Findings verified: inline (no diff)`.
 
-**Round 2+ (standalone, after verification).** Project the prior report at the handle's `report_path` into reconcile's parse shape: one `## High-Impact Findings` section, and per prior finding (every tier) a `### [<Label>] <file:line>` heading - the label from its bold `[Must]` / `[Recommend]` token (a prior report with none: the label its tier maps to), the `file:line` prefix of its Location, each Location annotation as its own group (`_(pre-existing; newly reachable via ...)_` split into `_(pre-existing)_ _(newly reachable via ...)_`), a prior `_(carried from round <N>)_` kept - followed by its Issue line as `Issue:`. Then Use skill: `review-prior-findings-reconcile` with that projection, the diff, the name-status, `head_sha`, and `git ls-tree -r --name-only <head_sha>` as `head_files`. Its table, note line, and tally render as `## Prior Round Reconciliation`. A row is re-derived when this round's findings hold one on the same construct with the same smell. A `Still open` or `Needs re-check` row this round re-derived publishes once, at this round's label; one it did not re-derive republishes its prior block verbatim in its prior tier - every field, the Location with all its annotation groups - at its prior label, with `_(carried from round <N>)_` after the label unless the block already carries one (`<N>` = the round it first appeared), outside the verify tally, plus a Next Steps entry suffixed `(open since round <N>)`. A prior label outside `[Must]` / `[Recommend]` stays verbatim in the table and maps before publication: `[Blocker]`, `[High]`, `[Critical]` -> `[Must]`; anything else -> `[Recommend]`; `[Praise]` is never carried.
+**Round 2+ (standalone, after verification).** Project the prior report at the handle's `report_path` into reconcile's parse shape: one `## High-Impact Findings` section, and per prior finding (every tier) a `### [<Label>] <file:line>` heading - the label from its bold `[Must]` / `[Recommend]` token (a prior report with none: the label its tier maps to), the `file:line` prefix of its Location, each Location annotation as its own group (`_(pre-existing; newly reachable via ...)_` split into `_(pre-existing)_ _(newly reachable via ...)_`), a prior `_(carried from round <N>)_` kept - followed by its Issue line as `Issue:`. Then Use skill: `review-prior-findings-reconcile` with that projection, the diff, the name-status, `head_sha`, and `git ls-tree -r --name-only <head_sha>` as `head_files`. Its table, note line, and tally render as `## Prior Round Reconciliation`. A row is re-derived when this round's findings hold one on the same construct with the same smell. `<N>` is the round a finding first appeared: the prior heading's carried group, else the prior round. A `Still open` or `Needs re-check` row this round re-derived publishes once, at this round's label and `file:line`, with `_(carried from round <N>)_` after the label; one it did not re-derive republishes its prior block verbatim in its prior tier - every field, the Location with all its annotation groups - at its prior label, with `_(carried from round <N>)_` after the label unless the block already carries one, outside the verify tally. Both get a Next Steps entry suffixed `(open since round <N>)`. A prior label outside `[Must]` / `[Recommend]` stays verbatim in the table and maps before publication: `[Blocker]`, `[High]`, `[Critical]` -> `[Must]`; anything else -> `[Recommend]`; `[Praise]` is never carried.
 
 ### Step 11 - Write Report
 
@@ -151,7 +149,7 @@ Use skill: `review-finding-verify` with this lens's findings, the diff already r
 
 **Audit mode:** emit the report body as the response; no writer.
 
-**Standalone:** Use skill: `review-report-writer` with `report_type: review-security`, `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` as the handle emitted them, `base_sha` / `head_sha` from the round gate, `scope: +sec`, `depth: deep`, `stack = node-typescript`, `mode: full`, `round` and `prior_head_sha` from the round gate, and `pr_url` when the request carried one, else `prior_checkpoint.pr_url` when present. Emit the body, then the writer's confirmation line.
+**Standalone:** Use skill: `review-report-writer` with `report_type: review-security`, `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` as the handle emitted them, `base_sha` / `head_sha` from the round gate, `scope: +sec`, `depth: deep`, `stack` = `<language>-<framework>` from stack-detect, version tokens and their leading space dropped, lowercased, remaining spaces as `-`, a segment reported `unknown` dropped (`typescript-nestjs`, `javascript-express`), `mode: full`, `round` and `prior_head_sha` from the round gate, and `pr_url` when the request carried one, else `prior_checkpoint.pr_url` when present. Emit the body, then the writer's confirmation line.
 
 ## Output Format
 
@@ -164,11 +162,11 @@ Emit `report_body` as raw Markdown; the fence delimits the template for display 
 ```markdown
 ## Node.js Security Review Summary
 
-- **Stack:** Node.js <version> / TypeScript <version> / <NestJS | Express | mixed | other> / <Prisma | TypeORM | Prisma + TypeORM | other | none>
+- **Stack:** Node.js <version | unknown>{ (<file>: <value>)} / <TypeScript <version | unknown> | JavaScript> / <NestJS | Express | mixed | other | unknown> / <Prisma | TypeORM | Prisma + TypeORM | other | none>
 - **Target:** <base_ref>...<head_ref> | <the audited surface at HEAD>
 - **Round:** <N>   {round 2+ only}
 - **Auth:** JWT (jsonwebtoken) | JWT (jose) | NestJS Passport JWT | Passport Local | Session (cookie) | Custom | Hybrid | None (internal / network-gated)
-- **Authorization:** NestJS Guards | Express middleware | Custom
+- **Authorization:** NestJS Guards | Express middleware | NestJS Guards + Express middleware | Custom | None
 - **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)} | inline (no diff)
 - **Overall Posture:** Clean | Issues Found - <n> Critical / <n> High / <n> Medium / <n> Low   {append ` (partial coverage)` whenever Not verifiable has an entry}
 
@@ -186,7 +184,7 @@ Emit `report_body` as raw Markdown; the fence delimits the template for display 
 | A06 Insecure Design | ... | ... |
 | A07 Authentication Failures | ... | ... |
 | A08 Software or Data Integrity Failures | ... | ... |
-| A09 Logging and Alerting Failures | ... | ... |
+| A09 Security Logging and Alerting Failures | ... | ... |
 | A10 Mishandling of Exceptional Conditions | ... | ... |
 
 ## Not verifiable   {only when a control could not be confirmed}
@@ -201,7 +199,7 @@ Emit `report_body` as raw Markdown; the fence delimits the template for display 
 
    **Issue:** <the vulnerability in Node terms - "the global `ValidationPipe` runs without `whitelist`, so `CreateRefundDto` accepts `requestedBy` and the caller forges the audit trail">
 
-   **Attack scenario:** <exploit walkthrough | `Regression risk: ...` | `Topology-dependent: ...`>
+   **Attack scenario:** <exploit walkthrough | `Regression risk: ...` | `Topology-dependent: ...` | `Latent: ...`>
 
    **Severity rationale:** <tier> - <the rubric clause that applies>
 
@@ -236,24 +234,25 @@ Emit `report_body` as raw Markdown; the fence delimits the template for display 
 1. **[Implement]** [Must] <file:line> - <action>
 2. **[Delegate]** [Recommend] [scope: dependencies] - <action>
 3. **[Delegate]** [Recommend] [scope: verify] - confirm <control> (not verifiable)
+4. **[Delegate]** [Recommend] <file:line> - <defect> -> `<owning workflow>` (out of lens)
 
-{one entry per finding, a carried one suffixed ` (open since round <N>)`; `[Implement]` for a localized fix, `[Delegate]` for cross-cutting hardening, an upgrade, or a threat model; one `[Delegate]` `[Recommend]` per Not verifiable entry; ordered Must > Recommend, carryovers first among equals; omit only when there are no findings and nothing was unverifiable}
+{one entry per finding, a prior `Still open` / `Needs re-check` one - carried or re-derived - suffixed ` (open since round <N>)` (`<N>` = the round it first appeared); `[Implement]` for a localized fix, `[Delegate]` for cross-cutting hardening, an upgrade, or a threat model; one `[Delegate]` `[Recommend]` per Not verifiable entry and per out-of-lens line, after the finding entries; ordered Must > Recommend, prior rows first among equals; omit only when there are no findings, no out-of-lens line, and nothing was unverifiable}
 ```
 
 ## Self-Check
 
 - [ ] Step 1: `behavioral-principles` loaded (subagent: loaded, or rules inlined in the spawning prompt)
-- [ ] Step 2: stack confirmed; `Framework` and `ORM` recorded
+- [ ] Step 2: stack confirmed; `Framework`, `ORM`, and the Node / TypeScript versions recorded
 - [ ] Step 3: `review-precondition-check` ran with `report_type: review-security`; round decided from the handle before the diff was read (or the stop line printed); subagent / audit: step skipped
 - [ ] Step 4: surface read at `head_ref` (audit: `HEAD`); prior revision consulted when auth was relaxed; unconfirmable controls recorded in `## Not verifiable`
 - [ ] Step 5: one verdict per OWASP 2025 category with its basis; findings not duplicated
-- [ ] Step 6: hashing, brute force, JWT verification, token lifetime, cookies
+- [ ] Step 6: hashing, brute force, reset tokens, JWT verification, token lifetime, missing-token 401, cookies
 - [ ] Step 7: authorization drift, roles, object and tenant scope, CSRF, CORS for every new or changed endpoint
 - [ ] Step 8: validation, nested DTOs, mass assignment, sensitive columns, uploads, traversal, exec
-- [ ] Step 9: `node-security-patterns` consulted; body limits, ReDoS, SSTI, payloads, Swagger checked when touched
+- [ ] Step 9: `node-security-patterns` consulted; body limits, ReDoS, SSTI, payloads, Swagger checked
 - [ ] Step 10: data protection assessed; one construct filed once; verify ran with its tally (or the subagent / audit carve-out); round 2+ projected and reconciled, unresolved rows carried
 - [ ] Step 11: standalone report written with every writer field (`depth: deep`); subagent: findings and Not verifiable returned, no file; audit: body emitted
-- [ ] Every finding has a label, a rubric clause, and an attack-scenario framing; each Not verifiable entry has a `[Delegate]` Next Step
+- [ ] Every finding has a label, a rubric clause, and an attack-scenario framing; each Not verifiable entry and each out-of-lens line has a `[Delegate]` Next Step
 
 ## Avoid
 

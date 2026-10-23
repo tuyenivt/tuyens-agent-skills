@@ -20,13 +20,13 @@ user-invocable: false
 
 ## Rules
 
-- Jobs are **idempotent**: BullMQ is at-least-once - stalls, retries, and redelivery re-run a handler that already ran, sometimes concurrently with it. Make the side effect itself idempotent (a unique key, a vendor idempotency key, a terminal-state update guarded on the prior state) and return early only when the work is already done; a read-then-act status check alone lets two concurrent runs both act, and a claim that a failed run leaves behind makes its own retry skip the work
+- Jobs are **idempotent**: BullMQ is at-least-once - stalls, retries, and redelivery re-run a handler that already ran, sometimes concurrently with it. Make the side effect itself idempotent (a unique key, a vendor idempotency key, a terminal-state update guarded on the prior state; a vendor with no key takes the Redis claim key in `node-http-client-patterns`, which frees the claim on a provably-unsent failure and keeps it on an ambiguous one) and return early only when the work is already done; a read-then-act status check alone lets two concurrent runs both act, and any other claim that a failed run leaves behind makes its own retry skip the work
 - Job data is JSON: pass IDs and primitives, never ORM entities or large objects. A `Buffer` round-trips to `{ type: "Buffer", data: [...] }` and a `Date` to a string
 - Enqueue **after** the DB transaction commits, never inside it. A crash in the gap between `COMMIT` and `add` drops the job silently - when a sweep cannot reconcile that, use the outbox in `node-transaction-patterns`
 - Every queue states its retry and retention once, in `defaultJobOptions` on the queue (`registerQueue` / `new Queue`); a per-`add` option overrides it. BullMQ's defaults are bare: `attempts` unset (literally `0`) means one try, then terminal; `removeOnComplete` / `removeOnFail` unset keep every job forever. Redis must run `maxmemory-policy noeviction` (BullMQ breaks when keys are evicted), so retention is the only thing bounding its memory - absent options are missing behaviour, not a style nit
-- `attempts` + exponential `backoff` are for **transient** failures. Permanent ones (validation, unknown job name, vendor 4xx) throw `UnrecoverableError` so the job fails immediately instead of burning the budget
-- Workers close before the process exits, and the shutdown grace period exceeds the longest job - SIGKILL orphans the lock and the job re-runs. Plain BullMQ: `worker.close()` in a `SIGTERM` handler. NestJS: `@nestjs/bullmq` closes `WorkerHost` workers on application shutdown, which runs on a signal only when `main.ts` (and a standalone `createApplicationContext` worker) calls `app.enableShutdownHooks()`
-- A one-shot job whose producer can fire twice gets a stable `jobId`. It dedupes only while the job is retained, so `removeOnComplete` and `removeOnFail` must outlive the duplicate window. Custom ids must not contain `:` (BullMQ rejects them) - use `-`. Recurring jobs dedupe on the job scheduler id instead
+- `attempts` + exponential `backoff` are for **transient** failures. Permanent ones (validation, unknown job name, vendor 4xx) throw `UnrecoverableError` so the job fails immediately instead of burning the budget. The handler makes one try and throws - a retry loop inside it multiplies with `attempts` and repeats the side effect
+- Workers close before the process exits, and the shutdown grace period exceeds the longest job - SIGKILL orphans the lock and the job re-runs (close order and the NestJS hook: Worker Entrypoint and Shutdown below)
+- A one-shot job whose producer can fire twice gets a stable `jobId`. It dedupes only while the job is retained, so `removeOnComplete` and `removeOnFail` must outlive the duplicate window. Custom ids must not contain `:` and must not be a bare integer string (BullMQ rejects integer strings, and from 5.59 any id containing `:` except the two-colon legacy repeat-key shape) - use a prefixed `-` form. Recurring jobs dedupe on the job scheduler id instead
 
 ## Patterns
 
@@ -107,7 +107,7 @@ Separate queues give critical jobs their own workers, concurrency, and limiter. 
 
 ### Rate-Limited Upstreams
 
-`limiter` is **per queue**, not per key - one limiter cannot express "2 rps per store". Match the throttle to the upstream's budget:
+`limiter` is **per queue** (enforced in Redis, so shared by every worker replica), not per key - one limiter cannot express "2 rps per store". Match the throttle to the upstream's budget:
 
 | Upstream budget | 429 or budget exhausted | Mechanism |
 |-----------------|-------------------------|-----------|
@@ -133,7 +133,7 @@ const worker = new Worker(QUEUE, async (job, token) => {
 }, { connection: redis });
 ```
 
-The bucket state lives in Redis (an atomic Lua script or `INCR` + `PEXPIRE` per window), never in process memory - every worker replica draws from the same budget. `worker.rateLimit()` pauses the **whole queue**; on a per-key upstream one throttled store stops every store. Give each key its own queue only when the key set is small and fixed.
+The bucket state lives in Redis (an atomic Lua script or `INCR` + `PEXPIRE` per window), never in process memory - every worker replica draws from the same budget. `worker.rateLimit()` pauses the **whole queue**; on a per-key upstream one throttled store stops every store. Give each key its own queue only when the key set is small and fixed. In a Nest host the limiter is the decorator's option - `@Processor(NAME, { limiter: { max, duration }, concurrency })` - and the handle for `rateLimit()` is `this.worker` from `WorkerHost`; a 429 carrying `Retry-After` on a shared budget feeds `rateLimit(ms)`, on a per-key one `moveToDelayed`.
 
 ### Scheduled / Recurring
 
@@ -146,6 +146,7 @@ await this.reportQueue.upsertJobScheduler(
   { pattern: "0 2 * * *", tz: "UTC" },
   { name: "daily-cleanup" },
 );
+// NestJS: run this in the producer module's onModuleInit - once per boot, never inside process()
 
 // Per-tenant local time: one scheduler per tenant, re-upserted when the tenant's zone changes
 for (const t of tenants) {
@@ -171,11 +172,11 @@ const job = await queue.getJob(`cart-reminder-${cartId}`);
 if (job && (await job.isDelayed())) await job.changeDelay(2 * 3_600_000);
 ```
 
-A remove-then-add with the same `jobId` silently deduplicates when the remove found the job running; `changeDelay` re-arms without that race.
+A remove-then-add with the same `jobId` silently deduplicates when the remove found the job running. `changeDelay` re-arms in place, and throws `is not in the delayed state` when the job went active between the `isDelayed()` check and the call - catch it and let the processor's run-time state check decide.
 
 ### Fan-Out
 
-A handful of independent jobs: add them directly. Thousands: `addBulk` in chunks - one `addBulk` is one Redis `MULTI`, and an unchunked call blocks Redis. Children that must converge on a follow-up step: `FlowProducer` - the parent runs only after every child completes.
+A handful of independent jobs, on one queue or several: add each after commit with its own `jobId` - separate `add` calls are not atomic across queues (`FlowProducer.addBulk` of childless flows is one `MULTI` when that matters - it reads no queue's `defaultJobOptions`, so each flow carries its own `attempts`, `backoff`, `removeOnComplete` and `removeOnFail` in `opts`), and the ids make a partial failure's retry idempotent. Thousands: `addBulk` in chunks - one `addBulk` is one pipelined batch (a `MULTI` before 5.7.13), built whole in client memory and sent as one burst. Children that must converge on a follow-up step: `FlowProducer` - the parent runs only after every child completes.
 
 ```typescript
 // bulk - chunk the input
@@ -196,19 +197,23 @@ await this.flowProducer.add({
 
 By default a child that exhausts its attempts leaves the parent in `waiting-children` forever. Set `failParentOnFailure: true` on children to fail the parent, or `ignoreDependencyOnFailure: true` when one bad row must not wedge the flow.
 
-### Graceful Shutdown
+### Worker Entrypoint and Shutdown
+
+A worker deployment runs its own entrypoint selected by the process command (plain: `worker.ts`; NestJS: `createApplicationContext(WorkerModule)` plus `app.enableShutdownHooks()`, after which `@nestjs/bullmq` closes every `WorkerHost` worker in the shutdown lifecycle), not an env flag inside the API bootstrap. The API process then owns no workers and closes only its producer `Queue` instances.
 
 ```typescript
-// Plain BullMQ
+// worker.ts - plain BullMQ. Close order: workers (finish in-flight, stop fetching), producers, Redis, DB
+const workers = [new Worker("orders", handler, { connection: redis, concurrency: 5 })];
 process.on("SIGTERM", async () => {
-  await worker.close(); // finish in-flight, stop accepting new
+  const forced = setTimeout(() => process.exit(1), GRACE_MS - 2_000).unref(); // deadline inside the platform grace
+  await Promise.all(workers.map((w) => w.close()));
+  await Promise.all([orderQueue.close(), redis.quit(), dataSource.destroy()]);
+  clearTimeout(forced);
   process.exit(0);
 });
 ```
 
-NestJS: call `app.enableShutdownHooks()` after `NestFactory.create` / `createApplicationContext`; `@nestjs/bullmq` then closes every `WorkerHost` worker in the shutdown lifecycle.
-
-### Plain Express
+### Plain BullMQ (Express or no framework)
 
 ```typescript
 import { Queue, Worker } from "bullmq";
@@ -216,13 +221,13 @@ export const orderQueue = new Queue("orders", { connection: redis, defaultJobOpt
   attempts: 3, backoff: { type: "exponential", delay: 2000 },
   removeOnComplete: { age: 86_400 }, removeOnFail: { age: 7 * 86_400 },
 } });
-const worker = new Worker("orders", handler, { connection: redis, concurrency: 5 });
-worker.on("failed", (job, err) => logger.error({ jobId: job?.id, err }, "failed"));
+// worker.ts (above): one listener per Worker in the entrypoint's array
+for (const w of workers) w.on("failed", (job, err) => logger.error({ jobId: job?.id, err }, "failed"));
 ```
 
 ### Testing
 
-Mock the queue token and assert enqueue args:
+Mock the queue token and assert enqueue args; the processor lane and the real-Redis lane are `node-testing-patterns`' recipes:
 
 ```typescript
 const mockQueue = { add: jest.fn() };
@@ -237,7 +242,7 @@ expect(mockQueue.add).toHaveBeenCalledWith(
 
 ### Stack Notes
 
-- **Redis**: 6.2+, `maxmemory-policy noeviction`; the Worker's `ioredis` connection needs `maxRetriesPerRequest: null`
+- **Redis**: 6.2+; the Worker's `ioredis` connection needs `maxRetriesPerRequest: null`
 - **Monitoring**: Bull Board (`@bull-board/express` or `/nestjs`) behind admin auth
 
 ## Edge Cases
@@ -245,16 +250,16 @@ expect(mockQueue.add).toHaveBeenCalledWith(
 - **Stalled jobs**: a worker renews its job lock on a timer (`lockDuration`, default 30s). A blocked event loop or a dropped Redis connection stops renewal; BullMQ declares the job stalled and re-runs it **concurrently with the original** - the idempotent side effect is what makes that safe, not `maxStalledCount` (default 1, after which the job fails with "job stalled more than allowable limit"). CPU-bound handlers need a sandboxed processor or a raised `lockDuration`
 - **Long jobs**: chunk anything past ~5 minutes. Long jobs stall more often, and `worker.close()` waits for them, so they set the floor on `terminationGracePeriodSeconds`
 - **Large payloads**: > ~50KB belongs in S3; pass only the key as job data
-- **Concurrency vs DB pool**: the pool is per **process**, `concurrency` is per Worker - the sum of every Worker's `concurrency` in one process must fit that process's pool (`node-connection-pool-sizing` owns the arithmetic). Exceeding it presents as a queue stall, or as pool-timeout errors (Prisma `P2024`) - never as a database-side error
+- **Concurrency vs DB pool**: the pool is per **process**, `concurrency` is per Worker - the sum of every Worker's `concurrency` in one process must fit that process's pool (`node-connection-pool-sizing` owns the arithmetic). Exceeding it presents as a queue stall, or as pool-timeout errors (Prisma 5-6 `P2024`; Prisma 7's `pg.Pool` waits forever unless `connectionTimeoutMillis` is set, then throws `timeout exceeded when trying to connect`) - never as a database-side error
 
 ## Output Format
 
-When authoring, emit this design block plus the queue, worker, and scheduler code it describes; a build over existing code is authoring plus review - findings for the existing defects the change touches, then the block. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file) followed by `Issue:` and `Fix:` lines, `[Must]` first - `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the findings. After the findings, emit this block as the target state: every row shows the corrected value, and a row the current code violates ends ` - GAP (was: <observed>)`.
+When authoring, emit this design block plus the queue, worker, and scheduler code it describes; a build over existing code is authoring plus review - findings for the existing defects the change touches, then the block. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file) followed by `Issue:` and `Fix:` lines, `[Must]` first - `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the findings. After the findings, emit this block as the target state: every row shows the corrected value, and a row the current code violates ends ` - GAP (was: <observed>)`; a value the read set cannot establish (a Redis policy, a vendor budget) is `unknown - <source> not read`, never a GAP.
 
 ```
 ## BullMQ Design
 
-**Stack:** {NestJS (@nestjs/bullmq) | plain BullMQ} on Redis {version}, maxmemory-policy {noeviction | other - GAP}
+**Stack:** {NestJS (@nestjs/bullmq) | plain BullMQ} on Redis {version}, maxmemory-policy {noeviction | noeviction - GAP (was: <observed policy>) | unknown - <source> not read}
 
 ### Queues
 | Queue | Job Types | Enqueue Point | Dedupe (jobId pattern) | Retry | Non-retryable | Backoff | Rate Limit | Retention (complete / fail) |
@@ -273,13 +278,10 @@ When authoring, emit this design block plus the queue, worker, and scheduler cod
 |----------|-------------|-------|
 ```
 
-Column values: `Enqueue Point` is `after commit` \| `outbox relay` \| `no transaction (scheduler, user event, read-only fan-out)` \| `inside tx - GAP`. `Non-retryable` names what throws `UnrecoverableError` (`validation, unknown name, vendor 4xx`) or `none - GAP`. `Rate Limit` names the budget shape (`queue limiter N/s` \| `per-key bucket <key>` \| `none`). `Stuck Signal` is what pages when the worker stops making progress - the `stalled` event count, failures reading "job stalled more than allowable limit", or a waiting-count / oldest-waiting-age alert.
+Column values: `Enqueue Point` is `after commit` \| `outbox relay` \| `no transaction (scheduler, user event, read-only fan-out)`. `Retry` is the queue's `attempts` default, with `(per job: <name> N)` for job types that override it. `Non-retryable` names what throws `UnrecoverableError` (`validation, unknown name, vendor 4xx`). `Process` is the worker deployment the Worker runs in (`worker`, or its name) - a Worker found in the API process reads `worker - GAP (was: api)` - and rows sharing it are summed against that process's pool. `Rate Limit` names the budget shape (`queue limiter N/s` \| `per-key bucket <key>` \| `none`). `Stuck Signal` is what pages when the worker stops making progress - the `stalled` event count, failures reading "job stalled more than allowable limit", or a waiting-count / oldest-waiting-age alert.
 
 ## Avoid
 
-- Passing ORM entities as job data - serialize IDs and primitives only
-- Jobs > 5 min without chunking
-- Missing `attempts` - all jobs should handle transient failures
-- `removeOnFail: true` when failure visibility is needed
-- Skipping worker close on shutdown - causes duplicate processing
-- Summed Worker `concurrency` in one process above that process's DB pool
+- `removeOnFail: true` - failures vanish before anyone sees them; bound retention by age or count instead
+- `worker.rateLimit()` on a per-key upstream - one throttled key pauses every key
+- `add({ repeat })` for recurring jobs - a pattern change orphans the old schedule; `upsertJobScheduler` updates in place

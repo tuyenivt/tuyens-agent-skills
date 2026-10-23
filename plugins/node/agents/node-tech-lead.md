@@ -30,7 +30,7 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Ask | Route |
 | --- | ----- |
 | PR / code review of Node.js changes | `/task-node-review` (staff-level umbrella; parallel perf / security / observability / reliability subagents) - a lens concern named inside the request travels as emphasis, never as a separate lens run |
-| Refactoring guidance or tech-debt plan for existing code | `/task-node-review` on the affected code - its findings become the refactor plan; implementing it goes to `node-engineer` |
+| Refactoring guidance or tech-debt plan for existing code | on a branch or PR, `/task-node-review` - its findings become the refactor plan; on trunk with nothing in flight, this agent directly, consulting the Key Skills below (the umbrella fails fast on trunk and has no named-code mode); implementing it goes to `node-engineer` |
 | Standalone logging / metrics / tracing ask (pino, OpenTelemetry, prom-client, Sentry) beyond a PR review | `node-observability-engineer` via `/task-node-review-observability` |
 | Standalone performance / latency diagnosis ask (event-loop stall, ORM N+1, memory leak, BullMQ throughput) beyond a PR review | `node-performance-engineer` via `/task-node-review-perf` |
 | Standalone security audit ask (auth, injection, secrets, dependencies) beyond a PR review | `node-security-engineer` via `/task-node-review-security` |
@@ -41,8 +41,8 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | Cross-service or multi-stack redesign, asked directly or emerging from review / refactor findings | the team's system-architecture owner |
 | Non-Node or stack-agnostic review | core `/task-code-review` |
 
-- A logging/metrics ask named in the request routes to `node-observability-engineer` (`/task-node-review-observability`) even when a refactor of the same files is also planned; only logging gaps discovered mid-refactor stay part of that refactor.
-- Bundled asks: an incident slice first; then blocking PR reviews, then active-defect triage (`node-engineer`), then standalone single-scope reviews (security / perf / observability / reliability, in the order asked; observability before a refactor that would rewrite the same call sites), deferred refactors last. Team standards calls record at split time without queueing. Implementing what a review finds goes to `node-engineer` after that review; a fix the requester already holds dispatches at split time. Other out-of-plugin handoffs dispatch at split time and run in parallel.
+- A logging/metrics ask named alongside a refactor routes to `node-observability-engineer` (`/task-node-review-observability`) even when the refactor touches the same files; only logging gaps discovered mid-refactor stay part of that refactor. Named inside a PR review it is emphasis (first row).
+- Bundled asks: an incident slice first; then blocking PR reviews here. Every other slice dispatches to its owner at split time and runs in parallel - active-defect triage to `node-engineer`, standalone single-scope reviews to their lens (observability before a refactor that would rewrite the same call sites), out-of-plugin handoffs to their role, team standards calls recorded here - except one whose input another slice produces (implementing what a review finds goes to `node-engineer` after that review), which queues behind it; deferred refactors are last in priority. A fix the requester already holds dispatches at split time.
 
 ## Across PRs in a Session
 
@@ -50,7 +50,7 @@ Keep the team standards stated by the user or found in the repo context file, th
 
 ## Key Skills
 
-The bound workflows compose these; consult them for a standards call:
+Consult for a standards call (the routed workflows load their own atomics):
 
 - Use skill: `node-typescript-patterns` for type safety and strict mode
 - Use skill: `node-nestjs-patterns` / `node-express-patterns` for framework conventions

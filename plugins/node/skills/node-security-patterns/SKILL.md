@@ -7,7 +7,7 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first; the detected framework picks the NestJS or the Express variant of each pattern (both when `unknown`) and surfaces only in the `**Stack:**` line above the blocks.
+> Load `Use skill: stack-detect` first; the detected framework picks the NestJS or the Express variant of each pattern (both only when stack-detect reports `unknown`; a named framework that is neither - Fastify, Koa, plain `http` - takes the Express form as middleware-shaped guidance) and surfaces only in the `**Stack:**` line above the blocks; the Express major comes from the `express` version in `package.json` - unreadable, the line says `Express` and both the 4 and 5 forms apply.
 
 Canonical "build it right" security patterns for NestJS / Express. `task-node-review-security` delegates here and only flags deviations.
 
@@ -22,7 +22,8 @@ Canonical "build it right" security patterns for NestJS / Express. `task-node-re
 ## Rules
 
 - Every JWT verify call declares `algorithms: [...]` explicitly - unconditional, and the only guard when the key comes from a provider or JWKS
-- Every request body has a DTO / Zod schema, and the handler writes the **parsed** result, never the raw body. Privilege fields are a **class**, not a list: any field the server assigns (ownership, tenancy, role, entitlement, price, status) is off the input contract entirely
+- Every request body has a DTO / Zod schema, and the handler writes the **parsed** result, never the raw body. Privilege fields are a **class**, not a list: any field the server assigns (ownership, tenancy, role, entitlement, price, status) is off the input contract entirely; role and tenant come from the verified token's claims, never from the body or a header
+- Authentication is global and fails closed (an `APP_GUARD`, or the auth middleware mounted above every router); a handler reachable with no authentication and not marked public (a `@Public()` decorator or an explicit allowlist entry, never an inferred intent) is `[Must]`; a service API-key path is a second authentication held to the same rules (constant-time compare against a stored hash, scoped routes, rotatable), not an exemption from the guard
 - Authorization is checked per object, not per route: load the record scoped to the actor (`where: { id, ownerId: user.sub }`) and answer 404 when it is not theirs. A route guard proves who is calling, never what they may touch
 - Passwords hashed with `argon2id` (or `bcrypt`, which truncates input at 72 bytes); never a bare SHA. Compare with `argon2.verify(hash, pw)` / `bcrypt.compare(pw, hash)` (opposite argument orders), and compare against a precomputed dummy hash when the user is missing so the timing does not reveal account existence
 - Untrusted keys never reach a recursive merge or path setter (prototype pollution), `Object.assign` onto a domain object (prototype re-parenting), or a spread onto a persisted object (mass assignment)
@@ -30,8 +31,9 @@ Canonical "build it right" security patterns for NestJS / Express. `task-node-re
 - Outbound requests to a user-controlled URL go through the SSRF guard below: every resolved address and every IP literal is checked, at connect time, against the blocked ranges, and redirects are followed manually
 - File uploads validated by magic bytes (`file-type`), not the `mimetype` header; stored outside webroot under a server-generated name; served with `Content-Disposition: attachment`
 - Webhook receivers verify the provider's actual scheme on the raw body (table below), compare with `crypto.timingSafeEqual` on equal-length buffers, bound freshness where the provider signs a timestamp, and dedupe on the delivery / event id everywhere
-- Secrets via typed `ConfigService` (NestJS) or a Zod-validated env loader (Express); fail at startup on missing keys
-- `child_process.execFile(absoluteBinary, [...args])` only - never `exec(string)`, never `shell: true` with user input
+- Secrets via typed `ConfigService` (NestJS) or a Zod-validated env loader (Express); fail at startup on missing keys - a fallback literal (`?? 'dev-secret'`) is a Secrets finding, `[Must]`
+- CORS names its origins (never `*` with credentials); every body parser carries a size limit; list endpoints cap `take` / `limit` and validate `page` / `cursor` as an integer or an opaque token
+- `child_process.execFile(absoluteBinary, [...args])` only - never `exec(string)`, never `shell: true` with user input (`[Must]` on any path carrying user-influenced input, a multer filename included)
 - `rejectUnauthorized: false` on TLS clients only in documented test fixtures
 - A redirect target from user input resolves against the app's own origin and is emitted as the full URL only when the origins match
 - Errors never echo internals (message of an unknown error, stack, SQL) to the client
@@ -74,7 +76,7 @@ const claims = jwt.verify(token, secret);
 const { payload } = await jwtVerify(token, key, { algorithms: ['HS256'], issuer: 'api', audience: 'web' });
 ```
 
-Access tokens 5-15 min; refresh tokens rotated and revocable (track `jti` in Redis/DB denylist). A second service that must verify these tokens gets the public key (or a JWKS endpoint) and its own `audience`.
+Access tokens 5-15 min; refresh tokens rotated and revocable (track `jti` in Redis/DB denylist). A second service that must verify these tokens gets the public key (or a JWKS endpoint) and its own `audience`. Against a JWKS endpoint, `passport-jwt` takes `secretOrKeyProvider: passportJwtSecret({ jwksUri, cache: true, rateLimit: true })` from `jwks-rsa`, and `jose` takes `createRemoteJWKSet(new URL(jwksUri))` as the key - the `algorithms` allowlist stays.
 
 ### Object-Level Authorization
 
@@ -128,7 +130,7 @@ const parsed = schema.parse(req.body);   // default mode strips unknown keys; .s
 prisma.user.update({ where: { id }, data: { name: parsed.name, email: parsed.email } });
 ```
 
-Privilege fields (`role`, `isAdmin`, `ownerId`, `userId`, `tenantId`, `verified`, `price`, `status`) are server-set. Admin paths use a separate DTO/schema with an explicit role guard.
+Privilege fields (`role`, `isAdmin`, `ownerId`, `userId`, `tenantId`, `verified`, `price`, `status`) are server-set. Admin paths use a separate DTO/schema with an explicit role guard. A global `ValidationPipe` without `whitelist` is `[Must]`: every DTO then admits the whole body.
 
 ### Prototype Pollution and Re-Parenting
 
@@ -148,14 +150,14 @@ for (const k of allowed) if (req.body && Object.hasOwn(req.body, k)) target[k] =
 const map = Object.create(null);
 ```
 
-Object spread (`{ ...req.body }`) defines own properties and pollutes nothing - its hazard is mass assignment, and a latent own `"__proto__"` key that a later merge will act on. Current lodash guards `merge` / `set` / `defaultsDeep` against these keys and Express's `qs` drops `__proto__` by default, so the live vectors are hand-rolled recursive merges and path setters - and any library path function (`set`, `unset`, `omit`) handed a user-controlled path; keep lodash current.
+Object spread (`{ ...req.body }`) defines own properties and pollutes nothing - its hazard is mass assignment, and a latent own `"__proto__"` key that a later merge will act on. Current lodash guards `merge` / `set` / `defaultsDeep` against these keys, Express 4's `qs` drops `__proto__` by default, and Express 5's default `simple` parser builds no nested keys at all, so the live vectors are hand-rolled recursive merges and path setters - and any library path function (`set`, `unset`, `omit`) handed a user-controlled path; keep lodash current.
 
 ### SSRF Guard
 
 Validating a hostname and then handing the raw URL to `fetch` does **not** work: `fetch` resolves again, so a DNS record can answer public on your check and private on the real request. The address you approve has to be the address the socket dials, and an IP literal never reaches DNS at all.
 
 ```typescript
-import { Agent, fetch } from 'undici';               // fetch and dispatcher from the same undici
+import { Agent, fetch, type Response } from 'undici';   // fetch, dispatcher, and Response type from the same undici; undici 7 on Node 20.19 (8 needs 22.19+)
 import { lookup } from 'node:dns';
 import { isIP } from 'node:net';
 import ipaddr from 'ipaddr.js';
@@ -203,7 +205,7 @@ Sign what you send so customers can verify it: `HMAC-SHA256(endpointSecret, `${t
 ### File Upload and Import
 
 ```typescript
-import { fileTypeFromBuffer } from 'file-type';     // ESM-only since v17 - a CommonJS build needs Node 20.19+ / 22.12+ require(esm) or file-type@16 (FileType.fromBuffer)
+import { fileTypeFromBuffer } from 'file-type';     // ESM-only since v17 - a CommonJS build needs Node 20.19+ / 22.12+ require(esm) or file-type@16 (FileType.fromBuffer); file-type 21 on Node 20.19 (22 needs 22+)
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -222,7 +224,7 @@ async upload(@UploadedFile() file: Express.Multer.File) {
 }
 ```
 
-Text formats (CSV, JSON) have no magic bytes: enforce the size limit, parse as a stream with a row cap, validate every row with the schema, and reject the file on the first invalid row rather than importing part of it. A CSV the app later **exports** neutralises cells beginning with `=`, `+`, `-`, `@`, tab, or CR (prefix `'`) - formula injection when a user opens it in a spreadsheet.
+Express: `multer({ storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }).single('file')`, then the same magic-byte check on `req.file.buffer`. Text formats (CSV, JSON) have no magic bytes: enforce the size limit, parse as a stream with a row cap, validate every row with the schema, and reject the file on the first invalid row rather than importing part of it. A CSV the app later **exports** neutralises cells beginning with `=`, `+`, `-`, `@`, tab, or CR (prefix `'`) - formula injection when a user opens it in a spreadsheet.
 
 ### Webhook Signatures (receiving)
 
@@ -270,7 +272,8 @@ A signed download link (`/statements/:id?exp=..&sig=..`) is the same shape: `HMA
 ```typescript
 // config.schema.ts
 export const ConfigSchema = z.object({
-  DATABASE_URL: z.string().url(),
+  DATABASE_URL: z.url(),                              // Zod 4; Zod 3 spells it z.string().url()
+  APP_ORIGIN: z.url({ protocol: /^https?$/ }).transform((u) => new URL(u).origin),   // the redirect check below compares origins - normalise once
   JWT_PRIVATE_KEY: z.string().startsWith('-----BEGIN'),
   JWT_PUBLIC_KEY: z.string().startsWith('-----BEGIN'),
   STRIPE_WEBHOOK_SECRET: z.string().min(16),
@@ -289,10 +292,10 @@ Secrets come from Vault / AWS SM / GCP SM / Doppler; `.env` for local dev only a
 ### `eval` / `new Function` / `vm` Prohibitions
 
 ```typescript
-// All prohibited on user input - any reachable path is Critical
+// All prohibited on user input - any reachable path is [Must]
 eval(userInput);
 new Function('return ' + userInput)();
-vm.runInNewContext(userInput, sandbox);          // vm2 deprecated, CVEs
+vm.runInNewContext(userInput, sandbox);          // node:vm is not a sandbox; vm2 has a record of escapes
 require(userInput);
 await import(userInput);
 
@@ -322,12 +325,13 @@ res.redirect(target.origin === env.APP_ORIGIN ? target.href : '/');
 exec(`convert ${userInput} out.png`);
 
 // Good - absolute binary, server-generated paths with explicit format prefixes from the
-// magic-byte-verified type (ImageMagick honours no "--" and reads coder prefixes like msl: /
-// ephemeral: from bare paths), bounded. ImageMagick 7: /usr/bin/magick; 6: /usr/bin/convert
+// magic-byte-verified type (ImageMagick reads coder prefixes like msl: / ephemeral: from bare
+// paths, so the prefix is the guard; "--" marks only the next argument as a filename on 6 and 7 and stops no coder prefix), bounded. 7: /usr/bin/magick; 6: /usr/bin/convert
 const coder = type.ext === 'jpg' ? 'jpeg' : type.ext;
 execFile('/usr/bin/magick', [`${coder}:${srcPath}`, '-resize', '100x100', `png:${outPath}`],
   { timeout: 10_000, maxBuffer: 8 << 20 });
-// and restrict coders in ImageMagick's policy.xml
+// and restrict coders in ImageMagick's policy.xml. Any converter run on user input (pdftotext, ffmpeg) is the same
+// shape: execFile, fixed flags, the server-generated path last, a timeout
 
 // Bad - disables TLS verification for every request through this agent
 const agent = new https.Agent({ rejectUnauthorized: false });
@@ -353,29 +357,23 @@ Cookie-authenticated routes that change state need CSRF protection: `SameSite=La
 
 ## Output Format
 
-When authoring, emit the `**Stack:**` line, then one block per pattern applied plus the code; a build over existing code is authoring plus review - findings for the existing defects the change touches, then the blocks. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, the output opens with the `**Stack:**` line, then each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file) followed by `Issue:` and `Fix:` lines and then `Pattern:` and `Risk Mitigated:` only - the heading is the surface and `Fix:` is the change. `[Must]` first; `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. One finding per defect at one site; related sub-defects at the same site (a webhook's scheme, freshness, and dedupe) are one finding. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the findings.
+When authoring, emit the `**Stack:**` line, then one block per pattern applied (every slot repeated per block) plus the code; a build over existing code is authoring plus review - findings for the existing defects the change touches, then the blocks. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, the output opens with the `**Stack:**` line, then each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file) followed by `Issue:` and `Fix:` lines and then `Pattern:` and `Risk Mitigated:` only - the heading is the surface and `Fix:` is the change. `[Must]` first; `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. One finding per defect at one site; related sub-defects at the same site (a webhook's scheme, freshness, and dedupe) are one finding, and a site with defects under two Patterns (a `main.ts` missing both the body limit and `whitelist`) is one finding per Pattern. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the findings.
 
 ```
-**Stack:** {NestJS | Express 4 | Express 5 | unknown (NestJS and Express shown)} + {Passport JWT | jose | jsonwebtoken | none - no JWT surface}
+**Stack:** {NestJS | Express 4 | Express 5 | Express (major unreadable - 4 and 5 forms shown) | <other> (Express form, middleware-shaped) | unknown (NestJS and Express shown)} + {Passport JWT | jose | jsonwebtoken | none - no JWT surface}
 
-Pattern: {JWT | Authorization | Mass Assignment | Prototype Pollution | SSRF | File Upload | File Import | Webhook Receiver | Webhook Sender | Signed Link | Secrets | Eval | Injection | Open Redirect | Exec | TLS | Password Storage | CSRF | Error Disclosure}
+Pattern: {Authentication | JWT | Authorization | Mass Assignment | Prototype Pollution | SSRF | File Upload | File Import | Webhook Receiver | Webhook Sender | Signed Link | Secrets | Eval | Injection | Open Redirect | Exec | TLS | Password Storage | CSRF | Error Disclosure | Transport (CORS, body limit, pagination cap)}
 
-Surface: {file:line - controller/service/middleware, or the module being authored}
+Surface: {file:line - controller/service/middleware, or the module being authored} {authoring only}
 
-Change: {what was applied, or what must be}
+Change: {what was applied} {authoring only}
 
 Risk Mitigated: {auth bypass | broken object-level authorization | mass assignment | prototype pollution | SSRF | RCE | argument injection | SQL injection | path traversal | replay | forgery | secret exposure | timing oracle | account enumeration | open redirect | TLS bypass | CSRF | formula injection | resource exhaustion | information disclosure}
 ```
 
 ## Avoid
 
-- `jsonwebtoken.verify(token, key)` without an `algorithms` allowlist
-- Writing `req.body` after validating it, or `.passthrough()` schemas on persisted input
-- `Object.assign(target, req.body)` or a recursive merge on user input
+- `z.looseObject` / `.loose()` (Zod 3 `.passthrough()`) schemas on persisted input
 - `===` on signatures / tokens - use `crypto.timingSafeEqual` on equal-length buffers
-- File-type validation by `mimetype` header
-- SSRF allowlists that check the raw URL string instead of the resolved address
-- Reading secrets from the raw environment in business logic - go through validated config
-- `vm2` or any in-process JS sandbox as a security boundary
+- `NODE_TLS_REJECT_UNAUTHORIZED=0` anywhere outside a test fixture
 - `csurf` (deprecated)
-- A redirect check on "starts with /" - resolve against your own origin and compare origins

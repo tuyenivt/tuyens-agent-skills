@@ -9,7 +9,7 @@ user-invocable: false
 
 > Load `Use skill: stack-detect` first; the framework and the HTTP library in `package.json` pick the bindings below. The framework surfaces in the Resiliency Assessment's `**Stack:**` line, the HTTP library in each block's `Wrapper:` line.
 
-Owns the Node bindings for outbound HTTP discipline. `ops-resiliency` owns the stack-agnostic contract - timeout and retry policy, retryable status codes, `Retry-After`, breakers, bulkheads, the per-dependency client wrapper, and the in-process-versus-queue retry-location decision. Load it first. The security workflow checks SSRF (`node-security-patterns`); the perf workflow checks event-loop blocking; this skill owns the `AbortSignal` / `fetch` / `axios` / BullMQ expression of those rules and the MSW test story.
+> Load `Use skill: ops-resiliency` first - it owns the stack-agnostic contract (timeout and retry policy, retryable statuses, `Retry-After`, breaker and bulkhead sizing, retry-budget caps, the retry-location decision) and the Resiliency Assessment envelope. This skill owns the `AbortSignal` / `fetch` / `axios` / BullMQ expression of those rules and the MSW test story; SSRF is `node-security-patterns`, event-loop blocking the perf workflow.
 
 ## When to Use
 
@@ -21,12 +21,11 @@ Owns the Node bindings for outbound HTTP discipline. `ops-resiliency` owns the s
 ## Rules
 
 - Every outbound call has a total deadline: `AbortSignal.timeout(ms)` on `fetch`. Node's `fetch` has no total-request deadline - undici's defaults are idle timers (`headersTimeout` and `bodyTimeout` 300s, connect 10s), and a body trickled one chunk at a time never trips them
-- One wrapper per vendor, but retry policy is per **call site**: the same vendor called from a sync handler and from a worker gets two named policy profiles on one client, not two clients
 - Honor `Retry-After` on 429 / 503 - bounded; if it exceeds the in-process budget, delegate to BullMQ
 - Retry automatically only idempotent verbs (`GET`, `HEAD`, `PUT`, `DELETE`) and a `POST` carrying an idempotency key; any other `POST` retries only failures proven to precede acceptance
 - In-process retry budget is small (2-3 attempts, exponential with jitter, capped under the caller's own deadline) - longer waits go to BullMQ where the queue owns scheduling, and the processor then calls with 1 attempt
-- One client wrapper per third party (`StripeClient`, `ShipFastClient`) - base URL, auth, timeout, retry, breaker, error translation in one place; no scattered `fetch('https://api.x.com/...')` in business code
-- Non-2xx, transport, and parsing failures translate to a domain `UpstreamError` / `ValidationError` / `InternalError` (see `node-exception-handling`) at the wrapper boundary - `fetch` never throws on a status, so the wrapper checks `res.ok` itself, and `TypeError: fetch failed` never leaks to controllers
+- One client wrapper per third party (`StripeClient`, `ShipFastClient`) - base URL, auth, timeout, retry, breaker, error translation in one place; no scattered `fetch('https://api.x.com/...')` in business code. Retry policy is per **call site**: the same vendor called from a sync handler and from a worker gets two named policy profiles on one client, not two clients
+- Non-2xx, transport, and parsing failures translate to a domain `UpstreamError` / `ValidationError` / `InternalError` (`node-exception-handling`; a project with no such hierarchy gets it in the same change) at the wrapper boundary - `fetch` never throws on a status, so the wrapper checks `res.ok` itself, and `TypeError: fetch failed` never leaks to controllers
 - The connection pool lives in the **agent**: build one `undici.Agent` / `http.Agent` (or rely on the global agent, keep-alive since Node 19) at module load, never per request. `axios.create` / `got.extend` only merge config - construct them once for the interceptors and hooks, not for pooling
 - Tests use MSW to intercept HTTP at the network layer - never patch `global.fetch` or `axios.get` directly
 - A user-influenced URL (a customer webhook endpoint, a "send test" button) goes through the SSRF guard in `node-security-patterns`, not a vendor wrapper
@@ -43,7 +42,7 @@ const res = await fetch(url);
 const res = await fetch(url, { signal: AbortSignal.timeout(5_000) });
 ```
 
-`axios` (Node http adapter): `timeout` is a socket-idle timer, the same class as undici's - pass `signal: AbortSignal.timeout(ms)` for a hard deadline. `undici.request`: `signal: AbortSignal.timeout(ms)`, with `headersTimeout` / `bodyTimeout` as idle backstops. `got`: `timeout: { request: ms }`. An SDK with no `signal` option (Twilio, most vendor SDKs) takes its own `timeout` client option. Pick one library per project and pick it for the toolchain: MSW intercepts `fetch` / `axios` / `got` but not `undici.request`, and `got` is ESM-only - a CommonJS build loads it only through `await import()` or Node 20.19+ / 22.12+ `require(esm)`.
+`axios` (Node http adapter): `timeout` is a socket-idle timer, the same class as undici's - pass `signal: AbortSignal.timeout(ms)` for a hard deadline. `undici.request`: `signal: AbortSignal.timeout(ms)`, with `headersTimeout` / `bodyTimeout` as idle backstops. `got`: `timeout: { request: ms }`. An SDK with no `signal` option (Twilio, most vendor SDKs) takes its own `timeout` client option. Pick one library per project and pick it for the toolchain: MSW intercepts `fetch` / `axios` / `got` but not `undici.request` (an internal high-throughput call may still use `undici.request` for its lighter response path - its tests then use undici's `MockAgent`), and `got` is ESM-only - a CommonJS build loads it only through `await import()` or `require(esm)` (Node 20.19+ / 22.12+); got 15+ needs Node 22, so a Node 20 project pins got 14. Node does not expose its bundled undici, so a `dispatcher:` for the built-in `fetch` is an `Agent` from an npm `undici` major the bundled one accepts (`process.versions.undici`; undici 6 and 7 work on Node 20.19 and 22; undici 8 (engines Node >=22.19) fails on Node 22 with `fetch failed` / `invalid onRequestStart method` and does not load on Node 20) - otherwise use that package's own `fetch` with its `Agent`. `new Agent({ connections: N })` caps the pool per origin.
 
 Express and NestJS requests have no `signal`. To cancel a GET when the client disconnects, build one: `const ac = new AbortController(); res.on('close', () => { if (!res.writableFinished) ac.abort(); })`, then `AbortSignal.any([ac.signal, AbortSignal.timeout(5_000)])` (Node 20.3+), or pass `ac.signal` as `callWithRetry`'s `outer` signal. Never wire it into a non-idempotent write - a disconnect then aborts a request the server may already have accepted, turning a known outcome into an unknown one.
 
@@ -114,7 +113,18 @@ export const interactive: Profile = { attempts: 2, baseMs: 200, perAttemptMs: 3_
 export const queued: Profile = { attempts: 1, baseMs: 0, perAttemptMs: 10_000, totalMs: 10_000 };
 ```
 
-The helper is `fetch`-shaped. For axios, map an `AxiosError` with `response` to its `status` / headers, and `ERR_CANCELED` / `ECONNABORTED` to a timeout, before classifying. Size `interactive` under the caller's deadline: `attempts x perAttemptMs + waits <= caller deadline - the caller's own work`. An 800 ms request budget with ~200 ms of its own work leaves ~600 ms: `{ attempts: 2, perAttemptMs: 250, baseMs: 50, totalMs: 600 }`, or one attempt when even that does not fit. `queued` makes one attempt because the queue owns retry - and the queue's own `attempts` is subject to the same idempotency rule. If `Retry-After` exceeds the budget, throw and let the caller decide: surface a domain error, or enqueue a BullMQ job that retries with the queue's `attempts` + `backoff`.
+The helper is `fetch`-shaped. For axios, normalise the `AxiosError` before `classify()` sees it:
+
+```typescript
+const toRetryError = (e: unknown): unknown => {
+  if (!axios.isAxiosError(e)) return e;
+  if (e.response) return new HttpStatusError(e.response.status, new Headers(e.response.headers as Record<string, string>));
+  if (e.code === 'ERR_CANCELED' || e.code === 'ECONNABORTED') return new DOMException('timeout', 'TimeoutError');
+  return e;                                   // transport failure: classify() reads e.code
+};
+```
+
+Wrap the call as `callWithRetry((signal) => client.get(url, { signal }).catch((e) => { throw toRetryError(e); }), p)`. Size `interactive` under the caller's deadline: `attempts x perAttemptMs + waits <= caller deadline - the caller's own work`. An 800 ms request budget with ~200 ms of its own work leaves ~600 ms: `{ attempts: 2, perAttemptMs: 250, baseMs: 50, totalMs: 600 }`, or one attempt when even that does not fit; two sequential calls under one caller deadline share it, so the second's `totalMs` and `perAttemptMs` are both capped at the deadline minus the elapsed time. `queued` makes one attempt because the queue owns retry - and the queue's own `attempts` is subject to the same idempotency rule. If `Retry-After` exceeds the budget, throw and let the caller decide: surface a domain error, or enqueue a BullMQ job that retries with the queue's `attempts` + `backoff`.
 
 A `Retry-After` from a **per-key** upstream (a per-store or per-tenant API) throttles that key only: in a worker, defer that job (`job.moveToDelayed`), never pause the whole queue - see `node-bullmq-patterns`.
 
@@ -129,7 +139,7 @@ const stripe = new Stripe(key, { maxNetworkRetries: 2, timeout: 5_000 });
 await stripe.paymentIntents.create(
   { amount, currency: 'usd', customer, payment_method, confirm: true,
     automatic_payment_methods: { enabled: true, allow_redirects: 'never' } },   // server-side confirm, no return_url
-  { idempotencyKey: `pi-${orderId}-${attemptId}` },
+  { idempotencyKey: `pi-${orderId}-${attemptId}` },   // in a processor, attemptId is the payment attempt's id from job.data (or job.id) - stable across BullMQ retries, never job.attemptsMade
 );
 ```
 
@@ -138,13 +148,15 @@ Internal POST endpoints accept an `Idempotency-Key` header and store key + respo
 When the vendor offers no idempotency key at all (Twilio, most SMS and push providers), the dedup is yours: claim before you call, mark it sent after, and treat an ambiguous outcome as sent.
 
 ```typescript
-// ioredis (the client BullMQ already requires); node-redis takes { NX: true, PX: ms }
+// ioredis (the client BullMQ 5 depends on; an optional peer from BullMQ 6); node-redis takes { NX: true, PX: ms }
 const key = `sms-${verificationId}`;
 const HORIZON_MS = 2 * 3_600_000;        // longer than every retry path: queue backoff + a stalled-job window
 if ((await redis.set(key, 'claimed', 'PX', HORIZON_MS, 'NX')) !== 'OK') return;   // sent or in flight
 try {
   await twilio.messages.create(...);     // only the vendor call is classified
 } catch (e) {
+  // the SDK throws RestException { status, code: <numeric Twilio code> } - no errno string: map it to HttpStatusError first, or classify() sees
+  // every failure as ambiguous (safe - the claim stays - but a 429 refusal is then never retried)
   if (classify(e).preAcceptance) await redis.del(key).catch(() => {});   // provably not sent - free the key
   throw e;                                // ambiguous: KEEP the claim, never re-send within the window
 }
@@ -162,7 +174,8 @@ async sendInvoice(orderId: string): Promise<void> {
   } catch (e) {
     // SendGrid mail send is a POST with no idempotency key: queue only failures that provably
     // never reached SendGrid; an ambiguous failure goes through the claim key above instead
-    if (e instanceof UpstreamError && classify(e.cause).preAcceptance) {
+    if (e instanceof UpstreamError && (classify(e.cause).preAcceptance
+        || e.cause instanceof BrokenCircuitError || e.cause instanceof BulkheadRejectedError)) {   // rejected locally: never sent
       await this.queue.add('send-invoice', { orderId }, {
         jobId: `send-invoice-${orderId}`,                // a second caller enqueues nothing
         attempts: 8,
@@ -177,9 +190,9 @@ async sendInvoice(orderId: string): Promise<void> {
 }
 ```
 
-BullMQ's exponential backoff is `delay x 2^(attemptsMade - 1)`: 8 attempts at 30s wait 30s + 60s + ... + 1920s, about 63 minutes in total. Recent BullMQ 5 releases take `jitter` (0-1) on the built-in backoff; on older ones register a custom `settings.backoffStrategy` on the Worker.
+BullMQ's exponential backoff is `delay x 2^(attemptsMade - 1)`: 8 attempts at 30s wait 30s + 60s + ... + 1920s, about 63 minutes without jitter (`jitter: 0.5` draws each wait from its upper half: 32-63 minutes). BullMQ 5.54+ takes `jitter` (0-1) on the built-in backoff; on older ones register a custom `settings.backoffStrategy` on the Worker.
 
-Rule of thumb: **in-process retry seconds, BullMQ retry minutes-to-hours**. Once the queue owns the retry, the processor calls the vendor with the `queued` profile (1 attempt) - otherwise 8 job attempts x 2 `interactive` attempts is 16 upstream calls per failure, the multiplied budget `ops-resiliency` prohibits.
+Rule of thumb: **in-process retry seconds, BullMQ retry minutes-to-hours**. Once the queue owns the retry, the processor calls the vendor with the `queued` profile (1 attempt) - otherwise 8 job attempts x 2 `interactive` attempts is 16 upstream calls per failure, the multiplied budget `ops-resiliency` prohibits. A non-retryable failure in the processor (a `ValidationError`, an `InternalError` from a 401/403 or other non-retryable 4xx - never a 408/425/429, which arrive as `UpstreamError`) throws `UnrecoverableError` - `node-bullmq-patterns`.
 
 ### Per-Vendor Client Wrapper
 
@@ -188,7 +201,7 @@ Rule of thumb: **in-process retry seconds, BullMQ retry minutes-to-hours**. Once
 @Injectable()
 export class ShipFastClient {
   private readonly breaker = circuitBreaker(handleWhen((e) => e instanceof UpstreamError), {
-    halfOpenAfter: 30_000, breaker: new ConsecutiveBreaker(5),        // cockatiel
+    halfOpenAfter: 30_000, breaker: new ConsecutiveBreaker(5),        // cockatiel; a SamplingBreaker for high-rps callers
   });
   private readonly bulkhead = bulkhead(20, 50);                         // max 20 in flight, 50 queued
 
@@ -239,7 +252,7 @@ export class ShipFastClient {
 }
 ```
 
-One translation point per vendor: HTTP status -> domain error. Controllers see `ValidationError` / `UpstreamError` / `InternalError`, never an `HttpStatusError`, `AxiosError`, or `TypeError: fetch failed`. The breaker counts only `UpstreamError` (a 4xx is the caller's problem, not the vendor's health). A caller that has a fallback (a cached rate, a default estimate) catches `UpstreamError` and logs the original failure at WARN; which fallback is acceptable - fail open, fail closed, send to review - is a product decision the call site states. Give each caller class its own bulkhead when their latency classes differ (a checkout handler and a nightly job).
+One translation point per vendor: HTTP status -> domain error. Controllers see `ValidationError` / `UpstreamError` / `InternalError`, never an `HttpStatusError`, `AxiosError`, or `TypeError: fetch failed`. The breaker counts only `UpstreamError` (a 4xx is the caller's problem, not the vendor's health); without cockatiel, a consecutive-failure counter with an open-until timestamp and a half-open state that admits one probe call is the same breaker. A caller that has a fallback (a cached rate, a default estimate) catches `UpstreamError` and logs the original failure at WARN; which fallback is acceptable - fail open, fail closed, send to review - is a product decision the call site states. Give each caller class its own bulkhead when their latency classes differ (a checkout handler and a nightly job). An outbound call issued inside a database transaction is `node-transaction-patterns`' defect (I/O outside the transaction, or an outbox), not a retry-policy finding.
 
 ### Module-Level Clients, Not Per-Request
 
@@ -284,38 +297,32 @@ it('translates a 503 into UpstreamError', async () => {
 
 ## Output Format
 
-When authoring, emit the blocks plus the client code they describe; a build over existing code is authoring plus review (the envelope below carries the existing defects). Emit one block per **vendor call site** - a vendor called from both a handler and a processor gets two blocks, since the policy differs; a user-supplied URL is its own block with `Vendor: user-supplied URL`. When reviewing or diagnosing, also emit `ops-resiliency`'s Resiliency Assessment envelope with a Node binding in every Recommendation: the blocks describe current state, the envelope carries the finding, severity, and fix. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the blocks, and a fix order goes in the envelope as its Gaps' severity order.
+When authoring, emit the blocks plus the client code they describe; a build over existing code is authoring plus review (the envelope below carries the existing defects). Emit one block per **vendor call site** - a vendor called from both a handler and a processor gets two blocks, since the policy differs, and so does a handler issuing a GET and a POST to one vendor when their retry policies differ; a user-supplied URL is its own block with the `user-supplied URL` Vendor value. A module of exported functions that owns one vendor's base URL and auth is a wrapper too; `scattered` is for calls with no shared owner. When reviewing or diagnosing, also emit `ops-resiliency`'s Resiliency Assessment envelope with a Node binding in every Recommendation: the blocks describe current state, the envelope carries the finding, severity, and fix. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the blocks, and a fix order goes in the envelope as its Gaps' severity order.
 
 ```
-Vendor: {Stripe | SendGrid | internal-service-X | user-supplied URL (SSRF - node-security-patterns) | ...}
+Vendor: {<vendor name, e.g. Stripe, ShipFast> | internal-service-<name> | user-supplied URL}
 
 Call Site: {sync handler file:line | BullMQ processor file:line}
 
-Wrapper: {file:line of the client class and its HTTP library, or "scattered - needs consolidation"}
+Wrapper: {file:line of the client class or module and its HTTP library | scattered - bare calls at <file:line, ...>, needs consolidation}
 
-Timeout: {per-attempt ms and total budget ms | idle timers only (defect) | MISSING}
+Timeout: {per-attempt ms and total budget ms | SDK-owned: <option> ms | idle timers only (defect) | MISSING}
 
-Retry Policy: {none | in-process N attempts, expo+jitter, cap M ms | SDK-owned: <option> N | delegated to BullMQ: job attempts N, backoff <shape> | UNBOUNDED (defect) | multiplied: N wrapper x M job attempts (defect)}; Retry-After {honored | ignored (defect) | n/a}
+Retry Policy: {none | in-process N attempts, expo+jitter, cap M ms | SDK-owned: <option> N | delegated to BullMQ: job attempts {N | unset - 1 attempt, no retry (defect) | unknown - enqueuer not read}, backoff <shape> | status-only loop - thrown errors never retried (defect) | UNBOUNDED (defect) | multiplied: N wrapper x M job attempts (defect)}; Retry-After {honored | ignored (defect) | n/a}
 
 Idempotency: {GET/HEAD/PUT/DELETE only | Idempotency-Key on POST | app-owned claim key | POST without key, pre-acceptance retry only | NONE on a retried POST (defect) | N/A}
 
-Connection Pool: {module-level agent | global dispatcher | per-request agent or client (defect)}
+Connection Pool: {module-level agent | global dispatcher | axios/got instance built once (global agent) | per-request agent or client (defect)}
 
 Breaker / Bulkhead: {breaker thresholds and what it counts; bulkhead limit | none}
 
-Error Translation: {what HTTP statuses -> what domain errors | status unchecked - res.json() on any status (defect) | none - vendor error leaks (defect)}
+Error Translation: {what HTTP statuses -> what domain errors | upstream status echoed to the caller (defect) | status unchecked - res.json() on any status (defect) | none - vendor error leaks (defect)}
 
 Tests: {MSW handler at path/to/setup.ts | missing | mocks global.fetch (defect)}
 ```
 
 ## Avoid
 
-- `fetch(url)` without `AbortSignal.timeout(...)` - undici's idle timers are not a deadline
-- Retrying POST without an `Idempotency-Key` - duplicate writes
-- Unbounded in-process retry loops (sync handlers must respond in seconds, not minutes)
 - Letting an SDK's or library's own retry interleave with yours - pick one. `axiosRetry(client, opts)` registers its interceptors itself and returns their ids; wrapping it in `interceptors.response.use(...)` only adds a dead no-op interceptor, and calling it on the global `axios` wires nothing on your `client`
-- Retrying only on status codes - timeouts and connection errors throw and never reach a status check
-- Piping a client-disconnect signal into a POST/PATCH - a disconnect makes the write's outcome unknown
 - Treating `Retry-After: 600` as if it were milliseconds (it's seconds, or an HTTP-date)
-- Retrying 4xx responses other than 408 / 425 / 429 and a 409 carrying `Retry-After`
 - One mega-`HttpClient` class for all vendors - one wrapper per vendor, each with its own error map

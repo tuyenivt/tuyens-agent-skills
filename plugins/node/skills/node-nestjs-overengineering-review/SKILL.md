@@ -7,7 +7,7 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first. Use only when the detected framework is NestJS; its `ORM` and `Database` pick the constraint vocabulary and duplicate-key code below, and surface only in the `**Engine:**` line above the categories.
+> Load `Use skill: stack-detect` first. Use only when the framework is NestJS - a `package.json` listing `@nestjs/core`, or, with `Framework: unknown` (pasted code, no manifest), code under review that imports `@nestjs/*`, is NestJS whatever else it lists. Otherwise the whole output is one line in place of the `**Engine:**` line and nothing else: `Framework: Express - run node-express-overengineering-review` for Express, `Framework: <name> - not a NestJS project; no review` for anything else. `ORM` and `Database` pick the constraint vocabulary and duplicate-key code below, and surface only in the `**Engine:**` line above the categories.
 
 ## When to Use
 
@@ -16,7 +16,7 @@ user-invocable: false
 
 ## Rules
 
-- Cite the constraint making the code redundant: FK, a NOT NULL column, unique index, Prisma `@unique` / non-`?` field, TS non-null type, another DTO decorator, `ValidationPipe`, or framework guarantee. A premature abstraction is redundant against a simpler construct that already does the job - name that construct.
+- Cite the constraint making the code redundant: FK, a NOT NULL column, unique index, Prisma `@unique` / non-`?` field, TS non-null type, another DTO decorator, `ValidationPipe`, or framework guarantee. A premature abstraction is redundant against a simpler construct that already does the job - name that construct. `TS strict-null` holds when the effective tsconfig (following `extends`) has `strictNullChecks: true`, or `strict: true` with no `strictNullChecks: false`; with no tsconfig in the read set the finding is `[Recommend]` and names strict-null as assumed.
 - Intent - one predicate, shared with `node-express-overengineering-review`:
   - **`[Must]`** when the diff shows a measurable cost: an extra query per write, a wrong or masked status (a mis-mapped exception, a failure answered with a success status), a per-request allocation, or an abstraction whose every consumer is a passthrough. Common instances: manual unique-check before insert, a broad `catch` defeating the global filter, a single-impl service interface, `Scope.REQUEST` on a stateless provider, `BaseService<T>` with one child, a dead `orThrow` null check whose intended 404 answers 500.
   - **`[Recommend]`** otherwise - dead code that changes no status, a speculative config key, a stacked decorator - and whenever the constraint that makes the code redundant, or the read-site search, lies outside what you could read: state the assumed justification or the unchecked source and ask the author to confirm.
@@ -70,16 +70,17 @@ await this.prisma.user.create({ data: dto });
 // Good - let the index decide; translate the driver error for the column that collided
 try { return await this.prisma.user.create({ data: dto }); }
 catch (e) {
-  const t = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002' ? e.meta?.target : undefined;
-  // field names on PostgreSQL / SQLite, the index name string on MySQL
-  if (Array.isArray(t) ? t.includes('email') : typeof t === 'string' && t.endsWith('_email_key')) {
+  // Prisma 7: meta.driverAdapterError.cause.constraint - { index: <constraint name> } on MySQL and on PostgreSQL from adapter-pg 7.10, { fields } on SQLite and PostgreSQL before 7.10; Prisma 5-6 exposed it as meta.target
+  const c = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002'
+    ? (e.meta?.driverAdapterError as { cause?: { constraint?: { fields?: string[]; index?: string } } } | undefined)?.cause?.constraint : undefined;
+  if (c?.fields?.includes('email') || c?.index?.endsWith('_email_key')) {
     throw new ConflictException('email taken');
   }
   throw e;
 }
 ```
 
-TypeORM: catch `QueryFailedError` with `driverError.code === '23505'` (PostgreSQL), `'ER_DUP_ENTRY'` (MySQL), `'SQLITE_CONSTRAINT_UNIQUE'` (`better-sqlite3`), or `'SQLITE_CONSTRAINT'` plus a `UNIQUE constraint failed` message (`sqlite3`, TypeORM `type: 'sqlite'`); with `Database: unknown`, the finding names the engine it assumed. The same shape applies to a parent-exists SELECT before an insert: the FK decides - translate Prisma `P2003` (scalar `customerId: id`) or `P2025` (nested `connect`), `23503`, `ER_NO_REFERENCED_ROW_2`, or `SQLITE_CONSTRAINT_FOREIGNKEY` instead. Justified when: Prisma `relationMode = "prisma"` - there is no database FK, and the SELECT is load-bearing.
+TypeORM: catch `QueryFailedError` with `driverError.code === '23505'` (PostgreSQL), `'ER_DUP_ENTRY'` (MySQL), `'SQLITE_CONSTRAINT_UNIQUE'` (`better-sqlite3`), or `'SQLITE_CONSTRAINT'` plus a `UNIQUE constraint failed` message (`sqlite3`, TypeORM `type: 'sqlite'`); with `Database: unknown`, the finding names the engine it assumed. The same shape applies to a parent-exists SELECT before an insert: the FK decides - translate Prisma `P2003` (scalar `customerId: id`) or `P2025` (nested `connect`), `23503`, `ER_NO_REFERENCED_ROW_2`, or `SQLITE_CONSTRAINT_FOREIGNKEY` (`better-sqlite3`; `sqlite3` gives `SQLITE_CONSTRAINT` plus a `FOREIGN KEY constraint failed` message) instead. Justified when: Prisma `relationMode = "prisma"` - there is no database FK, and the SELECT is load-bearing.
 
 ### Category 2: Defensive code for impossible states
 
@@ -138,7 +139,7 @@ catch (e) {
 
 #### `try { ... } catch (e) { throw e }` no-op rethrow
 
-Delete it (Redundant because `superseded by default propagation`). Wrap only when the wrap adds context, and with a plain `new Error('<context>', { cause: e })` (tsconfig `lib` ES2022+): Nest's default filter logs non-`HttpException` errors, while an `HttpException` wrapper is answered without logging and turns a service's 404/409 into 500.
+Delete it (Redundant because `superseded by default propagation`). A rethrow that replaces an `HttpException` (or an error a filter maps) with a class the filter answers differently is `[Must]`, Cost `wrong or masked status`, Redundant because `superseded by default propagation`: the default filter takes the status from the outer error alone (it logs the `cause` chain but never answers from it), so a plain `Error` wrapper turns a wrapped 404/409 into a logged 500, and an `HttpException` wrapper answers with its own status, unlogged (`InternalServerErrorException` 500, `BadRequestException` 400) - never the wrapped one. Rethrow an `HttpException` unchanged (`if (e instanceof HttpException) throw e;`); wrap only a non-`HttpException` error, only when the wrap adds context, and with `new Error('<context>', { cause: e })` (tsconfig `lib` ES2022+). A custom non-`HttpException` class thrown from a handler with no filter mapping it belongs here too: `[Must]`, Cost `wrong or masked status`, Redundant because `superseded by <the HttpException subclass it stands for, e.g. ConflictException>` - the filter answers it 500 (unless the class carries a numeric `statusCode`, which it answers as-is).
 
 ### Category 3: Premature abstraction
 
@@ -178,7 +179,7 @@ export class OrderService { /* stateless */ }
 @Injectable() export class OrderService { /* ... */ }
 ```
 
-Check the provider's dependencies first: a provider that injects `REQUEST` or any request-scoped provider stays request-scoped after the explicit scope is deleted, so the finding belongs to that dependency. Justified when: per-request state (multi-tenant context, per-request transaction).
+Check the provider's dependencies first: a provider that injects `REQUEST` or any request-scoped provider stays request-scoped after the explicit scope is deleted, so the finding belongs to that dependency. Justified when: per-request state the provider holds between calls (multi-tenant context, per-request transaction); a value every method already receives as a parameter is not per-request state.
 
 #### Custom `Result<T, E>` where exceptions or `T | null` suffice
 
@@ -196,7 +197,7 @@ Justified when: callers branch on multiple distinct failure modes carrying data 
 
 #### `@Injectable()` mapper with no injected dependencies
 
-The target is the DI wrapper, not the mapping. A class with an empty constructor that only reshapes its argument is a function; keep it a class once it injects anything (a config, a formatter, a repository).
+The target is the DI wrapper, not the mapping. A class with an empty constructor that only reshapes its argument is a function (with or without `@Injectable()`); keep it a class once it injects anything (a config, a formatter, a repository).
 
 ```ts
 // Bad - injectable with no dependencies, field-for-field copy
@@ -208,11 +209,11 @@ const toResponse = (o: Order): OrderResponseDto => ({ id: o.id, total: o.total }
 
 #### Speculative config keys and unused providers
 
-Flag config keys declared in the Zod/Joi schema with zero read sites, and providers registered in a module that nothing injects - unless Nest discovers them without injection (`@Cron` / `@Interval`, `@OnEvent`, `@Processor`, `@Resolver`, `@WebSocketGateway`, an `APP_GUARD` / `APP_PIPE` / `APP_FILTER` / `APP_INTERCEPTOR` token, or work in `onModuleInit` / `onApplicationBootstrap`). Grep the name across `ConfigService.get` / `getOrThrow`, `registerAs` factories and their `ConfigType` property access, and direct environment reads. A Joi `.required()` key nothing reads still fails boot wherever it is missing - say so. When the grep cannot run (a restricted read set, a diff with no repo), the finding is `[Recommend]` and says the read sites were not searched - the same holds for "only implementer" and "only child" claims, and for a `ValidationPipe` binding you could not read.
+Flag config keys declared in the Zod/Joi schema with zero read sites, DTO fields nothing reads (a DTO passed whole - `data: dto`, `{ ...dto }`, a serializer - reads every field), exported classes, types, and functions the diff adds that nothing imports, and providers registered in a module that nothing injects - unless Nest discovers them without injection (`@Cron` / `@Interval`, `@OnEvent`, `@Processor`, `@Resolver`, `@WebSocketGateway`, an `APP_GUARD` / `APP_PIPE` / `APP_FILTER` / `APP_INTERCEPTOR` token, or work in `onModuleInit` / `onApplicationBootstrap`) or a glob in the `DataSource` / `TypeOrmModule` options loads them (`entities`, `migrations`, `subscribers`). Grep the name across `ConfigService.get` / `getOrThrow`, `registerAs` factories and their `ConfigType` property access, and direct environment reads. A Joi `.required()` key nothing reads still fails boot wherever it is missing - say so. When the grep cannot run (a restricted read set, a diff with no repo), the finding is `[Recommend]` and says the read sites were not searched - the same holds for "only implementer" and "only child" claims, and for a `ValidationPipe` binding you could not read.
 
 ## Output Format
 
-Findings contribute to the consuming workflow's unified output. One block per redundant construct: repeated occurrences of the same construct in one class are one block listing every site in `Code:`; two adjacent constructs are one block each; a construct matching two patterns is one block under the pattern with the higher intent; a construct spanning files (interface + module binding) anchors to its declaration and names the other files in `Code:` as `(also <file:line>)`. When the diff carries no line numbers, anchor as `file:<enclosing class, method, or export>`; pasted code with no file name anchors as `pasted:<construct>`.
+Findings contribute to the consuming workflow's unified output. One block per redundant construct: repeated occurrences of the same construct in one class are one block listing every site in `Code:`; two adjacent constructs are one block each; a construct matching two patterns is one block under the pattern with the higher intent; a construct spanning files (interface + module binding) anchors to its declaration and names the other files in `Code:` as `(also <file:line>)`. When the diff carries no line numbers, anchor as `file:<enclosing class, method, or export>`; pasted or described code with no file name anchors as `pasted:<construct>`, a described PR that names files anchors as `file:<construct>`, and a claim the description makes about the repo that the read set contradicts goes on the `Out of scope:` line citing both.
 
 ```
 ### [Must | Recommend] file:line
@@ -230,13 +231,9 @@ Findings contribute to the consuming workflow's unified output. One block per re
 - Justified when: {the legitimate reason that might apply} {only when one might}
 ```
 
-The output opens with `**Engine:** {ORM} / {Database}` (`unknown` when undetected), then one `##` heading per category, in the order Redundant Validation, Defensive Impossibility, Premature Abstraction. Within a category: `[Must]` blocks, then `[Recommend]` blocks, then one `Cleared:` line listing every construct examined and not flagged with its reason. A category with no findings is `No <category> findings.` followed by its `Cleared:` line - silence is indistinguishable from a skipped check. After the last category, one `Out of scope:` line names defects seen in passing that are not redundancy (an N+1, `Float` money, a wrong return type), or `none`.
-
-When stack-detect's `Framework` is not NestJS, the whole output is one line and nothing else: `Framework: Express - run node-express-overengineering-review` for Express, `Framework: <name> - not a NestJS project; no review` for anything else.
+The output opens with `**Engine:** {ORM} / {Database}` (`unknown` when undetected), then one `##` heading per category, in the order Redundant Validation, Defensive Impossibility, Premature Abstraction. Within a category: `[Must]` blocks, then `[Recommend]` blocks, then one `Cleared:` line listing every construct examined and not flagged with its reason. A category with no findings is `No <category> findings.` followed by its `Cleared:` line - silence is indistinguishable from a skipped check. After the last category, one `Out of scope:` line names defects seen in passing that are not redundancy (an N+1, `Float` money, a wrong return type) and description claims the read set contradicts, or `none`.
 
 ## Avoid
 
-- Flagging a format decorator (`@IsUUID()`, `@Min()`, `@Length()`) as redundant against the TS type - only a decorator subsumed by another decorator is a finding
-- Flagging `@Optional()` providers, `Scope.REQUEST` on per-request state, or interfaces with a second implementer or a runtime-selecting binding
-- Recommending removal of `cause:` chain wrapping - it keeps the inner error for a logger that serializes `cause` (pino's `err` serializer); `Error.stack` alone does not include it
+- Recommending removal of `cause:` chain wrapping around a non-`HttpException` error - it keeps the inner error for a logger that serializes `cause` (pino's `err` serializer); `Error.stack` alone does not include it
 - Confusing "duplicated" with "defense in depth" when multiple write paths exist (HTTP + BullMQ + cron)

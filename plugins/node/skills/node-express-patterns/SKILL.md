@@ -19,14 +19,14 @@ user-invocable: false
 
 ## Rules
 
-- Middleware order: helmet -> cors -> webhook routes (raw body) -> `express.json()` -> rate limiter -> auth at the router mount -> validation -> handler -> errorHandler (last)
+- Middleware order: helmet -> cors -> request logger (`pino-http`) -> webhook routes (raw body) -> `express.json()` -> rate limiter -> auth at the router mount -> validation -> handler -> 404 fallback (`app.use((_req, res) => res.status(404).json({ error: "not_found" }))`, after every router) -> errorHandler (last)
 - Express 4: wrap every async handler/middleware to forward rejections to `next`. Express 5 forwards them natively - there the wrapper is dead code, so strip `asyncHandler` from every example below
 - Error middleware takes exactly 4 parameters (Express detects by arity), is registered after every router, and checks `res.headersSent` before writing - a failure mid-stream otherwise throws `ERR_HTTP_HEADERS_SENT`
 - Never expose raw error details (message of an unknown error, stack) to clients in production
 - No business logic in route handlers - delegate to services. A handler sends exactly one response: `return` after every `res.*` in a branch
 - Two independent webhook rules: raw-body routes mount **before** `express.json()`, and signature-authenticated routes mount outside the JWT middleware's scope. Either applies alone - a bodyless signed-link GET needs the auth bypass without the raw parser
 - Bind auth at the router mount (`app.use('/api/v1/orders', requireAuth, ordersRouter)`), never `app.use(requireAuth)` globally - global auth puts webhooks and health probes behind JWT
-- Behind a proxy or ingress, set `trust proxy` to the exact number of proxy hops in front of the app (`1` for a single ALB or ingress), never `true` - unset, every client shares the proxy's IP and the limiter blocks everyone at once; `true` lets a client spoof `X-Forwarded-For` past it. express-rate-limit 7 reports both at runtime (`ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`, `ERR_ERL_PERMISSIVE_TRUST_PROXY`)
+- Behind a proxy or ingress, set `trust proxy` to the exact number of proxy hops in front of the app (`1` for a single ALB or ingress), never `true` - unset, every client shares the proxy's IP and the limiter blocks everyone at once; `true` lets a client spoof `X-Forwarded-For` past it. express-rate-limit 7 and 8 report both at runtime (`ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`, `ERR_ERL_PERMISSIVE_TRUST_PROXY`)
 
 ## Patterns
 
@@ -63,14 +63,14 @@ A synchronous `throw` is forwarded on both majors; only async code needs the wra
 ```typescript
 const createOrderSchema = z.object({
   body: z.object({
-    customerId: z.string().uuid(),
-    items: z.array(z.object({ productId: z.string().uuid(), quantity: z.number().int().positive() })).min(1),
+    customerId: z.uuid(),                     // Zod 4, RFC 9562 strict; z.guid() accepts any 8-4-4-4-12 hex, as Zod 3's z.string().uuid() did
+    items: z.array(z.object({ productId: z.uuid(), quantity: z.number().int().positive() })).min(1),
   }),
   query: z.object({ limit: z.coerce.number().int().min(1).max(100).default(20) }),
-  headers: z.object({ "x-tenant-id": z.string().uuid() }),
+  headers: z.object({ "x-tenant-id": z.uuid() }),
 });
 
-const validate = (schema: z.ZodSchema): RequestHandler => (req, _res, next) => {
+const validate = (schema: z.ZodType): RequestHandler => (req, _res, next) => {
   const r = schema.safeParse({ body: req.body, query: req.query, params: req.params, headers: req.headers });
   if (!r.success) {
     return next(new ValidationError(r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ")));
@@ -80,7 +80,7 @@ const validate = (schema: z.ZodSchema): RequestHandler => (req, _res, next) => {
 };
 ```
 
-Parse `headers` and `query` in the same schema, and read `req.valid`, never `req.query`: coerced numbers and defaults live only on the parse result, and on Express 5 `req.query` is a getter that cannot be reassigned. Declare `req.valid` via the global-namespace augmentation used for `req.user`, and read it through a typed accessor so the parsed output stays checked: `const input = <S extends z.ZodTypeAny>(req: Request, _schema: S) => req.valid as z.infer<S>`.
+Parse `headers` and `query` in the same schema, and read `req.valid`, never `req.query`: coerced numbers and defaults live only on the parse result, and on Express 5 `req.query` is a getter that cannot be reassigned. Declare `req.valid` via the global-namespace augmentation used for `req.user`, and read it through a typed accessor so the parsed output stays checked: `const input = <S extends z.ZodType>(req: Request, _schema: S) => req.valid as z.infer<S>`.
 
 ### Error Handling
 
@@ -132,7 +132,7 @@ Signature schemes per provider (Stripe `t.payload`, Slack `v0:t:body`, Plaid's s
 ### TypeScript
 
 - Typed handlers: `Request<Params, ResBody>` for params and the response; body and query are typed through `req.valid` (above)
-- Extend `Request` via the global namespace. Augmenting `'express'` itself fails - it redeclares `Request` with different type parameters (TS2428) and never reaches the `core.Request` that inferred handler params use. The file holding `declare global` must be a module (an `import` or `export {}`):
+- Extend `Request` via the global namespace. Augmenting `'express'` itself compiles but reaches only a `req` annotated as `express.Request`; the `core.Request` that inferred handler params use never sees it (TS2339 on `req.user`). The file holding `declare global` must be a module (an `import` or `export {}`):
 
 ```typescript
 import type { User } from "./user";
@@ -166,50 +166,62 @@ process.on("SIGTERM", async () => {
   ready = false;
   await new Promise((r) => setTimeout(r, 5_000));   // k8s: endpoint removal propagates; ECS: already deregistered
   const hard = setTimeout(() => { server.closeAllConnections(); process.exit(1); }, 20_000).unref();
-  server.close(async () => { clearTimeout(hard); await dataSource.destroy(); process.exit(0); });
+  const workersClosed = Promise.allSettled(workers.map((w) => w.close()));   // BullMQ workers hosted here: stop fetching now, in-flight jobs finish; settled, so an early failure is no unhandled rejection
+  server.close(async () => {
+    await workersClosed;                                               // the longest job must fit inside the hard timer
+    await Promise.all([...queues.map((q) => q.close()), dataSource.destroy()]);
+    await redis.quit();                                                // the shared ioredis connection, after every queue
+    clearTimeout(hard);
+    process.exit(0);
+  });
 });
 ```
 
-`server.close()` stops accepting and (Node 19+) closes idle keep-alive sockets; a busy keep-alive connection is bounded only by the hard timer. On ECS, point the ALB target group's health check at `/ready` (the container `healthCheck` restarts the task, so it points at `/health`). The grace period - Kubernetes `terminationGracePeriodSeconds` (default 30s) or ECS `stopTimeout` (default 30s, max 120s) - must exceed the drain delay plus the hard timer (5 + 20 = 25 < 30), and a `preStop` hook counts against the same budget.
+`server.close()` stops accepting and (Node 19+) closes idle keep-alive sockets; a busy keep-alive connection is bounded only by the hard timer. On ECS, point the ALB target group's health check at `/ready` (the container `healthCheck` restarts the task, so it points at `/health`). The grace period - Kubernetes `terminationGracePeriodSeconds` (default 30s) or ECS `stopTimeout` (Fargate: default 30s, max 120s; EC2: the agent's `ECS_CONTAINER_STOP_TIMEOUT`, default 30s) - must exceed the drain delay plus the hard timer (5 + 20 = 25 < 30), the longest in-flight job must fit inside the hard timer, and a `preStop` hook counts against the same budget.
 
 ### Express 4 -> 5 Upgrade
 
-| Area | Express 5 behaviour | Codebase change |
-|------|---------------------|-----------------|
-| Async errors | rejected promises reach error middleware | delete `asyncHandler` / `express-async-errors` |
-| Route paths (path-to-regexp 8) | `*` must be named: `/*splat` (one or more segments) or `/{*splat}` (also the root); optional segments use braces (`/:file{.:ext}`); `:name?` and inline regex are gone | rewrite wildcard / optional routes |
-| `req.query` | read-only getter; default query parser is `simple` | stop assigning to it; read `req.valid` |
-| `req.body` | `undefined` (not `{}`) when no parser ran | guard `req.body` before reading keys |
-| Removed APIs | `app.del`, `req.param()`, `res.sendfile`, `res.send(status)`, `res.json(obj, status)`, `res.redirect(url, status)` | `app.delete`, `req.params` / `req.body` / `req.query` (here `req.valid`), `res.sendFile`, `res.sendStatus`, `res.status(s).json(obj)`, `res.redirect(status, url)` |
-| `res.status()` | integer 100-999 only | no string or out-of-range codes |
-| `express.urlencoded` | `extended` defaults to `false` | set it explicitly |
-| Runtime | Node 18+ | check `engines` |
+| Area | Express 5 behaviour | Codebase change | Guard test |
+|------|---------------------|-----------------|------------|
+| Async errors | rejected promises reach error middleware | delete `asyncHandler` / `express-async-errors` | a rejecting handler answers the error handler's status |
+| Third-party middleware | packages whose peer range pins `express@4` fail `npm install` (ERESOLVE) or at load | `npm ls express` before the switch; replace or upgrade each | install on a clean tree |
+| Route paths (path-to-regexp 8) | `*` must be named: `/*splat` (one or more segments) or `/{*splat}` (also the root); optional segments use braces (`/:file{.:ext}`); `:name?` and inline regex are gone | rewrite wildcard / optional routes | one request per rewritten route |
+| `req.query` | read-only getter; default query parser is `simple` | stop assigning to it; read `req.valid` | a nested query key (`a[b]=1`) parses as the app expects |
+| `req.body` | `undefined` (not `{}`) unless a parser parsed a body - no parser, no body, or a non-matching Content-Type | guard `req.body` before reading keys | a bodyless POST to a JSON route answers 400, not 500 |
+| Removed APIs | `app.del`, `req.param()`, `res.sendfile`, `res.redirect(url, status)` (throws) | `app.delete`, `req.params` / `req.body` / `req.query` (here `req.valid`), `res.sendFile`, `res.redirect(status, url)` | grep finds none |
+| `res.send(<number>)`, `res.json(obj, status)` | not removed: `res.send(n)` sends 200 with the number as the body, `res.json(obj, status)` ignores the status and sends 200 - nothing throws | grep for both; `res.sendStatus(n)`, `res.status(s).json(obj)` | the status asserted by the route's test |
+| `app.listen` callback | receives an error argument when listening fails | handle it (log and exit) instead of a bare callback | a busy port exits non-zero |
+| `res.status()` | integer 100-999 only | no string or out-of-range codes | grep finds none |
+| `express.urlencoded` | `extended` defaults to `false` | set it explicitly | a form POST with a nested field parses |
+| Runtime | Node 18+ | check `engines` | CI on the pinned Node |
 
 Upgrade `@types/express` to 5 in the same change; middleware packages (helmet, cors, express-rate-limit) are major-agnostic.
 
 ## Output Format
 
-When authoring, emit this block plus the wiring code it describes; a build over existing code is authoring plus review - findings for the existing defects the change touches, then the block. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file) followed by `Issue:` and `Fix:` lines, `[Must]` first - `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the findings. After the findings, emit this block as the target state: every line and row shows the corrected value, and one the current code violates ends ` - GAP (was: <observed>)`; one whose evidence was not in the read set reads `unknown - <file> not read`. An upgrade plan is a review: findings, then the Upgrade table rows that apply (one per change), then the block with the version line `4 -> 5`. Defects another skill owns (authorization, mass assignment, open redirect, signature schemes: `node-security-patterns`) go on one closing `Out of scope:` line as `<file:line> <defect>`, separated by `; `.
+When authoring, emit this block plus the wiring code it describes; a build over existing code is authoring plus review - findings for the existing defects the change touches, then the block. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file) followed by `Issue:` and `Fix:` lines, `[Must]` first - `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the findings. After the findings, emit this block as the target state: every line and row shows the corrected value, and one the current code violates ends ` - GAP (was: <observed>)`; one whose evidence was not in the read set reads `unknown - <file> not read`, and an entry the code lacks (a router, an error mapping) is a row with the target value and ` - GAP (was: absent)`. Health and readiness routes mount before auth and get no Middleware Stack row. An upgrade plan is a review: findings, then the Upgrade table rows that apply (one per change) ordered as the steps to take, the Guard test column naming the test that guards each change before the switch, then the block with the version line `4 -> 5`. Defects another skill owns (authorization, mass assignment, open redirect, signature schemes: `node-security-patterns`) go on one closing `Out of scope:` line as `<file:line> <defect>`, separated by `; `.
 
 ```
 ## Express Architecture
 
 Express major version: {4 | 5 | 4 -> 5}
 
-trust proxy: {hop count} ({the proxies in front}) | false (no proxy)
+trust proxy: {<hop count> (<the proxies in front>) | false (no proxy)}
 
 ### Middleware Stack
 | Order | Middleware | Scope (app / router mount / route) | Purpose |
 |-------|-----------|------------------------------------|---------|
 | 1 | helmet | app | security headers |
 | 2 | cors | app | origin: {allowlist}; credentials: {true \| false} |
-| 3 | webhook routes | app, before express.json | raw body and/or signature auth, outside JWT |
-| 4 | express.json() | app | JSON body parsing |
-| 5 | rate limiter | route (auth endpoints) | abuse control |
-| 6 | auth | router mount | JWT validation |
-| 7 | validation | route | Zod schema -> req.valid |
-| 8 | routes | router | API handlers |
-| 9 | errorHandler | app, last | centralized error handling |
+| 3 | request logger (pino-http) | app | req.log for every later middleware and the errorHandler |
+| 4 | webhook routes | app, before express.json | raw body and/or signature auth, outside JWT |
+| 5 | express.json() | app | JSON body parsing |
+| 6 | rate limiter | route (auth endpoints) | abuse control |
+| 7 | auth | router mount | JWT validation |
+| 8 | validation | route | Zod schema -> req.valid |
+| 9 | routes | router | API handlers{, async-wrapped on 4} |
+| 10 | 404 fallback | app, after every router | unknown route -> 404 |
+| 11 | errorHandler | app, last | centralized error handling |
 
 ### Router Structure
 | Router | Mount Path | Endpoints | Auth |
@@ -223,23 +235,20 @@ trust proxy: {hop count} ({the proxies in front}) | false (no proxy)
 | Domain error | Status |
 |--------------|--------|
 
-Error handler: headersSent guard {yes | no}; body-parser 4xx passed through {yes | no}
+Error handler: headersSent guard yes; body-parser 4xx passed through yes
 
-unhandledRejection: {log + exit | log + graceful shutdown | missing}
+unhandledRejection: {log + exit | log + graceful shutdown}
 
 ### Shutdown
 Liveness: {path} - Readiness: {path, what it checks}
 
 Drain: {readiness flip, drain delay, hard-stop timer, resources released}
 
-Grace period: {terminationGracePeriodSeconds | stopTimeout} = {n}s vs budget {preStop + drain delay + hard timer}s
+Grace period: {terminationGracePeriodSeconds | stopTimeout | ECS_CONTAINER_STOP_TIMEOUT} = {n}s vs budget {preStop + drain delay + hard timer}s
 ```
 
 ## Avoid
 
-- Unwrapped async handlers on Express 4 (the request hangs, the process may crash)
-- Business logic in route handlers
 - `any` for request types
 - `cors()` with no origin in production
-- `express.json()` before webhook routes (consumes raw body)
-- Webhook routes behind JWT auth (use signature-based auth)
+- `express-async-errors` - patches Express 4's router and fails to load on Express 5

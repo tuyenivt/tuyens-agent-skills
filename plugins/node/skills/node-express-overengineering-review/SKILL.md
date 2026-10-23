@@ -7,7 +7,7 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first. Use only when the detected framework is Express; its `ORM` and `Database` pick the constraint vocabulary and duplicate-key code below, and surface only in the `**Engine:**` line above the categories. Read the Express major from `package.json` (else the instruction file's `## Tech Stack`): it decides whether an async wrapper is redundant.
+> Load `Use skill: stack-detect` first. Use only when the framework is Express: a `package.json` listing `@nestjs/core` is NestJS whatever else it lists, and then the whole output is the one line `Framework: NestJS - run node-nestjs-overengineering-review` in place of the `**Engine:**` line and nothing else; any other named non-Express framework gets `Framework: <name> - not an Express project; no review` the same way, while `Framework: unknown` (pasted code, no manifest) proceeds when the code under review imports `express` or the request names Express, and is otherwise the one line `Framework: unknown - not an Express project; no review`. `ORM` and `Database` pick the constraint vocabulary and duplicate-key code below, and surface only in the `**Engine:**` line above the categories. Read the Express major from `package.json` (else the instruction file's `## Tech Stack`): it decides whether an async wrapper is redundant; when neither names it, treat it as 4 and write `Express major unknown - assumed 4` on each `Cleared:` line that depends on it.
 
 ## When to Use
 
@@ -15,7 +15,7 @@ Reviewing Express diffs that add Zod / class-validator schemas, null guards, mid
 
 ## Rules
 
-- Cite the constraint making the code redundant: FK, a NOT NULL column (`@Column()` without `nullable: true`, a Prisma non-`?` field), unique index, TS non-null type, Zod rule, validation middleware, or framework guarantee. A premature abstraction is redundant against a simpler construct that already does the job - name that construct.
+- Cite the constraint making the code redundant: FK, NOT NULL column (`@Column()` without `nullable: true`, a Prisma non-`?` field), unique index, TS strict-null, schema rule (Zod / class-validator), validation middleware, framework guarantee, or zero read sites. A premature abstraction is redundant against a simpler construct that already does the job - name that construct.
 - Intent - one predicate, shared with `node-nestjs-overengineering-review`:
   - **`[Must]`** when the diff shows a measurable cost: an extra query per write, a wrong or masked status (a mis-mapped exception, a failure answered with a success status), a per-request allocation, or an abstraction whose every consumer is a passthrough. Common instances: manual unique-check before `save`, blanket `catch` answering 500 or 2xx, unbranched custom error hierarchy, Repository wrapper of passthroughs, a no-arg middleware factory every mount point calls only to get the middleware, schema/column nullability mismatch (turns a 400 into a 500).
   - **`[Recommend]`** otherwise - dead code that changes no status, a speculative config key, a redundant schema rule - and whenever the constraint that makes the code redundant, or the read-site search, lies outside what you could read: state the assumed justification or the unchecked source and ask the author to confirm.
@@ -51,7 +51,7 @@ z.object({ customerId: z.string().uuid().nullable() });
 // @Column() customerId!: string;      (NOT NULL: no nullable: true)
 ```
 
-Drop `.nullable()` or make the column nullable. Pick one.
+Drop `.nullable()` or make the column nullable. Pick one. `[Must]`, Cost `wrong or masked status`, Redundant because `NOT NULL column`. `.optional()` on a field whose NOT NULL column has no default is the same finding.
 
 #### Manual unique-check before save
 
@@ -92,6 +92,7 @@ The unreachable 404 shows the intent: a missing row now answers 500 on Express 5
 
 ```ts
 if (order.status) process(...);        // Bad - string-literal union with no '' member: always truthy
+if (user.id === undefined) ...;        // Bad - non-optional property of a typed entity: TS strict-null, never true
 const o = result as unknown as Order;  // Bad - bypasses TS when both sides are typed
 ```
 
@@ -117,7 +118,7 @@ On Express 5 (or an async-wrapped route on 4) `throw` works as well as `next(err
 
 #### `try { ... } catch (e) { throw e }` no-op rethrow
 
-Delete it (Redundant because `superseded by default propagation`). Wrap with `throw new Error('wrap', { cause: e })` (needs tsconfig `lib` ES2022+) only when the wrap adds context.
+Delete it (Redundant because `superseded by default propagation`). Wrap with `throw new Error('wrap', { cause: e })` (needs tsconfig `lib` ES2022+) only when the wrap adds context. `catch (e) { next(e) }` with no mapping branch, directly in the handler body, is the same no-op in a sync handler on either major and in an async handler on Express 5 or an async-wrapped route (Redundant because `framework guarantee`, this category); in a bare Express 4 async handler, or inside a callback or timer on any major, it is load-bearing - never flag it there.
 
 ### Category 3: Premature abstraction
 
@@ -155,7 +156,7 @@ Justified when it encapsulates multi-table joins, swaps a non-ORM source, or pro
 
 #### Custom error hierarchy with no consumer branching
 
-`[Must]` when nothing branches on the subclasses - Cost `abstraction whose every consumer is a passthrough`.
+`[Must]` when a thrown subclass has no `instanceof` consumer - Cost `abstraction whose every consumer is a passthrough`; a subclass nothing throws is dead code, `[Recommend]`, Redundant because `zero read sites`.
 
 ```ts
 // Bad - DomainError -> NotFoundError -> OrderNotFoundError; no `instanceof` branching
@@ -175,7 +176,7 @@ Promise<{ ok: true; order: Order } | { ok: false; error: 'not_found' }>
 Promise<Order | null>
 ```
 
-Keep `Result<T, E>` only when callers branch on multiple failure modes carrying data beyond a literal.
+Keep `Result<T, E>` only when callers branch on multiple failure modes carrying data beyond a literal; a `Result` type nothing consumes is `zero read sites`.
 
 #### Service class wrapping a single repository call
 
@@ -221,15 +222,10 @@ Findings contribute to the consuming workflow's unified output. One block per re
 - Justified when: {the legitimate reason that might apply} {only when one might}
 ```
 
-The output opens with `**Engine:** {ORM} / {Database}` (`unknown` when undetected), then one `##` heading per category, in the order Redundant Validation, Defensive Impossibility, Premature Abstraction. Within a category: `[Must]` blocks, then `[Recommend]` blocks, then one `Cleared:` line listing every construct examined and not flagged with its reason. A category with no findings is `No <category> findings.` followed by its `Cleared:` line - silence is indistinguishable from a skipped check. After the last category, one `Out of scope:` line names defects seen in passing that are not redundancy (a falsy-zero guard, a query bug, mass assignment), each as `<file:line> <defect>` separated by `; `, or `none`.
-
-When stack-detect's `Framework` is not Express (a NestJS project also lists `express` - `@nestjs/core` decides), the whole output is one line and nothing else: `Framework: NestJS - run node-nestjs-overengineering-review` for NestJS, `Framework: <name> - not an Express project; no review` for anything else.
+The output opens with `**Engine:** {ORM} / {Database}` (`unknown` when undetected), then one `##` heading per category, in the order Redundant Validation, Defensive Impossibility, Premature Abstraction. Within a category: `[Must]` blocks, then `[Recommend]` blocks, then one `Cleared:` line listing every construct examined and not flagged with its reason; a construct that becomes redundant only after a planned Express 5 upgrade is not a finding on 4 and is cleared as `<construct> - load-bearing on 4, redundant after 5`. A category with no findings is `No <category> findings.` followed by its `Cleared:` line - silence is indistinguishable from a skipped check. After the last category, one `Out of scope:` line names defects seen in passing that are not redundancy (a falsy-zero guard, a query bug, mass assignment), each as `<file:line> <defect>` separated by `; `, or `none`.
 
 ## Avoid
 
 - Flagging Zod schemas on bodies consumed by validation middleware - that layer owns user-facing messages
 - Flagging `.min(1)` / `.email()` / `.regex(...)` - those go beyond the type
-- Flagging a Repository wrapper before checking for multi-table queries or non-ORM sources
-- Flagging custom errors before checking whether middleware branches on `instanceof`
-- Flagging an async wrapper on Express 4 - there it is what surfaces async errors
 - Confusing duplication with defense in depth when multiple write paths exist (HTTP + BullMQ + cron)

@@ -8,7 +8,7 @@ user-invocable: false
 ---
 
 > Load `Use skill: stack-detect` first; `ORM` picks the Prisma or TypeORM binding and `Database` the SQL dialect, and both surface in the core envelope's `**Stack:**` / `**Engine:**` lines. The raw SQL below is PostgreSQL's; on MySQL or an unknown engine, use `backend-transaction-patterns`' engine notes instead of these statements.
-> The transaction boundary contract - no I/O inside a transaction, post-commit dispatch, call-then-record, outbox semantics, lock-then-write, timeouts - and the Transaction Assessment envelope are owned by `backend-transaction-patterns`. Load it first. This skill owns only the Node/ORM bindings for them. Dedup keys and consumer idempotency are `backend-idempotency`'s.
+> Load `Use skill: backend-transaction-patterns` first - it owns the boundary contract (no I/O inside a transaction, post-commit dispatch, call-then-record, outbox and relay semantics, lock-then-write, timeouts) and the Transaction Assessment envelope; this skill owns only the Node/ORM bindings. Load `Use skill: backend-idempotency` when a dedup key or consumer replay is assessed - those findings are its.
 
 ## When to Use
 
@@ -20,15 +20,16 @@ user-invocable: false
 
 ## Rules
 
-`backend-transaction-patterns` carries the contract. These are the Node-specific bindings and hazards it cannot state:
+Node-specific bindings and hazards the core contract cannot state:
 
 - Dispatch after `prisma.$transaction(...)` or `dataSource.transaction(...)` **resolves**, or via `runOnTransactionCommit` under `typeorm-transactional`
+- A method called both inside and outside a transaction takes the client as a parameter (`tx: Prisma.TransactionClient = this.prisma`; TypeORM an `EntityManager`): one that reaches for the root client from inside a transaction runs on another pooled connection: it sees no uncommitted writes, its writes commit independently and survive a rollback, and a write to a row the transaction already locked blocks on that lock until a timeout (the transaction waits on itself)
 - Return scalars from the transaction callback. Under TypeORM an entity with lazy relations carried out of the transaction queries outside its snapshot (`EntityEscapesTransaction`); a Prisma object is a plain value and exempt
-- I/O whose result **gates** the commit (a fraud score, a payment authorization) runs before `BEGIN`, and the transaction consumes an already-known outcome. I/O whose result must be **written back** (a charge and its reference) is call-then-record: commit a `pending` row with the request id, call outside any transaction, record the outcome in a second transaction - persist the attempt first whenever a duplicate call would cost money
-- `SET LOCAL lock_timeout` / `statement_timeout` / `idle_in_transaction_session_timeout` run **inside** the transaction; standalone they are no-ops, and a plain `SET` leaks to every later query sharing the pooled connection - either is `MissingTransactionBounds`. Under `@Transactional()`, run them through the transactional entity manager's `.query()` as the first statement
-- Prisma's interactive transaction has its own bounds - `maxWait` (pool acquisition, default 2s) and `timeout` (wall-clock, default 5s, rolls back when exceeded) - set per call or once via `new PrismaClient({ transactionOptions })`; its `timeout` covers the idle-in-transaction bound. TypeORM has no client-side wall-clock bound: set `lock_timeout`, `statement_timeout`, and `idle_in_transaction_session_timeout` (and on PostgreSQL 17+ `transaction_timeout`)
-- A consistent multi-read snapshot needs an isolation level: PostgreSQL's default `READ COMMITTED` snapshots per statement. Prisma `{ isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }`; TypeORM `dataSource.transaction("REPEATABLE READ", fn)`. Under `SERIALIZABLE`, and under `REPEATABLE READ` once the transaction writes, PostgreSQL may abort with `40001` - retry the whole transaction on Prisma `P2034` / TypeORM `QueryFailedError` with `driverError.code === "40001"`
-- One outbox row per (event, destination): a single row fanning out to two consumers cannot record partial success
+- I/O whose result **gates** the commit (a fraud score, a payment authorization) runs before `BEGIN`, and the transaction consumes an already-known outcome. I/O whose result must be **written back** (a charge and its reference) is call-then-record: commit a `pending` row with the request id, call outside any transaction, record the outcome in a second transaction - persist the attempt first whenever a duplicate call would cost money (a durable call made with no committed attempt row is `backend-idempotency`'s `processing commit before external call` gap, and `BestEffortOnDurableSideEffect` as well when it is dispatched post-commit with no outbox - the attempt row is the durability record)
+- `SET LOCAL lock_timeout` / `statement_timeout` / `idle_in_transaction_session_timeout` run **inside** the transaction; standalone they are no-ops, and a plain `SET` leaks to every later query sharing the pooled connection - either is `MissingTransactionBounds`. Under `@Transactional()`, run them through the transactional entity manager's `.query()` as the first statement. MySQL has no transaction-scoped `SET` (`SET LOCAL` is accepted there as a synonym for `SET SESSION` and outlives `COMMIT`): `SET SESSION innodb_lock_wait_timeout` goes through the same manager and is restored in a `finally` to the value read first (`SELECT @@innodb_lock_wait_timeout`) before the callback returns, or it rides the pooled connection; MySQL has no per-transaction idle bound - the session `wait_timeout` (closes the connection, rolling the transaction back) is the only server-side one; a driver query timeout bounds a statement, not the idle gap
+- Prisma's interactive transaction has its own bounds - `maxWait` (pool acquisition, default 2s) and `timeout` (wall-clock, default 5s, rolls back when exceeded) - set per call or once via `new PrismaClient({ adapter, transactionOptions })`; its `timeout` covers the idle-in-transaction bound. TypeORM has no client-side wall-clock bound: set `lock_timeout`, `statement_timeout`, and `idle_in_transaction_session_timeout` (and on PostgreSQL 17+ `transaction_timeout`)
+- A consistent multi-read snapshot needs an isolation level: PostgreSQL's default `READ COMMITTED` snapshots per statement. Prisma `{ isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }`; TypeORM `dataSource.transaction("REPEATABLE READ", fn)`. Under `SERIALIZABLE`, and under `REPEATABLE READ` once the transaction writes or locks (`FOR UPDATE`), PostgreSQL may abort with `40001` - retry the whole transaction on Prisma `P2034` (a raw query under Prisma 7 surfaces it as `P2010` with `meta.driverAdapterError.cause.originalCode === "40001"`) / TypeORM `QueryFailedError` with `driverError.code === "40001"`
+- One outbox row per (event, destination): a single row fanning out to two consumers cannot record partial success; the relay routes by `destination` - one queue or sender per value
 - Never dispatch from `@AfterInsert` / `@AfterUpdate`, a subscriber's `afterInsert` / `afterUpdate` / `beforeTransactionCommit`, or a pre-commit `EventEmitter2` listener - they fire before `COMMIT` and race it. A subscriber's `afterTransactionCommit` runs after `COMMIT` and may enqueue; it receives no entity, so stash the ids per query runner
 - BullMQ `jobId` dedupes only while the job is retained, so `removeOnComplete` **and** `removeOnFail` must outlive the redelivery window (`{ age: <seconds> }`); a job id must not contain `:`
 
@@ -118,13 +119,14 @@ const claimed = await prisma.$queryRaw<OutboxRow[]>`
   RETURNING *`;
 
 for (const m of claimed) {
+  if (stopping) break;                                         // set by onModuleDestroy / SIGTERM - stop between rows
   if (m.deadLetteredAt) continue;                              // crash cap reached - never dispatched
   const owned = { id: m.id, claimedBy: relayId, processedAt: null };
   const { count } = await prisma.outboxMessage.updateMany({ where: owned, data: { claimedAt: new Date() } });   // renew
   if (count === 0) continue;                                   // lease lost - another relay owns it now
   try {
-    // the queue's connection sets enableOfflineQueue: false - with Redis down, add fails fast instead of outliving the lease
-    await queue.add(m.eventType, m.payload, { jobId: m.id, removeOnComplete: { age: 86_400 }, removeOnFail: { age: 604_800 } });
+    // the queue's connection sets enableOfflineQueue: false (rejects while disconnected) and commandTimeout below the lease (a connected Redis that stops answering)
+    await queues[m.destination].add(m.eventType, m.payload, { jobId: m.id, removeOnComplete: { age: 86_400 }, removeOnFail: { age: 604_800 } });   // queues: Record<string, Queue>, one per destination
     await prisma.outboxMessage.updateMany({ where: owned, data: { processedAt: new Date() } });
   } catch (e) {
     await prisma.outboxMessage.updateMany({ where: owned, data: {
@@ -136,7 +138,7 @@ for (const m of claimed) {
 // alert on deadLetteredAt IS NOT NULL - a parked row is a dropped message with a delay
 ```
 
-The claim is a **lease**, not a completion mark: `processedAt` is set only after a successful dispatch, so a relay crash re-delivers the row once the lease expires, and the consumer's idempotency (the `jobId`, an idempotent handler) absorbs the replay. Every update after the claim is guarded by `claimedBy` and `processedAt: null`, so a relay that lost its lease stops instead of overwriting a row another relay processed. `attempts` caps failed dispatches (the `catch` dead-letters) and `claims` caps crashes (the claim itself dead-letters on the 21st claim), so no row parks with `deadLetteredAt` null. The dispatch is bounded below the lease: a BullMQ producer connection with `enableOfflineQueue: false` rejects while Redis is down. Without `SKIP LOCKED` the relays serialize on each other's rows (they do not double-dispatch).
+The lease, ownership, and cap semantics are the core's; here the `jobId` is the consumer idempotency the replay relies on, and the dispatch is bounded below the lease by a BullMQ producer connection with `enableOfflineQueue: false` (rejects while Redis is disconnected) and an ioredis `commandTimeout` under the lease (a connected Redis that stops answering). On `SIGTERM` the relay finishes the row in flight and stops between rows (in Nest: a `@Cron` / interval on a singleton whose `onModuleDestroy` sets a stop flag the loop checks between rows and awaits the in-flight row, under `enableShutdownHooks()`); the batch's unfinished rows, and a row left claimed by a kill, are re-leased after the window - a delay plus one `claims` increment each. The relay's connections count in the process's pool budget (`node-connection-pool-sizing`).
 
 ### Pattern C - Call-Then-Record (the result is written back)
 
@@ -173,7 +175,7 @@ await prisma.$transaction(async (tx) => {
 });
 ```
 
-TypeORM: `m.find(Account, { where: { id: In(ids) }, order: { id: "ASC" }, lock: { mode: "pessimistic_write" } })` inside `dataSource.transaction`. Without the lock, two concurrent transactions both read the old balance and both decrement - lost update.
+TypeORM: `m.find(Account, { where: { id: In(ids) }, order: { id: "ASC" }, lock: { mode: "pessimistic_write" } })` inside `dataSource.transaction` (`FOR UPDATE` on both engines). Without the lock, two concurrent transactions both read the old balance and both decrement - lost update.
 
 For a single-field decrement, an atomic guard is cheaper:
 
@@ -214,7 +216,7 @@ Transactions are for writes that must be atomic together; several reads needing 
 ### Savepoints (Use Sparingly)
 
 ```typescript
-// TypeORM nested - the inner failure rolls back to the savepoint; the outer continues
+// TypeORM nested (PostgreSQL, MySQL, SQLite, SQL Server, Oracle) - the inner failure rolls back to the savepoint; the outer continues
 await dataSource.transaction(async (tx) => {
   await tx.save(orderEntity);
   try {
@@ -225,14 +227,16 @@ await dataSource.transaction(async (tx) => {
 });
 ```
 
-Prisma has no nested `$transaction`: issue `` tx.$executeRaw`SAVEPOINT audit` ``, catch the inner failure and run `` ROLLBACK TO SAVEPOINT audit `` (otherwise every later statement fails with `25P02`), else `RELEASE SAVEPOINT audit`. Justified when a non-critical side write (audit log, denormalized view) must not roll back the main transaction.
+Prisma 7.5+ nests the same way - `tx.$transaction(async (inner) => ...)` emits a `SAVEPOINT` and rolls back to it when the inner callback throws. Below 7.5 issue `` tx.$executeRaw`SAVEPOINT audit` ``, catch the inner failure and run `` ROLLBACK TO SAVEPOINT audit `` (otherwise every later statement fails with `25P02`), else `RELEASE SAVEPOINT audit`. Justified when a non-critical side write (audit log, denormalized view) must not roll back the main transaction.
 
 ## Output Format
 
-Emit `backend-transaction-patterns`' output: when authoring, the code plus its `Dispatch` entries; when reviewing, diagnosing, or designing, its Transaction Assessment envelope, with the Node binding in every `Fix`. A build over existing code is authoring plus review - the envelope's findings for the existing defects the change touches, then the code. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the envelope. The same violation in two transactions is two findings; within one transaction the core's grouping rule applies. In every mode, the block below is **additional** and follows the envelope (or the code, when authoring): one per boundary - each `$transaction` / `transaction()` call, each `@Transactional()` method, each relay claim, and each standalone write a pattern depends on (a call-then-record step, an atomic guard); a `Read-Outside-Tx` block goes on the read that was moved out - describing what it will be.
+Emit `backend-transaction-patterns`' output: when authoring, the code plus its `Dispatch` entries; when reviewing, diagnosing, or designing, its Transaction Assessment envelope, with the Node binding in every `Fix`. A build over existing code is authoring plus review - the envelope's findings for the existing defects the change touches, then the code. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the envelope. The same violation in two transactions is two findings; within one transaction the core's grouping rule applies. In every mode, the block below is **additional** and follows the envelope (or the code, when authoring): one per boundary in the code as read, opening with `### Boundary: <file:line>` - each `$transaction` / `transaction()` call, each `@Transactional()` method, each relay claim (its per-row dispatch belongs to the same block), and each standalone write a pattern depends on (a call-then-record step, an atomic guard); a boundary the fix introduces gets a block only when authoring, and the fix otherwise shows in the block's corrected values. Repeated identical calls inside one transaction are one boundary; a method two boundaries call is described once, in a block anchored on the method that names each caller in Transaction Scope - the callers' own blocks cover only their other writes; a read-only boundary gets no block, except the `Read-Outside-Tx` block on the read that was moved out - describing what it will be. A defect outside the boundary contract (a mass-assigned status, an unindexed column) goes on one `Out of scope:` line naming the owning skill.
 
 ```
-Pattern: {Post-Commit | Outbox | Call-Then-Record | Lock-Then-Write | Atomic-Guard | Savepoint | Read-Outside-Tx} - list every one that applies
+### Boundary: {file:line}
+
+Pattern: {Atomic-Write (no side effect) | Post-Commit | Outbox | Call-Then-Record | Lock-Then-Write | Atomic-Guard | Savepoint | Read-Outside-Tx} - list every one that applies to this boundary
 
 ORM: {Prisma | TypeORM | <other> - generic bindings | unknown}
 
@@ -242,19 +246,13 @@ Side Effect Dispatch: {post-commit (after $transaction / dataSource.transaction 
 
 Idempotency: {jobId / Idempotency-Key / unique constraint / state-transition guard (WHERE status = <from>) / N/A} - assessed by backend-idempotency
 
-Timeouts: {Prisma maxWait + timeout | none (TypeORM)}; {PostgreSQL: SET LOCAL lock_timeout / statement_timeout / idle_in_transaction_session_timeout [/ transaction_timeout on 17+] | MySQL: session innodb_lock_wait_timeout + lock_wait_timeout set and reset, driver query timeout | unknown engine: bounds stated as requirements}
+Timeouts: {n/a - no transaction | {Prisma maxWait + timeout | TypeORM: no client-side bound}; {PostgreSQL: SET LOCAL lock_timeout / statement_timeout / idle_in_transaction_session_timeout [/ transaction_timeout on 17+] | MySQL: session innodb_lock_wait_timeout set and reset, lock_wait_timeout via a /*+ SET_VAR */ hint, driver query timeout | unknown engine: bounds stated as requirements}}
 
 Failure Mode Documented: {what happens on a crash between commit and dispatch | none - no side effect}
 ```
 
 ## Avoid
 
-- HTTP / queue / mailer calls inside `$transaction` - move them after commit, or use the outbox or call-then-record
-- Returning TypeORM entities with lazy relations from inside a transaction and touching them afterwards
-- Wrapping read-only queries in a transaction
 - Chaining two `$transaction` calls where one would do - the gap is not atomic
-- Side-effect listeners (`@AfterInsert`, a subscriber's pre-commit methods, EventEmitter2 fired pre-commit) that race the COMMIT
-- An outbox relay without `FOR UPDATE SKIP LOCKED` - relay instances serialize on each other's rows
-- Lock-then-write without a timeout - waits on contention with the connection held
 - Setting `statement_timeout` globally on the DB role used by long-running migrations (it kills them)
-- Savepoints to "make it more robust" - they add a partial-failure path for a rare case
+- `await` of a root-client query inside a transaction callback - it runs outside the transaction

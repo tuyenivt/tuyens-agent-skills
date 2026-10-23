@@ -9,7 +9,7 @@ user-invocable: false
 
 # TypeORM Patterns
 
-> Load `Use skill: stack-detect` first; its `Database` field picks the engine notes below and surfaces in the design block's `**Engine:**` line. The TypeORM version comes from `typeorm` in `package.json` (`unknown` when absent). The notes are PostgreSQL's (node-`pg`). MySQL (`mysql2`) returns `DECIMAL` as a string too; TypeORM interpolates its parameters client-side, so a batch is bounded by `max_allowed_packet`, not a placeholder count. SQLite needs `simple-enum` instead of `type: "enum"`, caps bind parameters at 32,766 (999 before 3.32), and reads `decimal` back as a JS `number` - store money as integer minor units or `text` with a `decimal.js` `ValueTransformer`.
+> Load `Use skill: stack-detect` first; its `Database` field picks the engine notes below and surfaces in the design block's `**Engine:**` line (a request that plans a move to another engine designs against the target: `MySQL -> PostgreSQL (planned)`). The TypeORM version comes from `typeorm` in `package.json` (`unknown` when absent). The notes are PostgreSQL's (node-`pg`), with the MySQL deltas inline. MySQL (`mysql2`) returns `DECIMAL` as a string too; TypeORM interpolates its parameters client-side, so a batch is bounded by `max_allowed_packet`, not a placeholder count. SQLite needs `simple-enum` instead of `type: "enum"`, caps bind parameters at 32,766 (999 before 3.32), and reads `decimal` back as a JS `number` - store money as integer minor units or `text` with a `decimal.js` `ValueTransformer`.
 
 ## When to Use
 
@@ -19,14 +19,15 @@ user-invocable: false
 
 ## Rules
 
-- `@Index()` on foreign keys and on every filtered or sorted column set, in the query's column order
+- `@Index()` on foreign keys (MySQL creates one per FK itself; PostgreSQL does not) and on every filtered or sorted column set, in the query's column order; `@Column({ unique: true })` (or class-level `@Unique(["idempotencyKey"])`) on every business key (an idempotency key, an external id) - the constraint is the claim, never a lookup first
 - Load relations explicitly via `relations` or `leftJoinAndSelect`. `eager: true` joins the relation into every `find*` (QueryBuilder ignores it) - over-fetch on a large collection; lazy relations query once per entity on first `await` - N+1 across a list
 - Every read and write inside a transaction goes through its manager (`m` / `qr.manager`): an injected repository uses another pooled connection, sees no uncommitted writes, and takes no lock
 - Release every `QueryRunner` in a `finally` block
-- `synchronize: true` is forbidden in production - migrations only (`node-migration-safety`)
+- `synchronize: true` is forbidden in production - migrations only (`node-migration-safety`); `synchronize: process.env.NODE_ENV !== "production"` runs it wherever the variable is unset, so default it off
 - Map entities to DTOs at the API boundary; repository methods that feed a response return the DTO or a plain object, never the entity
 - Enqueue background jobs only after the transaction commits
 - Money is `decimal` / `numeric` and never passes through a JS `number`
+- `findByIds` is deprecated and the positional `findOne(id)` was removed in 0.3: `findBy({ id: In(ids) })` / `findOneBy({ id })`. `findOneOrFail` throws `EntityNotFoundError`, which answers 500 unless a filter maps it - `findOneBy` + a 404 is the default
 
 ## Patterns
 
@@ -57,7 +58,7 @@ export class Order {
 }
 ```
 
-`@JoinColumn({ name })` names the same column as the explicit FK property; without it the default name (`<relation>Id`) can map a second column beside the declared one. `OrderItem` mirrors the pattern: `@ManyToOne(() => Order, (o) => o.items)` with `@JoinColumn({ name: "orderId" })` and `@Index()`.
+`@JoinColumn({ name: "customerId" })` ties the relation to the declared `customerId` column; the default name is the same, so the decorator documents the pairing and keeps it through a property rename. `OrderItem` mirrors the pattern: `@ManyToOne(() => Order, (o) => o.items)` with `@JoinColumn({ name: "orderId" })` and `@Index()`.
 
 ### Repository Pattern
 
@@ -106,7 +107,7 @@ const orderId = await this.dataSource.transaction(async (m) => {
 await orderQueue.add("process-order", { orderId }, { jobId: `process-order-${orderId}` });   // after commit
 ```
 
-Read-then-write inside it needs a lock: `m.findOne(Account, { where: { id }, lock: { mode: "pessimistic_write" } })` (or `.setLock("pessimistic_write")` on a builder); a plain find inside the transaction is an unlocked read. Lock several rows in a fixed order (by id) or concurrent transfers deadlock.
+Read-then-write inside it needs a lock: `m.findOne(Account, { where: { id }, lock: { mode: "pessimistic_write" } })` (or `.setLock("pessimistic_write")` on a builder); a plain find inside the transaction is an unlocked read. Lock several rows in a fixed order (by id) or concurrent transfers deadlock. Where contention is rare, `@VersionColumn` is the optimistic alternative: the read with `lock: { mode: "optimistic", version }` throws `OptimisticLockVersionMismatchError` when the row moved on; `save()` never checks the version, so guard the write with a builder `.update().where("version = :v")` and check `affected`.
 
 Use `QueryRunner` only when you need manual control (savepoints, conditional commits):
 
@@ -139,7 +140,7 @@ await this.dataSource.createQueryBuilder().update(Order)
   .execute();
 ```
 
-A builder `.update()` still stamps `@UpdateDateColumn` (and bumps `@VersionColumn`) when the column is not in `.set()`, and builder inserts/updates still fire **subscribers** (`beforeInsert`, `afterUpdate`) unless `.callListeners(false)`. Entity-method listeners (`@BeforeInsert` on the class) run only when the value is an entity instance - build rows with `manager.create(Entity, {...})`; a plain object passed to `save()` or `.values()` skips them. Keep `rows per statement x bound columns per row` under the engine's cap (PostgreSQL 65,535; SQLite above). `save(..., { transaction: false })` drops one `BEGIN/COMMIT` pair and the atomicity across chunks with it - use it only when partial completion is acceptable.
+A builder `.update()` still stamps `@UpdateDateColumn` (and bumps `@VersionColumn`) when the column is not in `.set()`, and builder inserts/updates still fire **subscribers** (`beforeInsert`, `afterUpdate`) unless `.callListeners(false)`. Entity-method listeners (`@BeforeInsert` on the class) run only when the value is an entity instance - build rows with `manager.create(Entity, {...})`; a plain object passed to `save()` or `.values()` skips them. Keep `rows per statement x bound columns per row` under the engine's cap (PostgreSQL 65,535; SQLite above). `save(..., { transaction: false })` drops one `BEGIN/COMMIT` pair and the atomicity across chunks with it - use it only when partial completion is acceptable. `repo.upsert(rows, ["idempotencyKey"])` is one `INSERT ... ON CONFLICT DO UPDATE` (MySQL `ON DUPLICATE KEY UPDATE`); the conflict columns must carry a unique index. On MySQL the bound is bytes, not placeholders: keep each statement under `max_allowed_packet` (default 64 MB on 8.0) by chunking on row size (rows x average serialised row, under a quarter of it).
 
 ### Pagination With a Collection Join
 
@@ -165,22 +166,22 @@ const byId = new Map(rows.map((r) => [r.id, r]));
 const page = ids.flatMap((id) => byId.get(id) ?? []);   // a row deleted between phases drops out
 ```
 
-`relationLoadStrategy: "query"` (per query or per DataSource) loads relations as separate queries instead of one join - it removes the cartesian blow-up and the DISTINCT wrapper, at one extra round trip per relation. Prefer it over hand-rolling two phases unless the collection must appear in the `WHERE` or the `ORDER BY`.
+`relationLoadStrategy: "query"` (per query or per DataSource) loads relations as separate queries instead of one join - it removes the cartesian blow-up and the DISTINCT wrapper, at extra round trips per relation (two per `OneToMany`). Prefer it over hand-rolling two phases unless the collection must appear in the `WHERE` or the `ORDER BY`.
 
 `getManyAndCount()`'s count query drops `GROUP BY` and counts distinct root ids, so over a grouped query the total ignores the grouping (and a `HAVING` breaks it): run an explicit `COUNT(*)` over the grouped subquery, or `getRawMany()` for the groups. `orderBy()` is not parameterised: a user-selectable sort maps through a fixed whitelist (`{ date: "line.bookedAt", amount: "line.amount" }`) plus a unique tiebreaker.
 
-Keyset paging over a large table: order by a unique key pair and seek past the last row seen, served by an index on `(createdAt, id)`:
+Keyset paging over a large table: order by a unique key pair and seek past the last row seen, served by an index on `(createdAt, id)` (MySQL accepts the row constructor but may not drive the composite index with it - expand to `(order.createdAt < :at OR (order.createdAt = :at AND order.id < :id))` there - outer parentheses kept, since TypeORM joins `where` / `andWhere` strings unwrapped):
 
 ```typescript
 qb.where("(order.createdAt, order.id) < (:at, :id)", { at: cursor.at, id: cursor.id })
   .orderBy("order.createdAt", "DESC").addOrderBy("order.id", "DESC").limit(50);
 ```
 
-Streaming a large export: `qb.stream()` on a dedicated `QueryRunner`, ordered by a stable key, over the root table with no collection join. It yields raw alias-prefixed rows (`order_id`), not entities - no hydration, no transformers - and on PostgreSQL needs the `pg-query-stream` package. Never `OFFSET` paging over hundreds of thousands of rows.
+Streaming a large export: `qb.stream()` on a dedicated `QueryRunner`, ordered by a stable key, over the root table with no collection join. It yields raw alias-prefixed rows (`order_id`), not entities - no hydration, no transformers - and on PostgreSQL needs the `pg-query-stream` package (`mysql2` streams natively). Never `OFFSET` paging over hundreds of thousands of rows.
 
 ### Money and Numerics
 
-`pg` returns `numeric` as a **string**, and `SUM` / `COUNT` come back as strings too. Never `parseFloat` a money value - aggregate in SQL and carry `decimal.js` (or a `ValueTransformer`) at the boundary. A transformer's `to` is applied to entity saves, builder `.set()` / `.values()`, and find-options `where` values; it is **not** applied to `:named` parameters in a QueryBuilder condition string or to `query()` - serialise those yourself.
+`pg` returns `numeric` as a **string**, and `SUM` / `COUNT` come back as strings too. Never `parseFloat` a money value - aggregate in SQL and carry `decimal.js` at the boundary, either as the `string` entity column above or through a `ValueTransformer` that yields `Decimal` on the entity - one convention per codebase. A transformer's `to` is applied to entity saves, builder `.set()` / `.values()`, and find-options `where` values; it is **not** applied to `:named` parameters in a QueryBuilder condition string or to `query()` - serialise those yourself.
 
 ### Connection Pooling
 
@@ -188,16 +189,16 @@ Streaming a large export: `qb.stream()` on a dedicated `QueryRunner`, ordered by
 
 ### Migrations
 
-See `node-migration-safety` for commands, deploy ordering, and zero-downtime DDL rules.
+See `node-migration-safety` for commands, deploy ordering, and zero-downtime DDL rules. Moving MySQL -> PostgreSQL: PostgreSQL creates no index for a FK (`@Index()` every FK, as above); `enum` columns become named types (`<table>_<column>_enum`; a generated migration for a new value renames and recreates the type and rewrites the column - hand-edit it to `ALTER TYPE ... ADD VALUE`, `node-migration-safety`); `datetime` becomes `timestamptz` (`@Column({ type: "timestamptz" })`, and `@CreateDateColumn({ type: "timestamptz" })` / `@UpdateDateColumn` likewise - they default to `TIMESTAMP` without zone); uuids are generated server-side - `uuid_generate_v4()` (uuid-ossp) by default, `gen_random_uuid()` with `uuidExtension: "pgcrypto"` - where MySQL made them client-side; `DECIMAL` arrives as a string on both. Baseline the target with one generated migration (`<timestamp>-Baseline`) before any data move.
 
 ## Output Format
 
-When authoring, emit this block plus the entity and query code it describes; a build over existing code is authoring plus review - findings for the existing defects the change touches, then the block. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file) followed by `Issue:` and `Fix:` lines, `[Must]` first - `[Must]` when it risks incorrect behaviour, data loss, or a security hole (a page holding fewer rows than `pageSize`, money through a `number`, an enqueue before commit, an unlocked read-then-write), `[Recommend]` otherwise (a missing index, an over-fetch). A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the findings, which cover the causes first and then any other defect in the files read. After the findings, emit this block as the target state: every row shows the corrected value, and a row the current code violates ends ` - GAP (was: <observed>)`. Name any entity referenced but not visible in the input rather than inventing its columns.
+When authoring, emit this block plus the entity and query code it describes; a build over existing code is authoring plus review - findings for the existing defects the change touches, then the block. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file) followed by `Issue:` and `Fix:` lines, `[Must]` first - `[Must]` when it risks incorrect behaviour, data loss, or a security hole (a page holding fewer rows than `pageSize`, money through a `number`, an enqueue before commit, an unlocked read-then-write), `[Recommend]` otherwise (a missing index, an over-fetch). A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the findings, which cover the causes first and then any other defect in the files read. After the findings, emit this block as the target state: every row shows the corrected value, and a row the current code violates ends ` - GAP (was: <observed>)` - an entity lacking a column the code needs is such a row (the Columns cell lists the column), and under a planned engine the GAP compares the current code with the target engine's form. Name any entity referenced but not visible in the input rather than inventing its columns. A defect outside this skill's lens (`save(req.body)`, an entity-vs-migration drift, worker concurrency against the pool) goes on one `Out of scope: <defect> -> <owning skill>` line after the findings and before the block. A multi-value cell marks the GAP per value; a query site with no repository (router code) is a row reading `n/a - no repository` in Method and naming the file. Repository Methods cells: Query Type `{find | locked find | save | insert/upsert | QueryBuilder | raw}`, Pagination `{none | skip/take | limit/offset (no collection join) | two-phase | relationLoadStrategy query | keyset | stream}`, Transaction `{none | callback | QueryRunner}`, Returns `{DTO | plain}`.
 
 ```
 ## TypeORM Design
 
-**Engine:** {PostgreSQL | MySQL | SQLite | other | unknown} - TypeORM {version from package.json | unknown}
+**Engine:** {PostgreSQL | MySQL | SQLite | other | unknown}{ -> <target> (planned)} - TypeORM {version from package.json | unknown}
 
 ### Entities
 | Entity | Columns | Relations (load strategy) | Indexes |
@@ -208,8 +209,8 @@ When authoring, emit this block plus the entity and query code it describes; a b
 |------|--------|
 
 ### Repository Methods
-| Method | Query Type | Relations Loaded | Pagination {none \| skip/take \| two-phase \| relationLoadStrategy query \| keyset \| stream} | Transaction {none \| callback \| QueryRunner} | Returns {DTO \| plain \| entity - GAP} |
-|--------|-----------|------------------|------|------|------|
+| Method | Query Type | Relations Loaded | Pagination | Transaction | Returns |
+|--------|-----------|------------------|------------|-------------|---------|
 
 ### Money and Numeric Handling
 {column types, where arithmetic happens, string-boundary conversions}
@@ -220,12 +221,7 @@ When authoring, emit this block plus the entity and query code it describes; a b
 
 ## Avoid
 
-- `synchronize: true` in production (drops columns silently)
-- Lazy relations, and `eager: true` on a large collection
 - Raw SQL for simple CRUD
 - Pool `max` not sized against `max_connections / processes`
-- Leaked `QueryRunner` (missing `finally release()`)
-- Enqueuing jobs inside `dataSource.transaction` (fires before commit)
-- `parseFloat` on a `decimal`/`numeric` column
 - `limit`/`offset` on a query that joins a collection, and `getManyAndCount()` over a `GROUP BY`
 - Interpolating a user-supplied sort column into `orderBy()`

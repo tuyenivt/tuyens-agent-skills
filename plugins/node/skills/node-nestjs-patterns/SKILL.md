@@ -9,7 +9,7 @@ user-invocable: false
 
 # NestJS Patterns
 
-> Load `Use skill: stack-detect` first. Read the HTTP adapter from `@nestjs/platform-express` / `@nestjs/platform-fastify` in `package.json` (stack-detect does not carry it; unread, it is `unknown - package.json not read`). The examples below are Express-adapter; the adapter and the ORM surface only in the block's `**Stack:**` line.
+> Load `Use skill: stack-detect` first. Read the HTTP adapter from `@nestjs/platform-express` / `@nestjs/platform-fastify` and BullMQ from `@nestjs/bullmq` or `bullmq` in `package.json` (stack-detect has no field for either - an `Additional` key such as `Queue: BullMQ` counts; unread, the adapter is `unknown - package.json not read` and the suffix is omitted). The examples below are Express-adapter; the adapter, the ORM, and the `, BullMQ` suffix surface only in the block's `**Stack:**` line.
 
 ## When to Use
 
@@ -23,15 +23,15 @@ user-invocable: false
 - `@Injectable()` on every service/repository/guard/interceptor; prefer constructor injection
 - Controllers orchestrate; services execute business logic. A handler that catches an error and **returns** a body answers with a success status (201 for POST) - let errors reach the filter
 - Return DTOs - never raw Prisma/TypeORM entities. Map with an explicit allowlist mapper (a plain function or a `static from()`), never by stripping fields off the entity - a denylist re-leaks every column added later
-- `ValidationPipe({ whitelist: true, transform: true })` globally; never `any` in DTOs. A global pipe cannot be overridden per route - `@UsePipes()` on a controller **adds** a pipe. A parameter whose metatype is `Object`, `Buffer`, `String`, `Number`, `Boolean`, `Array`, or `Date` (a `Record<string, string>` or bare-object type), an untyped parameter, and a custom param decorator (unless `validateCustomDecorators: true`) are skipped, so neither validation nor `whitelist` applies
+- `ValidationPipe({ whitelist: true, transform: true })` globally; never `any` in DTOs. A global pipe is not overridden per route - `@UsePipes()` **adds** a pipe. A parameter whose metatype is `Object` / `Buffer` / `String` / `Number` / `Boolean` / `Array` / `Date` (a `Record<string, string>` or bare-object type), an untyped parameter, and a custom param decorator (unless `validateCustomDecorators: true`) are skipped - neither validation nor `whitelist` applies
 - Authentication is global and fails closed: the JWT guard is an `APP_GUARD`, and a route opts out only through a `@Public()` decorator the guard reads via `Reflector`. Route-level `@UseGuards()` adds authorization (roles) on top; it never re-adds the JWT guard
-- `main.ts` - and a standalone `createApplicationContext` worker - calls `app.enableShutdownHooks()`, or no `onModuleDestroy` / `beforeApplicationShutdown` hook (pool drain, BullMQ worker close) runs on `SIGTERM`
+- `main.ts` - and a standalone `createApplicationContext` worker - calls `app.enableShutdownHooks()`, or no `onModuleDestroy` / `beforeApplicationShutdown` / `onApplicationShutdown` hook (pool drain, BullMQ worker close) runs on `SIGTERM`
 
 ## Patterns
 
 ### Module Architecture
 
-Export only what other modules need; `@Global()` only for truly cross-cutting providers (`PrismaModule`). Dynamic modules for configurable providers (`BullModule.registerQueue({ name })`); custom providers (`useClass` / `useFactory` / `useValue`) for DB and external clients.
+Export only what other modules need; `@Global()` only for truly cross-cutting providers (`PrismaModule`). A provider another module needs is exported by its owner and reached through `imports` - never listed in both modules' `providers`, which builds two instances (two caches, two pools); the same holds for `BullModule.registerQueue({ name })`, registered once and imported. Dynamic modules for configurable providers; custom providers (`useClass` / `useFactory` / `useValue`) for DB and external clients.
 
 ### Bootstrap
 
@@ -43,7 +43,7 @@ app.enableShutdownHooks();
 await app.listen(port);
 ```
 
-Never `app.use(express.json())` in `main.ts`: at `init()` Nest sees a JSON parser already applied and skips its own, so the raw-body `verify` hook is never installed and `req.rawBody` stays `undefined`.
+Never `app.use(express.json())` in `main.ts`: at `init()` Nest sees a JSON parser already applied and skips its own, so the raw-body `verify` hook is never installed and `req.rawBody` stays `undefined`. `app.useGlobalGuards(new X())` / `useGlobalFilters` / `useGlobalInterceptors` take instances with no constructor injection - every dependency (`app.get(Reflector)`, `app.get(HttpAdapterHost).httpAdapter`) is passed by hand - so global guards and interceptors register through the `APP_*` tokens.
 
 ### Controllers
 
@@ -94,11 +94,11 @@ export class RolesGuard implements CanActivate {
   }
 }
 
-// app.module.ts
-providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }]
+// app.module.ts - global guard, and a global interceptor the same way (APP_INTERCEPTOR / APP_FILTER / APP_PIPE)
+providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }, { provide: APP_INTERCEPTOR, useClass: TenantInterceptor }]
 ```
 
-A `@Public()` decorator the guard never reads is dead: the route stays behind JWT. An empty `@UseGuards()` opts out of nothing.
+A `@Public()` decorator the guard never reads is dead: the route stays behind JWT. An empty `@UseGuards()` opts out of nothing. The moment `APP_GUARD` lands, every route without `@Public()` is behind JWT - audit webhooks and health routes before the change ships, and drop controller-level `@UseGuards(JwtAuthGuard)` (a GAP row). Type the principal once (`src/common/auth/`, beside `Public` and `Roles`) - `interface AuthenticatedRequest extends Request { user: JwtPayload }` - and read it with `@Req() req: AuthenticatedRequest` or a `@CurrentUser()` param decorator; `req.user` on the bare Express `Request` does not compile without `@types/passport` and is `Express.User | undefined` with it, and `ctx.switchToHttp().getRequest()` is `any`.
 
 ### Validation
 
@@ -106,7 +106,7 @@ DTO decorators (`@IsUUID`, `@IsInt`, `@IsEmail`, `@IsEnum`); nested objects and 
 
 ### Exception Filters
 
-The domain hierarchy, the global filter, and capture discipline are `node-exception-handling`. A catch-all `@Catch()` filter here must keep two things Nest's default does: log unknown errors (extend `BaseExceptionFilter` and call `super.catch()` for them - register it as `{ provide: APP_FILTER, useClass }`, or pass `app.get(HttpAdapterHost).httpAdapter` to its constructor; with neither, `super.catch()` throws), and keep `ValidationPipe`'s field messages - build the body from `ex.getResponse()`, not `ex.message` (an array message collapses to "Bad Request Exception").
+The domain hierarchy, the global filter, and capture discipline are `node-exception-handling`. A catch-all `@Catch()` filter keeps two things Nest's default does: log unknown errors (extend `BaseExceptionFilter` and call `super.catch()` for them - register it as `{ provide: APP_FILTER, useClass }`, or pass `app.get(HttpAdapterHost).httpAdapter` to its constructor; with neither, `super.catch()` throws), and keep `ValidationPipe`'s field messages - build the body from `ex.getResponse()`, not `ex.message` (an array message collapses to "Bad Request Exception").
 
 ### Webhooks
 
@@ -140,10 +140,10 @@ handle(@Req() req: RawBodyRequest<Request>, @Headers("stripe-signature") sig: st
 Scope propagates upward: a singleton injecting a `REQUEST` provider becomes `REQUEST`-scoped, and so does everything that injects *it*. Three symptoms, one cause:
 
 - a "singleton" that got slow - it is rebuilt per request
-- a `@Cron` / `@Interval` on a provider that became request-scoped is silently never registered (one warning line at boot)
+- a `@Cron` / `@Interval` on a provider that became request-scoped is never registered - one warning line at boot, nothing at run time
 - a BullMQ `@Processor` becomes request-scoped per job: `@nestjs/bullmq` resolves it per job with the `Job` as `REQUEST`, so boot succeeds, but a provider reading `req.user` / `req.headers` sees the `Job` - `tenantId` is `undefined`
 
-The fix is to stop propagating scope, not to change the scope keyword. Carry per-request state in an `AsyncLocalStorage`-backed singleton; every provider goes back to `DEFAULT`, and a cron or worker supplies the context explicitly.
+The fix is to stop propagating scope, not to change the scope keyword. Carry per-request state in an `AsyncLocalStorage`-backed singleton; every provider goes back to `DEFAULT`, and a cron or worker supplies the context explicitly. A database client dragged into `REQUEST` is `node-connection-pool-sizing`'s pool finding.
 
 ```typescript
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -166,7 +166,7 @@ export class TenantInterceptor implements NestInterceptor {
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
     const tenantId = ctx.switchToHttp().getRequest().user?.tenantId;
     if (!tenantId) return next.handle();                          // public route
-    // the handler runs when the Observable is subscribed - run the subscription inside the store
+    // next.handle() binds the async context when it is CALLED (AsyncResource.bind); the handler runs on subscribe - so call it inside the store, not just subscribe
     return new Observable((sub) => this.tenant.run({ tenantId }, () => next.handle().subscribe(sub)));
   }
 }
@@ -178,7 +178,7 @@ async process(job: Job<{ tenantId: string; month: string }>) {
 // Cron: iterate tenants and run each inside tenant.run({ tenantId }, ...)
 ```
 
-A genuinely request-scoped provider needed by a cron or hand-rolled worker is resolved per run: `const contextId = ContextIdFactory.create(); this.moduleRef.registerRequestByContextId(fakeRequest, contextId); const x = await this.moduleRef.resolve(X, contextId, { strict: false });`.
+A `@Processor` host also needs `enableShutdownHooks()`: `@nestjs/bullmq` closes its Workers from `onApplicationShutdown`, so without it `SIGTERM` kills in-flight jobs. Scheduling (`upsertJobScheduler`, repeatables) is wiring, done once in `onModuleInit` of the producer's module, never inside `process()`. A genuinely request-scoped provider needed by a cron or hand-rolled worker is resolved per run: `const contextId = ContextIdFactory.create(); this.moduleRef.registerRequestByContextId(fakeRequest, contextId); const x = await this.moduleRef.resolve(X, contextId, { strict: false });`.
 
 ### Circular Dependencies and "Can't Resolve"
 
@@ -190,24 +190,24 @@ constructor(@Inject(forwardRef(() => PaymentService)) private readonly payments:
 constructor(@Inject(forwardRef(() => OrderService)) private readonly orders: OrderService) {}
 ```
 
-Diagnose "Nest can't resolve dependencies of X (A, ?)" from the name in "Please make sure that the argument <Name> at index [N]" - the `?` marks the failing index in every case:
+Diagnose "Nest can't resolve dependencies of X (A, ?)" from the `?` position and the exception class. A named argument reads "the argument <Name> at index [N] is available in the <Module> module" (11.1.16+; "<Module> context" before); from 11.1.7 an erased metatype and an undefined dependency print the same unnamed text ("available in the current module" - "current context" with the word `dependency` before 11.1.16 - then "appears to be undefined at runtime"), so only the exception class tells them apart:
 
-| Argument name | Cause | Fix |
-|---------------|-------|-----|
-| a class name | the consuming module does not import the module that exports it, or the provider is not in its own module's `providers` | add the import/export or the provider |
-| `Object` | injected by interface, type alias, or `import type` - the metatype erased | inject by token: `@Inject(TOKEN)` |
-| `dependency` (with a forwardRef hint) | a circular file import left the class `undefined` at decoration time | break the file cycle, or `forwardRef` both sides |
+| Message | Cause | Fix |
+|---------|-------|-----|
+| a class name at index [N] | the consuming module does not import the module that exports it, or the provider is not in its own module's `providers` | add the import/export or the provider |
+| `UnknownDependenciesException` with an unnamed argument (11.1.16+), `dependency` (11.1.7-11.1.15), or `Object` (11.0-11.1.6) | injected by interface, type alias, or `import type` - the metatype erased | inject by token: `@Inject(TOKEN)` |
+| `UndefinedDependencyException`, preceded at the default log level by the `InjectorLogger` line "Nest encountered an undefined dependency. This may be due to a circular import or a missing dependency declaration." | a circular file import left the class `undefined` at decoration time | break the file cycle, or `forwardRef` both sides |
 
 "Nest cannot create the <Module> instance ... imports array is undefined" is the module-cycle case.
 
 ## Output Format
 
-When authoring, emit this block plus the module, controller, and provider code it describes; a build over existing code is authoring plus review - findings for the existing defects the change touches, then the block. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file) followed by `Issue:` and `Fix:` lines, `[Must]` first - `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the findings. After the findings, emit this block as the target state: every row shows the corrected value, and a row the current code violates ends ` - GAP (was: <observed>)`; a row whose evidence was not in the read set reads `unknown - <file> not read`.
+When authoring, emit this block plus the module, controller, and provider code it describes; a build over existing code is authoring plus review - findings for the existing defects the change touches, then the block; a defect elsewhere in the read set goes on one `Out of scope:` line naming the owning skill, after the findings and before the block. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file) followed by `Issue:` and `Fix:` lines, `[Must]` first - `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the findings. After the findings, emit this block as the target state: every row shows the corrected value, and a row the current code violates ends ` - GAP (was: <observed>)`; a row whose evidence was not in the read set reads `unknown - <file> not read`, and a cell that does not apply reads `n/a`. Module Structure lists the modules the change touches plus every module they import or export to - a module or provider the change adds is a row with no GAP, anchored as `<file> (new)`; a provider the change removes keeps its DI Graph and Scopes row with `removed - <reason>` in the Scope cell. A row for a required construct the current code lacks (a Bootstrap setting, a global guard, a shutdown hook) reads ` - GAP (was: absent)`. The standalone-worker row covers any entrypoint that calls `createApplicationContext` - a second `main.ts`, or the same file behind an env flag.
 
 ```
 ## NestJS Architecture
 
-**Stack:** {express | fastify | unknown} adapter, {Prisma | TypeORM | none}
+**Stack:** {express | fastify | unknown - package.json not read} adapter, {Prisma | TypeORM | <other ORM> | none}{, BullMQ}
 
 ### Bootstrap
 | Setting | Value |
@@ -236,7 +236,4 @@ When authoring, emit this block plus the module, controller, and provider code i
 
 ## Avoid
 
-- Business logic in controllers; returning Prisma/entity objects; `any` in DTOs
-- Circular module deps without `forwardRef()` on both sides (or without refactoring out a shared service)
 - Injecting `REQUEST`-scoped providers into singletons unintentionally
-- JWT guards on webhook endpoints (signature-based auth, `@Public()`)

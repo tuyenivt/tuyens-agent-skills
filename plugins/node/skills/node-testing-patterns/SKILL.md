@@ -9,7 +9,7 @@ user-invocable: false
 
 # Testing Patterns
 
-> Load `Use skill: stack-detect` first. `Test framework` picks Jest (default, and for `unknown`) or Vitest (`vi.fn` / `vi.mock`, `vitest-mock-extended`, `globalSetup` in `vitest.config`, the worker id in `VITEST_POOL_ID`; the mock and test shapes carry over). `ORM` picks the migrate command for the DB setup - Prisma and TypeORM below; any other ORM, or none, keeps the schema-per-worker shape with the project's own migrate command. `Database` picks the engine: a non-PostgreSQL database uses the matching Testcontainers module (a real engine of the same kind). `Build tool` picks the runner command. All of it surfaces in the plan's Infrastructure table.
+> Load `Use skill: stack-detect` first. `Test framework` picks Jest (default, and for `unknown`) or Vitest (`vi.fn` / `vi.mock`, `vitest-mock-extended` 3 on Vitest 3 and 5 on Vitest 4, `globalSetup` in `vitest.config` receiving the `TestProject` - the worker count is `project.config.maxWorkers`, pinned in config - and the worker id in `VITEST_POOL_ID`; the mock and test shapes carry over). `ORM` picks the migrate command for the DB setup - Prisma and TypeORM below; any other ORM, or none, keeps the schema-per-worker shape with the project's own migrate command. `Database` picks the engine: a non-PostgreSQL database uses the matching Testcontainers module (a real engine of the same kind). `Build tool` picks the runner command; the Runner cell reads `<framework> via <manager> test` (`bun run test` on Bun). All of it surfaces in the plan's Infrastructure table - in a review or diagnosis, only inside the `Fix:` lines that name the runner or database, with no header line.
 
 ## When to Use
 
@@ -22,11 +22,11 @@ user-invocable: false
 
 - TypeScript in tests: no `any`, typed mocks, typed assertions
 - Each test independent: no shared mutable state
-- Real PostgreSQL for integration and e2e - Testcontainers, or a shared test instance with a schema per worker; never SQLite standing in for PostgreSQL
-- Prefer DI overrides for mocking over `jest.mock()`. A top-level `jest.mock()` is hoisted above the imports and applies to every test in that file. Set `clearMocks: true` in the Jest config; add `restoreMocks: true` only when mock implementations are set in `beforeEach` (under Jest 29 it resets `jest.fn()` implementations set in `beforeAll` or a factory; Jest 30 restores `spyOn` mocks only)
+- A real database of the production engine for integration and e2e (PostgreSQL below; MySQL through its own Testcontainers module) - Testcontainers, or a shared test instance with a schema per worker; never SQLite standing in for it
+- Prefer DI overrides for mocking over `jest.mock()`. A top-level `jest.mock()` is hoisted above the imports and applies to every test in that file. Set `clearMocks: true` in the Jest config; add `restoreMocks: true` only when mock implementations are set in `beforeEach` (Jest 29.4.3-29.6.2 also reset `jest.fn()` implementations set in `beforeAll` or a factory; 29.6.3+ and 30 restore `spyOn` mocks only)
 - Test names state behavior: "should return 201 when order is created"
 - Layer boundaries: unit mocks the DB; e2e and integration both use a **real** database. E2e drives HTTP through the app and asserts status plus response shape; integration calls the service or repository directly and asserts persisted rows
-- Runner: run through the project's package manager script (`npm test` / `pnpm test` / `yarn test` / `bun run test`) - never a bare runner binary. On Bun, `bun run test` runs the Jest script; plain `bun test` runs Bun's own runner, where TestingModule and `jest-mock-extended` setups break
+- Runner: run through the project's package manager script (`npm test` / `pnpm test` / `yarn test` / `bun run test`) - never a bare runner binary. On Bun, `bun run test` runs the Jest script; plain `bun test` runs Bun's own runner, where `jest-mock-extended` (it imports `@jest/globals`) fails to load
 
 ## Patterns
 
@@ -67,12 +67,12 @@ describe("OrderService", () => {
 ```
 
 - `Test.createTestingModule()` for isolated module testing; override providers via `.overrideProvider(X).useValue(...)`
-- `jest-mock-extended` (`mockDeep`) for typed Prisma mocks
+- `jest-mock-extended` (`mockDeep`) for typed Prisma mocks - a devDependency to add when absent
 - Assert on outward effects - the data written, the job enqueued, the return value - not on which internal method ran
 
 ### NestJS E2E Testing
 
-E2e runs against a real database (below) and must configure the app exactly as `main.ts` does: `createNestApplication()` does not run `main.ts`, so a test that re-declares only the pipes misses the global prefix, versioning, filters, and interceptors. Put one `configureApp(app)` in its own module (`src/configure-app.ts`) that both `main.ts` and the spec import - importing it from `main.ts` would run `bootstrap()` inside the test. Override the auth guard so it still rejects a request without a test identity, or mint a real token from the app's own `JwtService` - either way the 401 cases still assert something. When the guard is global (`{ provide: APP_GUARD, useClass: JwtAuthGuard }`), `overrideGuard` does not reach it: register it as `{ provide: APP_GUARD, useExisting: JwtAuthGuard }` plus `JwtAuthGuard` as a provider, and use `.overrideProvider(JwtAuthGuard)`.
+E2e imports `AppModule` (with the Redis lane below when it hosts BullMQ, or the feature-module build under BullMQ below); a module built from one controller is a unit test, not e2e. E2e runs against a real database (below) and must configure the app exactly as `main.ts` does: `createNestApplication()` does not run `main.ts`, so a test that re-declares only the pipes misses the global prefix, versioning, filters, and interceptors. Put one `configureApp(app)` in its own module (`src/configure-app.ts`) that both `main.ts` and the spec import - importing it from `main.ts` would run `bootstrap()` inside the test. Override the auth guard so it still rejects a request without a test identity, or mint a real token from the app's own `JwtService` (`app.get(JwtService).sign({ sub: user.id, tenantId })`, sent as `` .set("authorization", `Bearer ${token}`) ``) - either way the 401 cases still assert something. When the guard is global (`{ provide: APP_GUARD, useClass: JwtAuthGuard }`), `overrideGuard` does not reach it: register it as `{ provide: APP_GUARD, useExisting: JwtAuthGuard }` plus `JwtAuthGuard` as a provider, and use `.overrideProvider(JwtAuthGuard)`.
 
 ```typescript
 describe("Orders API (e2e)", () => {
@@ -140,7 +140,8 @@ Pass the app to Supertest - it binds an ephemeral port per request. Never `app.l
 One PostgreSQL per run, one schema per Jest worker, migrations applied per schema. With Docker, start a Testcontainers container in `globalSetup`; without Docker on CI, point at the shared test instance and add a run-scoped prefix so concurrent CI jobs never touch each other's schemas.
 
 ```typescript
-// jest config: { globalSetup: "<rootDir>/test/global-setup.ts", globalTeardown: "<rootDir>/test/global-teardown.ts",
+// jest config (rootDir = the repo root; under an e2e config whose rootDir is test/, drop the test/ prefix):
+//              { globalSetup: "<rootDir>/test/global-setup.ts", globalTeardown: "<rootDir>/test/global-teardown.ts",
 //                setupFiles: ["<rootDir>/test/setup-env.ts"] }
 // test/db-url.ts - the base URL may already carry a query string (?sslmode=require)
 export const workerDbUrl = (base: string, run: string, worker: string | number) => {
@@ -156,7 +157,7 @@ export default async function globalSetup(globalConfig: Config.GlobalConfig) {
   if (process.env.CI_NO_DOCKER) {
     process.env.TEST_DB_BASE = process.env.SHARED_TEST_DB_URL;           // shared instance
   } else {
-    globalThis.__PG__ = await new PostgreSqlContainer("postgres:16-alpine").start();   // pin the major
+    globalThis.__PG__ = await new PostgreSqlContainer("postgres:17-alpine").start();   // pin the major
     process.env.TEST_DB_BASE = globalThis.__PG__.getConnectionUri();
   }
   process.env.TEST_RUN_ID = process.env.CI_JOB_ID ?? String(Date.now());
@@ -168,6 +169,11 @@ export default async function globalSetup(globalConfig: Config.GlobalConfig) {
 
 // test/setup-env.ts - `setupFiles`, runs in each worker before the test file
 process.env.DATABASE_URL = workerDbUrl(process.env.TEST_DB_BASE!, process.env.TEST_RUN_ID!, process.env.JEST_WORKER_ID!);
+// Prisma 7 (driver adapters): the runtime client ignores ?schema= and connection_limit - the adapter carries both
+const schema = `t_${process.env.TEST_RUN_ID}_${process.env.JEST_WORKER_ID}`;
+export const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 5, options: `-c search_path=${schema}` }, { schema });
+// the e2e module uses it - .overrideProvider(PrismaService).useValue(new PrismaClient({ adapter })) - or PrismaService builds its
+// adapter from these env values; otherwise every Prisma 7 worker lands in `public`
 
 // test/global-teardown.ts - DROP SCHEMA ... CASCADE for each t_<run>_<w>, then stop the container if one was started
 
@@ -175,9 +181,9 @@ process.env.DATABASE_URL = workerDbUrl(process.env.TEST_DB_BASE!, process.env.TE
 beforeEach(() => prisma.$executeRawUnsafe(`TRUNCATE "Order", "OrderItem" RESTART IDENTITY CASCADE`));
 ```
 
-- Prisma 5-6 selects the schema from the `?schema=` URL parameter - it sets `search_path` and keeps `_prisma_migrations` there; a `search_path` set any other way does not steer `migrate deploy`. Prisma 7 (driver adapters) takes the schema and pool size from the adapter options instead. TypeORM: set the `schema` option on the `DataSource` and run the migrations (`dataSource.runMigrations()`); `synchronize` builds from entity metadata only, so objects that exist only in hand-written migration SQL (extensions, triggers, raw DDL) are absent
+- Prisma 5-6 selects the schema from the `?schema=` URL parameter - it sets `search_path` and keeps `_prisma_migrations` there; a `search_path` set any other way does not steer `migrate deploy`. Prisma 7's CLI reads the URL from `prisma.config.ts` (`env("DATABASE_URL")` picks up the per-schema URL above) while the runtime client takes schema and pool size from the adapter, as in `setup-env.ts`. `migrate deploy` does not run `prisma generate` - the generated client exists before the workers start (`postinstall` or an explicit step). MySQL: a schema is a database - `CREATE DATABASE t_<run>_<w>` as root (`new MySqlContainer("mysql:8.0")`, `getConnectionUri(true)`; the default `test` user lacks the privilege), and the reset is one `TRUNCATE TABLE <t>` per table between `SET FOREIGN_KEY_CHECKS=0` and `=1`, sent as separate statements on one connection (a `prisma.$transaction([...])` batch) - `FOREIGN_KEY_CHECKS` is a session variable, so the pooling rule below applies. TypeORM: set the `schema` option on the `DataSource` and run the migrations (`dataSource.runMigrations()`; when `migrations` points at `dist/`, build first or point the test DataSource at the `src` glob through ts-jest); `synchronize` builds from entity metadata only, so objects that exist only in hand-written migration SQL (extensions, triggers, raw DDL) are absent
 - Raw `BEGIN` / `ROLLBACK` around a test does not isolate: the client pools connections, so `BEGIN` and the next query may run on different ones
-- Set `connection_limit` on the test URL - `maxWorkers` x the default pool exhausts a small instance's `max_connections` and reads as flakiness. Read the schema count from Jest's `maxWorkers` (above), never a separate setting
+- Cap the per-worker pool (`connection_limit` on the URL for Prisma 5-6, `max` on the `PrismaPg` adapter for Prisma 7, `poolSize` for TypeORM) - `maxWorkers` x the default pool exhausts a small instance's `max_connections` and reads as flakiness. Read the schema count from Jest's `maxWorkers` (above), never a separate setting
 - Container startup takes 10-30s: give `globalSetup` the time (Jest's `testTimeout` does not apply to it; a CI step timeout does)
 
 ### Test Data Factories
@@ -186,7 +192,7 @@ Factories beat object literals: one place owns the default shape, tests override
 
 ```typescript
 import { Factory } from "fishery";
-import { faker } from "@faker-js/faker";
+import { faker } from "@faker-js/faker";   // 9 under Jest + ts-jest (CommonJS); 10 is ESM-only
 
 export const orderFactory = Factory.define<Order>(({ sequence }) => ({
   id: `ord_${sequence}`,
@@ -240,13 +246,14 @@ A provider with no helper: compute the signature in the test with the same funct
 
 ## Edge Cases
 
-- **Flaky tests** - triage by symptom: passes alone or with `--runInBand` but fails in parallel means contention between workers over an external shared resource (a DB schema or rows, a port, a fixed Redis key or queue name, a temp file path); fails only with `--randomize` means an ordering assumption inside a file; hangs after the run means an open handle (`--detectOpenHandles`) - usually a server, pool, Redis socket, or timer nobody closed
-- **BullMQ**: on the producer side mock the queue and assert on `queue.add()`. To exercise processor logic, register the `@Processor` class as a plain provider and call `process(job)` with a mock `Job` - never import `BullModule`, which is what opens the Redis socket. Broker behaviour itself - `attempts` / `backoff` exhaustion, stall redelivery, DLQ drain - goes in its own file against a real Redis, with backoff delays overridden to CI-viable values
+- **Flaky tests** - triage by symptom: passes alone or with `--runInBand` but fails in parallel means contention between workers over an external shared resource (a DB schema or rows, a port, a fixed Redis key or queue name, a temp file path); fails only with `--randomize` means an ordering assumption inside a file; hangs after the run means an open handle (`--detectOpenHandles`) - usually a server, pool, Redis socket, or timer nobody closed (`app.close()` runs `onModuleDestroy`, so `$disconnect` only when `PrismaService` implements it; a client built outside Nest needs its own `afterAll(() => prisma.$disconnect())`)
+- **Retry loops** (`node-http-client-patterns`): sequence MSW responses with one-shot handlers (`server.use(http.get(url, resolver, { once: true }))` - a bare `server.use` persists until `resetHandlers()`), and drive the backoff with `jest.useFakeTimers()` + `jest.advanceTimersByTimeAsync(ms)`. Under Jest's CommonJS runtime MSW 2.11.3+ pulls ESM-only deps and MSW 3 is ESM-only itself (`Must use import to load ES Module`): pin `msw@~2.10`, or babel-jest with `transform` covering `.mjs` (`"^.+\\.[mc]?js$"`) and `transformIgnorePatterns` un-ignoring them
+- **BullMQ**: on the producer side mock the queue and assert on `queue.add()`. To exercise processor logic, register the `@Processor` class as a plain provider and call `process(job)` with a mock `Job` - never import `BullModule`, which is what opens the Redis socket (a bare `new Worker(name, fn)` is tested by calling `fn(job)`; an anonymous `fn` inside a top-level `new Worker` is extracted and exported first, and is a finding). An e2e suite that imports `AppModule` boots `BullModule` with it: give that lane a Redis container, or build the test module from the feature modules and override the queue tokens - a `@Processor` host opens its Worker socket however the queue is mocked. Broker behaviour itself - `attempts` / `backoff` exhaustion, stall redelivery, DLQ drain - goes in its own file against a real Redis, with backoff delays overridden to CI-viable values
 - **Snapshots**: on a response containing generated ids or timestamps, pass property matchers to the snapshot - `expect(body).toMatchSnapshot({ id: expect.any(String), createdAt: expect.any(String) })`. A raw `toMatchSnapshot()` fails on every run as the values change; `-u` would only re-baseline it once
 
 ## Output Format
 
-When planning or authoring, emit this block plus the test and setup code it describes; a build over existing tests is authoring plus review - findings for the existing defects the change touches, then the block. Tests for code with a known defect assert the correct behaviour, and the defect is a finding - never a test that pins the bug. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file; `cause.ts:line -> symptom.ts:line` when the two sit in different files) followed by `Issue:` and `Fix:` lines, `[Must]` first - `[Must]` when it risks incorrect behaviour, data loss, or a security hole (a test that cannot fail, a suite that tests a system that does not ship, isolation that leaks), `[Recommend]` otherwise - one per anti-pattern, with no plan tables. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the findings.
+When planning or authoring, emit this block plus the test and setup code it describes; a build over existing tests is authoring plus review - findings for the existing defects the change touches, then the block. Tests for code with a known defect assert the correct behaviour, and the defect is a finding - never a test that pins the bug. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, each finding is a `### [Must] file:line` or `### [Recommend] file:line` heading (`pasted:<construct>` when the input names no file; `cause.ts:line -> symptom.ts:line` when the two sit in different files) followed by `Issue:` and `Fix:` lines, `[Must]` first - `[Must]` when it risks incorrect behaviour, data loss, or a security hole (a test that cannot fail, a suite that tests a system that does not ship, isolation that leaks), `[Recommend]` otherwise - one per anti-pattern, with no plan tables. A Lane is one runner config - a config file (`test/jest-e2e.json`) or a Jest / Vitest `projects` entry (Vitest `workspace` before 3.2); a section with no rows carries the line `none`. A diagnosis opens with one `Symptom: <as reported> -> <each cause at file:line>` line per reported symptom, and a question the request asks outright gets one `Ruling:` line; both precede the findings.
 
 ```
 ## Test Plan
@@ -275,8 +282,5 @@ When planning or authoring, emit this block plus the test and setup code it desc
 
 ## Avoid
 
-- Testing implementation details (asserting on which internal method ran instead of outputs)
-- Shared mutable state between tests (ordering-dependent failures)
-- Snapshots for business logic
-- Hardcoded ports in e2e tests
-- Untyped test helpers
+- `-u` on a failing snapshot without reading the diff
+- A test that pins a known defect
