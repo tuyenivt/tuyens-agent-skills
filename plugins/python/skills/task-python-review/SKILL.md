@@ -9,11 +9,9 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
-
 # Python Code Review
 
-Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability / reliability subagents in parallel for extra scopes. Runs standalone with full PR/branch resolution.
+Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, architecture, AI-quality, and maintainability. Coordinates perf / security / observability / reliability subagents in parallel for extra scopes. Runs standalone with full PR / branch resolution.
 
 ## When to Use
 
@@ -22,31 +20,27 @@ Staff-level Python / FastAPI / Django code review umbrella. Covers correctness, 
 - Architecture drift detection
 - Pre-merge risk assessment
 
-**Not for:**
-- Pre-implementation design (`task-python-implement`)
-- Single-error debug
-- New-system architecture (`task-design-architecture`)
-- Single-scope reviews - delegate to `task-python-review-perf` / `-security` / `-observability` / `-reliability`
+**Not for:** pre-implementation design (`task-python-implement`), single-error debugging, new-system architecture design, or a single-scope review - delegate to `task-python-review-perf` / `-security` / `-observability` / `-reliability`.
 
 ## Depth Levels
 
-| Depth | When | Runs |
-|-------|------|------|
-| `standard` | Default | Phases A-E |
-| `deep` | Architecture PRs, post-incident, Principal sign-off | A-E + historical pattern matching + cross-PR context |
+| Depth      | When                                                | Runs                                                                                                                      |
+| ---------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `standard` | Default                                             | Phases A-E on diff hunks plus immediate context                                                                           |
+| `deep`     | Architecture PRs, post-incident, Principal sign-off | A-E with touched files read in full, plus `git log -S<smell>` / `--follow` on touched files for prior fixes of the same smell and prior PRs on the same module, cited in Key Takeaways |
 
-**Auto-promote to `deep`:** After Phase A, if `Blast Radius` is Wide or Critical, set depth to `deep` and surface `Depth auto-promoted: standard -> deep (Blast Radius: <level>)`.
+**Auto-promote to `deep`:** after Phase A, if `Blast Radius` is Wide or Critical, set depth to `deep` before Phases B-E and record it on the Summary's Depth line as `deep; auto-promoted from standard; Blast Radius: <level>`. On round 2+, user flag > this round's auto-promotion; nothing is inherited. When the resolved depth falls below the checkpoint's, the Depth line gains `narrowed vs round <prior.round> - re-run with deep to re-cover`.
 
 ## Scope
 
-| Scope | What runs |
-|-------|-----------|
-| Core | Phases A-E (Python-flavored) |
-| + Perf | Core + `task-python-review-perf` subagent |
-| + Sec | Core + `task-python-review-security` subagent |
-| + Obs | Core + `task-python-review-observability` subagent |
-| + Rel | Core + `task-python-review-reliability` subagent |
-| Full | Core + all four subagents in parallel |
+| Scope  | What runs                                       |
+| ------ | ----------------------------------------------- |
+| Core   | Phases A-E (Python-flavored)                    |
+| + Perf | Core + `task-python-review-perf` subagent        |
+| + Sec  | Core + `task-python-review-security` subagent    |
+| + Obs  | Core + `task-python-review-observability` subagent |
+| + Rel  | Core + `task-python-review-reliability` subagent |
+| Full   | Core + all four subagents in parallel            |
 
 Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
@@ -54,158 +48,97 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 
 - **+Sec:** file uploads (`UploadFile`, `request.FILES`), auth dependencies (`Depends(get_current_user)`, `OAuth2PasswordBearer`), DRF `permission_classes` / `authentication_classes` changes, Pydantic / DRF schema changes, raw SQL via `text(...)` / `cursor.execute(...)`, secrets in `settings.py` / `.env`, Celery tasks consuming user-supplied input
 - **+Perf:** new Alembic / Django migration, new ORM query (`select(...)` / `.filter(...)`), new `selectinload` / `prefetch_related`, new pagination, new endpoints with payloads, loops calling DB or HTTP, new `@cache` / `@lru_cache` / Redis read paths
-- **+Obs:** new service module, new external client (`httpx.AsyncClient`, `requests.Session`), new Celery task or `@shared_task`, logging config change (`LOGGING` dict / `structlog`), new Prometheus metric, new `@app.on_event` / lifespan handler, new Django signal
+- **+Obs:** new service module, new external client (`httpx.AsyncClient`, `requests.Session`), new Celery task or `@shared_task`, logging config change (`LOGGING` dict / `structlog`), new Prometheus metric, new lifespan handler, new Django signal
 - **+Rel:** new `httpx` / external client without an explicit `Timeout`, new `tenacity` / retry config, new Celery task without `acks_late` / an idempotency guard, `BackgroundTasks` for a critical side effect (payment, email), unbounded `asyncio.gather`, `save` + publish dual write or `.delay()` inside a transaction
-- **2+ categories → Full**
+- **2+ categories -> Full**
 
 ## Invocation
 
-| Form | Meaning |
-|------|---------|
-| `/task-python-review` | Current branch vs base; fails fast on trunk |
-| `/task-python-review <branch>` | `<branch>` vs base (3-dot diff) |
-| `/task-python-review pr-<N>` | PR head fetched into local branch `pr-<N>` (user runs the fetch) |
+`/task-python-review [<branch> | pr-<N>] [core-only | +perf | +sec | +obs | +rel | full] [standard | deep] [--base <branch>] [--req <path>]` - flags compose: `/task-python-review pr-50273 --base release/2026.05 +sec deep`. No argument reviews the current branch vs its base and fails fast on trunk; `pr-<N>` needs the local branch the user fetched (`git fetch origin pull/<N>/head:pr-<N>`). `--req <path>` names a requirement source (ticket export, PRD, spec) for Phase 0; without it, Phase 0 uses whatever requirement is already in context.
 
-Pass `--base <branch>` when the PR was opened against a non-trunk base. Scope and depth flags compose: `/task-python-review pr-50273 --base release/2026.05 +sec deep`.
-
-Pass `--req <path>` to name a requirement source (ticket export, PRD, spec) for Phase 0; without it, Phase 0 uses whatever requirement is already in context.
-
-**No checkout required.** The workflow reads via ref-qualified diffs; never modifies the working tree.
+**No checkout required.** The workflow reads via ref-qualified diffs and never modifies the working tree.
 
 ## Workflow
 
 ### Step 1 - Behavioral Principles
 
-Use skill: `behavioral-principles`. Accept parent's confirmation if invoked as a subagent.
+Use skill: `behavioral-principles`.
 
-### Step 2 - Confirm Stack and Detect Framework
+### Step 2 - Confirm Stack and Framework
 
-Use skill: `stack-detect`. Accept pre-detected stack from parent if applicable. If not Python, stop and recommend `/task-code-review`.
-
-Detect framework: FastAPI (`fastapi` import + `main.py`) vs Django (`manage.py` + `settings.py`). Record `Framework: FastAPI | Django | mixed` for branching in later phases.
+Use skill: `stack-detect`. If `Language` is not Python, stop and recommend `/task-code-review`. `Framework` comes from the block (`FastAPI 0.115`, `Django 5.1`); the dependency manifest fills `unknown` and reveals a second framework - `fastapi` -> FastAPI, `django` -> Django; both named -> the one framework the name-status (Step 4) touches, else `mixed` (files under both or neither; both framework branches of Phases B, C and D run); neither names FastAPI or Django (Flask, plain Python) -> `unknown`: Phases B and C run their framework-neutral checks, only the APIs a check names from a framework the project does not use go N/A, and Phase D loads no necessity skill. Record `Framework: FastAPI | Django | mixed | unknown` - FastAPI / Django with a version (the block's when it names that framework with one, else its manifest pin, else omitted) - and the Python version (`Language`, else `requires-python` / `.python-version`, else `unknown`).
 
 ### Step 3 - Resolve the Diff
 
-Use skill: `review-precondition-check`. Forward `--base` if passed. If it fails fast, surface verbatim and stop.
+Use skill: `review-precondition-check` with `argument`, `base` (from `--base`), and `report_type: review`. On failure, surface its message verbatim and stop. Hold the handle's `prior_checkpoint` and `report_path` for Step 4.
 
-The handle may include a `prior_checkpoint` block (a prior `review-<branch>.md` exists). Decision logic is Step 3.5; for now, just hold onto it.
+Capture `current_base_sha = git rev-parse <base_ref>` and `current_head_sha = git rev-parse <head_ref>`. Nothing else is read until Step 4 has decided the round.
 
-Once approved, read once and reuse:
+### Step 4 - Decide the Round
 
-- `git diff <base>...<head>`
-- `git diff --name-status <base>...<head>`
-- `git log --oneline <base>..<head>`
+**Every round analyzes the full `<base_ref>...<head_ref>` range.** Risk, blast radius, scope signals, depth promotion, and requirement fit are scored on the whole change every round, so a small follow-up commit cannot under-score a large PR and a defect missed in round 1 stays reachable in round 2. Rounds differ only in that round 2+ reconciles against the prior report.
 
-Also capture the current SHAs for the report's checkpoint frontmatter:
+- No `prior_checkpoint` -> `round = 1`.
+- `prior_checkpoint: legacy` -> `round = 1`; Summary note `Prior report lacks checkpoint metadata - treated as round 1.`
+- Valid checkpoint: when `handle.head_is_remote` is true, `git fetch <remote> <branch>` (the one state-changing git command this workflow runs; failure is silent) and re-capture `current_head_sha`. Then compare:
 
-- `current_head_sha = git rev-parse <head_ref>`
-- `current_base_sha = git rev-parse <base_ref>`
+| Condition                                                                                   | Decision                                                                                                     |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `prior.head_sha == current_head_sha` and the invocation adds no scope or depth beyond the checkpoint | **No-op.** Print `No new commits on <head_short_name> since prior review at <first 7 of current_head_sha>. Prior report unchanged.` and stop - no report write |
+| `prior.head_sha == current_head_sha`, scope or depth expanded                               | `round = prior.round + 1`; note `Same head as round <prior.round>; re-review for expanded <scope\|depth>.`  |
+| `git merge-base --is-ancestor <prior.head_sha> <current_head_sha>` fails                     | `round = prior.round + 1`; note `Prior checkpoint unreachable - history rewritten.`                          |
+| `prior.base_sha != current_base_sha` or `prior.base_ref != base_ref`                        | `round = prior.round + 1`; note `Base advanced since round <prior.round>.`                                   |
+| None of the above                                                                           | `round = prior.round + 1`                                                                                    |
 
-**Skip entirely** when invoked as a subagent and the parent passed the handle plus pre-read artifacts.
+Scope expanded vs the prior round (round 1 `core-only`, round 2 `full`): the new scopes have no prior findings to reconcile; the Scope line gains `expanded round <N>: +<list>`.
 
-### Step 3.5 - Decide Round (re-review auto-detect)
+After the decision (the no-op exit excluded), read once and reuse: `git diff <base_ref>...<head_ref>`, `git diff --name-status <base_ref>...<head_ref>`, `git log <base_ref>..<head_ref>` (full messages - Phase 0 reads criteria from commit bodies).
 
-**Every round analyzes the full `<base_ref>...<head_ref>` range read in Step 3.** Risk, blast radius, scope signals, depth promotion, and requirement fit are scored on the whole change on every round, so a small follow-up commit cannot under-score a large PR and a defect missed in round 1 stays reachable in round 2. Rounds differ only in that round 2+ reconciles against the prior report.
+### Step 5 - Evaluate Scope Auto-Escalation
 
-Skip if the handle has no `prior_checkpoint` -> `round = 1`, no fetch, no reconciliation. Continue to Step 4.
-
-If `prior_checkpoint: legacy` (file present, frontmatter missing/invalid) -> `round = 1`. Note in Summary: `Prior report lacks checkpoint metadata - treated as round 1.` Continue to Step 4.
-
-Otherwise (valid prior checkpoint present):
-
-**Step 3.5a - Auto-fetch the head branch.** Only when a valid prior checkpoint exists, refresh the local tracking ref so a script can re-run the same command without manually fetching:
-
-```bash
-upstream=$(git rev-parse --abbrev-ref --symbolic-full-name "<head_ref>@{u}" 2>/dev/null)
-```
-
-If `upstream` resolves to `<remote>/<branch>` form, split and run:
-
-```bash
-git fetch <remote> <branch>
-```
-
-No checkout, no merge. If `upstream` does not resolve (pr-ref with no upstream, detached HEAD, no remote configured), skip the fetch silently. If `git fetch` fails (offline, auth, deleted remote branch), continue silently - this is a convenience, not a gate. After a successful fetch, re-resolve `current_head_sha = git rev-parse <head_ref>`.
-
-**Step 3.5b - Compare checkpoints.**
-
-| Condition                                                              | Decision                                                                                                                            |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `prior_checkpoint.head_sha == current_head_sha`, and the invocation adds no scope or depth beyond the prior checkpoint | **No-op.** Print `No new commits on <head_ref_short> since prior review at <sha_short>. Prior report unchanged.` (where `<head_ref_short>` is the short name of `head_ref` - the review target, not the user's current branch - and `<sha_short>` is the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
-| `prior_checkpoint.head_sha == current_head_sha`, but the invocation expands scope or depth beyond it | `round = prior.round + 1`. Note in Summary: `Same head as round <prior.round>; re-review for expanded <scope\|depth>.` |
-| `git merge-base --is-ancestor <prior_head_sha> <current_head_sha>` fails (prior SHA unreachable) | `round = prior.round + 1`. Note in Summary: `Prior checkpoint unreachable - history rewritten.`      |
-| `prior_checkpoint.base_sha != current_base_sha`                        | `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round>.`       |
-| `prior_checkpoint.base_ref != base_ref`                                | `round = prior.round + 1`. Note in Summary: `Base ref changed since round <prior.round>.`           |
-| None of the above                                                       | `round = prior.round + 1`.                                                                          |
-
-**Step 3.5c - Scope expansion handling.**
-
-If the user's invocation expanded scope vs. the prior round (e.g., round 1 was `core-only`, round 2 is `full`), the newly-added scopes have no prior findings to reconcile. Record in Summary: `Scope expanded round <N>: +<list>.`
-
-The reconciliation table (when emitted) only covers findings whose scope was active in the prior round.
-
-### Step 4 - Evaluate Scope Auto-Escalation
-
-Scan the file list and diff for the signals listed under **Scope**. Log each fire as `signal: <category> -> <file:line>`. Then:
-
-- Zero signals or `core-only` → stay Core
-- One signal category → add matching extra scope
-- 2+ categories → promote to Full
-- User passed an explicit scope → respect it; still log signals so the Summary documents why
-
-**Scope precedence on round 2+:** user flag > firing signals. Signals are scored on the full range every round, so a scope that escalated in round 1 escalates again on its own - nothing is inherited from the prior checkpoint. When the resolved scope still falls below the checkpoint's (round 1 was user-flagged), note in Summary: `Scope narrowed vs round <prior.round>: <list> - re-run with <flags> to re-cover.`
-
-Surface the decision in Summary; if escalated, append `auto-escalated from Core; signals: <list>`.
+Scan the file list and diff for the signals under **Scope**. Note each fire as `<category> -> <file:line>`; the Scope line carries them - `auto-escalated from Core; signals: <list>` when escalated, `signals: <list>` when an explicit scope was respected, `suppressed: <list>` under `core-only`. Zero signals or `core-only` -> Core; one category -> that scope; 2+ -> Full; an explicit user scope is respected. On round 2+, user flag > firing signals, nothing inherited; when the resolved scope falls below the checkpoint's, the Scope line gains `narrowed vs round <prior.round>: <list> - re-run with <flags> to re-cover`.
 
 ### Phase 0 - Change Intent
 
-Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and log, the `--req <path>` file when passed, and the handle's `report_path` (as its `prior_report_path`) when round > 1.
+Use skill: `review-change-intent` with the `<base_ref>...<head_ref>` diff and full commit log, the `--req <path>` file when passed, and the handle's `report_path` (as `prior_report_path`) when round > 1.
 
-Its `## Change Brief` block goes into the report verbatim, its `Requirement Source` and `Requirement Fit` lines into Summary, and its findings join the assembled set verified in Step 6.6. With no requirement source the Brief still renders, and the traceability block and its two Summary lines are omitted. Runs before Phase A - acceptance criteria decide what counts as a defect downstream - and the low-risk short-circuit never skips it.
+Its `## Change Brief` goes into the report verbatim, its `Requirement Source` and `Requirement Fit` lines into the Summary, and its findings join the set verified in Step 7. With no requirement source the Brief still renders and the traceability block and both Summary lines are omitted. Runs before Phase A - acceptance criteria decide what counts as a defect downstream - and the low-risk short-circuit never skips it. A Phase 0 finding and a Phase B finding making the same claim on the same `file:line` merge into one entry at the stronger label; different claims stay separate.
 
 ### Phase A - PR Risk Snapshot
 
 - Use skill: `review-pr-risk` for cross-cutting risk signals
-- Use skill: `review-blast-radius` for failure propagation scope
+- Use skill: `review-blast-radius` for failure-propagation scope; gate on its mitigated (second) value only when the `Mitigation:` tag is `in-place:`, otherwise on the unmitigated value
 
 Output risk level and blast radius before any findings.
 
-**Low-risk short-circuit:** if Risk Level is Low, Blast Radius is Narrow, **and** the change does not touch architecture-relevant files (auth dependencies / `permission_classes`, middleware, API contracts, shared base classes, `settings.py` / `app/core/config.py`, Alembic / Django migrations), skip Phases C-D and run **B + E only** (E still covers naming/clarity, the common content of low-risk PRs); the Phase 0 outputs (Change Brief, traceability, requirement findings) still render. On round 2+, Step 6.5 reconciliation still runs.
-
-### Step 4.5 - Re-evaluate Depth After Phase A
-
-If Blast Radius is Wide / Critical, set depth to `deep` and surface promotion in Summary **before** Phases B-E.
-
-**Depth precedence on round 2+:** user flag > this round's auto-promotion; nothing is inherited. When the resolved depth falls below the checkpoint's (round 1 was user-flagged `deep`), note in Summary: `Depth narrowed vs round <prior.round> - re-run with deep to re-cover.`
+**Low-risk short-circuit:** when Risk Level is Low, Blast Radius is Narrow, **and** the change touches no architecture-relevant file (auth dependencies / `permission_classes`, middleware, API contracts, shared base classes, `settings.py` / `app/core/config.py`, migrations), skip Phases C-D and run **B + E only**; Phase 0 outputs still render and round 2+ still reconciles.
 
 ### Phase B - Python Correctness and Safety
 
-Apply atomic skills. Each owns the canonical patterns; this phase flags deviations and surfaces what they did not see:
+Apply the atomic skills; each owns the canonical patterns, this phase flags deviations and adds what they do not see:
 
 - Use skill: `python-sqlalchemy-patterns` (SQLAlchemy) or `python-django-patterns` (Django ORM) - transactions, eager loading, post-commit dispatch
 - Use skill: `python-async-patterns` for any new or modified `async def` / event-loop code
-- Use skill: `python-celery-patterns` if diff touches Celery tasks or `@shared_task`
-- Use skill: `python-migration-safety` if diff touches `migrations/versions/` or `<app>/migrations/`. Also use skill: `ops-backward-compatibility` for client/in-flight impact
-- **API contract change** - when the diff carries a contract-change signal (a removed / renamed / retyped response-model field, a changed `status_code`, a new **required** request field or tightened validator (`Field(...)`, `pattern`, `extra="forbid"`), a new public route on a `/v1/`-versioned or externally consumed API, a route returning a raw SQLAlchemy / ORM row with no `response_model` or a DRF `ModelSerializer` with `"__all__"`, or a drf-spectacular schema edit), use skills `backend-api-guidelines` and `ops-backward-compatibility`. Judge breakage from the consumer's view ("no external callers" needs a search; when consumption is unknown, treat a `/v1/`-versioned or spec-published surface as externally consumed); responses go through a `response_model` / serializer, never a raw ORM row; errors follow RFC 9457; collections paginated; when the project commits a drf-spectacular / OpenAPI artifact or generated client, it matches the code (framework-served auto-docs with no committed artifact have nothing to drift - skip that check). Each finding names who breaks and how (for a leaked shape: what it exposes and who couples to it). Severity maps to labels: High -> `[Must]` = unversioned breaking change to an externally consumed contract, or a leaked ORM shape (raw row or `"__all__"` serializer) on an externally consumed / versioned surface; Medium -> `[Recommend]` = internal breaking change with no coordinated-deploy note, inconsistent status / error envelope, unpaginated unbounded collection, committed schema or generated client out of sync with the code; Low = naming drift with no consumer impact - below the reporting bar, write nothing. A leaked ORM shape on an internal-only surface is not a gate finding - it stays with the **Response model field hygiene** check below at `[Recommend]`, one finding per `file:line` either way
+- Use skill: `python-celery-patterns` if the diff touches Celery tasks or `@shared_task`
+- Use skill: `python-migration-safety` if the diff touches Alembic revision files (`<script_location>/versions/`, `alembic/versions/` after `alembic init alembic`) or `<app>/migrations/`; also use skill: `ops-backward-compatibility` for client / in-flight impact
+- **API contract change** - when the diff carries a contract-change signal (a removed / renamed / retyped response-model field, a changed `status_code`, a new **required** request field or tightened validator (`Field(...)`, `pattern`, `extra="forbid"`), a new public route on a `/v1/`-versioned or externally consumed API, a route returning a raw ORM row with no `response_model` or a DRF `ModelSerializer` with `"__all__"`, or a drf-spectacular schema edit), use skill: `backend-api-guidelines` and use skill: `ops-backward-compatibility`. Judge breakage from the consumer's view ("no external callers" needs a search; when consumption is unknown, a `/v1/`-versioned or spec-published surface counts as externally consumed); responses go through a `response_model` / serializer, never a raw ORM row; errors follow RFC 9457; collections paginated; a committed OpenAPI artifact or generated client matches the code (framework-served auto-docs with no committed artifact have nothing to drift). Each finding names who breaks and how. High -> `[Must]` = unversioned breaking change to an externally consumed contract, or a leaked ORM shape on an externally consumed / versioned surface; Medium -> `[Recommend]` = internal breaking change with no coordinated-deploy note, inconsistent status / error envelope, unpaginated unbounded collection, committed schema or client out of sync; Low = naming drift with no consumer impact - below the bar, write nothing. A leaked ORM shape on an internal-only surface stays with **Response model field hygiene** at `[Recommend]`; one finding per `file:line` either way
 
 **Additional Python-specific checks the atomics don't own:**
 
-- **Test coverage finding (named, not buried).** PR adds logic without pytest coverage -> `[Recommend]`; escalate to `[Must]` when the change is critical path: auth (OAuth2 / JWT / Django auth), authorization (`permission_classes` / FastAPI security dependencies), money / billing, multi-table writes, state machines, Celery mutators, migrations changing column semantics. Surface as a dedicated finding.
-
-**Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
+- **Test coverage finding (named, not buried).** PR adds logic without pytest coverage -> `[Recommend]`; `[Must]` when the change is critical path: auth (OAuth2 / JWT / Django auth), authorization (`permission_classes` / FastAPI security dependencies), money / billing, multi-table writes, state machines, Celery mutators, migrations changing column semantics. **Test files are reviewed for coverage only:** the only finding on a test file is a coverage gap, anchored to the untested production `file:line` with the case to cover - never style, structure, duplication, or performance of test code.
 - **Type hints on public functions.** Return types and parameters typed; mypy / pyright not silently disabled mid-file.
-- **`async def` discipline + `await` everywhere (FastAPI).** No blocking I/O on the event loop, no missing `await` returning a coroutine object. Catalog in `python-async-patterns`.
-- **Pydantic v2 (FastAPI).** Input schemas declare `model_config = ConfigDict(extra="forbid")` for user-facing endpoints; `Field(...)` constraints on user inputs; `from_attributes=True` on response models built from ORM rows. `extra="allow"` on user input is a mass-assignment surface.
-- **DRF serializer (Django).** `fields` declared explicitly (never `"__all__"` user-facing); `read_only_fields` for server-controlled fields; `write_only_fields` for sensitive inputs.
-- **Authorization + IDOR.** Authn (`Depends(get_current_user)` / `permission_classes`) proves identity, not object access. Per-owner / per-tenant endpoints must scope at the repository: `where(...id == user.id)`, `tenant_id` injected by middleware.
-- **Response model field hygiene.** Compare the Pydantic / DRF response model against ORM columns. Flag `password_hash` / `mfa_secret` / `internal_notes` / `audit_log` / `is_test` / `last_login_ip` on the wire. Returning a `Mapped[...]` row or `model_to_dict` directly is `[Recommend]` regardless of current fields - a new sensitive column silently leaks later.
-- **HTTP `Idempotency-Key` on retry-prone POSTs.** `/payments`, `/orders`, `/refunds`, `/subscriptions`, `/webhooks` accept the header and dedupe via DB unique constraint. Distinct from worker-side task idempotency.
-- **Transaction boundaries + post-commit Celery dispatch.** Writes inside explicit transaction; `task.delay(...)` after `session.commit()` (FastAPI) or via `transaction.on_commit(...)` (Django).
-- **Multi-replica race safety.** Counters / balances / state transitions use DB locking (`SELECT ... FOR UPDATE`, `select_for_update()`, advisory lock) or optimistic version field, not module globals.
-- **HTTP client sharing.** `httpx.AsyncClient` / `requests.Session` shared at module level. Per-request instantiation breaks connection reuse and event-loop discipline.
-- **SSRF + edge middleware presence.** User-controlled values in outbound URLs flagged here; `CORSMiddleware`, `TrustedHostMiddleware`, HTTPS redirect confirmed when app construction changes. Depth in security subagent.
-- **New ORM column with predicate use.** Any new `Mapped[...]` / model field referenced in `.where(...)` / `.filter(...)` / `.order_by(...)` has an index migration in the same PR, or an explicit "indexed later" note.
-- **Error handling.** Framework exception handler covers validation / not-found / permission / integrity with consistent shape; no blanket `except Exception:` swallowing root causes.
+- **`async def` discipline + `await` everywhere (FastAPI).** No blocking I/O on the event loop (sync drivers, `requests`, `time.sleep`, Celery `.delay()` without `run_in_threadpool`), no missing `await` returning a coroutine object. Catalog in `python-async-patterns`.
+- **Pydantic v2 (FastAPI).** Input schemas declare `model_config = ConfigDict(extra="forbid")` for user-facing endpoints; `Field(...)` constraints on user inputs; `from_attributes=True` on response models built via `model_validate(orm_row)`. A declared privilege field (`tenant_id`, `role`, `owner_id`) or `extra="allow"` on user input is a mass-assignment surface.
+- **DRF serializer (Django).** `fields` declared explicitly (never `"__all__"` user-facing); `read_only_fields` for server-controlled fields; write-only via `extra_kwargs={"password": {"write_only": True}}` - a `write_only_fields` Meta option is silently ignored.
+- **Authorization + IDOR.** Authn (`Depends(get_current_user)` / `permission_classes`) proves identity, not object access. Per-owner / per-tenant endpoints scope at the repository: `where(...id == user.id)`, `tenant_id` injected by middleware.
+- **Response model field hygiene.** Compare the Pydantic / DRF response model against ORM columns. Flag `password_hash` / `mfa_secret` / `internal_notes` / `audit_log` / `is_test` / `last_login_ip` on the wire. Returning a `Mapped[...]` row or `model_to_dict` with no `response_model` / serializer is `[Recommend]` regardless of current fields - a new sensitive column leaks later.
+- **HTTP `Idempotency-Key` on retry-prone POSTs.** `/payments`, `/orders`, `/refunds`, `/subscriptions`, `/webhooks` accept the header and dedupe via a DB unique constraint. Distinct from worker-side task idempotency.
+- **Transaction boundaries + post-commit Celery dispatch.** Writes inside an explicit transaction; FastAPI `await run_in_threadpool(task.delay, id)` after `session.commit()`; Django `transaction.on_commit(...)`.
+- **Multi-replica race safety.** Counters / balances / state transitions use DB locking (`SELECT ... FOR UPDATE`, `select_for_update()`, advisory lock) or an optimistic version field, not module globals.
+- **HTTP client sharing.** `httpx.AsyncClient` constructed once in the lifespan handler and held on `app.state` (`requests.Session` once per Celery worker process); per-request instantiation breaks connection reuse; module-level construction ties pooled connections to whichever loop first used them (`RuntimeError: Event loop is closed` under a second loop) and nothing closes the client on shutdown.
+- **SSRF + edge middleware presence.** User-controlled values in outbound URLs flagged here; `CORSMiddleware`, `TrustedHostMiddleware`, HTTPS redirect confirmed when app construction changes. Depth in the security subagent.
+- **New ORM column with predicate use.** A new `Mapped[...]` / model field referenced in `.where(...)` / `.filter(...)` / `.order_by(...)` has an index migration in the same PR, or an explicit "indexed later" note.
+- **Error handling.** Framework exception handler covers validation / not-found / permission / integrity with a consistent shape; no blanket `except Exception:` swallowing root causes.
 
 ### Phase C - Python Architecture Guardrails
 
@@ -213,39 +146,28 @@ Use skill: `architecture-guardrail` for layer violations and coupling.
 
 **Python-specific:**
 
-- **Layering (FastAPI):** router → service → repository → model. No business logic in routers; no `httpx` in repositories; Pydantic mapping at the service / router boundary, not in repositories
-- **Layering (Django):** view / ViewSet → service → manager / queryset → model. No business logic in views beyond orchestration; service layer for cross-model orchestration
+- **Layering (FastAPI):** router -> service -> repository -> model. No business logic in routers; no `httpx` in repositories; Pydantic mapping at the service / router boundary, not in repositories
+- **Layering (Django):** view / ViewSet -> service -> manager / queryset -> model. No business logic in views beyond orchestration; a service layer for cross-model orchestration
 - **Service-layer discipline:** router / view methods > 10 lines of orchestration extracted to a service; intention-revealing names (`fulfill_order` not `process_order_step_2`); cross-aggregate orchestration in services, not in Django signals or SQLAlchemy event listeners
 - **Dependency injection (FastAPI):** `Depends` used consistently; constructor injection for services; no module-level singletons holding mutable state created on import
 - **Settings discipline:** typed settings via `pydantic-settings` `BaseSettings` (FastAPI) or `django-environ` (Django); no hardcoded values that should be env vars
 - **Feature-package layout** (`app/orders/{router,service,repository,schema}.py`) preferred over layer-package; cross-feature imports go through public service interfaces, not direct repository imports
 - **Multi-tenant isolation** enforced at the repository / queryset layer (`with_loader_criteria` / `Manager` override), not at routers / views alone
-- **Signal / event discipline:** Django `post_save` / `pre_delete` and SQLAlchemy event listeners reserved for genuinely cross-cutting concerns (audit, search-index) - not as hidden control flow dispatching emails / Celery tasks
-- **Anemic domain (deep depth only):** business rules accumulating in services while ORM models stay pure data - flag for refactoring. Do not raise on a single PR's evidence alone
+- **Signal / event discipline:** Django `post_save` / `pre_delete` and SQLAlchemy event listeners reserved for genuinely cross-cutting concerns (audit, search index) - not hidden control flow dispatching emails / Celery tasks
+- **Anemic domain (deep only):** business rules accumulating in services while ORM models stay pure data - flag for refactoring; never on a single PR's evidence alone
 
-**Multi-service PRs:**
-
-- API contract compatibility (OpenAPI diff, `schemathesis`, Pact)
-- Deployment order documented or independent
-- Use skill: `ops-backward-compatibility`
+**Multi-service PRs:** API contract compatibility (OpenAPI diff, `schemathesis`, Pact); deployment order documented or independent; use skill: `ops-backward-compatibility`.
 
 ### Phase D - AI-Generated Code Quality
 
 - Use skill: `complexity-review` for verbosity, over-engineering, simplification
-- Load **one** framework-specific necessity skill from Step 2's detection:
-  - **FastAPI:** Use skill: `python-fastapi-overengineering-review`
-  - **Django:** Use skill: `python-django-overengineering-review`
+- Load the necessity skill for the resolved `Framework` (both under `mixed`, none under `unknown`), passing each its own framework as the detected `Framework:` line, which its gate reads: **FastAPI:** use skill: `python-fastapi-overengineering-review`; **Django:** use skill: `python-django-overengineering-review`
 
-**Additional Python AI smells the atomics don't own:**
-
-- Test verbosity (`@pytest.fixture` setup > 30 lines for one assertion; full deep-equal when a few field assertions would do)
-- Async misapplication (`async def` on functions doing no I/O; sync helpers blocking inside `async def` paths)
-- Comment cruft (docstrings on private helpers restating the signature; auto-generated TODOs left in)
-- `# type: ignore[...]` proliferation in non-test code to silence a real type bug
+**Additional Python AI smells the atomics don't own:** test verbosity (`@pytest.fixture` setup > 30 lines for one assertion; full deep-equal where a few field assertions would do); async misapplication (`async def` on functions doing no I/O; sync helpers blocking inside `async def` paths); comment cruft (docstrings on private helpers restating the signature; auto-generated TODOs left in); `# type: ignore[...]` proliferation in non-test code silencing a real type bug.
 
 ### Phase E - Maintainability and Clarity
 
-Use skill: `backend-coding-standards` for cross-language naming. Use skill: `ops-observability` for cross-cutting logging/metrics presence (depth belongs to `task-python-review-observability`).
+Use skill: `backend-coding-standards` for cross-language naming. Use skill: `ops-observability` for cross-cutting logging / metrics presence (depth belongs to `task-python-review-observability`).
 
 **Python-specific:**
 
@@ -253,12 +175,12 @@ Use skill: `backend-coding-standards` for cross-language naming. Use skill: `ops
 - **Magic numbers / strings:** extracted to module-level constants or `BaseSettings`; `timedelta(minutes=...)` over `60_000`
 - **Hardcoded URLs / credentials:** env / Vault / settings, not inline
 - **Function length:** > 30 lines extracted; > 60 lines flagged unless clearly orchestrating
-- **Duplicated query logic:** same `.filter(...)` / `select(...)` predicate in 3+ places extracted to a manager or repository method
-- **Logging hygiene:** surface `print(...)` in prod paths, f-string log calls (`logger.info(f"...")` over parameterized `logger.info("processing order=%s", order_id)`), wrong levels as `[Recommend]` (depth in observability subagent)
+- **Duplicated query logic:** the same `.filter(...)` / `select(...)` predicate in 3+ places extracted to a manager or repository method
+- **Logging hygiene:** `print(...)` in prod paths, f-string log calls (`logger.info(f"...")` over `logger.info("order=%s", order_id)`), wrong levels as `[Recommend]` (depth in the observability subagent)
 
-### Step 5 - Delegate Extra Scopes in Parallel
+### Step 6 - Delegate Extra Scopes in Parallel
 
-If scope is **Core only**, skip. For each selected scope, spawn one independent subagent **in parallel** with the main thread. Use the **declared subagent for that scope** (`subagent_type` below) - do not infer the agent from the scope name; an observability review is not a `python-tech-lead` spawn:
+If scope is **Core only**, skip. For each selected scope, spawn one subagent **in parallel** with the main thread, using the **declared `subagent_type`** - never infer the agent from the scope name:
 
 | Scope  | Skill                              | Subagent (`subagent_type`)      |
 | ------ | ---------------------------------- | ------------------------------- |
@@ -267,69 +189,27 @@ If scope is **Core only**, skip. For each selected scope, spawn one independent 
 | + Obs  | `task-python-review-observability` | `python-observability-engineer` |
 | + Rel  | `task-python-review-reliability`   | `python-reliability-engineer`   |
 
-`Full` = 4 subagents.
+**Subagent prompt contract** - each prompt carries: the precondition handle plus the pre-read diff, name-status and commit log (no re-running git); the depth; the stack-detect block and `Framework`; the instruction to load `behavioral-principles` and return findings in its own Output Format's subagent envelope (no report file). **Failure isolation:** a subagent that fails or times out does not stop the review; note the scope in the Summary's Scope line as `incomplete: <scope>`.
 
-**Subagent prompt contract** - each must include:
+**Synthesize** (only when Step 6 ran): merge subagent findings into the single Output Format below - never append raw reports. Deduplicate cross-cutting findings (one entry citing all scopes that raised it); lens impact maps to intent (High / Critical -> `[Must]`, Medium / Low -> `[Recommend]`) and the strongest intent wins when they differ; preserve `file:line`; order by intent, not scope; lens `out of lens` lines become candidate findings for the owning phase; the security lens's `## OWASP Triage` and the observability lens's `## Surface Map` are dedupe input only and are not emitted; Next Steps are built from the published findings; keep deep-only sections subagents return (perf's `Capacity and Load Plan`, reliability's `Failure-Mode and Blast-Radius Map`) as their own sections after Next Steps.
 
-- The resolved review target (`base_ref`, `head_ref`) plus the pre-read diff and commit log (no re-running git)
-- The depth level
-- Pre-confirmed stack (Python) + framework (FastAPI / Django / mixed)
-- Instruction to return findings in its own Output Format
+### Step 7 - Verify Findings (second pass)
 
-**Failure isolation:** if a subagent fails or times out, continue with the rest. Note the missing scope in Summary.
+Use skill: `review-finding-verify` with the assembled findings (Phase 0, Phases B-E, merged subagent findings), the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`, taking each row's `file:line`, `Label`, and `Annotation`; its tally is the Summary's `Findings verified:` line and the table itself is not rendered. Runs before reconciliation so prior-round matching sees the corrected set.
 
-### Step 6 - Synthesize (only if Step 5 ran)
+### Step 8 - Reconcile Prior Findings (round 2+ only)
 
-Merge subagent findings into the single Output Format below. Do not append raw subagent reports.
+Use skill: `review-prior-findings-reconcile` with `prior_report` (the body of the file at the handle's `report_path`, frontmatter excluded - its `## High-Impact Findings` headings already carry `[Label] file:line` and annotation groups), the full-range `diff`, the full-range `name_status`, and `head_sha = current_head_sha`. Its output renders verbatim under `## Prior Round Reconciliation`.
 
-- **Deduplicate** cross-cutting findings (one entry citing all scopes that raised it)
-- **Strongest intent wins** when labels differ across subagent reports for the same finding: `Must` > `Recommend`
-- **Preserve `file:line` citations**
-- **Order by intent**, not by scope
-- **Note missing scopes** in Summary as `Scope incomplete: <scope>`
-- **Merge Next Steps** with `[Implement]` / `[Delegate]` tags preserved; re-sort by intent
-- **Preserve deep-only sections** returned by subagents (e.g., reliability's `Failure-Mode and Blast-Radius Map`) as their own section after Next Steps - they are not findings; the merge must not drop them
+A `Still open` / `Needs re-check` row this round did not re-derive publishes in `## High-Impact Findings` at its prior label (`[Blocker]` / `[High]` / `[Critical]` -> `[Must]`; other legacy labels -> `[Recommend]`; `[Praise]` never carried) with `_(carried from round <N>)_` as the last annotation group, and in Next Steps with the suffix `(open since round <N>)`; a row this round re-derived publishes once, as this round's finding. No separate carry-over section.
 
-### Step 6.6 - Verify Findings (second pass)
+### Step 9 - Write Report
 
-Use skill: `review-finding-verify` with the assembled findings (including any merged back from subagents), the diff already read, and `base_ref` / `head_ref`.
-
-Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column. Carry its tally into Summary as `Findings verified: <N> confirmed, <M> reattributed, <K> dropped`.
-
-### Step 6.5 - Reconcile Prior Findings (round 2+ only)
-
-Skip on round 1. Otherwise use skill: `review-prior-findings-reconcile` with:
-
-- `prior_report`: the loaded body of `review-<branch>.md` (frontmatter excluded)
-- `diff`: the full-range diff from Step 3
-- `name_status`: the full-range `git diff --name-status <base_ref>...<head_ref>` from Step 3
-
-The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
-
-Fold any `Still open` rows into `## Next Steps` as `(open since round <prior.round>)`-suffixed entries, ordered by severity alongside this round's new findings. Do not emit a standalone "Carry-Over Open Items" section.
-
-### Step 7 - Write Report
-
-Use skill: `review-report-writer` with `report_type: review` and these checkpoint fields:
-
-- `branch`, `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
-- `mode: full` (the writer's only accepted value), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Perf` -> `+perf`, `+Sec` -> `+sec`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = python-<framework>` (e.g., `python-fastapi`, `python-django`)
-
-Write before ending; print the confirmation line.
-
-## Feedback Labels
-
-| Label        | Meaning                                                                  |
-| ------------ | ------------------------------------------------------------------------ |
-| [Must]       | Do not merge until this is fixed.                                        |
-| [Recommend]  | Fix, or push back with reasoning. Cannot be silently acked.              |
-
-No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` - if it isn't `[Must]` or `[Recommend]`, don't write it down.
+Use skill: `review-report-writer` with `report_type: review`, `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` from the handle, `base_sha = current_base_sha`, `head_sha = current_head_sha`, `mode: full`, `round` (from Step 4) and `prior_head_sha` (round > 1), `scope` mapped to the writer's enum (`Core` -> `core-only`; lenses that completed - an `incomplete` lens is excluded - as space-joined `+perf +sec +obs +rel` in that order; all four -> `full`; none completed -> `core-only`), `depth` (resolved / auto-promoted), `stack` from `Framework` (`python-fastapi | python-django | python-mixed | python`), and `pr_url` when the prior checkpoint has it. Write before ending; print the confirmation line.
 
 ## Output Format
 
-The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
+The fence delimits the template for display only; emit `report_body` as raw Markdown, never wrapped in a fence. Every finding carries exactly one label, `[Must]` (do not merge until fixed) or `[Recommend]` (fix, or push back with reasoning; never silently acked); verify's published `Label` governs every slot naming one. A finding on a file absent from the name-status whose Annotation has no group opening `pre-existing` gets `_(pre-existing)_`, written first; an `Unverified` row gets none, and an old line in a touched file takes verify's attribution. Verify's combined `_(pre-existing; newly reachable via X)_` is published as two groups, `_(pre-existing)_ _(newly reachable via X)_`. Brace annotations are authoring notes and are never emitted; empty sections are omitted.
 
 ```markdown
 ## Summary
@@ -337,56 +217,53 @@ The fence below delimits the template for display only - it is not part of the r
 - **Assessment:** Approve | Request Changes | Discuss
 - **Risk Level:** Low | Medium | High | Critical
 - **Blast Radius:** Narrow | Moderate | Wide | Critical
-- **Stack Detected:** Python <version>
-- **Framework:** FastAPI <version> | Django <version> | mixed
-- **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full _(if auto-escalated, append: `auto-escalated from Core; signals: <list>`)_
-- **Depth:** standard | deep _(if auto-promoted, append: `auto-promoted from standard; Blast Radius: <level>`)_
-- **Round:** <N>                                _(include from round 2 onward)_
-- **Findings verified:** <N> confirmed, <M> reattributed, <K> dropped
-- **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
+- **Stack:** Python <version>
+- **Framework:** FastAPI{ <version>} | Django{ <version>} | mixed | unknown
+- **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full{; auto-escalated from Core; signals: <list>}{; signals: <list>}{; suppressed: <list>}{; incomplete: <scope>}{; expanded round <N>: +<list>}{; narrowed vs round <N>: <list> - re-run with <flags> to re-cover}
+- **Depth:** standard | deep{; auto-promoted from standard; Blast Radius: <level>}{; narrowed vs round <N> - re-run with deep to re-cover}
+- **Round:** <N>{; <Step 4 note>}   {round 2+, or round 1 when the legacy note applies}
+- **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}
+- **Requirement Source:** <path or origin> (Specified | Self-attested)   {with the next line, only when Phase 0 resolved a source}
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 
 ## Change Brief
 
-**Requested:** <what the change was asked to do, citing the source; `(inferred from commits)` when no source resolved>
+**Requested:** <what the change was asked to do, citing the source; `(inferred from commits)` when none resolved>
 
 **Delivered:** <the mechanism implemented and where>
 
-**Author decisions:** <each choice the request did not imply, with its consequence, excluding choices already raised as findings; `None observed` when nothing remains>
+**Author decisions:** <each choice the request did not imply, with its consequence; `None observed` when nothing remains>
 
 **Watch points:** <what to confirm by hand before reading findings; `None` when there are none>
 
-## Requirement Traceability _(omit when Phase 0 resolved no source)_
+## Requirement Traceability   {only when Phase 0 resolved a source}
 
 | Criterion | Status | Implementation | Proof |
 | --------- | ------ | -------------- | ----- |
-| <id or quoted outcome> | Met \| Partial \| Unmet \| Deferred \| Untraceable | <file:line, or `-`> | <file:line or verification note, or `-`> |
+| <id or quoted outcome> | Met \| Partial \| Unmet \| Deferred \| Untraceable | <file:line{ (pre-existing)}, or `-`> | <file:line or verification note{ (pre-existing)}, or `-`> |
 
-## Prior Round Reconciliation _(round 2+ only; omit otherwise)_
+## Prior Round Reconciliation   {round 2+ only}
 
-| Round <N-1> Finding | file:line | Status | Notes |
-| ------------------- | --------- | ------ | ----- |
-| ...                 | ...       | ...    | ...   |
-
-Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
+[reconcile's output verbatim - table, note lines, tally]
 
 ## High-Impact Findings
 
-### [Must] file:line
+### [Must] file:line{ _(annotation)_}{ _(carried from round <N>)_}
 
-- Issue: [name the Python idiom: blocking `requests.get` in `async def`, missing `permission_classes`, ORM model returned from endpoint, Celery `.delay()` inside transaction, `extra="allow"` on input schema, etc.]
+- Issue: [the Python idiom: blocking `requests.get` in `async def`, missing `permission_classes`, ORM row returned from an endpoint, `.delay()` inside a transaction, declared `tenant_id` on an input schema]
 - Impact: [user-visible or operational]
-- System Risk: [why this is system-level, not just a local bug]
+- System Risk: [why this is system-level, not a local bug]
 - Fix: [concrete Python change with code]
 
-### [Recommend] file:line
+### [Recommend] file:line{ _(annotation)_}{ _(carried from round <N>)_}
+
 - Issue: ...
 - Impact: ...
 - Fix: ...
 
 ## Architecture Notes
 
-_Cross-cutting commentary. Do not restate individual findings; reference them by file:line._
+_Cross-cutting commentary; reference findings by file:line, never restate them._
 
 - Boundary impact:
 - Coupling change:
@@ -394,75 +271,57 @@ _Cross-cutting commentary. Do not restate individual findings; reference them by
 
 ## Maintainability Notes
 
-_Same rule as Architecture Notes._
-
 - Over-engineering detected:
 - Simplification opportunities:
 
 ## Key Takeaways
 
-2-4 bullets on systemic impact and what to address before merge.
+2-4 bullets on systemic impact and what to address before merge; at `deep`, the prior fixes and PRs the history search surfaced.
 
-## Next Steps
-
-Each item tagged `[Implement]` or `[Delegate]`. Order: Must > Recommend. On round 2+, prior-round `Still open` items are folded in with `(open since round <N>)` suffix and ordered by intent alongside new findings.
+## Next Steps   {when at least one published finding}
 
 1. **[Implement]** [Must] file:line - [one-line action]
-2. **[Implement]** [Recommend] old_file.py:88 - missing await on async DB call (open since round 1)
-3. **[Delegate]** [Recommend] [scope: cross-service] - [one-line action]
+2. **[Implement]** [Recommend] file:line - [one-line action] (open since round <N>)
+3. **[Delegate]** [Recommend] file:line [scope: cross-service] - [one-line action]
 
-_Omit if no actionable findings._
+## Capacity and Load Plan   {only when a deep perf subagent returned one}
+
+[the subagent's section verbatim]
+
+## Failure-Mode and Blast-Radius Map   {only when a deep reliability subagent returned one}
+
+[the subagent's table verbatim]
 ```
 
-**Omit empty sections.** No Must heading if there are none.
-
-## Rules
-
-- Review whole-change system impact, not file-by-file
-- Lead with risk; line-level findings follow
-- Apply Python conventions, not generic backend conventions
-- Provide actionable feedback with Python code examples
-- Default Core; auto-escalate; honor `core-only`
-- Delegate perf / security / observability / reliability depth to subagents
+`[Must]` first, then `[Recommend]`, then by `file:line` - in High-Impact Findings and Next Steps alike. `[Implement]` = a localized fix; `[Delegate]` = cross-cutting or cross-service work, `[scope: <owner>]` free text.
 
 ## Self-Check
 
-- [ ] `behavioral-principles` loaded (or accepted from parent)
-- [ ] Stack confirmed as Python; framework recorded (FastAPI / Django / mixed)
-- [ ] `review-precondition-check` ran (or handle received); diff/log read once and reused; `current_head_sha` and `current_base_sha` captured
-- [ ] Step 3.5 - round decided (1 / prior + 1 / no-op); auto-fetch attempted only when prior checkpoint exists; the full `<base_ref>...<head_ref>` range analyzed regardless of round; no-op path exits without writing the report
-- [ ] Scope auto-escalation evaluated; promotion (or `core-only`) recorded; scope expansion vs. prior round noted when applicable
-- [ ] Depth auto-promoted to `deep` when Blast Radius is Wide/Critical
-- [ ] Phase 0 - `review-change-intent` ran on the cumulative diff; Change Brief carried into the report; requirement lines in Summary, or all three requirement outputs omitted when no source resolved; its findings verified with the rest
-- [ ] Risk level + blast radius stated before any finding
-- [ ] Phase B: applied atomic skills; checked test coverage, async discipline, Pydantic/DRF rules, authorization, response model hygiene, Idempotency-Key, race safety
-- [ ] Phase B migration safety delegated to `python-migration-safety` when migrations changed; API contract checks ran when a route, response model, serializer, or schema changed
-- [ ] Phase C: layering, DI, settings discipline, signal/listener discipline, package boundaries, multi-tenant
-- [ ] Phase D: `complexity-review` + the framework-matching necessity skill applied; Python AI smells covered
-- [ ] Phase E: naming, magic numbers, function length, logging hygiene
-- [ ] Missing tests raised as a named finding (not buried)
-- [ ] Every Must cites system risk
-- [ ] Every finding has label + `file:line` + actionable Python fix
-- [ ] Extra scopes ran in parallel with the pre-resolved diff/log handle + framework detection
-- [ ] Subagent findings merged into one intent-ordered Findings list; no raw reports appended
-- [ ] Failed/missing subagent scope noted as `Scope incomplete: <scope>`
-- [ ] Step 6.6 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels applied; tally in Summary
-- [ ] Step 6.5 - on round 2+, `review-prior-findings-reconcile` ran; reconciliation table inserted; `Still open` rows folded into Next Steps with `(open since round <N>)` suffix
-- [ ] Next Steps produced with `[Implement]` / `[Delegate]` tags, ordered by intent; carry-overs from prior round inline-suffixed, not in a separate section
-- [ ] Review report written via `review-report-writer` with full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation line printed
+- [ ] Step 1: `behavioral-principles` loaded
+- [ ] Step 2: stack confirmed Python; `Framework` and Python version taken from stack-detect or the manifest; `mixed` settled from the name-status
+- [ ] Step 3: precondition called with `argument` / `base` / `report_type: review`; SHAs captured; nothing else read yet
+- [ ] Step 4: round decided (1 / prior + 1 / no-op) on the full range; fetch attempted only for a remote head with a valid checkpoint; no-op path exited before any read; diff, name-status and full log read once after the decision
+- [ ] Step 5: scope signals logged; escalation, `core-only` suppression, expansion / narrowing recorded on the Scope line
+- [ ] Phase 0: `review-change-intent` ran on the full range; Change Brief carried verbatim; requirement lines present or all three requirement outputs omitted; its findings verified with the rest
+- [ ] Phase A: risk level and blast radius stated before any finding; mitigated value used only under `in-place:`; depth auto-promoted on Wide / Critical; low-risk short-circuit applied only when no architecture-relevant file changed
+- [ ] Phase B: atomics applied (ORM, async, Celery, migration safety, API contract gate when a route / model / serializer / schema changed); coverage finding named; async discipline, Pydantic / DRF rules, authorization, response hygiene, Idempotency-Key, race safety, client lifetime checked
+- [ ] Phase C: layering, DI, settings, signal / listener discipline, package boundaries, multi-tenant checked; `architecture-guardrail` applied
+- [ ] Phase D: `complexity-review` applied, plus the necessity skill per resolved framework (both under `mixed`, none under `unknown`), each passed its own `Framework:` line; AI smells covered
+- [ ] Phase E: naming, magic numbers, function length, duplicated queries, logging hygiene checked
+- [ ] Step 6: extra scopes spawned in parallel with the declared `subagent_type` and the prompt contract; findings merged (dedupe, impact -> intent, strongest wins); failed scope noted `incomplete: <scope>`; deep-only sections kept
+- [ ] Step 7: `review-finding-verify` ran on every assembled finding; Dropped excluded; `file:line` / `Label` / `Annotation` published; tally in Summary
+- [ ] Step 8: round 2+ reconciled with `head_sha` and the handle's `report_path`; unresolved rows carried into High-Impact Findings and Next Steps with `(open since round <N>)`
+- [ ] Step 9: report written via `review-report-writer` with every field (branch, refs, SHAs, mode, round, prior_head_sha, writer-enum scope, depth, stack, pr_url); confirmation printed
+- [ ] Every `[Must]` cites system risk; every finding has a label, `file:line`, and an actionable Python fix
 
 ## Avoid
 
-- State-changing git from this workflow (`checkout`/`merge`/`pull`/`rebase`). The one allowed exception is `git fetch <remote> <branch>` in Step 3.5a, and only when a valid prior checkpoint exists.
-- Auto-fetching on round 1 (no prior checkpoint) - keeps first-run behavior strictly read-only.
-- Scoping round 2+ analysis to `<prior_head_sha>...<head_sha>` - risk, scope, depth, and requirement fit score the full `<base_ref>...<head_ref>` range on every round.
-- Writing the report on no-op exit (prior `head_sha == current head_sha`) - the file must stay byte-identical.
+- State-changing git from this workflow - the one exception is `git fetch <remote> <branch>` in Step 4 for a remote head with a valid prior checkpoint
+- Scoping round 2+ analysis to `<prior_head_sha>...<head_sha>` - every round scores the full range
+- Writing the report on a no-op exit - the file stays byte-identical
 - Generic backend conventions when a Python idiom exists ("extract to a service module", not "extract to a helper class")
 - Vague feedback ("this could be better"); blocking on personal preference
-- Duplicating perf / security / observability / reliability depth here when the dedicated subagent owns them
-- Sequential extra scopes that could parallelize
+- Duplicating perf / security / observability / reliability depth here when the dedicated subagent owns it, or running extra scopes sequentially
 - Appending raw subagent reports instead of merging
-- Reconciling against prior Architecture/Maintainability notes - only `## High-Impact Findings` rows count (regardless of whether they used legacy `[Suggestion]` or current `[Recommend]`).
-- Emitting `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise]` labels - if it isn't `[Must]` or `[Recommend]`, don't write it down.
-- Emitting a "Carry-Over Open Items" section - fold into Next Steps instead.
+- Reconciling against prior Architecture / Maintainability notes - only `## High-Impact Findings` rows count
 - Recommending `pickle.loads` / `yaml.load` on untrusted input, or `extra="allow"` on user-facing Pydantic schemas, as acceptable patterns

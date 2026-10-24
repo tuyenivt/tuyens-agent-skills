@@ -9,179 +9,179 @@ metadata:
 user-invocable: true
 ---
 
-> **Behavioral directive:** Load `Use skill: behavioral-principles` before executing this workflow.
-
 # Implement Python Feature
 
 ## When to Use
 
-End-to-end Python feature work: migration + model + service + endpoint + schema + tests in one pass for FastAPI or Django.
+Migration, model, service, endpoint, schema, tests in one pass for FastAPI or Django.
 
-Not for: single-file edits (edit directly), bugfixes, frontend.
-
-## Rules
-
-- Detect FastAPI vs Django before generating code
-- Pydantic v2 schemas (FastAPI) or DRF serializers (Django) for all responses; never return raw ORM objects
-- `async def` on FastAPI endpoints; type hints on every signature
-- Celery `.delay()` dispatched **after** transaction commit, never inside it
-- Transactions: FastAPI = `Depends(get_db)` per request; Django = `@transaction.atomic()`
-- Each step completes before the next; design approved before code
+Not for: single-file edits, bugfixes, frontend.
 
 ## Workflow
 
-### STEP 1 - DETECT FRAMEWORK
+### STEP 1 - BEHAVIORAL PRINCIPLES
 
-Use skill: `stack-detect`. Confirm FastAPI vs Django from `pyproject.toml` / `requirements.txt`; identify ORM, test layout, Celery presence.
+Use skill: `behavioral-principles`.
 
-### STEP 2 - GATHER
+### STEP 2 - DETECT FRAMEWORK
 
-Ask before writing code:
+Use skill: `stack-detect`. `Framework` FastAPI or Django selects the branch; `unknown` or another framework (Flask): name it and ask which branch applies; no answer -> stop (FastAPI and Django only). Record the Python version (`Language`, else `requires-python`) and the pinned framework version, `unknown` when absent. Read what the block lacks: test layout, Celery in the manifest, lint / type tools. Disagreeing manifests: follow the one CI installs; name the conflict.
 
-1. Feature description and primary use case
-2. Entities, fields, relationships, constraints
-3. External integrations (payment APIs, email, third-party services)
-4. Background jobs (async processing, notifications, scheduled tasks)
-5. Authentication / authorization
-6. Status transitions (e.g., `pending -> processing -> completed`)
+### STEP 3 - GATHER
 
-Ask targeted clarifying questions for any gap. Do not guess.
+Ask only about gaps that change the deliverable - entities, fields, constraints; auth / tenancy model and the tenant-id source; status transitions; outbound integrations, inbound webhooks; background jobs; money or irreversible effects. State other defaults inline ("Assuming X since Y") and proceed.
 
-### STEP 3 - DESIGN (APPROVAL GATE)
+### STEP 4 - DESIGN (APPROVAL GATE)
 
-FastAPI: Use skill: `python-fastapi-patterns` for endpoints/DI; `python-sqlalchemy-patterns` for ORM/session.
-Django: Use skill: `python-django-patterns` for ViewSet/serializer design.
-Background jobs: Use skill: `python-celery-patterns`.
-Async-heavy: Use skill: `python-async-patterns`.
+FastAPI: Use skill: `python-fastapi-patterns`; Use skill: `python-sqlalchemy-patterns`. Django: Use skill: `python-django-patterns`. Background jobs: Use skill: `python-celery-patterns`. Async-heavy: Use skill: `python-async-patterns`.
 
-Present a file tree:
+Emit each loaded atomic's block (`## FastAPI Architecture`, `## SQLAlchemy Design`, Django `Pattern:` blocks, `## Celery Design`, `## Async Architecture`) and a file tree:
 
 ```
-# FastAPI example
-app/
-  models/order.py          # SQLAlchemy model
-  schemas/order.py         # Pydantic request/response schemas
-  repositories/order.py    # Repository pattern
-  services/order.py        # Business logic
-  api/v1/routes/orders.py  # Endpoints
-  tasks/order.py           # Celery tasks (if needed)
-  tests/
-    test_orders_api.py     # Endpoint tests
-    test_order_service.py  # Service unit tests
-    test_order_tasks.py    # Celery task tests (if needed)
-migrations/versions/xxx_add_orders.py
+app/models/order.py                 # Django: <app>/models.py
+app/schemas/order.py                # Django: <app>/serializers.py
+app/repositories/order.py           # flush() only; Django: model managers
+app/services/order.py               # commits; Django: <app>/services.py
+app/api/v1/routes/orders.py         # Django: <app>/views.py + urls.py
+app/tasks/order.py                  # Django: <app>/tasks.py
+alembic/versions/xxx_add_orders.py  # Django: <app>/migrations/000N_*.py
+tests/unit/test_order_service.py
+tests/integration/test_orders_api.py
 ```
 
-Wait for approval before generating code.
+Wait for approval; a waiver yields design and code in one turn, recorded under `## Assumptions`.
 
-### STEP 4 - DATABASE
+### STEP 5 - DATABASE
 
-Use skill: `python-migration-safety`. Index foreign keys and frequently-filtered columns; for list endpoints, index columns supporting the default sort order.
+Use skill: `python-migration-safety`; emit its `## Migration Plan`, then the files. Backfills get their own revision.
 
-### STEP 5 - MODELS
+### STEP 6 - MODELS
 
-SQLAlchemy 2.0 (`Mapped[]`, `mapped_column`) or Django models. Include:
+SQLAlchemy 2.0 (`Mapped[]`, `mapped_column`) or Django models: typed fields; explicit relationship loading; DB-level constraints; `TextChoices` (Django) or a string enum for status.
 
-- Type annotations on all fields
-- Relationships with explicit loading strategy
-- DB-level constraints (unique, check, not-null)
-- `TextChoices` (Django) or string enum (FastAPI) for status fields
+### STEP 7 - SERVICES
 
-### STEP 6 - SERVICES
-
-Business logic layer.
+The service owns the transaction: `get_db` only rolls back, repositories `flush()`, the service commits, then dispatches Celery via `run_in_threadpool`. Django: `transaction.atomic()` + `on_commit`.
 
 ```python
-# FastAPI: dispatch after commit
-async def create_order(self, order_in: OrderCreate) -> Order:
-    order = Order(**order_in.model_dump())
-    self._session.add(order)
-    await self._session.flush()  # get order.id
-    await self._session.commit()
-    process_order.delay(order.id)  # after commit - worker will find the row
-    return order
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
+from app.models.order import Order
+from app.repositories.order import OrderRepository
+from app.schemas.order import OrderCreate
+from app.tasks.order import process_order
 
-# Django: dispatch via transaction.on_commit so it never fires before commit
-def create_order(self, **data) -> Order:
+
+async def create_order(session: AsyncSession, repo: OrderRepository, order_in: OrderCreate, tenant_id: int) -> Order:
+    order = Order(tenant_id=tenant_id)  # + `order_in` fields onto columns (nested items -> OrderItem(tenant_id=tenant_id, ...))
+    await repo.create(order)  # add + flush
+    await session.commit()
+    await run_in_threadpool(process_order.delay, order.id)  # after commit, off the loop
+    return order
+```
+
+```python
+from django.db import transaction
+from orders.models import Order
+from orders.tasks import process_order
+
+
+def create_order(**data) -> Order:
     with transaction.atomic():
         order = Order.objects.create(**data)
         transaction.on_commit(lambda: process_order.delay(order.id))
     return order
 ```
 
-External service calls: in async FastAPI use `httpx.AsyncClient` with timeout (never `requests`); a sync Django/Celery path uses `requests` or `httpx.Client`. Classify errors (timeout -> 503, 404 -> not-found, 5xx -> retry).
+Outbound: lifespan-scoped `httpx.AsyncClient` with explicit `httpx.Timeout` on async FastAPI (never `requests`); `requests` / `httpx.Client` with a timeout on sync paths; timeout -> 503, 404 -> not-found, 5xx -> retry. Inbound webhooks: HMAC over the raw body (`hmac.compare_digest`, stale timestamps rejected: `python-security-patterns` Webhook Auth) and the provider event id deduped by a unique constraint (`python-fastapi-patterns` Webhook Receivers; Django alike).
 
-### STEP 7 - ENDPOINTS
+### STEP 8 - ENDPOINTS
 
-FastAPI routes or Django views. Map domain errors:
+FastAPI routes (`async def`, `response_model` on every endpoint) or DRF views (explicit `fields` on every serializer). Domain errors:
 
-| Domain Error | HTTP |
-|---|---|
-| Validation | 422 |
-| Not found | 404 |
-| Conflict (duplicate) | 409 |
-| Unauthorized | 401 |
-| Forbidden | 403 |
-| External timeout | 503 |
+| Domain error | FastAPI | DRF |
+| --- | --- | --- |
+| Validation | 422 (`RequestValidationError`) | 400 (`ValidationError`, `UniqueValidator` included) |
+| Not found | 404 | 404 |
+| Conflict (state race, duplicate key) | 409 | 409 (`APIException` subclass) |
+| Unauthenticated | 401 (`OAuth2PasswordBearer`; every scheme on 0.122+); 403 (`HTTPBearer` / `APIKeyHeader` below 0.122) | 401 (token / JWT); 403 (`SessionAuthentication`) |
+| Forbidden | 403 | 403 |
+| External timeout | 503 | 503 |
 
-List endpoints paginated (offset/limit or cursor); include filtering on common fields.
+List endpoints paginated and filterable. Any endpoint not fully public: Use skill: `python-security-patterns` for auth / authz wiring (`Depends`, `permission_classes`) and mass-assignment-safe schemas (its blocks cover Step 9).
 
-For any endpoint that is not fully public, Use skill: `python-security-patterns` for auth/authz wiring (FastAPI `Depends`, DRF `permission_classes`) and mass-assignment-safe schemas (`extra="forbid"` / explicit serializer `fields`) - applies to Step 8 too.
+### STEP 9 - SCHEMAS
 
-### STEP 8 - SCHEMAS
+Pydantic v2 or DRF serializers: separate Create / Update / Response per resource; `ConfigDict(from_attributes=True)` on response models from ORM rows.
 
-Pydantic v2 (FastAPI) or DRF serializers (Django).
+### STEP 10 - TESTS
 
-- Separate Create/Update/Response schemas per resource
-- `ConfigDict(from_attributes=True)` for ORM -> Pydantic conversion
-- Nested schemas for child resources
+Use skill: `python-testing-patterns`; emit its `## Test Plan`, then tests under root `tests/unit` and `tests/integration`: endpoints (one case per status above), service logic, Celery tasks when present. A suite conflicting with the atomic's Rules (SQLite conftest, `unittest.TestCase`) stays untouched; new tests follow the Rules and the Test Plan gains `### Suite Migration`.
 
-### STEP 9 - TESTS
+### STEP 11 - VALIDATE
 
-Use skill: `python-testing-patterns`. Generate:
-
-- Endpoint tests (happy path + error case per status code)
-- Service unit tests (business logic, edge cases)
-- Celery task tests (if applicable)
-- Factory classes for test data
-
-### STEP 10 - VALIDATE
-
-Run `pytest`, `ruff check`, `mypy` (or `pyright`). Fix failures before reporting done.
+Run `pytest` and the manifest's lint / type tools; fix failures first. A missing tool or dead runtime reports `not run - <reason>`.
 
 ## Output Format
 
+Brace annotations are never emitted.
+
 ```markdown
+## Python Feature: <name>
+
+- **Stack:** Python <version | unknown>
+- **Framework:** FastAPI <version | unknown> | Django <version | unknown>
+
+## Assumptions
+
+- [each Step 3 default; the approval waiver; `None`]
+
+## Design
+
+[approved Step 4 blocks, `## Celery Design` excepted, plus Step 8 security `Pattern:` blocks; `(amended: <why>)` where changed]
+
 ## Files Generated
-[grouped by layer: models, schemas, services, endpoints, tasks, tests, migrations]
+
+[grouped by layer; edited files marked `(modified)`]
 
 ## Endpoints
-| Method | Path | Request | Response | Status |
-| ... |
 
-## Celery Tasks (if any)
-| Task | Queue | Trigger | Retry |
-| ... |
+| Method | Path | Request | Response | Status | Auth |
+| ------ | ---- | ------- | -------- | ------ | ---- |
 
-## Tests
-[X] tests passing - [list test files and count per file]
+## Celery Design   {when tasks exist}
 
-## Migration
-[file names + what they create: tables, indexes, constraints]
+[the block]
+
+## Migration Plan
+
+[the block: Schema Changes, Indexes, Deploy Sequence, Rollback Plan]
+
+## Test Plan
+
+[the block{ + `### Suite Migration`}]
+
+## Validation
+
+- pytest: <N> passed | not run - <reason>
+- ruff / mypy or pyright: pass | not run - <reason>
 ```
 
 ## Self-Check
 
-- [ ] Framework detected; requirements gathered; design approved before code
-- [ ] All layers generated: migration, model, service, endpoint/view, schema, tests
-- [ ] Pydantic / DRF schemas everywhere; no raw ORM objects in responses
-- [ ] `async def` on FastAPI endpoints; type hints on every signature
-- [ ] Celery tasks dispatched after commit; transactions scoped correctly
-- [ ] External calls timeout-wrapped; `httpx.AsyncClient` in async context
-- [ ] pytest, ruff, mypy/pyright all pass; list endpoints paginated; output template filled
+- [ ] Step 1: `behavioral-principles` loaded
+- [ ] Step 2: `Framework` settled; layout, Celery, tools read
+- [ ] Step 3: deliverable-changing gaps asked; defaults under `## Assumptions`
+- [ ] Step 4: blocks + tree emitted; approval or waiver recorded
+- [ ] Step 5: `## Migration Plan`; backfill separate
+- [ ] Step 6: typed fields, explicit loading, constraints, enum status
+- [ ] Step 7: service commits; dispatch after commit, off the loop; timeouts; webhooks signed
+- [ ] Step 8: `response_model` / explicit `fields`; correct statuses; pagination; security patterns
+- [ ] Step 9: Create / Update / Response; `from_attributes`
+- [ ] Step 10: `## Test Plan`; root `tests/`; suite migration
+- [ ] Step 11: declared tools run; unrun reported `not run - <reason>`
 
 ## Avoid
 
-- Generating code before design approval
-- Bare string fields for status without enum / `TextChoices`
-- Mixing data migration into the schema migration revision
+- Code before approval; an unanswered question is not approval
+- `.delay()` inline in `async def`, or before the commit

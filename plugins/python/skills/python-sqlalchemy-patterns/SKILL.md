@@ -16,16 +16,16 @@ user-invocable: false
 - Designing SQLAlchemy 2.0 models, relations, async sessions
 - Queries needing N+1 prevention, pagination, or bulk ops
 - FastAPI session dependency and repository pattern wiring
-- Connection pooling and `MissingGreenlet` debugging
+- Connection pooling and `MissingGreenlet` / `DetachedInstanceError` debugging
 
 ## Rules
 
 - SQLAlchemy 2.0 style: `DeclarativeBase`, `mapped_column`, `Mapped[]`, `select()` - never `Column()` or `session.query()`
-- Async sessions: `async_sessionmaker(expire_on_commit=False)` - default `True` causes `MissingGreenlet` after commit
-- Load relations eagerly inside session scope; `lazy="raise"` in dev to catch N+1
-- `joinedload` on collections requires `.unique()` on the result
-- `commit()` at service/request boundary; repositories use `flush()` only
-- One `AsyncSession` is **not** concurrency-safe - never run `asyncio.gather` over queries on a single session, and never share a session across requests or processes (web -> Celery worker); give each concurrent unit its own session
+- Async sessions: `async_sessionmaker(expire_on_commit=False)` - the default expires attributes on commit and the next access raises `MissingGreenlet`
+- Load relations eagerly inside session scope; `lazy="raise"` on every relationship so each load is explicit (`raiseload("*")` does the same for one statement)
+- `joinedload` on collections requires `.unique()`
+- Services commit before returning; `get_db` only rolls back on exception and closes; repositories `flush()` only
+- One `AsyncSession` is **not** concurrency-safe - never `asyncio.gather` queries on one session, never share one across requests or processes (web -> Celery worker)
 - Never mix sync and async engines
 
 ## Patterns
@@ -33,75 +33,82 @@ user-invocable: false
 ### SQLAlchemy 2.0 Models
 
 ```python
-from sqlalchemy import String, Numeric, ForeignKey
+from datetime import datetime
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase): pass
 
-class Order(Base):
+class TenantScoped:                                                 # every tenant-owned table, children included
+    tenant_id: Mapped[int] = mapped_column(index=True)
+
+class Order(TenantScoped, Base):
     __tablename__ = "orders"
     id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    customer: Mapped["Customer"] = relationship(lazy="raise")      # Customer / Product: ordinary models, omitted
     items: Mapped[list["OrderItem"]] = relationship(back_populates="order", lazy="raise")
 
-class OrderItem(Base):
+class OrderItem(TenantScoped, Base):
     __tablename__ = "order_items"
     id: Mapped[int] = mapped_column(primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"))
-    order: Mapped["Order"] = relationship(back_populates="items")
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+    quantity: Mapped[int]
+    order: Mapped["Order"] = relationship(back_populates="items", lazy="raise")
+    product: Mapped["Product"] = relationship(lazy="raise")
+
+class StockItem(Base):
+    __tablename__ = "stock_items"
+    __table_args__ = (UniqueConstraint("warehouse_id", "sku", name="uq_stock_warehouse_sku"),)  # upsert target
+    id: Mapped[int] = mapped_column(primary_key=True)
+    warehouse_id: Mapped[int]; sku: Mapped[str] = mapped_column(String(64)); quantity: Mapped[int] = mapped_column(default=0)
 ```
 
 ### Async Session
 
 ```python
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 engine = create_async_engine(DATABASE_URL, pool_size=10, max_overflow=5, pool_pre_ping=True, pool_recycle=3600)
 async_session = async_sessionmaker(engine, expire_on_commit=False)
-
-# await session.execute(select(...)) for rows; await session.scalars(...) for single column
+# session.scalars(select(Order)) yields the first column of each row
 ```
 
-`pool_recycle=3600` prevents PostgreSQL idle timeouts. `pool_size` + `max_overflow` is **per process**; total peak connections = `N_processes x (pool_size + max_overflow)`. Keep that under PostgreSQL `max_connections` minus a reserve (e.g., 4 uvicorn workers x (10+5) = 60 against `max_connections=100`). Celery workers run their own engine - budget them separately.
-
-Multi-level eager loads chain by nesting loaders: `selectinload(Order.items).selectinload(OrderItem.product)` loads items, then each item's product, in 2 extra `IN` queries regardless of N.
+`pool_recycle` retires connections before a proxy, NAT, or a configured `idle_session_timeout` drops them (PostgreSQL never times out idle sessions by default). `pool_size` + `max_overflow` is **per process**; peak = `N_processes x (pool_size + max_overflow)`, kept under `max_connections` minus a reserve for migrations and one surge replica (4 uvicorn workers x (10+5) = 60 against 100). Celery prefork: `NullPool` per worker process, budgeted separately.
 
 ### N+1 Prevention
 
-- `selectinload(Order.items)` - separate `IN` query, default for collections, safe with `LIMIT`
-- `joinedload(Order.customer)` - LEFT JOIN, for single-valued FK/one-to-one
-- `lazy="raise"` on relationships catches accidental lazy loads in dev
-
 ```python
-from sqlalchemy.orm import selectinload, joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
-# collections -> selectinload
-stmt = select(Order).options(selectinload(Order.items)).where(Order.status == "pending")
-
-# single-valued FK -> joinedload
-stmt = select(Order).options(joinedload(Order.customer)).where(Order.id == oid)
-
-# joinedload on a collection requires .unique() to dedupe row explosion
-result = await session.execute(select(Order).options(joinedload(Order.items)))
-orders = result.unique().scalars().all()
+stmt = select(Order).options(selectinload(Order.items))            # collections: separate IN query, safe with LIMIT
+stmt = select(Order).options(joinedload(Order.customer))           # single-valued FK / one-to-one: LEFT JOIN
+orders = (await session.execute(select(Order).options(joinedload(Order.items)))).unique().scalars().all()
+stmt = select(Order).options(selectinload(Order.items).selectinload(OrderItem.product))  # nested: one IN per level per 500 parents
 ```
 
 ### FastAPI Session Dependency
 
 ```python
+from collections.abc import AsyncGenerator
+from typing import Annotated
+from fastapi import Depends, Request
+
 async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
-    async with request.app.state.async_session() as session:
+    async with request.state.async_session() as session:       # lifespan state; closes on exit
+        session.info["tenant_id"] = request.state.tenant_id       # from auth middleware
         try:
             yield session
-            await session.commit()
         except Exception:
             await session.rollback(); raise
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 ```
 
-Commit at the dependency boundary - keeps repositories transaction-agnostic.
+The service commits before returning; never commit after `yield`: on FastAPI 0.118+ post-`yield` code runs after the response, so a failed commit cannot change the 2xx already sent (`Depends(get_db, scope="function")`, 0.121+, restores the old order).
 
 ### Repository Pattern
 
@@ -110,80 +117,68 @@ class OrderRepository:
     def __init__(self, session: AsyncSession): self._session = session
 
     async def get_by_id(self, oid: int) -> Order | None:
-        return await self._session.get(Order, oid)
-
-    async def list_by_status(self, status: str) -> Sequence[Order]:
-        result = await self._session.execute(
-            select(Order).options(selectinload(Order.items)).where(Order.status == status))
-        return result.scalars().all()
+        return await self._session.get(Order, oid)   # identity map; select() for filters or eager loads
 
     async def create(self, order: Order) -> Order:
         self._session.add(order); await self._session.flush(); return order
 ```
 
-Composite PK: `session.get(Model, (pk1, pk2))` - passing a single value silently fails.
+Composite PK: `session.get(Model, (pk1, pk2))` - a single value raises `InvalidRequestError`. `scalar_one()` raises `NoResultFound` on no row; `scalar_one_or_none()` returns `None`.
 
 ### Pagination and Bulk Ops
 
 ```python
-# Offset pagination with total - simple, but OFFSET skips/duplicates under concurrent inserts
-base = select(Order).where(Order.status == status)
-total = await session.scalar(select(func.count()).select_from(base.subquery()))
-result = await session.execute(
-    base.options(selectinload(Order.items)).offset(off).limit(lim).order_by(Order.created_at.desc()))
+from sqlalchemy import and_, func, insert, or_, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-# Keyset pagination - stable feed under concurrent writes. Cursor = (created_at, id) for a total order.
-from sqlalchemy import and_, or_
+# Offset pagination skips/duplicates under concurrent inserts
+total = await session.scalar(select(func.count()).select_from(Order))
+rows = (await session.execute(select(Order).order_by(Order.created_at.desc()).offset(off).limit(lim))).scalars().all()
+
+# Keyset pagination - stable under concurrent writes; cursor (created_at, id) is a total order
 stmt = select(Order).order_by(Order.created_at.desc(), Order.id.desc()).limit(lim)
 if cursor:                                       # cursor = (last_created_at, last_id)
     c_ts, c_id = cursor
-    stmt = stmt.where(or_(Order.created_at < c_ts,
-                          and_(Order.created_at == c_ts, Order.id < c_id)))
+    stmt = stmt.where(or_(Order.created_at < c_ts, and_(Order.created_at == c_ts, Order.id < c_id)))
 rows = (await session.execute(stmt)).scalars().all()
 next_cursor = (rows[-1].created_at, rows[-1].id) if len(rows) == lim else None
-# needs a (created_at DESC, id DESC) index; encode next_cursor opaquely for the client
+# needs Index("ix_orders_created_id", Order.created_at.desc(), Order.id.desc()); send next_cursor as base64(f"{created_at.isoformat()}|{id}")
 
-# Bulk insert/update bypass ORM listeners; batch large updates by keyset + commit per batch
-await session.execute(insert(OrderItem), [{"order_id": oid, "quantity": q} for q in qtys])
-# 50k-row update as one statement = one long lock; loop in batches:
-while ids := (await session.scalars(
-        select(Order.id).where(Order.status == "expired").limit(5000))).all():
-    await session.execute(
-        update(Order).where(Order.id.in_(ids)).values(status="cancelled")
-        .execution_options(synchronize_session=False))
-    await session.commit()
+# Bulk insert/update bypass ORM listeners; batch large updates by re-selecting a bounded id set until none match
+await session.execute(insert(OrderItem), [{"tenant_id": session.info["tenant_id"], "order_id": oid, "product_id": pid, "quantity": q} for pid, q in lines])
+while ids := (await session.scalars(select(Order.id).where(Order.status == "expired").limit(5000))).all():
+    await session.execute(update(Order).where(Order.id.in_(ids)).values(status="cancelled")
+                          .execution_options(synchronize_session=False))
+    await session.commit()                       # maintenance job (script or service method) commits per batch; request code leaves commit to the service
 
-# Upsert (async-safe): insert().on_conflict_do_update() + execute() - never session.merge()
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+# Upsert: on_conflict_do_update(), never session.merge(); index_elements must match a unique constraint (uq_stock_warehouse_sku) or PostgreSQL rejects it
 stmt = pg_insert(StockItem).values(warehouse_id=wid, sku=sku, quantity=qty)
-stmt = stmt.on_conflict_do_update(
-    index_elements=["warehouse_id", "sku"], set_={"quantity": stmt.excluded.quantity})
-await session.execute(stmt)
+await session.execute(stmt.on_conflict_do_update(
+    index_elements=["warehouse_id", "sku"], set_={"quantity": stmt.excluded.quantity}))
 ```
 
-Tenant scoping: filter every query by `tenant_id`. To make it un-bypassable across eager-loaded relations too, register `with_loader_criteria(Model, Model.tenant_id == tid, include_aliases=True)` as a query option rather than relying on per-`where` filters.
+Tenant scoping: every tenant-owned table inherits `TenantScoped` (above). Enforce it once per session, not per query: a `do_orm_execute` listener on `AsyncSession.sync_session_class` adds `with_loader_criteria(TenantScoped, lambda cls: cls.tenant_id == tid, include_aliases=True)` to every select when `tid = session.info.get("tenant_id")` is set (`get_db` sets it; admin jobs leave it unset) - this also covers eager-loaded relations.
 
-### MissingGreenlet Debugging
+### MissingGreenlet and DetachedInstanceError
 
-Lazy attribute access after session close raises `MissingGreenlet: greenlet_spawn has not been called`.
+Lazy access **inside** an open async session raises `MissingGreenlet: greenlet_spawn has not been called` (the sync lazy-loader cannot await); **after** the session closes it raises `DetachedInstanceError`; with `lazy="raise"` either case raises `InvalidRequestError: ... not available due to lazy='raise'`.
 
 ```python
-# BAD: relationship accessed after session closes
+# BAD: nothing eager-loaded the relation
 async with async_session() as session:
     order = await session.get(Order, oid)
-print(order.items)  # MissingGreenlet
+    print(order.items)      # MissingGreenlet (InvalidRequestError with lazy="raise")
 
-# GOOD: eager-load inside session scope
+# GOOD: eager-load inside session scope; attributes stay readable after close (expire_on_commit=False keeps them past a commit)
 async with async_session() as session:
-    result = await session.execute(
-        select(Order).options(selectinload(Order.items)).where(Order.id == oid))
-    order = result.scalar_one_or_none()
-print(order.items)  # safe
+    order = (await session.execute(
+        select(Order).options(selectinload(Order.items)).where(Order.id == oid))).scalar_one_or_none()
+print(order.items)
 ```
 
-`expire_on_commit=False` on `async_sessionmaker` prevents post-commit attribute expiry (another `MissingGreenlet` source).
-
 ## Output Format
+
+When authoring, emit this block plus the code it describes. When reviewing, the consuming workflow owns the finding envelope (label, severity, `file:line`; invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise); emit this block as the target state and one finding per deviation from it. A section the task does not touch reads `n/a` in place of its table or text.
 
 ```
 ## SQLAlchemy Design
@@ -197,15 +192,15 @@ print(order.items)  # safe
 |--------|-----------|-------------|---------|
 
 ### Session Strategy
-[Engine config, sessionmaker settings, FastAPI dependency shape]
+[Engine config per process type (API, Celery), sessionmaker settings, dependency shape, commit site | n/a]
 
 ### Pagination
-[Offset or keyset with rationale]
+[Offset or keyset with rationale | n/a]
 ```
 
 ## Avoid
 
-- `session.merge()` as upsert - use `insert().on_conflict_do_update()`
+- `session.merge()` as upsert - use `pg_insert(...).on_conflict_do_update()`
 - Long-lived sessions across requests
 - Unbounded `pool_size`; missing `pool_pre_ping` / `pool_recycle`
 - `lazy="dynamic"` in async (returns sync `Query`)

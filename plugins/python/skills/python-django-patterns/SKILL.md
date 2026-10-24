@@ -20,14 +20,14 @@ user-invocable: false
 
 ## Rules
 
-- One serializer per action (create / update / list / detail) - never reuse a single fat serializer
-- Eager load in `get_queryset()` with `select_related` (FK/OneToOne) and `prefetch_related` (M2M/reverse FK)
-- `exists()` over `count() > 0`; `iterator()` for large result sets
-- DB-level constraints (`UniqueConstraint`, `CheckConstraint`) - not just `clean()`
+- One serializer per action (create / update / list / detail), `update` and `partial_update` included - never one fat serializer
+- Eager load in `get_queryset()` with `select_related` (FK/OneToOne) and `prefetch_related` (M2M/reverse FK); an overridden `list()` calls `self.paginate_queryset()` or pagination is bypassed
+- `exists()` over `count() > 0`; `annotate(Count(...))` over per-row `.count()`; `iterator(chunk_size=2000)` for large result sets (required after `prefetch_related`)
+- DB-level constraints (`UniqueConstraint`, `CheckConstraint(condition=...)`) - not just `clean()`
 - `TextChoices` for status/enum fields - never bare `CharField`
-- `select_for_update()` on concurrent state transitions, by PK, inside `transaction.atomic()`
-- Business logic in services or model methods - never in views or serializer `create()`/`update()`
-- Dispatch side effects via `transaction.on_commit()` - never inside `perform_create` before commit
+- `select_for_update()` on concurrent state transitions, by PK, inside `transaction.atomic()`; the loser re-reads the new state and gets 409
+- Business rules (pricing, state transitions, side effects) in services or model methods - never in views; serializer `create()`/`update()` only map validated nested data to rows
+- Dispatch side effects via `transaction.on_commit()` - never before commit, or the worker may read a row that does not exist yet; under `ATOMIC_REQUESTS=True` it fires after the request transaction
 
 ## Patterns
 
@@ -36,46 +36,36 @@ user-invocable: false
 ```python
 class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsOrderOwner]
+    filterset_fields = ["status"]
+    ordering = ["-created_at"]
 
     def get_serializer_class(self):
         return {
             "create": OrderCreateSerializer,
+            "update": OrderUpdateSerializer,
+            "partial_update": OrderUpdateSerializer,
             "list": OrderListSerializer,
         }.get(self.action, OrderDetailSerializer)
 
     def get_queryset(self):
         return (
-            Order.objects.for_user(self.request.user)
+            Order.objects.visible_to(self.request.user)
             .select_related("customer")
             .prefetch_related("items__product")
+            .annotate(item_count=Count("items"))
         )
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
-        OrderService.cancel(self.get_object())
+        OrderService.cancel(self.get_object().pk)      # raises OrderConflict (409) when not cancellable
         return Response(status=204)
 ```
 
-### Serializer Validation
+Scope owned resources in `get_queryset()` (`visible_to`), not only in object permissions, so list and detail filter alike. Domain errors are `APIException` subclasses with a `status_code`; bare `APIException` is 500.
 
-```python
-class OrderCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Order
-        fields = ["total", "items"]
+### Serializer Validation and Nested Writes
 
-    def validate_total(self, value):
-        if value <= 0:
-            raise serializers.ValidationError("Total must be positive")
-        return value
-
-    def validate(self, attrs):
-        if not attrs.get("items"):
-            raise serializers.ValidationError({"items": "At least one item required"})
-        return attrs
-```
-
-Avoid `depth=N` for nested reads - declare explicit nested serializer classes. `ModelSerializer` does not support writable nested input out of the box; override `create()` and `bulk_create` the children inside `transaction.atomic()`:
+`ModelSerializer` infers `required`, `max_length`, `min_value` and `UniqueValidator` from the model - declare only what the model lacks. Nested writes need the child serializer plus a `create()` override; undeclared, DRF builds a `PrimaryKeyRelatedField` re-parenting existing children:
 
 ```python
 class OrderCreateSerializer(serializers.ModelSerializer):
@@ -83,7 +73,12 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ["items"]
+        fields = ["customer", "reference", "total", "items"]
+
+    def validate(self, attrs):
+        if not attrs["items"]:
+            raise serializers.ValidationError({"items": "At least one item required"})
+        return attrs
 
     def create(self, validated_data):
         items = validated_data.pop("items")
@@ -93,24 +88,30 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         return order
 ```
 
-`bulk_create` skips per-row signals - acceptable for child rows whose side effects fire from the order. Scope owned resources in `get_queryset()` (`for_user(self.request.user)`), not just object permissions, so list and detail are both filtered.
+`bulk_create` skips per-row signals - fine for child rows. A client-supplied FK (`customer`) is scoped to the caller like `get_queryset()`: `get_fields()` narrows `fields["customer"].queryset`.
 
 ### QuerySet Optimization
 
 ```python
 Order.objects.select_related("customer")               # FK / OneToOne - JOIN
-Order.objects.prefetch_related("items__product")       # M2M / reverse FK - 2 queries
+Order.objects.prefetch_related("items__product")       # one extra query per relation (2 here)
+Order.objects.annotate(n_items=Count("items"))        # one aggregate column
 
 if Order.objects.filter(status="pending").exists(): ...  # LIMIT 1, no COUNT
 Order.objects.values_list("id", flat=True)              # skip model instantiation
 Order.objects.aggregate(total=Sum("total"), n=Count("id"))  # DB-level
 ```
 
-`get_queryset()` runs for both filtering and detail retrieval - keep it cheap. `select_for_update()` does not lock rows pulled by `prefetch_related` - lock those separately.
+`get_queryset()` runs for list and detail alike - keep it cheap; `select_for_update()` does not lock prefetched rows.
 
 ### Model: Abstract Base + Manager + TextChoices
 
 ```python
+from decimal import Decimal
+from django.conf import settings
+from django.core.validators import MinValueValidator
+from django.db import models
+
 class TimestampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -120,7 +121,7 @@ class TimestampedModel(models.Model):
 
 class OrderQuerySet(models.QuerySet):
     def pending(self): return self.filter(status=OrderStatus.PENDING)
-    def for_user(self, user): return self.filter(user=user)
+    def visible_to(self, user): return self if user.is_staff else self.filter(user=user)
 
 class OrderStatus(models.TextChoices):
     PENDING = "pending", "Pending"
@@ -129,93 +130,70 @@ class OrderStatus(models.TextChoices):
 
 class Order(TimestampedModel):
     objects = OrderQuerySet.as_manager()
-    total = models.DecimalField(max_digits=10, decimal_places=2)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="orders")
+    customer = models.ForeignKey("Customer", on_delete=models.PROTECT, related_name="orders")
+    reference = models.CharField(max_length=32)
+    total = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal("0"))])  # DRF infers min_value from validators, never from constraints
     status = models.CharField(max_length=20, choices=OrderStatus.choices, default=OrderStatus.PENDING)
+    # OrderItem.order = ForeignKey(Order, related_name="items"); Refund.order = OneToOneField(Order, related_name="refund")
 
     class Meta:
         constraints = [
-            models.CheckConstraint(check=models.Q(total__gte=0), name="order_total_non_negative"),
+            models.CheckConstraint(condition=models.Q(total__gte=0), name="order_total_non_negative"),
+            models.UniqueConstraint(fields=["customer", "reference"], name="order_reference_unique_per_customer"),
         ]
 ```
 
-Reserve signals for truly decoupled cross-app side effects; prefer explicit service calls.
+A new constraint ships as its own migration: CHECK as `NOT VALID` + `VALIDATE`, UNIQUE via `CREATE UNIQUE INDEX CONCURRENTLY` + `USING INDEX` (`python-migration-safety`).
 
 ### Concurrent State Transitions
 
 ```python
+class OrderConflict(APIException):
+    status_code = 409
+
 with transaction.atomic():
     order = Order.objects.select_for_update().get(pk=order_id)
-    if order.status == OrderStatus.PENDING:
-        order.status = OrderStatus.CANCELLED
-        order.save(update_fields=["status", "updated_at"])
+    if order.status != OrderStatus.PENDING:
+        raise OrderConflict(f"cannot cancel order in state {order.status}")   # the second concurrent click lands here -> 409
+    order.status = OrderStatus.CANCELLED
+    order.save(update_fields=["status", "updated_at"])
+    Refund.objects.create(order=order, amount=order.total)                    # one refund per order: OneToOneField makes refund.order unique
+    transaction.on_commit(lambda: send_order_email.delay(order.pk))
 ```
 
-### Filtering, Pagination, Routing
+### Filtering, Pagination, Permissions
 
 ```python
-# filters.py
-class OrderFilter(django_filters.FilterSet):
-    status = django_filters.ChoiceFilter(choices=OrderStatus.choices)
-    created_after = django_filters.DateTimeFilter(field_name="created_at", lookup_expr="gte")
-
-    class Meta:
-        model = Order
-        fields = ["status", "created_after"]
-
-# views.py
-class OrderViewSet(viewsets.ModelViewSet):
-    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
-    filterset_class = OrderFilter
-    ordering_fields = ["created_at", "total"]
-    ordering = ["-created_at"]
-    search_fields = ["customer__name"]
-
-# settings.py
+# DEFAULT_PAGINATION_CLASS defaults to None: without it a ViewSet does not paginate
 REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
     "PAGE_SIZE": 20,
+    "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend", "rest_framework.filters.OrderingFilter"],
 }
 
-# urls.py
-router = DefaultRouter()
-router.register("orders", OrderViewSet, basename="order")
-urlpatterns = [path("api/", include(router.urls))]
-```
-
-### Permissions
-
-```python
 class IsOrderOwner(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
-        return obj.user == request.user
+        return request.user.is_staff or obj.user == request.user
 ```
 
-Compose with `IsAuthenticated`; throttle auth endpoints with `UserRateThrottle` / `ScopedRateThrottle`.
-
-### Post-Commit Side Effects
-
-```python
-def perform_create(self, serializer):
-    order = serializer.save()
-    transaction.on_commit(lambda: send_order_email.delay(order.id))
-```
-
-Celery/webhook dispatch inside `perform_create` before commit can race the transaction - the worker may read a row that does not yet exist.
+A custom range parameter (`created_after`) needs a `FilterSet` with `DateTimeFilter(field_name="created_at", lookup_expr="gte")`; `filterset_fields = {"created_at": ["gte"]}` gives `created_at__gte` without one.
 
 ## Output Format
 
+When authoring, emit this block plus the code it describes, one block per Pattern the change touches (a model with its constraints is one Model block; a fix spanning Patterns emits one block each). When reviewing, the consuming workflow owns the finding envelope (label, severity, `file:line`; invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise); emit one block per deviation with `Change` as the required fix; `Queries` is `n/a` when the query count does not change.
+
 ```
-Pattern: {ViewSet | Serializer | QuerySet | Model | Filter | Permission | Locking}
+Pattern: {ViewSet | Serializer | QuerySet | Model | Filter | Pagination | Permission | Locking | Transaction | Service | Signal}
+
 Model/View: {name}
+
 Change: {description}
-Queries: {before} -> {after}
+
+Queries: {before -> after | n/a}
 ```
 
 ## Avoid
 
-- Fat views - extract to services or model methods
-- N+1 in serializers - eager load in `get_queryset()`
 - Signals for business logic - hard to trace, test, debug
-- `raw()` SQL without parameterization
-- `Model.objects.all()` without pagination
-- `depth=N` on nested serializers - declare explicit classes
+- `fields = "__all__"`, `depth=N`, or reading `self.initial_data` in `create()` - declare fields and use `validated_data`

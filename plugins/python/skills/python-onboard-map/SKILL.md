@@ -19,9 +19,9 @@ Workflow needs Python-specific orientation: dependency tooling, framework, venv,
 
 - Detect dependency manager first - lockfile and command set differ.
 - Detect framework: FastAPI, Django, Flask, Starlette, Litestar - layout and entry points differ.
-- Detect Python version from `requires-python`, `.python-version`, `runtime.txt`, **and** `setup.cfg`; flag divergence against the CI config (e.g., `setup.cfg` 3.9 vs CI 3.12). 3.11+ standard.
-- Conflicting managers (both `requirements.txt` and a Poetry/uv `pyproject.toml`, or no lockfile committed): name both, treat the `pyproject.toml` as the forward state and `requirements.txt` as legacy export, and flag that no reproducible install exists until a lockfile lands.
-- Detect async vs sync: `async def` endpoints, asyncio, async DB drivers (asyncpg, aiomysql, motor) vs sync.
+- Detect Python version from `requires-python`, `.python-version`, `.tool-versions`, `runtime.txt`, `setup.cfg` `python_requires`, **and** the `Dockerfile` base image; the CI config's version is the reference (no CI config: `requires-python`; neither: list every source and say there is no reference) - flag every source that diverges from it (e.g., `setup.cfg` 3.9 vs CI 3.12) and any source below the Floors in Conventions.
+- Conflicting managers (two or more of `requirements.txt`, a Poetry/uv/PDM `pyproject.toml`, `Pipfile`): name every one; the `pyproject.toml` is the forward state when present, otherwise the one with a committed lockfile, and the rest are legacy. Separately, when no lockfile is committed, flag that no reproducible install exists until one lands.
+- Detect async vs sync: `async def` endpoints, asyncio, async DB drivers (asyncpg, psycopg 3 async, aiomysql/asyncmy, aiosqlite, PyMongo `AsyncMongoClient`; `motor` is deprecated) vs sync.
 
 ## Patterns
 
@@ -38,14 +38,14 @@ Workflow needs Python-specific orientation: dependency tooling, framework, venv,
 
 ### Bootstrap
 
-1. Python version: `.python-version` / `requires-python` / `runtime.txt` via `pyenv` / `asdf` / `uv`.
+1. Python version: install the CI/pinned version with `pyenv` (`.python-version`), `asdf` (`.tool-versions`), or `uv` (`.python-version` / `requires-python`).
 2. Virtualenv: `python -m venv .venv` (or manager auto-creates).
 3. Install via detected manager.
 4. Local services: `compose.yml` / `.env.example`.
-5. Migrations: Alembic `alembic upgrade head` | Django `python manage.py migrate` | Tortoise `aerich upgrade`.
-6. Run: FastAPI `uvicorn app.main:app --reload` | Django `python manage.py runserver` | Flask `flask run`.
-7. Verify: `/docs` (FastAPI), `/admin/` (Django), `/health` if implemented.
-8. **Celery workers** (if in scope): `celery -A app.tasks worker -l info`; beat `celery -A app.tasks beat -l info`. Endpoints can work while background work silently fails - flag if the worker isn't part of local dev.
+5. Migrations: Alembic `alembic upgrade head` | Django `python manage.py migrate` | Flask-Migrate `flask db upgrade` (Flask-SQLAlchemy without it: no migrations - flag) | Tortoise `aerich upgrade`.
+6. Run: FastAPI `uvicorn app.main:app --reload` (:8000) | Django `python manage.py runserver` (:8000) | Flask `flask run` (:5000) | Starlette `uvicorn <module>:app --reload` (:8000) | Litestar `litestar run --reload` (:8000).
+7. Verify: `/docs` (FastAPI), `/schema` (Litestar), `/admin/` (Django), `/health` if implemented.
+8. **Celery workers** (if in scope): `celery -A app.tasks worker -l info` (Django: `-A <project>`); beat: same `-A` target with `beat -l info`. Endpoints work while background work silently fails - flag a worker missing from local dev.
 
 ### Key Files
 
@@ -59,6 +59,7 @@ Workflow needs Python-specific orientation: dependency tooling, framework, venv,
 | `app/db/`                    | Session factory, base model                      |
 | `app/core/config.py`         | `Settings` class (Pydantic Settings)             |
 | `app/dependencies.py`        | `Depends`-injectable functions (auth, db)        |
+| `app/tasks/`                 | Celery app + tasks                               |
 | `alembic/versions/`          | Schema migrations                                |
 | `pyproject.toml`             | Deps, ruff/mypy/pytest config                    |
 
@@ -69,39 +70,37 @@ Workflow needs Python-specific orientation: dependency tooling, framework, venv,
 | `manage.py`                  | CLI entry point                                                |
 | `<project>/settings/`        | Settings split by env (`base.py`, `local.py`, `production.py`) |
 | `<project>/urls.py`          | Root URL config                                                |
+| `<project>/celery.py`        | Celery app (`config_from_object`, `autodiscover_tasks`)        |
 | `<app>/models.py`            | Django ORM models                                              |
-| `<app>/views.py` or `views/` | Views                                                          |
+| `<app>/views.py`, `serializers.py` | Views / DRF ViewSets, serializers                        |
 | `<app>/migrations/`          | Auto-generated migrations                                      |
 | `<app>/admin.py`             | Admin registration                                             |
 | `requirements/`              | Often split: `base.txt`, `dev.txt`, `prod.txt`                 |
 
-**Flask** (legacy / blueprints): `app.py` / `wsgi.py` (app factory + `create_app`), `blueprints/` or per-feature `views.py`, sync `SessionLocal`, config via `app.config` / env. No async unless ASGI-wrapped.
+**Flask**: `app.py` / `wsgi.py` (app factory + `create_app`), `blueprints/` or per-feature `views.py`, sync `SessionLocal` or Flask-SQLAlchemy `db.session`, config via `app.config` / env. `async def` views run with `flask[async]` (one worker per request, no concurrency gain, also behind an ASGI adapter); real async needs an async-first framework (Quart).
 
-If a `Makefile` is present, treat it as the authoritative command source - `make <target>` usually wraps install / migrate / run / test with the correct `DJANGO_SETTINGS_MODULE` and env already set. Read it before suggesting raw commands. Point new engineers at `.env.example` for required env/secrets.
+If a `Makefile` is present, treat it as the authoritative command source - `make <target>` wraps install / migrate / run / test with env and `DJANGO_SETTINGS_MODULE` set; read it before suggesting raw commands. Point new engineers at `.env.example` for required env/secrets; when it or the `Makefile` is missing, say so and derive the commands from the manager table. Flag a mismatch between `Makefile`, CI and manifest (a tool CI runs that no manifest declares; tests on SQLite against a PostgreSQL production database).
 
 ### Package Layout
 
 - **Feature-package** (preferred for FastAPI / new code): `app/orders/{router,service,repository,schema}.py` - cross-feature imports via public service interfaces.
 - **Layer-package** (older / tutorial-shaped): `app/routers/`, `app/services/`, `app/repositories/`, `app/models/` grouped by stereotype. Harder to navigate end-to-end flows.
-- **Mixed**: feature-package next to legacy layer dirs - project mid-migration. New code goes in feature side; confirm direction before adding files.
+- **Mixed**: a feature package next to legacy layer dirs - project mid-migration. New code goes in feature side; confirm direction before adding files.
 
 ### Conventions
 
-- **Type hints** standard in 3.10+ (`int | None`); strict mode via mypy/pyright.
-- **Settings:** Pydantic Settings (FastAPI) or split modules (Django); single instance with env binding.
-- **Logging:** `logging` stdlib; `structlog` / `loguru` alternatives. JSON for prod.
-- **Lint/format:** ruff (replaces flake8/black/isort); mypy or pyright; bandit for security.
-- **Testing:** pytest + fixtures; `pytest-asyncio`, `factory_boy`, `httpx` test client.
-- **Pre-commit hooks** (`.pre-commit-config.yaml`) common.
+- **Type hints** standard in 3.10+ (`int | None`); strict mode via mypy/pyright. **Settings:** Pydantic Settings (FastAPI) or split modules (Django). **Logging:** `logging` stdlib; `structlog` / `loguru`; JSON for prod. **Lint/format:** ruff (replaces flake8/black/isort); bandit for security. **Testing:** pytest + fixtures; `pytest-asyncio`, `factory_boy`, `httpx` test client; `unittest.TestCase` suites are legacy. **Pre-commit hooks** (`.pre-commit-config.yaml`) common.
+- **Floors (2026):** Python 3.11+ (3.10 EOL October 2026; 3.15 latest); FastAPI 0.115+ with Pydantic v2 (v1 `.dict()` / `orm_mode` is drift); SQLAlchemy 2.0+ 2.0-style API, asyncio via `sqlalchemy.ext.asyncio` (2.1 current); Django 5.2 LTS (4.2 LTS ended April 2026; 6.x needs Python 3.12+); uv replacing pip-tools.
 
 ### Risk Hotspots
 
 - **Sync I/O / blocking calls inside `async def`** (FastAPI): see `python-async-patterns`.
 - **`AsyncSession` lazy-loading + `MissingGreenlet`**: see `python-sqlalchemy-patterns`.
+- **Connection budget**: per-process pool x uvicorn workers x replicas + Celery processes vs `max_connections`: see `python-sqlalchemy-patterns`.
 - **Django queryset writes that bypass `save()` / signals** (`bulk_create`, `update()`, raw SQL): see `python-django-patterns`.
-- **Celery `.delay()` inside an open transaction**: see `python-celery-patterns`.
+- **Celery `.delay()` inside an open transaction; `pickle` serializer**: see `python-celery-patterns`.
 - **Migration safety on large tables** (full-table locks, unbounded backfills): see `python-migration-safety`.
-- **Python footguns**: Pydantic v1 vs v2 drift, mutable default args, settings drift, circular imports.
+- **Python footguns**: Pydantic v1 vs v2 drift, mutable default args, settings drift, circular imports, CORS `["*"]` with credentials.
 
 ### First-PR Safe Zones
 
@@ -109,28 +108,17 @@ Safe: new FastAPI route in existing router, new Pydantic model, new Django view 
 
 Riskier: settings/config (cross-env impact), Django migrations (irreversible without reverse), async DB sessions (lazy-loading rules), auth/permissions middleware.
 
-### Ecosystem Currency
-
-- Python 3.11+ standard; 3.13 latest; 3.10 minimum for modern projects.
-- FastAPI 0.110+; Pydantic v2 (significant v1 break).
-- SQLAlchemy 2.0 unified API (async-first).
-- Django 5.x; LTS is 4.2.
-- ruff replacing flake8/black/isort.
-- uv replacing pip-tools in newer projects.
-
 ## Output Format
 
-Inject into `task-onboard` sections:
+Inject into `task-onboard` sections; invoked standalone, emit the same six headings as `##` sections in this order.
 
-- **Stack and Tooling**: dependency manager, framework + version, Python version, ORM + migration tool, async vs sync, type-check + lint stack.
-- **Local Bootstrap**: install, venv path, run, port, health-check.
-- **Architecture Map**: project layout, settings structure, app/router boundaries, DB session factory location.
+- **Stack and Tooling**: dependency manager + lockfile status (conflicting managers / missing lockfile flagged per Rules), framework + version (manifest pin; `CLAUDE.md` claim noted when it differs), Python version + its reference (CI, else `requires-python`, named) + every source diverging from it or below the Floors, ORM + migration tool, async vs sync, type-check + lint stack.
+- **Local Bootstrap**: install, venv path, run, port, health-check, Celery worker/beat when `celery` is a dependency (present in local dev or flagged absent).
+- **Architecture Map**: project layout (named per Package Layout), settings structure, app/router boundaries, DB session factory location.
 - **Conventions**: type hints, settings, logging, test framework, lint/format stack.
-- **Risk Hotspots**: sync I/O in async, queryset bypass, circular imports, mutable defaults, settings drift.
+- **Risk Hotspots**: one line per hotspot from Patterns that the repo exhibits: the evidence plus its `see` pointer when it has one.
 - **First-PR Safe Zones**: scoped to observed structure.
 
 ## Avoid
 
-- Listing dependencies without identifying the manager
-- Treating Python 3.8 patterns as current
-- Ignoring Pydantic v1/v2 API divergence
+- Treating a `CLAUDE.md` stack claim as the installed version when the manifest pin differs

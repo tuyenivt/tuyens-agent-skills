@@ -14,60 +14,54 @@ user-invocable: false
 ## When to Use
 
 - Building or extending FastAPI async REST applications
-- Wiring DI, Pydantic v2 schemas, routers, exception handlers, pagination
+- Wiring DI, Pydantic v2 schemas, routers, exception handlers, pagination, API versions
 - Reviewing FastAPI code for structural, async, or CORS issues
 
 ## Rules
 
-- All endpoint I/O is async; sync DB/HTTP in `async def` blocks the event loop
-- `Annotated[T, Depends(...)]` type aliases at module level; never repeat `Depends()` per endpoint
-- Yield-dependencies handle commit/rollback; cleanup after `yield` must not raise
+- All endpoint I/O is async; sync DB/HTTP in `async def` blocks the event loop (Celery `.delay()` included: `run_in_threadpool`)
+- `Annotated[T, Depends(...)]` type aliases at module level (`app/dependencies.py`); never repeat `Depends()` per endpoint
+- Services commit before returning; `get_db` only rolls back on exception and closes - on FastAPI 0.118+ post-`yield` code runs after the response, so a commit there cannot fail the request
 - Separate `Create` / `Update` / `Response` Pydantic models per resource; `ConfigDict(from_attributes=True)` for ORM mapping
-- One `APIRouter` per domain with `prefix` + `tags`; declare `response_model` on every endpoint
+- One `APIRouter` per domain with `prefix` + `tags`; declare `response_model` on every endpoint, including uploads and webhooks
 - `lifespan` for startup/shutdown; `@app.on_event` is deprecated
-- `CORSMiddleware` with explicit `allow_origins` when `allow_credentials=True` (`["*"]` is rejected at runtime)
-- Route functions delegate to services; no business logic in handlers
+- `CORSMiddleware` lists `allow_origins` explicitly when `allow_credentials=True` - `["*"]` silently reflects any `Origin` with credentials
 
 ## Patterns
 
 ### Dependency Injection
 
 ```python
+from collections.abc import AsyncGenerator
 from typing import Annotated
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, FastAPI, Request
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with async_session() as session:
+async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
+    async with request.state.async_session() as session:          # lifespan state; closes on exit
         try:
             yield session
-            await session.commit()
         except Exception:
-            await session.rollback()
-            raise
+            await session.rollback(); raise
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 ```
 
-Nested deps compose (auth -> session -> pool). In tests, `app.dependency_overrides[get_db]` requires the exact function object - aliased imports silently fail.
+`app.dependency_overrides[get_db]` is keyed on the function object: a second `def get_db` or import path silently misses. `Depends(get_db, scope="function")` (0.121+) runs cleanup before the response when a post-`yield` step must fail the request.
 
 ### Pydantic v2 Schemas
 
 ```python
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from decimal import Decimal
+from typing import Annotated
+from pydantic import BaseModel, ConfigDict, Field
 
 PositiveAmount = Annotated[Decimal, Field(gt=0, max_digits=10, decimal_places=2)]
 
 class OrderCreate(BaseModel):
     total: PositiveAmount
-    items: list[OrderItemCreate]
-
-    @field_validator("items")
-    @classmethod
-    def at_least_one_item(cls, v: list) -> list:
-        if not v:
-            raise ValueError("Order must have at least one item")
-        return v
+    items: list[OrderItemCreate] = Field(min_length=1)
 
 class OrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -76,9 +70,9 @@ class OrderResponse(BaseModel):
     status: str
 ```
 
-Partial updates: optional fields + `model_dump(exclude_unset=True)` when applying. Use `model_dump()`, never v1 `.dict()`.
+Partial updates: optional fields + `model_dump(exclude_unset=True)`.
 
-### Router Organization
+### Router Organization and Versions
 
 ```python
 # api/v1/routes/orders.py
@@ -89,53 +83,56 @@ async def create_order(order_in: OrderCreate, db: DbSession, user: CurrentUser):
     return await OrderService(OrderRepository(db)).create(order_in, user=user)
 
 # api/v1/router.py
-api_router = APIRouter(prefix="/api/v1")
-api_router.include_router(orders.router)
+api_router = APIRouter(prefix="/api/v1"); api_router.include_router(orders.router)
 
 # main.py
 app = FastAPI(lifespan=lifespan)
 app.include_router(api_router)
+app.mount("/api/v2", v2_app)          # own error envelope = sub-app with own handlers; request.app is v2_app, so shared resources live in lifespan state
 ```
 
 ### Error Handling
 
-Domain exception + override Pydantic's validation envelope for consistent shape:
+One envelope for domain and validation errors:
 
 ```python
+from fastapi import Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
 class AppException(Exception):
     def __init__(self, code: str, detail: str, status_code: int = 400):
         self.code, self.detail, self.status_code = code, detail, status_code
 
 @app.exception_handler(AppException)
 async def app_exception_handler(_req: Request, exc: AppException):
-    return JSONResponse(exc.status_code, {"code": exc.code, "detail": exc.detail})
+    return JSONResponse(status_code=exc.status_code, content={"code": exc.code, "detail": exc.detail})
 
 @app.exception_handler(RequestValidationError)
 async def validation_handler(_req: Request, exc: RequestValidationError):
-    return JSONResponse(422, {"code": "VALIDATION_ERROR", "errors": exc.errors()})
+    return JSONResponse(status_code=422, content={"code": "VALIDATION_ERROR", "errors": jsonable_encoder(exc.errors())})  # errors() may hold exception objects in ctx (custom validators)
 ```
 
-| Domain Error       | HTTP |
-| ------------------ | ---- |
-| Validation failure | 422  |
-| Unauthorized       | 401  |
-| Not found          | 404  |
-| Conflict           | 409  |
-| Invalid transition | 422  |
-| Webhook bad signature | 400  |
+| Domain Error | HTTP | Domain Error | HTTP |
+| --- | --- | --- | --- |
+| Validation failure, invalid transition | 422 | Not found | 404 |
+| Unauthorized | 401 | Conflict | 409 |
+| Webhook bad signature | 400 | | |
 
 ### Pagination
 
 ```python
+from typing import Generic, TypeVar
+from fastapi import Query
+from sqlalchemy import func, select
+T = TypeVar("T")
+
 class PaginationParams(BaseModel):
-    offset: int = Field(0, ge=0)
-    limit: int = Field(20, ge=1, le=100)
+    offset: int = Field(0, ge=0); limit: int = Field(20, ge=1, le=100)
 
 class PaginatedResponse(BaseModel, Generic[T]):
-    items: list[T]
-    total: int
-    offset: int
-    limit: int
+    items: list[T]; total: int; offset: int; limit: int
 
 @router.get("/", response_model=PaginatedResponse[OrderListResponse])
 async def list_orders(db: DbSession, p: Annotated[PaginationParams, Query()]):
@@ -144,82 +141,83 @@ async def list_orders(db: DbSession, p: Annotated[PaginationParams, Query()]):
     return PaginatedResponse(items=rows, total=total, offset=p.offset, limit=p.limit)
 ```
 
-All list endpoints must paginate.
-
 ### Middleware
 
 ```python
+from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,  # explicit list when allow_credentials=True
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.middleware("http")
-async def request_id(request: Request, call_next):
-    request.state.request_id = str(uuid.uuid4())
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = request.state.request_id
-    return response
 ```
 
-Prefer `Depends` over middleware for per-route auth.
+Correlation id: `@app.middleware("http")` sets `request.state.request_id` and `X-Request-ID`. The last middleware added is outermost; exception handlers run inside the innermost `ExceptionMiddleware`; an `Exception`/500 handler runs in the outermost `ServerErrorMiddleware`, so its response skips user middleware (no CORS headers).
 
 ### Lifespan
 
 ```python
+from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
-    app.state.async_session = async_sessionmaker(engine, expire_on_commit=False)
-    yield
+    engine = create_async_engine(settings.DATABASE_URL, pool_size=settings.DB_POOL_SIZE, max_overflow=settings.DB_MAX_OVERFLOW, pool_pre_ping=True)
+    yield {"async_session": async_sessionmaker(engine, expire_on_commit=False)}   # request.state.async_session, in mounted sub-apps too
     await engine.dispose()
-
-async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
-    async with request.app.state.async_session() as session:
-        yield session
 ```
+
+Lifespan state is the only engine handle; pool sizing per `python-sqlalchemy-patterns`.
 
 ### Async and Background Tasks
 
-`BackgroundTasks` runs after the response - the request-scoped session is already closed. Pass entity **IDs**, not ORM objects, and open a fresh session inside the task. Use Celery/queue for reliable delivery.
+`BackgroundTasks` runs after the handler returns - after dependency cleanup on 0.115-0.117, before it on 0.118+ - so never hand it the request session or ORM objects: pass entity **IDs** and open a fresh session in the task.
 
 ### File Upload with Metadata
 
-A request has one content type, so a file forces `multipart/form-data` - metadata cannot ride alongside as a JSON body. `UploadFile` and metadata both go as form fields; validate the metadata via a Pydantic model:
+A file forces `multipart/form-data`, so metadata goes as form fields too; validate it via a Pydantic model and translate its errors, or the client gets a 500:
 
 ```python
-@router.post("/", status_code=202)
+from fastapi import File, Form, UploadFile
+from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
+
+@router.post("/", status_code=202, response_model=JobAccepted)
 async def upload(
     file: Annotated[UploadFile, File()],
     project_id: Annotated[int, Form()],          # flat scalars as Form fields
-    db: DbSession,
+    db: DbSession,                               # no default, so it precedes the defaulted Form field
+    tags: Annotated[list[str], Form()] = [],      # repeated form field tags=a&tags=b
 ):
-    meta = UploadMetadata(project_id=project_id)  # Pydantic validation
+    try:
+        meta = UploadMetadata(project_id=project_id, tags=tags)
+    except ValidationError as e:
+        raise RequestValidationError(e.errors())  # 422, not 500
     job = await svc.accept(file, meta)            # stream to storage, return a job id
-    process_upload.delay(str(job.id))             # Celery re-reads from storage; UploadFile is closed after the response
-    return {"job_id": str(job.id), "status": "accepted"}
+    await run_in_threadpool(process_upload.delay, str(job.id))   # Celery re-reads from storage; UploadFile is closed after the response
+    return JobAccepted(job_id=str(job.id), status="accepted")
 ```
 
-For nested metadata, pass one `metadata: Annotated[str, Form()]` JSON-string field and `UploadMetadata.model_validate_json(metadata)`.
+Nested metadata: one `metadata: Annotated[str, Form()]` JSON string, `UploadMetadata.model_validate_json(metadata)` in the same `try`.
 
 ### Webhook Receivers
 
-Signature verification needs the **raw bytes** (`await request.body()`), never `request.json()` - parsing breaks the HMAC. Verify in a dependency so the handler only runs on authentic events; verification failure returns 400 (so the provider retries), not 422. Webhooks are at-least-once: persist the provider event id under a unique constraint and short-circuit duplicates inside the same transaction as the handler effect.
+Signature verification needs the **raw bytes** (`await request.body()`), never `request.json()`. Verify in a dependency with `hmac.compare_digest` so the handler only runs on authentic events; failure returns 400 (Stripe and similar providers retry on any non-2xx; 422 is for body validation). Webhooks are at-least-once: persist the provider event id under a unique constraint and short-circuit duplicates inside the same transaction as the handler effect.
 
 ## Output Format
+
+When authoring, emit this block plus the code it describes. When reviewing, the consuming workflow owns the finding envelope (label, severity, `file:line`; invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise); emit this block as the target state and one finding per deviation from it. A table the task does not touch reads `n/a`; a middleware or webhook the target state needs is a row even when the code lacks it.
 
 ```
 ## FastAPI Architecture
 
-### Middleware Stack
-| Order | Middleware         | Purpose                          |
-|-------|--------------------|----------------------------------|
-| 1     | CORSMiddleware     | CORS (explicit origins)          |
-| 2     | request_id         | correlation ID injection         |
-| 3     | exception_handlers | centralized error envelope       |
+### Middleware Stack (outermost first; last added = outermost)
+| Order | Middleware | Purpose |
+|-------|------------|---------|
+
+### Exception Handlers
+| Exception | Status | Envelope |
+|-----------|--------|----------|
 
 ### Router Structure
 | Router | Prefix | Tags | Endpoints |
@@ -229,14 +227,16 @@ Signature verification needs the **raw bytes** (`await request.body()`), never `
 | Resource | Create | Update | Response |
 |----------|--------|--------|----------|
 
+### Webhooks
+| Receiver | Signature dependency | Dedupe key |
+|----------|----------------------|------------|
+
 ### Dependency Graph
 [Annotated DI chain: session -> auth -> service]
 ```
 
 ## Avoid
 
-- Returning dicts or raw ORM objects instead of Pydantic response models
 - Pydantic v1 `.dict()` / `.parse_obj()` calls
 - List endpoints without pagination
-- Passing ORM objects to `BackgroundTasks` (session already closed)
 - Broad `except Exception` in endpoints (defeats the global handler)
