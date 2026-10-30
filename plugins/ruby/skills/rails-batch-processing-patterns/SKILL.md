@@ -25,7 +25,7 @@ user-invocable: false
 - Bulk write paths bypass per-row callbacks (`update_all` / `insert_all` / `upsert_all`; `update_columns` skips callbacks too but is still one UPDATE per row) or budget for them - `after_commit` jobs, `touch:` and broadcasts turn N rows into N side effects. `update_all` also leaves `updated_at` untouched: set it in the SET list, and touch parents in one batched statement, when anything reads them
 - `find_each` yields records (per-row Ruby work); `in_batches` yields relations (bulk SQL per chunk, or an explicit transaction around per-row work); `pluck(:id)` cursors when full AR objects aren't needed
 - Size chunks by row weight, not row count alone
-- Cap concurrency on memory-heavy queues (`concurrency: 25` x 200 MB jobs = 5 GB peak) with a dedicated process or capsule - a queue weight caps nothing - and never above the process's DB `pool` (`rails-connection-pool-sizing`). Solid Queue (the Rails 8 default) is the same budget: a worker's concurrency is its `threads` in `config/queue.yml` times `processes`, and its database pool needs those threads plus Solid Queue's own polling and heartbeat connections (threads + 2, per its README)
+- Cap concurrency on memory-heavy queues (`concurrency: 25` x 200 MB jobs = 5 GB peak) with a dedicated process or capsule - a queue weight caps nothing - and never above the process's DB `max_connections` (`pool` before 8.1; `rails-connection-pool-sizing`). Solid Queue (the Rails 8 default) is the same budget: a worker's concurrency is its `threads` (or `fibers`, 1.6+) in `config/queue.yml` times `processes`, and each worker process's queue-database pool needs its threads plus Solid Queue's own polling and heartbeat connections (threads + 2; 3-5 per process for a fiber worker, per its README)
 - jemalloc or `MALLOC_ARENA_MAX=2` for any long-running batch process
 - `Sidekiq::WorkerKiller` at 70-80% of container memory limit
 
@@ -96,13 +96,13 @@ end
 
 The state column needs an index (or the scope is the PK range itself): `in_batches` pages by keyset, so within one run each batch only scans forward past non-matching rows ahead of the cursor - but a restart's first batch walks the whole done prefix before it finds its first 1,000 matches. A backfill feeding a later NOT NULL ships the writer change first (new rows set the column), then the backfill, so the NULL scope drains; the constraint itself is `rails-migration-safety`'s.
 
-A job interrupted by a deploy is pushed back onto its queue once Sidekiq's `timeout` expires (it does not count against `retry:`; an orchestrator SIGKILL before that loses it like an OOM) and resumes from its cursor or state column; an OOM SIGKILL loses the job on OSS fetch (Pro `super_fetch` recovers it), so the run needs a re-enqueue path. `retry:` and `sidekiq_retries_exhausted` cover raised exceptions only; a `rescue Exception` that swallows `Sidekiq::Shutdown` and returns is a finding.
+A job interrupted by a deploy is pushed back onto its queue once Sidekiq's `timeout` expires (it does not count against `retry:`; an orchestrator SIGKILL before that loses it like an OOM) and resumes from its cursor or state column; an OOM SIGKILL loses the job on OSS fetch (Pro `super_fetch` recovers it), so the run needs a re-enqueue path. `retry:` and `sidekiq_retries_exhausted` cover raised exceptions only; a `rescue Exception` that swallows `Sidekiq::Shutdown` and returns is a finding. An Active Job that `include ActiveJob::Continuable` (Rails 8.1) carries the cursor itself: each `step` checkpoints per `step.advance!`, the adapter's `stopping?` (Solid Queue 1.2+, Sidekiq 8.0.5+) turns a deploy into an `ActiveJob::Continuation::Interrupt` plus a re-enqueue, and the resume starts at the interrupted step and cursor - the same keyset or state column, serialized with the job instead of a table (`rails-sidekiq-patterns`, Graceful Shutdown). The chunk transaction still closes before each checkpoint (`CheckpointError` otherwise).
 
 For multi-day backfills with retry/observability needs, use a shards table - see `rails-work-splitter-patterns`.
 
 Per-chunk external side effects (POST a checksum, notify an API) get their own completion flag (`posted_at`) separate from the write's - restart then re-sends only un-posted chunks, never re-writes posted ones. A crash between the partner's 2xx and the flag write re-sends that one chunk, so the call carries an idempotency key (the chunk id). Natural idempotency (`Idempotency: natural`) is a write that is the same the second time - an `upsert_all` on a unique key, a PUT to a deterministic object key, a recompute from source - and needs no flag; its re-run cost is time, not correctness.
 
-An export is this shape with the artifact as the side effect: one part file per N chunks (`exports/<run>/<part>.csv.gz`, part = chunk id / N, so the key is deterministic and a re-run overwrites), streamed to a tempfile and uploaded with the chunk cursor advanced only after the upload returns; a date-bounded export on a table whose timestamp is unindexed resolves the id range once (`WHERE created_at >= ? ORDER BY id LIMIT 1` for the low id, `WHERE created_at < ? ORDER BY id DESC LIMIT 1` for the high id) and then batches on the primary key.
+An export is this shape with the artifact as the side effect: one part file per N chunks (10 by default; `exports/<run>/<part>.csv.gz`, part = chunk id / N, so the key is deterministic and a re-run overwrites), streamed to a tempfile and uploaded with the chunk cursor advanced only after the upload returns; a date-bounded export on a table whose timestamp is unindexed resolves the id range once (`WHERE created_at >= ? ORDER BY id LIMIT 1` for the low id, `WHERE created_at < ? ORDER BY id DESC LIMIT 1` for the high id) and then batches on the primary key.
 
 ### Replication-Lag Throttle
 
@@ -114,7 +114,7 @@ def wait_for_replica(threshold: 1.5)  # seconds; ~half the paging alarm, 1.5 whe
 end
 ```
 
-Poll lag on a replica connection: `SHOW REPLICA STATUS` `Seconds_Behind_Source` (8.0.22+; `SHOW SLAVE STATUS` / `Seconds_Behind_Master` before), or on Aurora `information_schema.replica_host_status.REPLICA_LAG_IN_MILLISECONDS` (milliseconds); a NULL lag means replication stopped - the probe returns `Float::INFINITY` so the loop above pauses rather than raising on `nil`. CloudWatch `ReplicaLag` (seconds) / `AuroraReplicaLag` (milliseconds) is one-minute data - alarms, not the poll. With no replica to protect but a shared primary to spare, a fixed `sleep` between chunks (`Throttle: per-chunk sleep`, 50-200 ms) caps the write rate instead.
+Poll lag on a replica connection (`ActiveRecord::Base.connected_to(role: :reading) { ... }`): `SHOW REPLICA STATUS` `Seconds_Behind_Source` (8.0.22+; `SHOW SLAVE STATUS` / `Seconds_Behind_Master` before), or on Aurora `information_schema.replica_host_status.REPLICA_LAG_IN_MILLISECONDS` (milliseconds); a NULL lag means replication stopped - the probe returns `Float::INFINITY` so the loop above pauses rather than raising on `nil`. CloudWatch `ReplicaLag` (seconds) / `AuroraReplicaLag` (milliseconds) is one-minute data - alarms, not the poll. With no replica to protect but a shared primary to spare, a fixed `sleep` between chunks (`Throttle: per-chunk sleep`, 50-200 ms) caps the write rate instead.
 
 ### Memory Mitigations (leverage order)
 
@@ -122,7 +122,7 @@ Ruby's GC doesn't compact by default and glibc `malloc` arenas fragment, so a 20
 
 First check what's *allocating*: `includes(...)` on the driving relation preloads every association per chunk as full AR objects - the most common batch-OOM source. Drop associations the work doesn't read, narrow columns, `update_all` children by FK, or shrink the chunk for high fan-out associations. `pluck` only the columns you need - plucking a 50KB payload column still materializes the strings.
 
-**1. jemalloc** - single highest-leverage change; typically 30-50% RSS reduction. Rails 7.2+ generated apps already install it (7.2 and 8.0: preloaded in `bin/docker-entrypoint`; 8.1+: `ENV LD_PRELOAD` in the Dockerfile) - verify either location, don't re-add; the arch-independent Dockerfile form is:
+**1. jemalloc** - single highest-leverage change; typically 30-50% RSS reduction. Generated apps already install it (8.1+: `ENV LD_PRELOAD` in the Dockerfile; 7.2 and 8.0: preloaded in `bin/docker-entrypoint`) - verify either location, don't re-add; the arch-independent Dockerfile form is:
 
 ```dockerfile
 RUN apt-get update && apt-get install -y libjemalloc2 && rm -rf /var/lib/apt/lists/* && \
@@ -137,12 +137,12 @@ ENV LD_PRELOAD=/usr/local/lib/libjemalloc.so
 ```ruby
 Order.in_batches(of: 5_000) do |relation|
   ids = relation.pluck(:id)
-  Sidekiq::Client.push_bulk("class" => EnqueueExportJob, "args" => ids.map { |id| [id] })   # a Sidekiq::Job class - push_bulk cannot enqueue Active Job
+  Sidekiq::Client.push_bulk("class" => EnqueueExportJob, "queue" => "export", "args" => ids.map { |id| [id] })   # a Sidekiq::Job class - push_bulk cannot enqueue Active Job (perform_all_later does)
   sleep 1 while Sidekiq::Queue.new("export").size > 50_000   # queue-depth throttle: a fan-out that outruns its consumers only moves the backlog into Redis
 end
 ```
 
-**4. `Sidekiq::WorkerKiller`** - restart before the kernel does. A backstop, not a fix: it checks RSS after each job finishes, so it cannot stop one job's spike mid-run. Over the limit it quiets the process (TSTP), waits `grace_time` (default 900s) for in-flight jobs, TERMs, and sends `kill_signal` (SIGKILL) after `shutdown_wait` (30s) - a job longer than the grace is interrupted, so idempotency/state columns still make the restart resume, not redo. Deploy-time interruption (`terminationGracePeriodSeconds` vs Sidekiq `timeout`) is `rails-sidekiq-patterns`' rule. Rake processes have no equivalent - they rely on chunking + cursor resume. Derive the queue's concurrency cap the same way: `cap = (pod_limit x 0.7 - baseline_rss) / per_job_peak_rss`, baseline being the booted process (often 200-400 MB).
+**4. `Sidekiq::WorkerKiller`** - restart before the kernel does. A backstop, not a fix: it checks RSS after each job finishes, so it cannot stop one job's spike mid-run. Over the limit it quiets the process (TSTP), waits `grace_time` (default 900s) for in-flight jobs, TERMs, and sends `kill_signal` (SIGKILL) after `shutdown_wait` (30s) - a job longer than the grace is interrupted, so idempotency/state columns still make the restart resume, not redo. Deploy-time interruption (`terminationGracePeriodSeconds` vs Sidekiq `timeout`) is `rails-sidekiq-patterns`' rule. Rake processes have no equivalent - they rely on chunking + cursor resume. Solid Queue has no WorkerKiller either: a worker fork killed by OOM is reaped by its supervisor and its jobs fail at once with `ProcessExitError` (`ProcessPrunedError` after `process_alive_threshold` when the whole pod died), re-enqueued only by the `fail_many_claimed` subscriber in `rails-solid-stack-patterns` - bound memory there by the worker's `threads` (or `fibers`) x `processes` and chunk size. Derive the queue's concurrency cap the same way: `cap = (pod_limit x 0.7 - baseline_rss) / per_job_peak_rss`, baseline being the booted process (often 200-400 MB).
 
 ```ruby
 require "sidekiq/worker_killer"   # gem "sidekiq-worker-killer" - Bundler's auto-require misses this path
@@ -177,7 +177,7 @@ ExportRow.insert_all(batch.map { |o| ExportRow.row_for(o) })
 # Good - stream batch -> derived -> write, bounded by inner chunk
 Order.where(needs_export: true).in_batches(of: 1_000) do |relation|
   rows = relation.pluck(:id, :total, :customer_id).map { |id, total, cid|
-    { order_id: id, total_cents: (total * 100).to_i, customer_id: cid }   # Rails sets timestamps
+    { order_id: id, total_cents: (total * 100).round, customer_id: cid }   # Rails sets timestamps
   }
   ApplicationRecord.transaction do
     ExportRow.insert_all(rows)
@@ -195,7 +195,7 @@ def log_mem(tag)
 end
 ```
 
-Tools: `get_process_mem`, `memory_profiler` (allocation reports), `derailed_benchmarks` (boot regression in CI), Sidekiq + Prometheus exporter or a StatsD gauge (`rss_mb` per worker) for RSS over time. The kernel kills at peak, so set the container memory limit well above observed peak RSS (peak / 0.65) and `WorkerKiller` at 80% of the limit - that keeps the killer above the normal peak (1.2x), so it recycles leaks, not every ordinary run.
+Tools: `memory_profiler` for allocation reports; a Prometheus exporter or StatsD gauge (`rss_mb` per worker) for RSS over time. The kernel kills at peak, so set the container memory limit well above observed peak RSS (peak / 0.65) and `WorkerKiller` at 80% of the limit - that keeps the killer above the normal peak (1.2x), so it recycles leaks, not every ordinary run.
 
 ### MySQL Gotchas
 
@@ -208,7 +208,7 @@ Tools: `get_process_mem`, `memory_profiler` (allocation reports), `derailed_benc
 
 ## Output Format
 
-One block per batch code path - a review covering a job and two rake tasks emits three; a dispatcher and the child job it fans out to are two. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. Findings cite the shape letter (A/B/C) where one applies; in diagnosis mode they are ordered by leverage, the first fix first. `Memory mitigations`, `Throttle` and `Telemetry` list every applied value, joined with ` + `; `Idempotency` lists one value per phase when the write and an external call differ. A missing re-enqueue path or a rescue that swallows the interruption is a numbered finding; no block field carries it.
+One block per batch code path - a review covering a job and two rake tasks emits three; a dispatcher and the child job it fans out to are two. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to add code, or to change code the request does not ask you to judge, is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. A request that names existing code to assess, even when it also asks for the fix, is review mode. Findings cite the shape letter (A/B/C) where one applies; in diagnosis mode they are ordered by leverage, the first fix first. `Memory mitigations`, `Throttle` and `Telemetry` list every applied value, joined with ` + `; `Idempotency` lists one value per phase when the write and an external call differ. A missing re-enqueue path or a rescue that swallows the interruption is a numbered finding; no block field carries it.
 
 ```
 Code path: {file:method - the job, task or service the block describes}
@@ -223,9 +223,9 @@ Chunk size: {N} (rationale: {OLTP contention | cold table | large payload | per-
 
 Transaction shape: {chunked | per-statement (one bulk SQL statement per chunk) | single outer - GAP (Shape A) | one transaction around a read-only scan - GAP (pins the snapshot) | per-row - GAP (Shape B, including per-row save! auto-commits) | one unchunked transaction around the whole job - GAP | single statement, no loop - compliant | no transaction across multi-statement writes - GAP (Shape C) | none - compliant for read-only chunks}
 
-Idempotency: {state column | cursor | natural (upsert on a key, deterministic object key, recompute from source) | none - one-shot, safe to rerun | none - GAP (restartable run)}
+Idempotency: {state column | cursor | continuation step cursor (`ActiveJob::Continuable`) | natural (upsert on a key, deterministic object key, recompute from source) | none - one-shot, safe to rerun | none - GAP (restartable run)}
 
-Cursor store: {durable table | Rails.cache - GAP (every cache store can evict) | n/a - no cursor (state column, natural, or none)}
+Cursor store: {durable table | continuation - serialized with the job on resume | Rails.cache - GAP (every cache store can evict) | n/a - no cursor (state column, natural, or none)}
 
 External side effects: {none | per-chunk call with completion flag | post-commit only | whole-job (non-chunked) | per-row call in a read-only loop (no transaction; read batch keeps 1,000) | per-row, no chunk at all - GAP | inside the open chunk transaction - GAP}
 
@@ -233,13 +233,11 @@ Throttle: {none - read-only or unreplicated | none - GAP (write backfill on a re
 
 Memory mitigations: {drop eager-load / narrow columns | jemalloc | MALLOC_ARENA_MAX | pluck cursor | WorkerKiller@N MB | periodic GC.compact | streamed artifact to tempfile/IO | none (short run, bounded RSS)}
 
-Concurrency cap: {N - the Sidekiq concurrency of the process or capsule that runs this queue (a queue weight does not cap it) | N - Solid Queue threads x processes of the worker that runs this queue | n/a - rake process, one connection}
+Concurrency cap: {N - the Sidekiq concurrency of the process or capsule that runs this queue (a queue weight does not cap it) | N - Solid Queue threads (or fibers) x processes of the worker that runs this queue | not in evidence - config/sidekiq.yml or config/queue.yml unread | n/a - rake process, one connection}
 
 Telemetry: {RSS log every N batches | progress log (cursor, rows, elapsed) every N batches | StatsD gauge | Prometheus | none - GAP (a run over a few minutes with no RSS or progress signal)}
 ```
 
 ## Avoid
 
-- Tuning `innodb_flush_log_at_trx_commit` away from 1 to mask Shape B
 - Container memory limit at observed peak with no `WorkerKiller` headroom
-- `GC.start` without jemalloc expecting RSS to shrink

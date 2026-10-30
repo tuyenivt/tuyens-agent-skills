@@ -11,17 +11,17 @@ category: engineering
 ## Triggers
 
 - Rails PR observability check before merge; pre-release visibility review; post-incident "diagnosis was slow" audit
-- Adopting `lograge` / `semantic_logger` / OpenTelemetry / `query_log_tags`; error-tracker (Sentry / Honeybadger / Rollbar) wiring; Sidekiq / Solid Queue tracing and request -> job correlation (a Sidekiq-named line reads as the app's job backend)
+- Adopting `lograge` / `semantic_logger` / OpenTelemetry / `query_log_tags`; error-tracker (Sentry / Honeybadger / Rollbar) wiring; Sidekiq / Solid Queue tracing and request -> job correlation (a Sidekiq-named line in this file reads as the app's job backend, Solid Queue included)
 
 ## Focus Areas
 
-- **Structured Logging**: production `lograge` or `semantic_logger` JSON, correct levels (`error`/`warn`/`info`/`debug`), no PII, no logging inside unbounded loops; Sidekiq logger with job context (`jid`, `class`, args summary)
+- **Structured Logging**: production `lograge` or `semantic_logger` JSON, correct levels (`error`/`warn`/`info`/`debug`), no PII, no logging inside unbounded loops; Sidekiq logger with job context (`jid`, `class`, args summary); `Rails.event` structured events (8.1) with a subscriber as the domain-event channel
 - **Business Events**: domain operations (`order.fulfilled`, `payment.charged`) emitted via `ActiveSupport::Notifications.instrument` and/or wrapped in a tracer span; `verb.namespace` naming; high-cardinality IDs in the payload, not the name; subscribers exist or are documented
 - **Correlation**: `ActionDispatch::RequestId`, request-scoped context via `ActiveSupport::CurrentAttributes`, Sidekiq client/server middleware bridge for request -> job trace continuity, `query_log_tags` (Rails 7+), outbound `X-Request-ID` / W3C `traceparent` propagation
 - **Tracing**: OpenTelemetry / Datadog / New Relic setup - exporter configured, auto-instrumentation gems, ActiveJob + job-backend layers both covered, sampling strategy
 - **Job Observability** (Sidekiq, or Solid Queue through the Active Job layer): retry/dead-job visibility and alerting, queue-latency and worker metrics via `yabeda-sidekiq` / `sidekiq-prometheus-exporter` / APM gem
 - **Error Tracking**: Sentry / Honeybadger / Rollbar capture with `before_send` scrubbing beyond `filter_parameters`, authenticated user context (no email/PII), Sidekiq failure capture, unswallowed `rescue_from` errors
-- **Health and SLIs**: Rails 7.1 `/up` liveness, own-pod readiness (DB pool + Redis, no third-party pings), Sidekiq SLI for time-sensitive queues
+- **Health and SLIs**: built-in `/up` liveness (`/up.json` on 8.1; `silence_healthcheck_path` keeps it out of the request log), own-pod readiness (DB pool + Redis, no third-party pings), Sidekiq SLI for time-sensitive queues
 
 ## Scope Boundaries
 
@@ -48,6 +48,7 @@ A PR review naming one lens, or whose every stated concern is in one lens, runs 
 ### Atomic skills
 
 - Use skill: `rails-sidekiq-patterns` for job monitoring, retry/dead visibility, and queue instrumentation
+- Use skill: `rails-solid-stack-patterns` for Solid Queue failed-execution visibility (`mission_control-jobs`, `fail_many_claimed.solid_queue`) and Solid Cache / Cable instrumentation
 - Use skill: `rails-exception-handling` for single-source error reporting (`Rails.error`) and unswallowed-rescue review
-- Use skill: `rails-http-client-patterns` for outbound correlation-ID / `traceparent` propagation on external calls
+- Use skill: `rails-http-client-patterns` for outbound `X-Request-Id` propagation on external calls
 - Use skill: `ops-observability` for liveness/readiness probe shapes and SLI/SLO definitions

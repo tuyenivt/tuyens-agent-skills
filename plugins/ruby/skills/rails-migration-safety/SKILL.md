@@ -23,9 +23,9 @@ user-invocable: false
 - One structural change per migration; reversible.
 - Data backfills live in rake tasks, not `db/migrate/` (see `rails-rake-task-patterns`).
 - New tables include `timestamps` and indexes on FK + filter columns.
-- `schema_format = :sql` when the schema holds anything `:ruby` loses - views, triggers, stored procedures, partitioning, a FULLTEXT index's `WITH PARSER ngram`; `:ruby` with none of those is compliant. (Rails 7.2 does dump charset/collation, `t.virtual` generated columns, `t.check_constraint` and functional indexes, so those are no longer the argument.)
+- `schema_format = :sql` when the schema holds anything `:ruby` loses - views, triggers, stored procedures, partitioning, a FULLTEXT index's `WITH PARSER ngram`; `:ruby` with none of those is compliant; `schema_format` is per database in `database.yml` (8.1), so the queue / cache / cable databases stay `:ruby` while the primary is `:sql`. (Rails does dump charset/collation, `t.virtual` generated columns, `t.check_constraint` and functional indexes, so those are no longer the argument.)
 - `ignored_columns` ships in a deploy before `remove_column`.
-- `safety_assured` only after verifying the operation is safe for the table size.
+- `safety_assured` only after verifying the operation is safe for the table size; strong_migrations raises on every bare `execute` (and on `add_check_constraint` on MySQL), so the DDL strings below carry it.
 - Tables >100M rows: any operation that scans or rebuilds the table (COPY, an INPLACE rebuild, an INPLACE secondary-index build) goes through `gh-ost` / `pt-online-schema-change`, never in-process - INPLACE may be online on the primary but replicates as one serialized DDL and stalls replicas (the stall scales with table size; the threshold is where in-process becomes unacceptable, not where it starts). INSTANT and INPLACE metadata-only operations are exempt at any size.
 
 ## Patterns
@@ -38,8 +38,8 @@ StrongMigrations.lock_timeout      = 5.seconds   # emits lock_wait_timeout - the
 # statement_timeout emits max_execution_time, which applies to SELECTs only - it bounds
 # neither the ALTER nor a backfill UPDATE.
 StrongMigrations.statement_timeout = 1.hour
-StrongMigrations.target_version    = "8.0.46"  # the production server version - the gem reads it only in
-                                               # development and test (developer_env?), so local checks mirror production
+StrongMigrations.target_version    = "8.0.46"  # the production server version, read only in development and test
+                                               # (developer_env?); on MySQL it feeds only the >= 8.0 checks
 ```
 
 ### Online DDL: INPLACE / LOCK=NONE
@@ -53,7 +53,7 @@ add_index :orders, :status, algorithm: :concurrently
 # Good (tables under the gh-ost threshold)
 add_index :orders, :status, algorithm: :inplace
 # Exact control:
-execute "ALTER TABLE orders ADD INDEX idx_orders_status (status), ALGORITHM=INPLACE, LOCK=NONE"
+safety_assured { execute "ALTER TABLE orders ADD INDEX idx_orders_status (status), ALGORITHM=INPLACE, LOCK=NONE" }
 ```
 
 `VARCHAR` resizes: widening is INPLACE only while the column stays in the same length-byte class, and that boundary is **255 bytes**, not 255 characters. Under the utf8mb4 this skill mandates, one character is up to 4 bytes, so the 1-byte class ends at 63 characters (63 x 4 = 252) and 64 crosses into 2 bytes (256). `VARCHAR(50) -> VARCHAR(100)` crosses it (200 -> 400 bytes) and forces a COPY rebuild. Compute `chars x charset maxlen <= 255` before assuming INPLACE. Narrowing always forces COPY and risks truncation - treat it as a type change (add/backfill/remove). A COPY blocks writes for its whole run: below ~100K rows that is seconds (`Lock window: write-blocking rebuild`, `Safety: Hardening advised`, not `Reject`); from there up to the 100M-row rule it is `Safety: Maintenance Window`, or gh-ost / pt-osc.
@@ -73,33 +73,35 @@ Metadata-only - finishes in ms even on TB tables.
 | Rename table                         | 8.0.12  |
 | Rename column                        | 8.0.28  |
 
-The server auto-selects INSTANT when the operation is eligible - a plain `add_column` on an eligible operation is already instant. On a table at or near the gh-ost threshold (80M rows and up), write `ALGORITHM=INSTANT` explicitly (via `execute`; Rails emits no algorithm clause): an ineligible operation then fails loudly instead of silently degrading to a multi-hour rebuild. The helper examples below rely on the server picking INSTANT. INSTANT ADD COLUMN is unavailable on a table with a FULLTEXT index, a `ROW_FORMAT=COMPRESSED` table, or one out of row versions - there the ADD is a rebuild.
+The server auto-selects INSTANT when the operation is eligible - a plain `add_column` on an eligible operation is already instant. On a table at or near the gh-ost threshold (80M rows and up), write `ALGORITHM=INSTANT` explicitly (via `execute`; Rails emits no algorithm clause): an ineligible operation then fails loudly instead of silently degrading to a multi-hour rebuild. The helper examples below rely on the server picking INSTANT. INSTANT ADD COLUMN is unavailable on a table with a FULLTEXT index, a `ROW_FORMAT=COMPRESSED` table, or one out of row versions - there the ADD is a rebuild. An expression default on ADD COLUMN (`DEFAULT (CURRENT_DATE)`, `DEFAULT (JSON_ARRAY())`) is COPY only - neither INSTANT nor INPLACE accepts it (8.0.46) - while the literal `DEFAULT CURRENT_TIMESTAMP` stays INSTANT, as does `ALTER COLUMN ... SET DEFAULT (expr)` on an existing column.
 
 ```ruby
-execute "ALTER TABLE orders ADD COLUMN notes TEXT, ALGORITHM=INSTANT"
+safety_assured { execute "ALTER TABLE orders ADD COLUMN notes TEXT, ALGORITHM=INSTANT" }
 # no LOCK clause: MySQL rejects LOCK=NONE/SHARED/EXCLUSIVE with ALGORITHM=INSTANT (ER_WRONG_USAGE 1221); only LOCK=DEFAULT passes.
 # Instant ops permit concurrent DML anyway.
 ```
 
 ### Invisible indexes (MySQL 8.0)
 
-Soft-drop to verify nothing breaks before dropping:
+Soft-drop to verify nothing breaks before dropping (8.1 migration methods; metadata-only, no rebuild):
 
 ```ruby
-execute "ALTER TABLE orders ALTER INDEX idx_orders_legacy INVISIBLE"
-# Soak; monitor query plans
-remove_index :orders, name: "idx_orders_legacy"
+disable_index :orders, :index_orders_on_legacy_ref   # by index name; ALTER INDEX ... INVISIBLE - enable_index :orders, :index_orders_on_legacy_ref reverses it
+# Soak a full business cycle; monitor query plans
+remove_index :orders, :legacy_ref   # pass the column(s), not only name:, so change can reverse it
 ```
+
+The reverse soak creates an index invisible first - `add_index :orders, :placed_at, enabled: false` (`t.index ..., enabled: false` inside `create_table`), `enable_index` once `EXPLAIN` on the target query confirms the plan - so a plan regression is undone with one metadata flip instead of a rebuild. `schema.rb` records `enabled: false`.
 
 ### Adding a NOT NULL column
 
-MySQL 8.0.12+ INSTANT-eligible when appended with default:
+MySQL 8.0.12+ INSTANT-eligible when appended with a literal default (an expression default is COPY - see INSTANT DDL above):
 
 ```ruby
-execute "ALTER TABLE users ADD COLUMN tier VARCHAR(20) NOT NULL DEFAULT 'standard', ALGORITHM=INSTANT"
+safety_assured { execute "ALTER TABLE users ADD COLUMN tier VARCHAR(20) NOT NULL DEFAULT 'standard', ALGORITHM=INSTANT" }
 ```
 
-A column added *with* a DEFAULT needs no backfill on any version - MySQL gives every existing row that default as part of the ADD (instantly on 8.0.12+, during the rebuild before that), so a `where(status: nil)` pass would match nothing. The three-step sequence is for a column added *without* one, where existing rows really are NULL:
+A column added *with* a DEFAULT needs no backfill on any version - MySQL gives every existing row that default as part of the ADD (instantly on 8.0.12+ for a literal default; during an INPLACE rebuild before 8.0.12; during a COPY rebuild for an expression default), so a `where(status: nil)` pass would match nothing. The three-step sequence is for a column added *without* one, where existing rows really are NULL:
 
 ```ruby
 add_column :orders, :status, :string                                                   # 1. nullable, no default
@@ -111,10 +113,10 @@ Tables >100M rows: don't `change_column_null` directly. Keep nullable + model va
 
 ### CHECK constraints (8.0.16+)
 
-Validated on creation - no `validate: false` - so existing violating rows fail an in-process ALTER: count them first (`SELECT COUNT(*) FROM orders WHERE NOT (total >= 0)`). Large tables: maintenance window or `gh-ost --alter` (pt-osc when FK-bearing) - and there the count must be 0 *before* the run, because both tools copy rows with `INSERT ... IGNORE`, under which MySQL turns a CHECK (or FK) violation into a warning and silently leaves the row out of the new table.
+Validated on creation - no `validate: false` - and `ADD CHECK CONSTRAINT` is a COPY rebuild on MySQL 8.0 (INPLACE is refused, ER 1845), sized like the VARCHAR COPY rule above; existing violating rows fail the ALTER: count them first (`SELECT COUNT(*) FROM orders WHERE NOT (total >= 0)`). Large tables: maintenance window or `gh-ost --alter` (pt-osc when FK-bearing) - and there the count must be 0 *before* the run, because both tools copy rows with `INSERT ... IGNORE`, under which MySQL turns a CHECK (or FK) violation into a warning and silently leaves the row out of the new table.
 
 ```ruby
-add_check_constraint :orders, "total >= 0", name: "orders_total_non_negative"
+safety_assured { add_check_constraint :orders, "total >= 0", name: "orders_total_non_negative" }   # strong_migrations raises on it for MySQL
 ```
 
 ### Functional indexes (MySQL 8.0.13+; `JSON_VALUE` 8.0.21+)
@@ -197,7 +199,7 @@ end
 add_index :orders, [:user_id, :status]
 ```
 
-`utf8mb4` (not `utf8`) is required for 4-byte sequences (emoji, supplementary CJK). Set collation explicitly so `db:schema:load` is reproducible; `utf8mb4_0900_ai_ci` is accent- and case-insensitive, so a unique index on `users.email` under it already rejects `A@x` next to `a@x` - normalise in the model (`normalizes :email`) rather than switching to a `_bin` collation. A new table's block reads `Algorithm: n/a` and `Lock window: none (online)` - there is no existing data to rebuild, and an FK to a populated parent adds only a brief metadata lock on the parent. Framework tables that arrive as a migration (`bin/rails active_storage:install`) get a block per table with `Migration: generated - <generator>`, reviewed for charset and the polymorphic index only; `solid_queue:install` writes `db/queue_schema.rb` for a separate database, loaded by `db:prepare`, with no migration to review. `StrongMigrations.target_version` set to the production server version is a `[Recommend]` finding when absent or wrong - it makes development checks mirror production, and strong_migrations 2.x gates on major.minor - and a Gemfile without `strong_migrations` at all is a `[Recommend]` finding.
+`utf8mb4` (not `utf8`) is required for 4-byte sequences (emoji, supplementary CJK). Set collation explicitly so `db:schema:load` is reproducible; `utf8mb4_0900_ai_ci` is accent- and case-insensitive, so a unique index on `users.email` under it already rejects `A@x` next to `a@x` - normalise in the model (`normalizes :email`) rather than switching to a `_bin` collation. A new table's block reads `Algorithm: n/a` and `Lock window: none (online)` - there is no existing data to rebuild, and an FK to a populated parent adds only a brief metadata lock on the parent. Framework tables that arrive as a migration (`bin/rails active_storage:install`) get a block per table with `Migration: generated - <generator>`, reviewed for charset and the polymorphic index only; `solid_queue:install` writes `db/queue_schema.rb` for a separate database, loaded by `db:prepare`, with no migration to review. `StrongMigrations.target_version` set to the production server version is a `[Recommend]` finding when absent or wrong - it makes development checks mirror production (on MySQL it feeds only the >= 8.0 checks) - and a Gemfile without `strong_migrations` at all is a `[Recommend]` finding.
 
 ### Large tables (>100M rows): `gh-ost`
 
@@ -212,7 +214,7 @@ gh-ost --user=app --ask-pass --host=primary.db --database=app --table=events \
   --max-lag-millis=1500 --allow-on-master --execute
 ```
 
-One gh-ost / pt-osc run carries every ALTER clause for the table (a NOT NULL change and its new index together) and takes the lag budget as a flag (`--max-lag-millis` here; `--max-lag` and `--check-interval` on pt-osc) rather than running twice. `--allow-on-master` is required whenever gh-ost connects to the primary, on any topology. On RDS/managed MySQL (no SUPER): add `--assume-rbr`. After any out-of-band gh-ost ALTER, apply the same ALTER locally (or record it in a guarded migration), then `db:schema:dump`, so `db/structure.sql` matches production - a dump of a database that never got the ALTER shows no diff. Alternative: `pt-online-schema-change` (trigger-based, slower, more topologies). Data backfills - including lag-aware throttling and external-API safety in backfill loops: see `rails-batch-processing-patterns` and `rails-rake-task-patterns`.
+One gh-ost / pt-osc run carries every pending ALTER for the table (a NOT NULL change and its new index together; a table under the threshold keeps in-process INPLACE for each) and takes the lag budget as a flag (`--max-lag-millis` here; on pt-osc `pt-online-schema-change --alter "ADD INDEX idx_events_kind (kind)" --max-lag=1 --check-interval=1 --critical-load Threads_running=100 --execute D=app,t=events` - `--max-lag` takes whole seconds; `1.5` parses as 5 s) rather than running twice. `--allow-on-master` is required whenever gh-ost connects to the primary, on any topology. On RDS/managed MySQL (no SUPER): add `--assume-rbr`. After any out-of-band gh-ost ALTER, apply the same ALTER locally (or record it in a guarded migration), then `db:schema:dump`, so `db/structure.sql` matches production - a dump of a database that never got the ALTER shows no diff. Alternative: `pt-online-schema-change` (trigger-based, slower, more topologies). Data backfills - including lag-aware throttling and external-API safety in backfill loops: see `rails-batch-processing-patterns` and `rails-rake-task-patterns`.
 
 ### Foreign keys
 
@@ -225,7 +227,7 @@ Before adding one, audit orphans (`SELECT COUNT(*) FROM order_items c LEFT JOIN 
 ```ruby
 # up/down, not change: `execute` has no inverse, so inside `change` it makes db:rollback raise
 def up
-  execute "SET SESSION lock_wait_timeout = 5"   # metadata-lock timeout - what DDL queues on
+  safety_assured { execute "SET SESSION lock_wait_timeout = 5" }   # metadata-lock timeout - what DDL queues on
   add_index :orders, :status, algorithm: :inplace
 end
 
@@ -243,7 +245,7 @@ end
 Guard against double-runs (deploy retry, two engineers). Full leader-election patterns: `rails-db-locking-patterns`.
 
 ```ruby
-# In the backfill rake task (never db/migrate):
+# In the backfill rake task (never db/migrate); `with_advisory_lock` gem (7.x) - a Gemfile without it is a finding naming the gem
 ApplicationRecord.with_advisory_lock!("backfill_order_amount", timeout_seconds: 0) do
   Order.in_batches(of: 10_000) { |b| b.where(amount: nil).update_all("amount = total") }
 end
@@ -259,15 +261,15 @@ Test `db:migrate && db:rollback && db:migrate` in CI, and test rollback on a clo
 ```ruby
 def change
   reversible do |dir|
-    dir.up   { execute "ALTER TABLE orders ADD COLUMN notes TEXT, ALGORITHM=INSTANT" }
-    dir.down { execute "ALTER TABLE orders DROP COLUMN notes, ALGORITHM=INSTANT" }   # 8.0.29+; omit the clause below that
+    dir.up   { safety_assured { execute "ALTER TABLE orders ADD COLUMN notes TEXT, ALGORITHM=INSTANT" } }
+    dir.down { safety_assured { execute "ALTER TABLE orders DROP COLUMN notes, ALGORITHM=INSTANT" } }   # 8.0.29+; omit the clause below that
   end
 end
 ```
 
 ## Output Format
 
-One block per operation, in execution order - a migration file bundling two operations emits two blocks sharing one `Migration:` value (and a finding against the one-structural-change-per-migration rule; an index or constraint on the table the same file creates belongs to that `Create Table` block, not a second one), and a multi-step plan emits a numbered sequence whose `Step` numbers run across the whole plan, split files included. Rake backfills get blocks too (`Operation: Backfill`, `Algorithm: batched rake`); a gh-ost / pt-osc run keeps its DDL `Operation` with `Algorithm: gh-ost` / `pt-online-schema-change`. Non-DDL sequence steps that the patterns require - a dependency audit, an `ignored_columns`-only deploy, an external-reader cutover, a reconcile after a partial run - get a block with `Operation: Coordination` (or `Reconcile`), `Algorithm: n/a`, and `n/a` in `Lock window` and `Safety`. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field except `Safety`, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. A block is the corrected operation, so `Safety` rates the operation as corrected and carries no GAP marker - `Blocked` when its required tool is absent - and the as-written verdict lives in the finding; a block keeps `Reject` only when this skill has no safe rewrite for it, with `n/a` in `Algorithm` and `Lock window`. Prerequisite Coordination steps (an audit, a tool install) come first in the sequence; a file split in the correction keeps its name on the operation it retains, and each split-off operation reads `proposed - split from <file>`. This applies to a post-incident review of an already-executed migration as much as to a pre-merge one.
+One block per operation, in execution order - a migration file bundling two operations emits two blocks sharing one `Migration:` value (and a finding against the one-structural-change-per-migration rule; an index or constraint on the table the same file creates belongs to that `Create Table` block, not a second one), and a multi-step plan emits a numbered sequence whose `Step` numbers run across the whole plan, split files included. Rake backfills get blocks too (`Operation: Backfill`, `Algorithm: batched rake`); a gh-ost / pt-osc run keeps its DDL `Operation` with `Algorithm: gh-ost` / `pt-online-schema-change`, and one run carrying several ALTERs is still one block per operation, each with the tool's `Algorithm` and `Notes: same run as step N`. Non-DDL sequence steps that the patterns require - a dependency audit, an `ignored_columns`-only deploy, an external-reader cutover, a reconcile after a partial run - get a block with `Operation: Coordination` (or `Reconcile`), `Algorithm: n/a`, and `n/a` in `Lock window` and `Safety`. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field except `Safety`, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to add code, or to change code the request does not ask you to judge, is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. A request that names existing code to assess, even when it also asks for the fix, is review mode. A block is the corrected operation, so `Safety` rates the operation as corrected and carries no GAP marker - `Blocked` when its required tool is absent - and the as-written verdict lives in the finding; a block keeps `Reject` only when this skill has no safe rewrite for it, with `n/a` in `Algorithm` and `Lock window`. Prerequisite Coordination steps (an audit, a tool install) come first in the sequence; a file split in the correction keeps its name on the operation it retains, and each split-off operation reads `proposed - split from <file>`. This applies to a post-incident review of an already-executed migration as much as to a pre-merge one.
 
 ```
 Step: {n of N | n/a (single operation)}
@@ -284,12 +286,12 @@ Algorithm: {INSTANT | INPLACE | COPY | gh-ost | pt-online-schema-change | batche
 
 Lock window: {none (online) | brief cut-over lock (gh-ost / pt-osc) | brief metadata lock | write-blocking rebuild (COPY or LOCK=SHARED - brief only on a small table) | maintenance required | n/a (Coordination, Reconcile, Backfill, Reject)}
 
-Safety: {Zero-Downtime | Maintenance Window | Batched Backfill | Hardening advised - compliant but under-specified | Blocked - required tooling or dependency absent (tool, target table), name it | Blocked - depends on step N (a later step behind a Blocked one keeps its own Algorithm and Lock window) | Reject - rewrite required | Already applied - unsafe as run, findings say what changes | n/a (Coordination, Reconcile)}
+Safety: {Zero-Downtime (online DDL, or a gh-ost / pt-osc run) | Maintenance Window | Batched Backfill | Hardening advised - compliant but under-specified | Blocked - required tooling or dependency absent (tool, target table), name it | Blocked - depends on step N (a later step behind a Blocked one keeps its own Algorithm and Lock window) | Reject - rewrite required | Already applied - unsafe as run, findings say what changes | n/a (Coordination, Reconcile)}
 
 Notes: {charset/collation, INSTANT eligibility, gh-ost throttle config}
 ```
 
-`Engine` version drives every INSTANT gate above; `stack-detect` carries a patch level only when `## Tech Stack` declares one, so otherwise read it from committed ops docs or the server, and when none exists say `unknown` rather than assuming 8.0.latest. When the >100M-row rule mandates gh-ost/pt-osc and neither is confirmed installed, that is `Safety: Blocked`, not a silent downgrade to an in-process ALTER: say which tool is needed and that installing it is a prerequisite of the change.
+`Engine` takes its patch level from `## Tech Stack`, committed ops docs or the server, else `unknown` - never an assumed 8.0.latest. When the >100M-row rule mandates gh-ost/pt-osc and neither is confirmed installed, that is `Safety: Blocked`, not a silent downgrade to an in-process ALTER: say which tool is needed and that installing it is a prerequisite of the change.
 
 ## Avoid
 

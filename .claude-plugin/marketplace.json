@@ -89,7 +89,7 @@
     {
       "name": "ruby",
       "source": "./plugins/ruby",
-      "description": "Skills and agents for Ruby 3.2+ / Ruby on Rails 7.2+ development.",
+      "description": "Skills and agents for Ruby 3.4+ / Ruby on Rails 8.1+ development.",
       "version": "1.189.0",
       "author": {
         "name": "Tuyen",

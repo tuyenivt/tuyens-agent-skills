@@ -10,7 +10,7 @@ category: engineering
 
 ## Triggers
 
-- Rails PR adding or changing an external client (Faraday / `Net::HTTP`), Sidekiq job, cron rake task, or inbound webhook handler
+- Rails PR adding or changing an external client (Faraday / `Net::HTTP`), Sidekiq job (a Sidekiq-named line in this file reads as the app's job backend, Solid Queue included), cron rake task or `config/recurring.yml` task, or inbound webhook handler
 - Pre-merge idempotency / at-least-once check on side-effecting flows (payments, notifications, provisioning)
 - Resilience-debt sweep after a near-miss
 - Dual-write / `after_commit` / consumer-retry correctness review
@@ -38,7 +38,7 @@ category: engineering
 | Full PR review beyond the reliability lens | `rails-tech-lead`. A PR review naming one lens, or whose every stated concern is in one lens, runs that lens's workflow; naming none or spanning lenses, it is the umbrella `/task-rails-review`, run by `rails-tech-lead`, with the named lenses as emphasis - never both. |
 | Implementing accepted fixes from this review | `rails-engineer`; the fixed code re-verifies here |
 
-A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. The reliability slice runs here first - the mechanism must exist before `rails-observability-engineer` reviews its visibility; other slices sequence independently after the split. A fix the requester already holds is one already written (a branch, diff or patch) and dispatches to `rails-engineer` at split time; an ask to add an in-lens mechanism with no code to review is that lens's review, in its workflow's no-diff mode, of the call sites it would guard - the findings name the mechanism and `rails-engineer` writes it after. Live means harm is happening now and the requester asks what to do now; a regression, backlog or error given by its size, with a cause or fix asked for, routes by its content whatever the number. The handoff carries the symptom, the suspected change and a candidate mitigation; nothing else runs until the owner reports it stable.
+A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. After any live-incident handoff, the reliability slice runs here first - the mechanism must exist before `rails-observability-engineer` reviews its visibility; other slices sequence independently after the split. A fix the requester already holds is one already written (a branch, diff or patch) and dispatches to `rails-engineer` at split time; an ask to add an in-lens mechanism with no code to review is that lens's review, in its workflow's no-diff mode, of the call sites it would guard - the findings name the mechanism and `rails-engineer` writes it after. Live means harm is happening now and the requester asks what to do now; a regression, backlog or error given by its size, with a cause or fix asked for, routes by its content whatever the number. The handoff carries the symptom, the suspected change and a candidate mitigation; nothing else runs until the owner reports it stable.
 
 ## Key Skills
 
@@ -51,7 +51,8 @@ A bundled ask (slices owned by different rows) splits per this table; multiple f
 - Use skill: `ops-resiliency` for timeout / retry / circuit-breaker / bulkhead / fallback patterns and the resilience library per stack
 - Use skill: `backend-idempotency` for idempotency-key strategy and atomic dedup
 - Use skill: `rails-http-client-patterns` for Faraday / `Net::HTTP` timeouts, idempotency-aware retries, and `Stoplight` circuit breakers
-- Use skill: `rails-sidekiq-patterns` for idempotent jobs, post-commit dispatch, retry / dead-set, and duplicate-enqueue fencing
+- Use skill: `rails-sidekiq-patterns` for idempotent jobs, post-commit dispatch, retry / dead-set, duplicate-enqueue fencing, and Active Job Continuations
+- Use skill: `rails-solid-stack-patterns` for Solid Queue crash recovery (`fail_many_claimed.solid_queue`), concurrency controls, queue database isolation and `READ COMMITTED`
 - Use skill: `rails-transaction-patterns` for post-commit dispatch and no-network-in-transaction discipline
 - Use skill: `rails-rake-task-patterns` for cron task idempotency, leader lock, chunking, and signal handling
 - Use skill: `failure-propagation-analysis` to trace shared-resource coupling (AR pool, Redis, Sidekiq) and cascading-failure blast radius

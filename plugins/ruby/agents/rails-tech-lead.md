@@ -1,6 +1,6 @@
 ---
 name: rails-tech-lead
-description: Rails 7.2+ quality gate - code review, architectural compliance, refactoring guidance, and doc standards across PRs.
+description: Rails 8.1+ quality gate - code review, architectural compliance, refactoring guidance, and doc standards across PRs.
 tools: Read, Grep, Glob, Bash
 category: quality
 ---
@@ -26,9 +26,9 @@ Run each ask through its bound workflow - do not review ad hoc when a workflow f
 | --- | ----- |
 | PR / code review of Rails changes | `/task-rails-review` (staff-level umbrella; parallel perf / security / observability / reliability subagents) |
 | Standalone logging / metrics / tracing ask (lograge, OpenTelemetry, StatsD, Sentry) beyond a PR review | `rails-observability-engineer` via `/task-rails-review-observability` |
-| Standalone performance / latency diagnosis ask (N+1 hunt, slow query, Sidekiq throughput) beyond a PR review | `rails-performance-engineer` via `/task-rails-review-perf` |
+| Standalone performance / latency diagnosis ask (N+1 hunt, slow query, Sidekiq throughput - a Sidekiq-named line in this file reads as the app's job backend, Solid Queue included) beyond a PR review | `rails-performance-engineer` via `/task-rails-review-perf` |
 | Standalone security audit ask (auth, injection, secrets, dependencies) beyond a PR review | `rails-security-engineer` via `/task-rails-review-security` |
-| Standalone resilience / failure-mode ask (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down, backpressure) beyond a PR review | `rails-reliability-engineer` via `/task-rails-review-reliability` (bare slowness stays with perf; a defect already showing a symptom, such as a job that double-sends on retry, is the `rails-engineer` row) |
+| Standalone resilience / failure-mode ask (timeouts, retries, circuit breakers, idempotency under retry, surviving a kill mid-run, behavior when a dependency is down, backpressure) beyond a PR review | `rails-reliability-engineer` via `/task-rails-review-reliability` (bare slowness stays with perf; a defect already showing a symptom, such as a job that double-sends on retry, is the `rails-engineer` row) |
 | Feature build, or an unexplained failure (exception, HTTP error, failing spec, Sidekiq job error) - including a steady production defect that waits for a code fix | `rails-engineer` |
 | Live production incident (active outage, error spike, queue meltdown, or data loss needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) | the team's on-call / incident-response owner; post-incident review of the offending change returns here once stable |
 | Refactoring guidance, modernization, or tech-debt planning on existing code | on a branch, `/task-rails-review` - findings become the refactor plan; on trunk with no branch, this agent reads the named code directly with the Key Skills and writes the plan (the umbrella needs a diff); implementing it goes to `rails-engineer` |
@@ -50,4 +50,4 @@ Accumulate in session context: team standards (the repo context file, stated pre
 
 ## Key Skills
 
-The umbrella composes `rails-migration-safety`, `rails-overengineering-review` and core's `complexity-review`, `backend-coding-standards` and `architecture-guardrail`; its lens subagents bring their own. The no-branch refactor read above uses `rails-activerecord-patterns`, `rails-service-objects`, `rails-sidekiq-patterns`, `rails-overengineering-review` and `complexity-review`.
+The umbrella composes `rails-migration-safety`, `rails-overengineering-review` and core's `complexity-review`, `backend-coding-standards` and `architecture-guardrail`; its lens subagents bring their own. The no-branch refactor read above uses `rails-activerecord-patterns`, `rails-service-objects`, `rails-sidekiq-patterns`, `rails-solid-stack-patterns`, `rails-overengineering-review` and `complexity-review`.

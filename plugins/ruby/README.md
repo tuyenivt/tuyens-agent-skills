@@ -4,10 +4,11 @@ Claude Code plugin for Ruby / Ruby on Rails projects.
 
 ## Stack
 
-- Rails 7.2+
+- Rails 8.1+
 - Ruby 3.4+
 - RSpec
-- Sidekiq
+- Sidekiq (Active Job on Solid Queue supported)
+- Solid Queue / Solid Cache / Solid Cable - database-backed queue, cache and pub/sub for deployments without Redis
 - MySQL 8.0 (8.0.x; examples target 8.0.46), InnoDB, `mysql2` or `trilogy` adapter
 - ActiveRecord
 
@@ -15,8 +16,8 @@ Claude Code plugin for Ruby / Ruby on Rails projects.
 
 | Agent                        | Description                                                                                                                                                                      |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rails-engineer`            | Rails 7.2+ engineer - builds features end-to-end: migrations, models, services, controllers, serializers, Sidekiq jobs, RSpec. Debugs errors, logs, and failing specs.                                                |
-| `rails-tech-lead`            | Rails 7.2+ quality gate - code review, architectural compliance, refactoring guidance, and doc standards across PRs.                                                              |
+| `rails-engineer`            | Rails 8.1+ engineer - builds features end-to-end: migrations, models, services, controllers, serializers, Sidekiq jobs, RSpec. Debugs errors, logs, and failing specs.                                                |
+| `rails-tech-lead`            | Rails 8.1+ quality gate - code review, architectural compliance, refactoring guidance, and doc standards across PRs.                                                              |
 | `rails-security-engineer`    | OWASP Top 10 for Rails, Devise/JWT auth review, Pundit authorization audit, strong parameters, dependency vulnerability scan.                                                    |
 | `rails-performance-engineer` | ActiveRecord N+1 detection, query tuning, Sidekiq throughput, caching strategy, profiling with rack-mini-profiler.                                                               |
 | `rails-observability-engineer` | Structured logging (lograge/semantic_logger), ActiveSupport::Notifications, Sidekiq tracing, correlation IDs, query_log_tags, Sentry/OTel wiring.                              |
@@ -48,7 +49,8 @@ Claude Code plugin for Ruby / Ruby on Rails projects.
 | `rails-batch-processing-patterns` | Batch processing for Rails: chunked transactions, memory-safe iteration, jemalloc, pluck cursors, GC.compact, WorkerKiller, MySQL undo log.                                    |
 | `rails-testing-patterns`      | RSpec testing: model specs, service specs, Pundit policy specs, request specs, FactoryBot with state traits, Sidekiq testing, VCR/WebMock, shared examples.                        |
 | `rails-security-patterns`     | Rails security: strong parameters, Devise/JWT, Pundit authorization with role-based policies, CSRF, XSS, SQL injection, Rack::Attack, Rails credentials.                           |
-| `rails-sidekiq-patterns`      | Sidekiq job patterns: idempotency guards, post-transaction dispatch, retry strategy, queue priority, error handling, job versioning, monitoring.                                   |
+| `rails-sidekiq-patterns`      | Sidekiq job patterns: idempotency guards, post-transaction dispatch, retry strategy, queue priority, error handling, job versioning, Active Job Continuations for interruptible long jobs, monitoring. |
+| `rails-solid-stack-patterns`  | Solid Queue / Solid Cache / Solid Cable on MySQL 8.0: adapter choice vs Sidekiq / Redis, separate queue / cache / cable databases, `READ COMMITTED` for the queue, pool budgets, `cache.yml` expiry (`max_age` / `max_size`), `cable.yml` polling and retention, concurrency controls, recurring tasks, batches, crash recovery. |
 | `rails-service-objects`       | Service object patterns: extraction criteria, .call interface, Result objects, input validation, transaction boundaries, post-commit dispatch, composition.                        |
 | `rails-rake-task-patterns`    | Rake task patterns: thin orchestrators delegating to services, idempotency/resumability, batch processing, dry-run and production confirmation, structured logging, RSpec testing. |
 | `rails-view-templates`        | View-layer patterns for ERB / HAML / Slim: per-engine escaping rules, helper vs presenter vs ViewComponent boundaries, partials and layouts, fragment caching, Turbo Frames/Streams + Stimulus wiring, Slim-specific traps (`==` unescape, attribute Ruby evaluation, indentation scope). |
@@ -57,9 +59,9 @@ Claude Code plugin for Ruby / Ruby on Rails projects.
 | `rails-overengineering-review` | Necessity review: validations duplicating DB constraints (FK / NOT NULL / UNIQUE / enum), defensive guards on impossible states, service objects / Result types / base classes wrapping trivial logic. Includes "when redundancy is justified" (form UX, system boundaries, 3+ call sites). Composed into `task-rails-review` Step 7 (Code Hygiene). |
 | `rails-transaction-patterns`  | Transaction boundary discipline: nested transactions and `requires_new`, savepoints, `after_save` vs `after_commit`, `after_commit_everywhere` for dispatch, InnoDB isolation levels, deadlock retry. |
 | `rails-concurrency-patterns`  | Ruby 3.4+ concurrency in Rails: `load_async`, `Concurrent::Promises`, `Fiber::Scheduler` and the `async` gem, `Ractor` for CPU work, GVL implications, connection-pool discipline across threads/fibers. |
-| `rails-actioncable-patterns`  | ActionCable for Rails 7.2+: channel auth via `identified_by`, subscription authorization (IDOR prevention), `turbo_stream_from` scope security, Redis vs Solid Cable adapter, fan-out batching, channel and broadcast testing. |
+| `rails-actioncable-patterns`  | ActionCable for Rails 8.1+: channel auth via `identified_by`, subscription authorization (IDOR prevention), `turbo_stream_from` scope security, Redis vs Solid Cable adapter, fan-out batching, channel and broadcast testing. |
 | `rails-exception-handling`    | Application-wide rescue strategy: `ApplicationController#rescue_from` ladder, domain error taxonomy (`ApplicationError::*`), `Result` vs raise, Sidekiq retry propagation, SDK-error translation at boundaries, single-source reporting via `Rails.error`. |
-| `rails-active-storage-patterns` | Active Storage on Rails 7.2: direct upload to S3/GCS, content-type/size validation with magic-byte sniffing, libvips variants, background variant warming, `purge_later` semantics, orphan blob cleanup, migration from CarrierWave/Paperclip. |
+| `rails-active-storage-patterns` | Active Storage on Rails 8.1: direct upload to S3/GCS, content-type/size validation with magic-byte sniffing, libvips variants, background variant warming, `purge_later` semantics, orphan blob cleanup, migration from CarrierWave/Paperclip. |
 
 ## Usage Examples
 

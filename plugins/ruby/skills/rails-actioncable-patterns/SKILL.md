@@ -1,13 +1,13 @@
 ---
 name: rails-actioncable-patterns
-description: "ActionCable Rails 7.2+ - channel auth, subscription authz (IDOR), turbo_stream_from scope, Redis/Solid Cable adapters, fan-out, channel tests."
+description: "ActionCable Rails 8.1+ - channel auth, subscription authz (IDOR), turbo_stream_from scope, Redis/Solid Cable adapters, fan-out, channel tests."
 metadata:
   category: backend
   tags: [ruby, rails, actioncable, websocket, hotwire, turbo]
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first for framework and version. The broadcast adapter and Hotwire usage are not stack-detect fields - read them here from `config/cable.yml` and the Gemfile, unless the project declares them under `## Tech Stack`.
+> Load `Use skill: stack-detect` first for framework and version. The broadcast adapter and Hotwire usage are not stack-detect fields - read them here from `config/cable.yml` and the Gemfile, unless the project declares them under `## Tech Stack`. `allowed_request_origins` lives in `config/environments/production.rb`; outside the read set, `Request origins` is `not in evidence` plus that file.
 
 ## When to Use
 
@@ -44,7 +44,7 @@ module ApplicationCable
 end
 ```
 
-For JWT/API apps, prefer the `Sec-WebSocket-Protocol` subprotocol header for the token - headers don't land in access logs; the client adds it with `consumer.addSubProtocol(token)` (Rails 7.1+), and in `connect` you split `request.headers["Sec-WebSocket-Protocol"]` on `,`, strip each entry, and take the one that is neither `actioncable-v1-json` nor `actioncable-unsupported`. Query params are acceptable only for short-lived single-use tickets minted per connection. Never put the long-lived JWT itself in a URL. A mailed capability token lives as long as the link must work (`expires_in:` on the signed id, days for a shipment); the cable ticket minted per page load stays short-lived, and an expired identifier is refused on the next reconnect rather than by dropping live sockets. Devise apps can identify via `env["warden"].user` instead of the cookie lookup.
+For JWT/API apps, carry the token in the `Sec-WebSocket-Protocol` subprotocol header (`consumer.addSubProtocol(token)` client-side; in `connect`, split the header on `,`, strip each entry, and take the one that is neither `actioncable-v1-json` nor `actioncable-unsupported`) - headers stay out of access logs. Query params only for short-lived single-use tickets minted per connection, never the long-lived JWT. A mailed capability token lives as long as the link must (`expires_in:` on the signed id); the per-page cable ticket stays short-lived, and an expired identifier is refused on reconnect, not by dropping live sockets. Devise apps can identify via `env["warden"].user`.
 
 ### Subscription Authorization (IDOR Prevention)
 
@@ -85,8 +85,8 @@ Same rule for Turbo Stream scope:
 
 | Adapter      | Use when                              | Trade-off                                  |
 | ------------ | ------------------------------------- | ------------------------------------------ |
-| `redis`      | Production, >1 app process            | Two Redis conns per process (one blocked in SUBSCRIBE, one publishing) - budget `maxclients` accordingly; default in the Rails 7.2 generated `cable.yml` |
-| `solid_cable`| Production, Rails 8 default; the app already runs the Solid stack and poll latency is acceptable | Table-backed (works on MySQL) and polled (`polling_interval`; the generated `cable.yml` sets 0.1s) - delivery is only as fast as the poll; every cable-serving process polls, so give it its own database or budget the connections |
+| `redis`      | Production, >1 app process            | Two Redis conns per process (one blocked in SUBSCRIBE, one publishing) - budget `maxclients` accordingly; the generated `cable.yml` default before Rails 8 |
+| `solid_cable`| Production, Rails 8 default; the app already runs the Solid stack and poll latency is acceptable | Table-backed (works on MySQL) and polled (`polling_interval`; the generated `cable.yml` sets 0.1s) - delivery is only as fast as the poll; every cable-serving process polls, so give it its own database or budget the connections; `message_retention` (1 day) and `autotrim` bound the table - `rails-solid-stack-patterns` |
 | `async`      | Development, single process           | No cross-process broadcast                 |
 | `test`       | Test env                              | Records broadcasts (and still delivers in-process, like async); `have_broadcasted_to` requires it and raises under any other adapter |
 
@@ -114,7 +114,7 @@ end
 
 One canonical broadcast source per message: the model `after_commit` (or an explicit service call) owns it - channel actions that also broadcast what the callback already broadcasts double-deliver. Persist in the action, let the callback announce. The stream a page subscribes to and the stream the model broadcasts on must be the same computed name, and the broadcast `target:` must be a DOM id the page renders (`dom_id(record)` on both sides) - a mismatch in either is a numbered finding, since the update is published and never shown.
 
-Presence and typing indicators are ephemeral channel-action broadcasts, not model callbacks: `subscribed` / `appear` increment a Redis counter per `connection_identifier` and refresh its TTL (heartbeat every ~30 s from the client, so a dropped socket expires rather than lingering), `unsubscribed` decrements it and removes it at zero - several tabs share one identifier, so a plain key deleted on one tab's unsubscribe would drop a user whose other tabs are open - and a late joiner reads the current set from Redis on `subscribed` instead of waiting for the next event. The roster broadcast carries ids and display names only, never the user record.
+Presence and typing indicators are ephemeral channel-action broadcasts, not model callbacks: `subscribed` / `appear` increment a Redis counter per `connection_identifier` and a client-scheduled ~30 s `perform("heartbeat")` refreshes its TTL with `EXPIRE` (Action Cable's own 3 s ping never reaches a channel) (`Rails.cache.increment` sets a TTL only on creation, on Redis and Solid Cache alike, so it cannot carry a heartbeat-refreshed TTL; a Redis-free Solid stack keeps a presence row per socket touched on every heartbeat and counts rows younger than the window), `unsubscribed` decrements it and removes it at zero (several tabs share one identifier, so a plain key deleted on one tab's unsubscribe would drop a user with other tabs open), and a late joiner reads the current set on `subscribed`. The roster carries ids and display names only.
 
 ### Fan-Out Batching
 
@@ -124,25 +124,25 @@ followers.find_each { |f| NotificationChannel.broadcast_to(f, payload) }
 
 # Good - one job per event; the job enumerates off the request thread, filtering
 # (mutes, prefs) in the query
-BroadcastNotificationJob.perform_async(author.id, payload.as_json)   # Sidekiq strict args: JSON-native, string keys
+BroadcastNotificationJob.perform_later(author.id, payload.as_json)   # an Active Job - perform_async exists only on a Sidekiq::Job; JSON-native args, string keys
 
 # BroadcastNotificationJob#perform(author_id, payload)
 User.joins(:follows).merge(Follow.where(author_id: author_id, muted: false))
     .find_each { |follower| NotificationChannel.broadcast_to(follower, payload) }
 ```
 
-Per-identity rate limiting for channel actions. `connection_identifier` is built from the declared `identified_by` values, so every socket for the same user - two tabs, a reconnect - shares one counter. That is the stronger control (a client cannot buy quota by opening more sockets); per-socket limits need a second identifier (`identified_by :current_user, :socket_id`, with `self.socket_id = SecureRandom.uuid` in `connect`) - which also changes the key `ActionCable.server.remote_connections.where` matches on. A minimal Redis fence (any Redis pool works; counter keys are tiny, so borrowing `Sidekiq.redis` here does not conflict with keeping broadcast pub/sub on its own instance):
+Per-identity rate limiting for channel actions. `connection_identifier` is built from the declared `identified_by` values, so every socket for the same user - two tabs, a reconnect - shares one counter. That is the stronger control (a client cannot buy quota by opening more sockets); per-socket limits need a second identifier (`identified_by :current_user, :socket_id`, with `self.socket_id = SecureRandom.uuid` in `connect`) - which also changes the key `ActionCable.server.remote_connections.where` matches on. A minimal fence on any shared cache store (Redis, memcached, Solid Cache - counter keys are tiny):
 
 ```ruby
 def send_message(data)
   key = "cable:rl:#{connection.connection_identifier}:send_message"
-  count = Sidekiq.redis { |r| r.incr(key).tap { |n| r.expire(key, 10) if n == 1 } }
+  count = Rails.cache.increment(key, 1, expires_in: 10.seconds)   # the call built-in rate_limit makes; a shared store, never :memory_store
   return transmit({ error: "rate limited" }) if count > 20   # braces required: transmit(data, via:)
   # ... handle the message
 end
 ```
 
-A loop publishing the same payload N times to one stream is a GAP - replace it with one broadcast; a value that changes hundreds of times a minute (a live counter) is coalesced - a short-interval job broadcasts the current value - rather than broadcast per event.
+A loop publishing the same payload N times to one stream is a GAP - replace it with one broadcast; a value that changes hundreds of times a minute (a live counter) is coalesced - a short-interval job broadcasts the current value (at most one job in flight per key: `limits_concurrency key: ..., to: 1, on_conflict: :discard` on Solid Queue, enqueued with `set(wait: <interval>)` where the interval outlasts the job's run - the lock holds until the job finishes, so a change landing mid-run is discarded and its value never broadcast otherwise - `rails-solid-stack-patterns`; Enterprise unique jobs or the `sidekiq-unique-jobs` gem on Sidekiq - `rails-sidekiq-patterns`) - rather than broadcast per event.
 
 Non-`later` broadcast helpers render the partial in the caller's thread. Use the `_later_to` variants (`broadcast_replace_later_to`) from model callbacks and request-path code so rendering happens on Active Job; inline variants are fine from jobs, which already run off-thread. The Turbo directive form (`broadcasts_to ->(o) { [o.user, :orders] }`) wires the `later` variants for create and update; removal on destroy stays inline (`broadcast_remove_to` renders nothing).
 
@@ -172,6 +172,7 @@ end
 # broadcasting_for prefixes the channel name. perform_enqueued_jobs runs the _later_to render job -
 # it needs ActiveJob::TestHelper (request specs get it through the integration-test load hook;
 # model and service specs do not: config.include ActiveJob::TestHelper, type: :model) and the :test queue adapter.
+# An inline broadcast_to needs no perform_enqueued_jobs; match the payload with .with(a_hash_including("status" => "paid")) - keys arrive as strings.
 it "broadcasts the updated card" do
   expect { perform_enqueued_jobs { order.update!(status: :paid) } }
     .to have_broadcasted_to("#{order.user.to_gid_param}:orders")
@@ -182,7 +183,7 @@ end
 
 ## Output Format
 
-In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. `Broadcast adapter` names the production adapter; a test environment on anything but `test` is a numbered finding. Emit one block per channel, and one per stream when streams on the same channel differ in scope or hook (an account balance stream and a global entries stream are two blocks). Pure `turbo_stream_from` flows have no custom channel: write `Channel: Turbo::StreamsChannel (turbo_stream_from)` and pick the signed-scope authorization value; when the controller rendering the tag is outside the read set, `Authorization in subscribed` is `not in evidence` plus the controller file. Connection-wide fields (`Identified by`, `Broadcast adapter`, `Request origins`) repeat in every block; the finding behind a connection-wide GAP is written once. An existing policy that cannot express the ownership rule (an admin-only `show?`) is a numbered finding owned by `rails-security-patterns`.
+In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to add code, or to change code the request does not ask you to judge, is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. A request that names existing code to assess, even when it also asks for the fix, is review mode. `Broadcast adapter` names the production adapter; a test environment on anything but `test` is a numbered finding. Emit one block per channel, and one per stream when streams on the same channel differ in scope or hook (an account balance stream and a global entries stream are two blocks). Pure `turbo_stream_from` flows have no custom channel: write `Channel: Turbo::StreamsChannel (turbo_stream_from)` and pick the signed-scope authorization value; when the controller rendering the tag is outside the read set, `Authorization in subscribed` is `not in evidence` plus the controller file. Connection-wide fields (`Identified by`, `Broadcast adapter`, `Request origins`) repeat in every block; the finding behind a connection-wide GAP is written once. An existing policy that cannot express the ownership rule (an admin-only `show?`) is a numbered finding owned by `rails-security-patterns`.
 
 ```
 Channel: <name | Turbo::StreamsChannel (turbo_stream_from)>
@@ -199,11 +200,11 @@ Broadcast adapter: <redis | solid_cable | async | not in evidence>
 
 Request origins: <allowed_request_origins strict, forgery protection on | unset - same-origin only, plus localhost in development (framework default, compliant; a stated client on another origin makes it a GAP -> allowed_request_origins strict) | allowed_request_origins permissive - GAP | disable_request_forgery_protection - GAP | not in evidence>
 
-Broadcast hook: <after_commit (later) | after_commit enqueuing a broadcasting job (the job broadcasts inline) | after_commit (inline, from a model callback) - GAP | service explicit (later, or inline from a job) | service explicit (inline, request path) - GAP | broadcasts directive | channel action broadcasting an ephemeral event (typing, presence) | channel action re-broadcasting what the callback announces - GAP (persist in the action, let the callback announce) | after_save - GAP | not in evidence - the broadcaster is outside the read set>
+Broadcast hook: <after_commit (later) | after_commit enqueuing a broadcasting job (the job broadcasts inline) | after_commit (inline render from a model callback) - GAP | after_commit (inline, hash payload - nothing rendered) | service explicit (later, or inline from a job) | service explicit (inline, request path) - GAP | broadcasts directive | channel action broadcasting an ephemeral event (typing, presence) | channel action broadcasting persisted data, callback present or not - GAP (persist in the action, announce from after_commit) | after_save - GAP | not in evidence - the broadcaster is outside the read set>
 
 Fan-out volume: <distinct targets per event - batched job | <= 100 distinct targets broadcast inline | > 100 distinct targets broadcast inline - GAP | same payload published N times to one stream - GAP (one broadcast) | single shared stream (subscriber count is not fan-out; a shared stream carrying per-user data is an authorization GAP, not a cost) | not enumerable from the reviewed files | not in evidence>
 
-Tests: <channel spec | channel spec, no rejection case - GAP | broadcast assertion | broadcast assertion + request/system test (turbo_stream_from flows - full coverage) | channel spec + broadcast assertion | none - GAP>
+Tests: <channel spec | channel spec, no rejection case - GAP | broadcast assertion | broadcast assertion + request/system test (turbo_stream_from flows - full coverage) | channel spec + broadcast assertion | not in evidence - specs outside the read set | none - GAP>
 ```
 
 ## Avoid

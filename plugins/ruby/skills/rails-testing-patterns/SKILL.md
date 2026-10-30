@@ -1,6 +1,6 @@
 ---
 name: rails-testing-patterns
-description: RSpec on Rails 7.2+ - model/request/system/service/policy/job/rake specs, FactoryBot traits, shoulda-matchers, Sidekiq, Pundit, VCR/WebMock.
+description: RSpec on Rails 8.1+ - model/request/system/service/policy/job/rake specs, FactoryBot traits, shoulda-matchers, Sidekiq, Pundit, VCR/WebMock.
 metadata:
   category: backend
   tags: [ruby, rails, rspec, testing, factorybot]
@@ -26,7 +26,7 @@ user-invocable: false
 - Every Pundit policy spec covers every role and the `Scope`; roles that resolve identically for an action share one example (or a shared example group) rather than repeating it.
 - Mock at boundaries (HTTP, third-party SDKs); never mock internal code - except a rake wiring spec, which stubs the one service the task delegates to
 - `travel` / `freeze_time`, never `Time.now =` stubs
-- One canonical `auth_headers` helper per suite, shaped for its surface (Devise session or JWT bearer); a project with both surfaces names them apart (`session_headers`, `bearer_headers`) and never uses both on one endpoint
+- One canonical `auth_headers` helper per suite, shaped for its surface (Devise session, generated-authentication session, or JWT bearer); a project with a session and a bearer surface names them apart (`session_headers`, `bearer_headers`) and never uses both on one endpoint
 
 ## Patterns
 
@@ -218,12 +218,12 @@ create(:order, :confirmed, :with_order_items)
 
 Factory defaults must satisfy the model's callbacks - a `before_validation` that recomputes from an association needs the association present before save (`after(:build) { |o| o.order_items << build(:order_item, order: o) }`, not `after(:create)` - and `order: o`, or the item factory's own `order` builds a second order whose hook builds another item, forever), or the default is overwritten and the record fails validation; under `before_save` the same recompute runs after validation, so the record persists with the overwritten value and nothing raises.
 
-### Sidekiq
+### Jobs - Sidekiq and Active Job
 
 Two distinct assertions, two call shapes: *enqueueing* uses `perform_async` under `fake!` (jobs pushed to an array - assert size and `jobs.last["args"]`); *behavior* calls `described_class.new.perform(...)` directly, no Sidekiq involved.
 
 ```ruby
-# rails_helper.rb, once: require "sidekiq/testing"; Sidekiq::Testing.fake!   (jobs pushed to an array)
+# rails_helper.rb, once: Sidekiq.testing!(:fake)   (Sidekiq 8.1.1+; below it require "sidekiq/testing"; Sidekiq::Testing.fake! - jobs pushed to an array)
 
 RSpec.describe ShipmentNotificationJob, type: :job do
   let(:order) { create(:order, :confirmed) }
@@ -249,7 +249,9 @@ RSpec.describe ShipmentNotificationJob, type: :job do
 end
 ```
 
-Services with idempotency keys get the same two-call test at the service layer: call twice with one key, assert the side effect happened once and the second Result replays the first. A service that calls `deliver_later` is asserted with `have_enqueued_mail(OrderMailer, :shipped)` under the `:test` adapter, on a created record once the assertion pins `.with(order)` (the matcher round-trips the expected args through GlobalID, so a `build_stubbed` record raises `ActiveJob::DeserializationError`; the bare matcher passes either way). A mailer spec (`type: :mailer`) builds the mail (`OrderMailer.shipped(order)`) and asserts `mail.to`, `mail.subject` and `mail.body.encoded`; a mailer with no template raises `ActionView::MissingTemplate` on first access (`mail.to`), but one missing format of several builds silently from the formats found - a multipart mailer asserts `mail.html_part.body` and `mail.text_part.body`, or declares its formats in a `mail(...) { |f| f.text; f.html }` block, which raises on the missing one.
+An Active Job class (`class OrderConfirmationJob < ApplicationJob`, run by the Sidekiq or Solid Queue adapter) asserts enqueueing with `have_enqueued_job(OrderConfirmationJob).with(order.id)` under the `:test` adapter and behaviour with `described_class.perform_now(order.id)`; `perform_enqueued_jobs { ... }` runs the enqueued ones inline once `rails_helper.rb` has `config.include ActiveJob::TestHelper, type: :job`.
+
+Services with idempotency keys get the same two-call test at the service layer: call twice with one key, assert the side effect happened once and the second Result replays the first. A service that calls `deliver_later` is asserted with `have_enqueued_mail(OrderMailer, :shipped)` under the `:test` adapter, always on a created record: the matcher deserializes the job's GlobalID args, so on a `build_stubbed` record `.with(order)` raises `ActiveJob::DeserializationError` and the bare matcher fails with a wrong-number-of-arguments error. A mailer spec (`type: :mailer`) builds the mail (`OrderMailer.shipped(order)`) and asserts `mail.to`, `mail.subject` and `mail.body.encoded`; a mailer with no template raises `ActionView::MissingTemplate` on first access (`mail.to`), but one missing format of several builds silently from the formats found - a multipart mailer asserts `mail.html_part.body` and `mail.text_part.body`, or declares its formats in a `mail(...) { |f| f.text; f.html }` block, which raises on the missing one.
 
 ### Rake Task Specs
 
@@ -287,6 +289,7 @@ Slow CI is a data problem before it's a parallelism problem:
 - Profile first: `rspec --profile 20`. Usual culprits: `create` cascades (`after(:create)` chains), request specs testing what a model spec covers.
 - `create` costs 10-100x `build_stubbed`; apply the persistence criterion from Rules suite-wide.
 - Parallelize (`parallel_tests` / `turbo_tests`) only after per-spec hygiene - it multiplies waste otherwise.
+- `bin/ci` (`config/ci.rb`, 8.1) runs setup, RuboCop, `bundler-audit`, importmap audit, Brakeman, the tests and a seed replant locally; an RSpec suite replaces the generated `Tests: Rails` step (`bin/rails test`) with `bundle exec rspec`, and since the generated `.github/workflows/ci.yml` runs its own jobs rather than `bin/ci`, a workflow whose steps differ from `config/ci.rb` is a finding, and an 8.1 app with no `config/ci.rb` gets a `[Recommend]` finding, not a proposed file.
 
 ### Database Isolation
 
@@ -332,11 +335,24 @@ module RequestHelpers
     { "Authorization" => "Bearer #{token}", "Content-Type" => "application/json" }
   end
 
-  def json_response = JSON.parse(response.body)   # both shapes define it; specs call it
+  def json_response = JSON.parse(response.body)   # every shape defines it; specs call it
 end
 ```
 
-Mixing both behind one helper name hides which path the endpoint actually exercises.
+Generated authentication (`bin/rails generate authentication`) - the integration session keeps the signed cookie, so the helper signs in and returns the content-type hash; the configure block includes `RequestHelpers` only:
+
+```ruby
+module RequestHelpers
+  def auth_headers(user)
+    post session_path, params: { email_address: user.email_address, password: "password" }   # the factory's password
+    { "Content-Type" => "application/json" }
+  end
+
+  def json_response = JSON.parse(response.body)
+end
+```
+
+Mixing shapes behind one helper name hides which path the endpoint actually exercises.
 
 ### Time Helpers
 
@@ -354,7 +370,7 @@ Built-in - no `timecop` needed; auto-resets after each example in every group on
 
 ### N+1 Assertions
 
-Rails 7.2+ ships `ActiveRecord::Assertions::QueryAssertions` - `require "active_record/testing/query_assertions"` in `rails_helper.rb` (only Minitest's `rails/test_help` loads it), then `config.include ActiveRecord::Assertions::QueryAssertions, type: :request` (request groups carry `ActiveSupport::Testing::Assertions`, whose private `_assert_nothing_raised_or_warn` the assertions call, through the Action Mailer and Active Job railties; an app loading neither, and any model, service or untyped group, includes that module too) and `assert_queries_count(4) { get orders_path }` (also `assert_no_queries`, `assert_queries_match`). Below 7.2, or for a custom report, subscribe to `sql.active_record` (or use `rspec-sqlimit` / `n_plus_one_control`):
+Rails ships `ActiveRecord::Assertions::QueryAssertions` (7.2+) - `require "active_record/testing/query_assertions"` in `rails_helper.rb` (only Minitest's `rails/test_help` loads it), then `config.include ActiveRecord::Assertions::QueryAssertions, type: :request` (request groups carry `ActiveSupport::Testing::Assertions`, whose private `_assert_nothing_raised_or_warn` the assertions call, through the Action Mailer and Active Job railties; an app loading neither, and any model, service or untyped group, includes that module too) and `assert_queries_count(4) { get orders_path }` (also `assert_no_queries`, `assert_queries_match`). For a custom report, subscribe to `sql.active_record` (or use `rspec-sqlimit` / `n_plus_one_control`):
 
 ```ruby
 it "index runs <= 4 queries regardless of order count" do
@@ -389,7 +405,7 @@ it "broadcasts to the user's stream" do
 end
 ```
 
-`have_broadcasted_to` is built into rspec-rails 4+ (the standalone `action-cable-testing` gem was merged upstream - don't add it). A Turbo `broadcast_*_to(user)` is asserted on its stream name, `have_broadcasted_to(user.to_gid_param)` (what Turbo's `stream_name_from` derives); from a job, run `perform_now` inside the `expect` block. A channel spec (`type: :channel`) runs `stub_connection current_user: user`, `subscribe(order_id: order.id)`, then asserts `subscription` is `be_confirmed` with `have_stream_for(order)` or `be_rejected`; a connection spec calls `connect "/cable", headers: {...}` and asserts `connection.current_user` or `have_rejected_connection`. The full shape is in `rails-actioncable-patterns` Testing.
+`have_broadcasted_to` is built into rspec-rails 4+ (the standalone `action-cable-testing` gem was merged upstream - don't add it) and needs the `test` adapter in `cable.yml`'s test entry, whatever production uses. A Turbo `broadcast_*_to(user)` is asserted on its stream name, `have_broadcasted_to(user.to_gid_param)` (what Turbo's `stream_name_from` derives; an array target joins each part's `to_gid_param` - a symbol stays as is - with `:`); from a job, run `perform_now` inside the `expect` block. A channel spec (`type: :channel`) runs `stub_connection current_user: user`, `subscribe(order_id: order.id)`, then asserts `subscription` is `be_confirmed` with `have_stream_for(order)` or `be_rejected`; a connection spec calls `connect "/cable", headers: {...}` and asserts `connection.current_user` or `have_rejected_connection`. The full shape is in `rails-actioncable-patterns` Testing.
 
 ### VCR / WebMock
 
@@ -402,22 +418,22 @@ VCR.configure do |c|
 end
 ```
 
-WebMock for client unit specs; VCR for service/request specs hitting the integration. One per spec file - cassettes + ad-hoc stubs interact confusingly. In a suite review each of these is a finding: `allow_any_instance_of(Client)` or an `instance_double` of the client in a request spec (stub HTTP instead); `match_requests_on` without `:body` for a keyed POST (cassette drift); `allow_http_connections_when_no_cassette`; a cassette holding unfiltered credentials.
+WebMock for client unit specs; VCR for service/request specs hitting the integration (with no credentials to record a cassette, WebMock stubs there too). One per spec file - cassettes + ad-hoc stubs interact confusingly. In a suite review each of these is a finding: `allow_any_instance_of(Client)` or an `instance_double` of the client in a request spec (stub HTTP instead); `match_requests_on` without `:body` for a keyed POST (cassette drift); `allow_http_connections_when_no_cassette`; a cassette holding unfiltered credentials.
 
 Job specs follow the same boundary rule: the HTTP client wrapper (`app/clients/`) *is* the boundary, so either stub its class (`allow(EcbClient).to receive(...)`) or stub HTTP with WebMock - both comply with "never mock internal code"; pick by what the example asserts (translation logic -> WebMock on the client spec; orchestration -> class double in the job spec).
 
 ## Output Format
 
-One block per file written or reviewed (a reviewed file with no finding still gets its block; a file the review adds is keyed on its path with `(proposed)`), each followed by that file's code - the whole file when new, the changed lines when it exists - including the support files, since a suite-wide rule (`Sidekiq::Testing.fake!`, the Devise include, leak resets) is unenforceable if `rails_helper.rb` and the factories have nowhere to land. A Gemfile change (a missing `pundit-matchers`, a `timecop` to drop) is a numbered finding with no block. On a spec block `Factories:` names the factories the spec uses, with traits (the bare name when it uses none); on Factory and Support blocks it is `n/a`. A gem that does I/O or detection (Marcel, an SDK) is a boundary: stub it, or feed it a real fixture file. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. A finding with no single target file - suite runtime, a leak that spans examples - is a numbered finding with no block. In either mode, a bug in the code under test found while writing or reviewing the spec is a numbered finding too, and the spec pins the fixed behaviour - written against the fix and marked `pending` with the finding number when the fix is outside the run's scope. A file that moves (controller spec to request spec) is one block keyed on the target path, naming the old one. `Examples:` counts examples actually written (in review, the file's count after the fix).
+One block per file written or reviewed (a reviewed file with no finding still gets its block; a file the review adds is keyed on its path with `(proposed)`), each followed by that file's code - the whole file when new, the changed lines when it exists - including the support files, since a suite-wide rule (`Sidekiq.testing!(:fake)`, the Devise include, leak resets) is unenforceable if `rails_helper.rb` and the factories have nowhere to land. A Gemfile change (a missing `pundit-matchers`, a `timecop` to drop) is a numbered finding with no block. On a spec block `Factories:` names the factories the spec uses, with traits (the bare name when it uses none); on a Factory block it lists the factories and traits the file defines; on a Support block it is `n/a`. A gem that does I/O or detection (Marcel, an SDK) is a boundary: stub it, or feed it a real fixture file. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to add code, or to change code the request does not ask you to judge, is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. A request that names existing code to assess, even when it also asks for the fix, is review mode. A finding with no single target file - suite runtime, a leak that spans examples - is a numbered finding with no block. In either mode, a bug in the code under test found while writing or reviewing the spec is a numbered finding too, and the spec pins the fixed behaviour - written against the fix and marked `pending "finding N"` as the first line of each example the fix unblocks when the fix is outside the run's scope. A file that moves (controller spec to request spec) is one block keyed on the target path, naming the old one. `Examples:` counts examples actually written, pending ones included (in review, the file's count after the fix).
 
 ```
-Test Type: {Model | Service | Policy | Request | Job | Mailer | Channel | Client (HTTP wrapper unit spec) | System | Rake | Support (rails_helper, shared contexts) | Factory}
+Test Type: {Model | Service | Policy | Request | Job | Mailer | Channel | Client (HTTP wrapper unit spec) | System | Rake | Support (rails_helper, spec/support, config/environments/test.rb) | Factory}
 
-File: {spec/{type}/{path}_spec.rb | spec/factories/{name}.rb | spec/rails_helper.rb | spec/support/{name}.rb}
+File: {spec/{type}/{path}_spec.rb | spec/factories/{name}.rb (or the project's existing spec/factories.rb) | spec/rails_helper.rb | spec/support/{name}.rb | config/environments/test.rb}
 
 Contexts: {happy path, not found, forbidden, validation failure, ... | n/a (Factory, Support)}
 
-Factories: {name with traits | none defined yet - the ones this run writes, by name | model absent - GAP | n/a (Factory, Support)}
+Factories: {name with traits | none defined yet - the ones this run writes, by name | model absent - GAP | the factories and traits this file defines (Factory) | n/a (Support)}
 
 Examples: {count | n/a (Factory, Support)}
 ```
@@ -426,5 +442,5 @@ Examples: {count | n/a (Factory, Support)}
 ## Avoid
 
 - Mystery guests - data set up in shared `before` blocks far from the example
-- `sleep` waiting on async work - use `Sidekiq::Testing.fake!` job assertions (`have_enqueued_job` is the ActiveJob equivalent)
+- `sleep` waiting on async work - use `:fake` job assertions (`have_enqueued_job` is the ActiveJob equivalent)
 - Missing policy specs - authorization bugs are among the most damaging

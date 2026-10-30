@@ -18,7 +18,7 @@ user-invocable: false
 - Bootstrap / seeding beyond `db:seed`
 - Tasks triggered from a deploy hook
 
-Not here: logic that belongs in a service (call it from the task); long-running async with retries (`rails-sidekiq-patterns`); schema changes (migration); user-triggered work in a request (controller + service).
+Not here: logic that belongs in a service (call it from the task); long-running async with retries (`rails-sidekiq-patterns`, or `rails-solid-stack-patterns` on Solid Queue); schema changes (migration); user-triggered work in a request (controller + service).
 
 ## Rules
 
@@ -27,7 +27,7 @@ Not here: logic that belongs in a service (call it from the task); long-running 
 - Idempotent - re-runs after partial failure resume, never duplicate
 - Batch over large tables (`find_each` / `in_batches`); see `rails-batch-processing-patterns`
 - Every state-mutating task supports `DRY_RUN=1` - dry runs write *nothing* (audit rows included) and log would-be actions; the shorter examples below elide the flag and the `CONFIRM` gate to show one concern each. "State" includes the job queue and external writes (S3 puts, Active Storage attaches, API calls; a file under `/tmp` is not state): a task whose only effect is `perform_async` in a loop still enqueues real work, so it needs the flag and the gate as much as one that writes rows
-- Human-triggered production-mutating tasks require `CONFIRM=yes` when `Rails.env.production?`. A dry run is read-only, so it is checked first and skips the gate. Scheduled (cron) and deploy-hook tasks omit the gate - baking `CONFIRM=yes` into a manifest is ceremony; their safety is the leader lock plus reviewed, dry-run-tested code. A task with both triggers gates the manual path only
+- Human-triggered production-mutating tasks require `CONFIRM=yes` when `Rails.env.production?`. A dry run is read-only, so it is checked first and skips the gate. Scheduled (cron) and deploy-hook tasks omit the gate - baking `CONFIRM=yes` into a manifest is ceremony; their safety is the leader lock plus reviewed, dry-run-tested code. A task with both triggers gates the manual path only (the schedule or deploy-hook manifest sets `SCHEDULED=1`; the gate skips when it is present)
 - Tasks needing durable proof write an audit row in the same transaction as the mutation - logs are not evidence. It needs one when the mutation is irreversible and someone may later have to prove what it touched: deletions and anonymisation of regulated data, money movement (a transfer, a payout), permission changes. Reversible recomputes of derived values - a balance recomputed from its source rows - do not. A human-triggered audited task requires `OPERATOR=<name>` and aborts without it (a dry run writes nothing, so it needs none); the audit row records it, in the transaction of the batch it covers
 - Structured logs via `Rails.logger` - a hash is structured only under a JSON formatter on `Rails.logger` itself (`rails_semantic_logger`, a custom `formatter`; lograge formats only the per-request summary line); the default formatter writes `hash.inspect`. No PII in log fields; exit non-zero on failure (`raise` or `abort`, never `exit 0` after an error)
 - Pass IDs and primitives through `Rake::Task#invoke`, not AR objects
@@ -88,7 +88,7 @@ Order.where("id > ?", last_id).find_in_batches(batch_size: 1_000) do |batch|
 end
 ```
 
-Enqueued inside a transaction instead, a rollback leaves the job queued with the flag unset, and the re-run mails twice. Active Job `perform_later` / `deliver_later` is deferred to commit only by `enqueue_after_transaction_commit`: on Rails 7.2 the app-wide `config.active_job.enqueue_after_transaction_commit` (`:never` unless set; `load_defaults 7.2` sets `:default`, which delegates to the adapter's `enqueue_after_transaction_commit?` - true for most built-in adapters and for Sidekiq 7.3.3+'s own (7.3.0-7.3.2 ship no adapter); `false` for `:inline`, and for `:delayed_job` / `:queue_classic` unless constructed with `enqueue_after_transaction_commit: true`); on 8.0 a per-job-class boolean (`self.enqueue_after_transaction_commit = true`, default `false`), and the app-wide key is deprecated whatever its value but still applied (`:always` -> true, anything else, `:default` included, -> false); on 8.1 the app-wide key is ignored - read the Rails version, then the job class or the 7.2 setting; `deliver_later` follows `ActionMailer::MailDeliveryJob`, which inherits `ActiveJob::Base`, not `ApplicationJob`. Sidekiq-native `perform_async` is never deferred unless `Sidekiq.transactional_push!` is on (6.5+; gem-free on Rails 7.2+ from Sidekiq 7.3.10 / 8.0.6, `after_commit_everywhere` below).
+Enqueued inside a transaction instead, a rollback leaves the job queued with the flag unset, and the re-run mails twice. Active Job `perform_later` / `deliver_later` is deferred to commit only when the job class sets `self.enqueue_after_transaction_commit = true` (default `false` on 8.1; the app-wide config key is ignored - read the job class); `deliver_later` follows `ActionMailer::MailDeliveryJob`, which inherits `ActiveJob::Base`, not `ApplicationJob`. Sidekiq-native `perform_async` is never deferred unless `Sidekiq.transactional_push!` is on (`rails-transaction-patterns`).
 
 Write the cursor after its batch commits - one transaction per batch, never one around the scan (`rails-batch-processing-patterns`). Inside an outer transaction the cursor rolls back with everything; written before its batch commits, it advances past unprocessed rows.
 
@@ -123,20 +123,7 @@ end
 
 ### Argument Parsing
 
-Positional for required identifiers; ENV for optional flags. zsh treats `[]` as globs, so document `rake 'customers:recompute[123]'` quoting in `desc`.
-
-```ruby
-namespace :customers do
-  desc "Recompute LTV for one customer, or all. Quote in zsh: rake 'customers:recompute[123]'"
-  task :recompute, [:customer_id] => :environment do |_, args|
-    if args[:customer_id]
-      RecomputeLtv.call(customer_id: Integer(args[:customer_id]))
-    else
-      RecomputeLtv.call_all   # the loop, per-row rescue and summary raise live in the service
-    end
-  end
-end
-```
+Positional for required identifiers (`task :recompute, [:customer_id] => :environment do |_, args|`); ENV for optional flags. zsh treats `[]` as globs, so document `rake 'customers:recompute[123]'` quoting in `desc`.
 
 ### Structured Logs and Exit Codes
 
@@ -160,17 +147,18 @@ namespace :users do
 end
 ```
 
-### Rake vs Sidekiq vs Sidekiq Cron
+### Rake vs Job vs Scheduler
 
 | Need                                | Use                           |
 | ----------------------------------- | ----------------------------- |
 | One-off backfill, ops-triggered     | Rake task                     |
-| Per-row async with retry semantics  | Sidekiq job                   |
-| Recurring schedule + per-job retry  | Sidekiq cron                  |
-| Recurring schedule, simple, visible | Rake + cron / whenever        |
+| Run-once script, deleted after      | `script/` file (`bin/rails generate script`, 8.0+; `bin/rails runner script/x.rb`) |
+| Per-row async with retry semantics  | background job (Sidekiq, or Active Job on Solid Queue) |
+| Recurring schedule + per-job retry  | sidekiq-cron, or Solid Queue `recurring.yml` with `class:` |
+| Recurring schedule, simple, visible | Rake + cron / whenever (a `recurring.yml` `command:` evals Ruby in a worker - schedule the service call or a job `class:` there, never a rake task) |
 | Deploy hook (once per release)      | Rake task in deploy script    |
 
-A rake task often fans out to Sidekiq for large backfills.
+A rake task often fans out to jobs for large backfills. A `script/` file is for one run with no arguments, dry-run or resume need and is deleted once run; anything re-run, scheduled or chunked is a rake task under the rules above. On a multi-host deploy either runs once, on one host (`kamal app exec --primary`, or one job host's shell), never on every web host.
 
 ### Signal Handling
 
@@ -203,11 +191,11 @@ end
 
 ### Queue-Side Maintenance
 
-A task that mutates Sidekiq's own sets (sweeping poisoned jobs) iterates `Sidekiq::Queue`, `Sidekiq::RetrySet`, `Sidekiq::ScheduledSet` and `Sidekiq::DeadSet`, matches on `record.display_class` (the Active Job wrapper hides the job class behind `klass`), and deletes or re-enqueues per entry. Redis writes share no transaction with an audit row, so the task logs each `jid` with its action and the dry run counts matches without deleting. A `DeserializationError` entry is not re-enqueued until its enqueue site is fixed - delete it, and log its `jid`, `display_class` and argument ids (args with PII redacted).
+A task that sweeps Sidekiq's own sets iterates `Sidekiq::Queue`, `Sidekiq::RetrySet`, `Sidekiq::ScheduledSet` and `Sidekiq::DeadSet`, matches on `record.display_class` (the Active Job wrapper hides the job class behind `klass`), and deletes or re-enqueues per entry; Redis writes share no transaction with an audit row, so it logs each `jid` with its action (PII redacted) and the dry run counts matches. On Solid Queue the sets are `SolidQueue::FailedExecution` rows (`#retry`, `#discard`, `.retry_all`); they share a transaction with an audit row only when that table lives in Solid Queue's database (the installer's `connects_to` puts it in a separate `queue` database, so the task logs each job id as for Sidekiq).
 
 ### Leader Lock and Fan-out
 
-A rake task that mutates shared state (or fans out work) and can be triggered twice - cron, or cron plus a manual run - takes an advisory lock first (after the `CONFIRM` gate, before the first write); two overlapping triggers double-enqueue otherwise. A manual-only task takes the same lock when a concurrent second run is not idempotent (it enqueues jobs, or inserts or appends with no unique key - one transaction does not help, both runs read the pre-run state and both write) and it runs long enough to be re-fired by hand (over a minute); a task a minute or less, or idempotent under a second run, relies on the operator; a Gemfile without `with_advisory_lock` is a finding naming the gem. The lock prevents *concurrent* runs only: a second trigger after the first finished gets the free lock, so duplicate work is stopped by idempotent jobs or a per-run row (unique `(task, run_date)`). The lock is the `with_advisory_lock` gem's (see `rails-db-locking-patterns`); `timeout_seconds: 0` returns false instead of blocking - and that `false` is the only signal, so a task that ignores it reports success while doing nothing. A Kubernetes CronJob needs `concurrencyPolicy: Forbid` and `parallelism: 1` - `parallelism: N` starts N pods per run, all racing for the lock; keep the lock anyway, for manual re-fires and restarted pods.
+A rake task that mutates shared state (or fans out work) and can be triggered twice - cron, or cron plus a manual run - takes an advisory lock first (after the `CONFIRM` gate, before the first write); two overlapping triggers double-enqueue otherwise. A manual-only task takes the same lock when a concurrent second run is not idempotent (it enqueues jobs, or inserts or appends with no unique key - one transaction does not help, both runs read the pre-run state and both write) and it runs long enough to be re-fired by hand (over a minute); a task a minute or less, or idempotent under a second run, relies on the operator; a Gemfile without `with_advisory_lock` is a finding naming the gem. A `recurring.yml` entry whose job runs on the Solid Queue adapter is deduplicated per `(task_key, run_at)` across schedulers, so it fires once per tick - keep the lock for the manual re-fire. The lock prevents *concurrent* runs only: a second trigger after the first finished gets the free lock, so duplicate work is stopped by idempotent jobs or a per-run row (unique `(task, run_date)`). The lock is the `with_advisory_lock` gem's (see `rails-db-locking-patterns`); `timeout_seconds: 0` returns false instead of blocking - and that `false` is the only signal, so a task that ignores it reports success while doing nothing. A Kubernetes CronJob needs `concurrencyPolicy: Forbid` and `parallelism: 1` - `parallelism: N` starts N pods per run, all racing for the lock; keep the lock anyway, for manual re-fires and restarted pods.
 
 ```ruby
 namespace :backfill do
@@ -264,28 +252,28 @@ namespace :reports do
 end
 ```
 
-`invoke` chains fail fast - a raise in step 1 skips the rest, which is right when steps depend on each other. For independent steps, rescue per step, continue, and raise a summary at the end. The composite owns the cross-cutting pieces exactly once: one leader lock around the chain and one set of `Signal.trap`s (per-child traps overwrite each other in the same process, so the flag lives in `Maintenance.interrupted`, where children's batch loops check it). Children read the same `ENV`, so `DRY_RUN=1` on the composite reaches each of them. Chain-only children don't lock. A child with its own schedule entry keeps its own lock and its own traps and skips both when `Maintenance.chained` is set - that skip is the rule, so a chained child never acquires a lock of its own; a child run by hand alone keeps its traps and takes a lock under the manual-only rule above - `reports:rebuild` needs none because `RebuildReportRows` upserts on `report_rows.order_id` (unique), so a second run redoes a batch and doubles nothing. Every task has a `desc`, so a `desc` alone does not make a child standalone. A child that ignores the skip and locks anyway: re-entrancy is per lock *name*, so the same name as the composite is free, and a different name is a genuine second acquisition - harmless on MySQL 8.0 (a session holds several `GET_LOCK`s at once), but not a no-op. `Rake::Task["foo"].reenable` if a chained task needs to run twice in one process.
+`invoke` chains fail fast - a raise in step 1 skips the rest, which is right when steps depend on each other. For independent steps, rescue per step, continue, and raise a summary at the end. A prerequisite list (`task nightly: %w[reports:rebuild reports:export]`) runs the children before the body, so the lock and traps would come after them - chain with `invoke` inside the lock. The composite owns the cross-cutting pieces exactly once: one leader lock around the chain and one set of `Signal.trap`s (per-child traps overwrite each other in the same process, so the flag lives in `Maintenance.interrupted`, where children's batch loops check it). Children read the same `ENV`, so `DRY_RUN=1` on the composite reaches each of them. Chain-only children don't lock. A child with its own schedule entry keeps its own lock and traps and skips both when `Maintenance.chained` is set, so a chained child never acquires a lock of its own; a child run by hand alone keeps its traps and takes a lock under the manual-only rule above - `reports:rebuild` needs none because `RebuildReportRows` upserts on `report_rows.order_id` (unique). A `desc` alone does not make a child standalone. `Rake::Task["foo"].reenable` if a chained task needs to run twice in one process.
 
 ### Layout and Testing
 
 ```
 lib/tasks/orders.rake          # namespace :orders
 app/services/fulfill_pending_orders.rb
-spec/tasks/orders_rake_spec.rb
+spec/tasks/orders_rake_spec.rb   # test/tasks/orders_rake_test.rb on Minitest
 ```
 
 Behavioral coverage lives on the service spec; the rake spec verifies wiring only. See `rails-testing-patterns` Rake Task Specs.
 
 ## Output Format
 
-One block per task (a composite plus its children each get one). In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. A table the task needs but the schema lacks (an audit or cursor table) is a numbered finding naming the migration. A task absent from every schedule file in scope is `manual`. A runbook reviewed with its task is read as the task's contract: a step the code cannot honour (an order of operations, a verification the task never performs) is a numbered finding citing the runbook line, and a task that prints instructions and mutates nothing gets a block with `Idempotency: n/a (read-only)`.
+One block per task (a composite plus its children each get one). In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to add code, or to change code the request does not ask you to judge, is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. A request that names existing code to assess, even when it also asks for the fix, is review mode. A table the task needs but the schema lacks (an audit or cursor table) is a numbered finding naming the migration. A task absent from every schedule file in scope is `manual`. A runbook reviewed with its task is read as the task's contract: a step the code cannot honour (an order of operations, a verification the task never performs) is a numbered finding citing the runbook line, and a task that prints instructions and mutates nothing gets a block with `Idempotency: n/a (read-only)`.
 
 ```
 Task: {namespace:name}
 
 Description: {desc string}
 
-Trigger: {manual | cron (CronJob, whenever, systemd timer) | deploy-hook | chained (invoked by <composite>) - list all that apply; two schedulers for one piece of work (a CronJob running the task plus a sidekiq-cron job doing the same) - GAP (one owner); add `schedule file not in scope` when the trigger is asserted but its manifest is not}
+Trigger: {manual | cron (CronJob, whenever, systemd timer) | deploy-hook | chained (invoked by <composite>) - list all that apply; two schedulers for one piece of work (a CronJob running the task plus a sidekiq-cron job or a `recurring.yml` entry doing the same) - GAP (one owner); add `schedule file not in scope` when the trigger is asserted but its manifest is not}
 
 Arguments: {positional args and ENV with defaults}
 
@@ -301,13 +289,13 @@ Production gate: {CONFIRM=yes (manual path) | on the composite (manual path; cha
 
 Audit trail: {row in mutation txn (irreversible: regulated-data deletion, money movement, permission change) | logs only (no durable-proof need) | n/a (read-only) | n/a (composite - children write their own) | needed, table absent - GAP | needed, not written or outside the txn - GAP | OPERATOR not required - GAP (human-triggered)}
 
-Service delegated to: {ServiceClassName | "trivial wiring only"}
+Service delegated to: {ServiceClassName | ServiceClassName (proposed) | "trivial wiring only"}
 
-Exit behavior: {raises on failure (an unrescued exception counts) | abort on precondition fail | abort on a Result failure | abort after interrupt (resumable) | clean skip via `next` when the leader lock is held | `next` after a dry run | exits 0 after a failure - GAP | reports success while doing nothing - GAP (a no-op call, an ignored lock result) - list all that apply}
+Exit behavior: {raises on failure (an unrescued exception, or the summary raise after per-row rescues) | abort on precondition fail | abort on a Result failure | abort after interrupt (resumable) | clean skip via `next` when the leader lock is held | `next` after a dry run | exits 0 after a failure - GAP | reports success while doing nothing - GAP (a no-op call, an ignored lock result) - list all that apply}
 ```
 
 ## Avoid
 
 - `puts` for progress - use structured `Rails.logger` fields
-- Re-implementing retry/backoff - use a Sidekiq job
+- Re-implementing retry/backoff - use a background job
 - `default_scope` models inside backfills without `unscoped` - silent row skips

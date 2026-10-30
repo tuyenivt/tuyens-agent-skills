@@ -31,6 +31,7 @@ For template-layer XSS (`sanitize` allowlists, engine escape operators), see `ra
 - Secrets never reach a client payload: server-side keys stay out of rendered JS, JSON and HTML (`javascript:` blocks, `data-*`, serializers); only keys designed as publishable are rendered, scoped to the page
 - Outbound calls to partners authenticate (bearer from credentials, HMAC-signed body) and pin the host; an unauthenticated outbound call is a finding
 - Error responses carry no internal detail (backtrace, SQL, class names, file paths) - the ladder in `rails-exception-handling` renders typed responses
+- `render json:` under `load_defaults 8.1` no longer escapes `<`, `>`, `&` (`escape_json_responses = false`) - fine for an API body; a `render json:` body that a script tag or `data-*` attribute embeds passes `escape: true`, which restores `<>&` only. On 8.1 neither that body nor template `to_json` escapes U+2028/9 (`escape_js_separators_in_json = false`), so JSON inlined into a script tag goes through `json_escape` on either path
 
 ## Patterns
 
@@ -42,17 +43,13 @@ params.require(:order).permit(:total, :user_id)
 Order.new(order_params)
 
 # Good - ownership server-side
-params.require(:order).permit(:total, tag_ids: [], items: [:product_id, :quantity])
+params.expect(order: [:total, tag_ids: [], items: [[:product_id, :quantity]]])
 current_user.orders.new(order_params)
 ```
 
 Arrays need explicit brackets; omitting them silently drops input. When the client must reference a FK (e.g., `:product_id`), validate via `policy_scope` before save.
 
-`params.expect` (Rails 8.0+ - gate on the detected Rails version; `permit` below) raises 400 on type mismatch and resists hash-confusion; prefer on new code:
-
-```ruby
-params.expect(order: [:total, :status, items: [[:product_id, :quantity]]])
-```
+`params.expect` (8.0+) raises 400 on type mismatch and resists hash-confusion - a scalar where a hash is expected (`?order=x`) never reaches the model. An array of hashes takes the double-bracket form: a single bracket at the root is a 400 on every real request, and nested under a key it silently drops the array.
 
 ### Authentication
 
@@ -67,7 +64,9 @@ end
 User.authenticate_by(email: params[:email], password: params[:password])
 ```
 
-JWT for APIs: default to Devise + the `devise-jwt` gem's `:jwt_authenticatable` with a revocation strategy (`Devise::JWT::RevocationStrategies::Denylist` on a `JwtDenylist` model - a `jti` claim checked against a denylist table, rows expired past token TTL); secret from credentials; `expiration_time` <= 1 hour. Hand-rolled verification pins the algorithm and verifies: `JWT.decode(token, key, true, algorithms: ["HS256"])` - `false` as the third argument skips the signature check, and a token with `alg: none` must be refused. Devise earns its weight whenever you need the account lifecycle (registration, password reset, lockout) - i.e. almost every email+password API, greenfield included. Hand-roll `authenticate_by` (above) + a JWT gem only for minimal token auth without that lifecycle - then you own encode/decode, `jti` revocation (a denylist table swept past the TTL, plus a `revoked_at` on the client row checked on every decode as the kill switch), and refresh yourself.
+`bin/rails generate authentication` (8.0+) is the session scaffold for an app without Devise: `User` with `has_secure_password` and `normalizes :email_address`, a `Session` row per login referenced by a signed, `httponly` cookie, `Current.session`, and `PasswordsMailer` with a `password_reset_token` valid 15 minutes by default (configurable on 8.1: `has_secure_password reset_token: { expires_in: 1.hour }`). It is generated app code - review it like any other: the generated `rate_limit to: 10, within: 3.minutes, only: :create` on both `SessionsController` and `PasswordsController` is IP-only, so key it on IP plus `email_address` (Rate Limiting), and check for enumeration through the reset flow's response. The reset token is a signed `generates_token_for` token, so `update` needs no guess throttle; the 8.1 generator ends every session after a reset (`@user.sessions.destroy_all` in `update`) - an app generated on 8.0 lacks that line, so add it.
+
+JWT for APIs: default to Devise + `devise-jwt` (`:jwt_authenticatable` with `Devise::JWT::RevocationStrategies::Denylist` - a `jti` claim checked against a denylist table swept past the token TTL); secret from credentials; `expiration_time` <= 1 hour. Devise earns its weight whenever the account lifecycle (registration, reset, lockout) is needed - almost every email+password API; hand-roll `authenticate_by` plus a JWT gem only for minimal token auth, and then own encode/decode, `jti` revocation and refresh. Hand-rolled verification pins the algorithm: `JWT.decode(token, key, true, algorithms: ["HS256"])` - `false` as the third argument skips the signature check, and `alg: none` must be refused.
 
 A mounted engine (`Sidekiq::Web`, `Flipper::UI`) inherits no authentication: wrap the mount in Devise's `authenticate :user, ->(u) { u.admin? } do ... end` or a `constraints` lambda - an unguarded mount is `Authentication`, Critical.
 
@@ -109,7 +108,7 @@ IDOR: lookups on user-supplied IDs go through `policy_scope(Model).find(params[:
 
 The same rule governs an ActionCable `subscribed` block, which is a lookup on a client-supplied identifier by another name - stream from an authorized object, never from a raw `params[:id]`. Channel actions (`receive`, custom methods) are unauthenticated RPC unless you check them individually; `subscribed` authorizes the subscription, not what the socket may then ask for. An over-broad `allowed_request_origins` (`/.*/`, an unanchored regexp, a wildcard list) or `disable_request_forgery_protection = true` is the same `Channel Authorization` pattern, risk `cross-site request forgery`; left unset, Action Cable accepts same-origin only (`allow_same_origin_as_host`, plus localhost in development), which is compliant.
 
-When the credential *is* the link - an emailed tracking URL, a document download, any anonymous holder-of-token access - use Rails' own signed ids rather than inventing a scheme: `record.signed_id(expires_in: 7.days, purpose: :tracking)` and `Model.find_signed!(token, purpose: :tracking)`. The purpose scopes the token to one use case (a `:tracking` token is refused by `find_signed!` for any other purpose), the expiry bounds forwarding, and the signature makes ids unguessable without a lookup table; the token stays replayable until it expires - single use needs your own nonce table. Authorization for such a request is the token verification itself - there is no `current_user` to `authorize` against, and that is the one legitimate exception to the rule above; call `skip_authorization` after `find_signed!`, or the base class's `after_action` raises `Pundit::AuthorizationNotPerformedError` (on an `index` action it calls `verify_policy_scoped` instead - `skip_policy_scope`, or `Pundit::PolicyScopingNotPerformedError`).
+When the credential *is* the link (an emailed tracking URL, a document download), use Rails' signed ids: `record.signed_id(expires_in: 7.days, purpose: :tracking)` and `Model.find_signed!(token, purpose: :tracking)` - the purpose scopes the token to one use, the expiry bounds forwarding, and the token stays replayable until then (single use needs your own nonce table). The verification is the authorization - the one legitimate exception to the rule above: call `skip_authorization` (`skip_policy_scope` on an index) after `find_signed!`, or the base class's `after_action` raises.
 
 ### SQL Injection
 
@@ -126,7 +125,18 @@ User.where("name LIKE ?", "%#{User.sanitize_sql_like(params[:q])}%")
 
 Session controllers: `protect_from_forgery with: :exception` (default). API-only (`ActionController::API`) does not include `RequestForgeryProtection` (nor the session middleware it needs) - use token/JWT auth. Never globally skip the token check on session controllers.
 
-### Rate Limiting - Rack::Attack
+### Rate Limiting - `rate_limit` and Rack::Attack
+
+Built-in `rate_limit` (7.2+) is the first choice for a per-action throttle - it runs after params parsing, so a JSON body is visible to `by:`, which Rack::Attack below has to re-parse:
+
+```ruby
+class SessionsController < ApplicationController
+  rate_limit to: 5, within: 20.seconds, only: :create, scope: :login,          # scope: (8.1) shares one counter with any controller using the same scope: and by:
+             by: -> { "#{request.remote_ip}:#{params[:email].to_s.downcase}" }  # IP plus identifier - never IP alone
+end
+```
+
+A hit raises `ActionController::TooManyRequests` (a 429; `with:` names another handler) and counts in `config.action_controller.cache_store` - the shared-store rule below applies to it too (Solid Cache or Redis, never `:memory_store`). Rack::Attack stays for what no controller sees: a middleware-level IP throttle across every path, a blocklist, and the `Fail2Ban` pattern.
 
 ```ruby
 Rack::Attack.throttle("api/ip", limit: 300, period: 5.minutes) { |req| req.ip if req.path.start_with?("/api/") }
@@ -140,9 +150,9 @@ Rack::Attack.throttle("logins/email_ip", limit: 5, period: 20.seconds) do |req|
 end
 ```
 
-Login throttles must key on IP **and** the submitted identifier field, whatever its name (`email`, `name`, `login`; a form login reads it from `req.params`) - IP-only is bypassed by credential stuffing via rotating proxies. The body parse above is not optional on a JSON endpoint: `Rack::Request#params` merges query string and form-encoded body only, so with `req.params['email']` the discriminator silently collapses to `"#{ip}:"` and you are back to the IP-only throttle this rule exists to prevent.
+Login throttles must key on IP **and** the submitted identifier field, whatever its name (`email`, `name`, `login`; a form login reads it from `req.params`) - IP-only is bypassed by credential stuffing via rotating proxies. On a JSON endpoint `req.params['email']` is nil (`Rack::Request#params` reads only the query string and form bodies), so the key collapses to `"#{ip}:"` - hence the body parse above.
 
-Counters are only as shared as the cache behind them. Inside Rails, Rack::Attack defaults its store to `Rails.cache`, so the failure is subtler than "per-process": a file store does not span hosts and `:memory_store` does not span processes. Point it somewhere genuinely shared, and pass an *instance* - `Rack::Attack.cache.store = Redis` assigns the class, which responds to none of the counter methods, so every throttled request raises `Rack::Attack::MisconfiguredStoreError` (a 500 across the app, not just a lost throttle):
+Counters are only as shared as the cache behind them (`rate_limit` and Rack::Attack alike). Inside Rails, Rack::Attack defaults its store to `Rails.cache`, so the failure is subtler than "per-process": a file store does not span hosts and `:memory_store` does not span processes. Point it somewhere genuinely shared, and pass an *instance* - `Rack::Attack.cache.store = Redis` assigns the class, which responds to none of the counter methods, so every throttled request raises `Rack::Attack::MisconfiguredStoreError` (a 500 across the app, not just a lost throttle):
 
 ```ruby
 Rack::Attack.cache.store = ActiveSupport::Cache::RedisCacheStore.new(url: ENV["REDIS_URL"])
@@ -152,7 +162,7 @@ For a token-only endpoint with no email field, key on IP plus the token's *subje
 
 ### Open Redirect
 
-Rails rejects cross-host `redirect_to` with `UnsafeRedirectError` only when `config.action_controller.raise_on_open_redirects` is true - it defaults to false and is switched on by `load_defaults 7.0`+, so a 7.2 or 8.0 app upgraded on older defaults has no protection at all; on 8.1+ the setting is `action_on_open_redirect` (`:log` by default, which still redirects; `load_defaults 7.0`+ sets `:raise`) and `raise_on_open_redirects` is deprecated. `redirect_to url, allow_other_host: true` opts back out per call site. Same-origin open redirects pass either way. Use a path allowlist; exact-match comparison also kills protocol-relative bypasses (`//evil.com`) that naive prefix checks miss:
+Rails rejects cross-host `redirect_to` with `UnsafeRedirectError` only when `config.action_controller.raise_on_open_redirects` is true - it defaults to false and is switched on by `load_defaults 7.0`+, so a 7.2 or 8.0 app upgraded on older defaults has no protection at all; on 8.1+ the setting is `action_on_open_redirect` (`:log` by default, which still redirects; `load_defaults 7.0`+ sets `:raise`) and `raise_on_open_redirects` is deprecated. `redirect_to url, allow_other_host: true` opts back out per call site. A path-relative target (`redirect_to "orders"` - no leading `/`, resolved by the browser against the current URL) is a separate 8.1 control, `config.action_controller.action_on_path_relative_redirect` (`:raise` under `load_defaults 8.1`, `:log` otherwise - still redirects), so an allowlist entry always carries its leading `/`. Same-origin open redirects pass either way. Use a path allowlist; exact-match comparison also kills protocol-relative bypasses (`//evil.com`) that naive prefix checks miss:
 
 ```ruby
 ALLOWED = %w[/dashboard /orders /profile].freeze
@@ -254,12 +264,12 @@ Existing inline scripts: migrate via nonces (`javascript_tag nonce: true`) rathe
 
 ## Output Format
 
-One block per finding (reviews and audits emit several) or per pattern applied (build mode). Both modes fill every field; only two shift meaning. `Severity` in build mode rates the risk the change closes, not a current exposure. `Change` is the applied diff in build mode and the recommended remediation in review or audit mode - which is where target state lives, so no separate section is written. An audit walks a whole surface and opens with the `Posture:` line; a review takes the named files, and everything in a named file is in scope, as is a parent class a named file inherits (`Api::V1::BaseController` behind a named controller). A named surface with no finding gets one line - `Clean: <surface> - <what was checked>` - and no block. One block per distinct code-level fix - findings sharing one root cause (a missing `verify_authorized`) merge into one block listing the affected actions; `IDOR` is the unscoped lookup, `Pundit` the policy or scope wiring, one block each when both are missing. An observation owned by a sibling skill (template escaping, upload validation, blob URL expiry) gets one line naming the skill and no block; a fact outside the read set gets one line, `Not in evidence: <fact> - read <file>`, and no block. Blocks run Critical first; sibling and `Not in evidence:` lines follow the blocks, then the `Clean:` lines.
+One block per finding (reviews and audits emit several) or per pattern applied (build mode). Both modes fill every field; only two shift meaning. `Severity` in build mode rates the risk the change closes, not a current exposure. `Change` is the applied diff in build mode and the recommended remediation in review or audit mode - which is where target state lives, so no separate section is written. An audit walks a whole surface and opens with the `Posture:` line; a review opens with its first block and takes the named files, and everything in a named file is in scope, as is a parent class a named file inherits (`Api::V1::BaseController` behind a named controller). A named surface with no finding gets one line - `Clean: <surface> - <what was checked>` - and no block. One block per distinct code-level fix - findings sharing one root cause (a missing `verify_authorized`) merge into one block listing the affected actions; `IDOR` is the unscoped lookup, `Pundit` the policy or scope wiring, one block each when both are missing. An observation owned by a sibling skill (template escaping, upload validation, blob URL expiry) gets one line naming the skill and no block; a fact outside the read set gets one line, `Not in evidence: <fact> - read <file>`, and no block. Blocks run Critical first; sibling and `Not in evidence:` lines follow the blocks, then the `Clean:` lines.
 
 ```
-Posture: {one line, audit mode only, once before the blocks}
+Posture: {audit mode only, once before the blocks: the surface walked, the Critical / High count, the dominant gap - one line}
 
-Pattern: {Strong Params | Authentication | Pundit | CSRF | Rate Limit | Credentials (code or any config file) | SQLi | IDOR (unscoped lookup, or a raw-record render that leaks columns) | Open Redirect | Cookies | CSP | Host Auth | Transport | Webhook Signature | Channel Authorization (subscribed, actions, origins) | Secret in Client Payload | Signed ID / Holder-of-Token Link | Outbound Call Authentication | Error Response Leakage}
+Pattern: {Strong Params | Authentication (login, token issue and storage, reset flow, unguarded mounted engine) | Pundit | CSRF | Rate Limit | Credentials (code or any config file) | SQLi | IDOR (unscoped lookup, or a raw-record render that leaks columns) | Open Redirect | Cookies | CSP | Host Auth | Transport | Webhook Signature | Channel Authorization (subscribed, actions, origins) | Secret in Client Payload | Signed ID / Holder-of-Token Link | Outbound Call Authentication | Error Response Leakage}
 
 Severity: {Critical - exploitable now | High - exploitable with effort | Medium - hardening, including fail-closed misconfiguration (a too-narrow host regexp, a nonce directive that breaks styles) | Low - defense in depth}
 
@@ -273,5 +283,5 @@ Risk Mitigated: {mass assignment | unauthorized access | data exposure | injecti
 ## Avoid
 
 - Pundit policies checking only `user.admin?` without owner access
-- Login throttles keyed on IP only
+- Login throttles keyed on IP only, or counted in `:memory_store`
 - `verify_authorized` / `verify_policy_scoped` skipped per-controller without rationale
