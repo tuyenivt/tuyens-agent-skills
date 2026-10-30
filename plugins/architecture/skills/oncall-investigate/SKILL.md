@@ -61,13 +61,13 @@ Narrow first, then verify it is not silently affecting others.
 - One entity or many? Reproducible or intermittent? Specific endpoint/feature/data subset? Started at a specific time? Set Time Window from the reported occurrence, widened by `fetch_issue` first-seen/last-seen or the earliest matching log line once Step 5 has run; while the symptom continues, the range ends at the latest occurrence held.
 - **Blast radius probe**: query for other entities with the same symptom (e.g., other users with the same status filter); for operational failures, the impact set is other runs of the same job plus downstream consumers of its output; for an alert with no entity, it is whether other hosts or jobs in the same group show the same signal; check error logs/metrics for the same code path - elevated rates suggest wider impact; if traceable to a deploy/config/migration, assume all users on that code path may be affected until proven otherwise. When you cannot run the probe (no DB/log access), mark it `Not run` and name the recommended query as an action item. A probe with more than one part that you could only half-run is `Partially run` - say which half, and carry the unrun half into Remaining Uncertainty. The probe is `N/A` only when there is no entity, no peer group, no prior run and no downstream consumer to check.
 
-**Escalate to `incident-root-cause` if any of:** >=3 distinct users (or tenants) affected within an hour - entities alone do not count, and "N others affected" counts distinct users excluding the reporter; error rate on the affected path is more than 2x baseline and more than 10 errors in that hour, so a handful of errors on a quiet path does not qualify; OR a revenue/auth/data-integrity path shows confirmed multi-user impact or active error-rate elevation. "Confirmed" means observed in evidence - a mechanism that could plausibly affect many users is a reason to run the probe, not a reason to escalate. Evaluate the error-rate criterion from evidence in hand; when no error-rate figure is held, or the fetched `metric_series` reads `Baseline delta: no baseline`, fetch it here (`ops-observability-fetch`) or mark that criterion `Not run`.
+**Escalate to `incident-root-cause` if any of:** >=3 distinct users (or tenants) affected within an hour - entities alone do not count, and "N others affected" counts distinct users excluding the reporter; error rate on the affected path is more than 2x baseline and more than 10 errors in that hour, so a handful of errors on a quiet path does not qualify; OR a revenue, auth (login or permission check) or data-integrity path shows confirmed multi-user impact or active error-rate elevation. "Confirmed" means observed in evidence - a mechanism that could plausibly affect many users is a reason to run the probe, not a reason to escalate. Evaluate the error-rate criterion from evidence in hand; when no error-rate figure is held, fetch it here (`ops-observability-fetch`); when the held `metric_series` is a user-paste block, which carries no `Baseline delta` line, request the same-length window 7 days earlier as its own `query_metrics` call; mark the criterion `Not run` when that call is unavailable or empty, or when the held block already reads `Baseline delta: no baseline` (the fetch already tried that window) - with no baseline there is nothing to compare against.
 
 Escalating ends this investigation. Fill Request Type, Affected Scope, Blast Radius Probe, Time Window, Escalation and the Verdict line; omit the Expected and Actual lines and the Root Finding section; Recommended Action carries the single hand-off action; put anything still unknown in Remaining Uncertainty. The Escalation line carries the handoff - the symptom, the scope found so far, the detected Language and Framework, and an error or stack trace or a monitor/issue URL - and Evidence lists the observations it rests on plus a `Not run` bullet for each check that could not be run; the handoff stays on the Escalation line. An error line held in logs counts as the error anchor. A cross-reference the ticket already holds counts as a run part of the probe. `incident-root-cause` needs one of those two anchors to start, so where you hold neither, say so on the line and name what the receiving engineer must capture first.
 
 ### Step 4 - Verify Expected Behavior
 
-Before concluding "bug", read the code and confirm what the system is *designed* to do. With no repository access at all, the intended behaviour comes from whatever states it - the ticket, a runbook, a design doc - and the verdict says which source stood in for the code, since a Bug verdict resting on a description rather than a code path is weaker than one resting on the path itself. When the path is unfamiliar, trace it end to end - entry point -> handler -> service -> persistence - and note any framework-implicit behavior that could explain the symptom on its own (transactions and their boundaries, ORM callbacks/signals, async or scheduled execution, retries, caching, default serialization). Check feature flags, config values, A/B assignments, and recent deploys (inaccessible systems: see Rules).
+Before concluding "bug", read the code and confirm what the system is *designed* to do. With no repository access at all, the intended behaviour comes from whatever states it - the ticket, a runbook, a design doc - and the Expected line names which source stood in for the code, since a Bug verdict resting on a description rather than a code path is weaker than one resting on the path itself. When the path is unfamiliar, trace it end to end - entry point -> handler -> service -> persistence - and note any framework-implicit behavior that could explain the symptom on its own (transactions and their boundaries, ORM callbacks/signals, async or scheduled execution, retries, caching, default serialization). Check feature flags, config values, A/B assignments, and recent deploys (inaccessible systems: see Rules).
 
 For Alert requests, "expected behavior" means the monitor's intent: compare threshold, evaluation window, and recovery threshold against the observed metric pattern, and check whether the triggering pattern is scheduled or known load.
 
@@ -77,7 +77,7 @@ Use skill: `ops-observability-fetch` for any row whose evidence lives in an APM/
 
 Synthesize what comes back into the `Evidence` bullets with its source named; do not paste raw blocks. A block that comes back needing a parameter is answerable - supply it and refetch; a block with no transport, or whose call errored, makes its check `Not run`; an empty result from a working transport is evidence of absence, not `Not run`.
 
-Where a row names `log-analysis`, hand it the failure window or a held log/trace/issue URL (its required inputs), plus the affected service, which it needs to fetch a `log_window`, and any request ID; fold what it returns into this report: its Key Evidence into `Evidence`, its trigger and causal chain into `Root Finding`, its Log Gaps into `Remaining Uncertainty`.
+Where a row names `log-analysis`, hand it the failure window or a held log/trace/issue URL (its required inputs), plus the affected service, which it needs to fetch a `log_window`, and any request ID; fold what it returns into this report: its Key Evidence and Healthy vs Unhealthy deltas into `Evidence`, its trigger, amplifier and causal chain into `Root Finding`, its Log Gaps into `Remaining Uncertainty`.
 
 Some evidence these rows call for lives outside all six capabilities - DB state, role and entitlement records, flag assignments, migration history. Read those from the systems that hold them, or mark the check `Not run` per the Rules.
 
@@ -87,7 +87,7 @@ Some evidence these rows call for lives outside all six capabilities - DB state,
 | **Access**              | `query_logs`                              | Role + permission assignments; feature flag for user/cohort; auth token validity and scope      |
 | **Operational**         | `query_logs`, `query_metrics`, `list_deploys` | Execution logs for job/scheduler/worker; queue depth; consumer health; verify the scheduler ran at all |
 | **Unexpected behavior** | `query_logs`, `fetch_trace`               | Use skill: `log-analysis` on the failing request; identify executed branch; config/flags at the time |
-| **Performance**         | `query_logs`, `fetch_trace`               | Slow query logs; external dependency latency; use skill: `log-analysis` on the slow window to place the slowness in a causal chain |
+| **Performance**         | `query_logs`, `query_metrics`, `fetch_trace` | Latency metric (p50/p99) for the affected endpoint over the window and its 7-day baseline - name the metric; slow query logs; external dependency latency; use skill: `log-analysis` on the slow window to place the slowness in a causal chain |
 | **Alert**               | `query_metrics`, `fetch_monitor`, `fetch_issue` | Metric vs threshold over a multi-day window; monitor config hygiene - `fetch_monitor` returns name, status, threshold, current value and last-triggered, so read evaluation window, recovery threshold and last-edited from the monitor definition itself and mark them `Not run` when you cannot open it |
 
 `fetch_issue` returns first-seen and last-seen, which tell you whether a recurring symptom is new or chronic. Step 4's deploy check uses `list_deploys` on any row when a deploy is a candidate. Where a row names `log-analysis`, invoke it instead of fetching those blocks yourself - it performs its own fetch.
@@ -111,14 +111,14 @@ Where wrong data and a code defect coexist - a stale cache caused by a missing i
 
 ## Output
 
-`Affected Scope` states what you know after the probe and stays consistent with the probe line: an unrun probe cannot yield a confirmed scope, and `None (alert only)` rests on the ticket or monitor stating there is no user-facing impact, not on the probe.
+`Affected Scope` states what you know after the probe and stays consistent with the probe line: an unrun probe cannot yield a confirmed scope, and `None (alert only)` rests on the ticket or monitor stating there is no user-facing impact, not on the probe. The probe line reads `Partially run - <which half>` whenever either half (the Step 3 impact-set query: other entities, other runs and downstream consumers, or peer hosts and jobs; or the code-path error check) could not run, whatever the other half found, and `Confirmed N others affected` only when the impact-set half counted them - a ticket cross-reference counts as that half run. Recommended Action holds 1-3 actions: a `False positive / known-condition alert` verdict includes the tune-vs-fix decision as one, and a probe that could not be run contributes its recommended query - under Escalated, appended to the single hand-off action.
 
 ```markdown
 ## Investigation: {one-line description}
 
 Request Type: {Data | Access | Operational | Unexpected behavior | Performance | Alert}
 
-Affected Scope: {Single entity | N entities | Single user | N users | Tenant/cohort | Specific feature | All users | None (alert only) | Unknown - probe not run}
+Affected Scope: {Single entity | N entities | Single user | N users | Tenant/cohort | Specific feature | All users | None (alert only) | At least <known scope>, potentially N more | Unknown - probe {not run | partially run}}
 
 Blast Radius Probe: {Confirmed isolated | Confirmed N others affected | Potentially affects N others | Partially run - <which half> | Not run | N/A - no entity, peer group, prior run or downstream consumer} - {query/source used, or the one recommended}
 
@@ -127,7 +127,7 @@ Escalation: {Not met | Not met - <criterion> not run | Escalated - <criterion me
 Time Window: {first occurrence | first to latest occurrence{, recurring <cadence>}{, continuing} | unknown - <what would establish it>}
 
 ### Expected vs Actual
-- Expected: {what should happen; for alerts, the monitor's intent}
+- Expected: {what should happen; for alerts, the monitor's intent} - source: {code path <file:line> | monitor definition | <ticket | runbook | design doc> (no code access)}
 - Actual: {what is happening - may be correct behavior with a miscalibrated monitor}
 - Verdict: {Bug | Working as designed | Config | Data | Permission | False positive / known-condition alert | Insufficient evidence | Escalated - see incident-root-cause}
 
@@ -140,7 +140,7 @@ Time Window: {first occurrence | first to latest occurrence{, recurring <cadence
 {2-4 sentences. Reference specific evidence. Concrete.}
 
 ### Recommended Action
-- [ ] {Action 1 - who does what; 1-3 actions. Alert verdicts include the tune-vs-fix decision as an action. A probe that could not be run contributes its recommended query here - under Escalated, appended to the hand-off action.}
+- [ ] {Action 1 - who does what}
 
 ### Remaining Uncertainty
 - {Every check marked Not run, plus any inference the evidence could not settle, each with what would resolve it; or "None - investigation conclusive"}
@@ -154,7 +154,7 @@ Time Window: {first occurrence | first to latest occurrence{, recurring <cadence
 - [ ] Step 3: escalation criteria checked (>=3 distinct users within an hour / error rate over 2x baseline and over 10 errors in that hour / revenue, auth or data-integrity path with confirmed multi-user impact or active error-rate elevation); Escalation line states the outcome, naming any criterion not run, and carries the handoff when Escalated
 - [ ] Step 4: expected behavior verified before concluding (code for bugs, or the source that stood in for it; monitor intent for alerts), or n/a - Escalated at Step 3
 - [ ] Step 5: fetch performed or deliberately skipped because the ticket already held the evidence; for Data requests, API/UI response compared to DB to isolate the layer; unrunnable checks marked Not run; or n/a - Escalated at Step 3
-- [ ] Step 6: verdict named from the enum; alert verdicts carry the tune-vs-fix decision as an action
+- [ ] Step 6: verdict named from the enum; a `False positive / known-condition alert` verdict carries the tune-vs-fix decision as an action
 - [ ] Finding is conclusive, names what is needed to conclude, or is Escalated; every Not run check reaches Remaining Uncertainty
 - [ ] Recommended actions (1-3; the single hand-off when Escalated) are concrete and assigned
 

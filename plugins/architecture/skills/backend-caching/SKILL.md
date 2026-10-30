@@ -22,7 +22,7 @@ user-invocable: false
 
 - The cache serves reads and never becomes the source of truth; a write-through strategy still writes through to the store in the same operation
 - Every cache entry has a TTL and a defined invalidation strategy. Indefinite TTL is legitimate only for static-until-changed data with event-based invalidation plus a memory bound; otherwise missing TTL is a gap
-- Cache DTOs or response objects, never ORM entities or other mutable references
+- Cache DTOs or response objects (records, frozen dataclasses, structs), never ORM entities or other mutable references; project at the query layer, selecting only the needed columns - REST payload conventions (pagination, field naming, error format) are `backend-api-guidelines`'s
 - Invalidate after the DB commit, never before - an eviction before commit can be refilled with stale data by a concurrent read
 - Delete on write. On a hot key, pair the delete with singleflight repopulation or bump a version segment, so the miss storm the delete creates is absorbed. Overwriting with the recomputed value avoids that storm but reopens a write-write race - two writers can land out of order and pin stale data for a full TTL - so use it only where writes to the key are serialized
 - Measure hit rate in production. Above ~80% the cache is doing its job; 50-80% is worth tuning (key cardinality, TTL, what is cached); persistently below ~50% means the cache is misapplied: remove it, or redesign it as an Opportunity when the data fits a different tier or key
@@ -38,7 +38,7 @@ user-invocable: false
 
 When a popular key expires, many concurrent requests miss together and stampede the backend.
 
-**Risk rubric:** High = expensive recompute (>100ms) AND hot enough for concurrent misses (multiple requests expected within one recompute duration when the key expires); Medium = one of the two; Low = neither.
+**Risk rubric:** High = expensive recompute (>100ms) AND hot enough for concurrent misses (multiple requests for the same key expected within one recompute duration when it expires - judged per key, not across the cache); Medium = one of the two; Low = neither.
 
 - **Lock-based (singleflight)** - one fetcher recomputes; the others wait and reuse its result. Per-process: Go `golang.org/x/sync/singleflight`, Java a Caffeine or Guava `LoadingCache`, which admits one in-flight load per key and blocks concurrent callers on it; Python an `asyncio.Lock` per key, where each waiter re-checks the cache after acquiring the lock, or every waiter recomputes in turn. Across processes: a Redis lock taken with `SET key val NX PX <ttl>` - the expiry is required, or a crashed holder blocks the key forever - with losers polling the cache rather than recomputing. Choose when the recompute must run exactly once per expiry (expensive or rate-limited source) and no caller may be served a value past its TTL.
 - **Serve-stale-while-recomputing** - the first caller past expiry recomputes while every other caller is served the previous value. Rails `Rails.cache.fetch(key, expires_in: ..., race_condition_ttl: ...)` implements exactly this; it is not a lock and callers do get stale data. Choose when a few seconds of staleness beats a stampede.
@@ -80,8 +80,8 @@ const stable = (v) =>
 
 const hash = (o) => createHash("sha256").update(JSON.stringify(stable(o))).digest("hex");
 
-`catalog:product:${productId}:v1`
-`catalog:search:${hash(queryParams)}`
+const productKey = (productId) => `catalog:product:${productId}:v1`;
+const searchKey = (queryParams) => `catalog:search:${hash(queryParams)}`;
 ```
 
 Sorting only the top level leaves a nested filter object serializing in insertion order, and skipping arrays leaves an object inside a list unsorted - both are the Bad line again. Rebuilding an object as an array of pairs makes `{a:1}` collide with `[["a",1]]`, which is why `Object.fromEntries` keeps it an object. Hash plain data only: a `Map` or `Set` serializes as `{}` and collides with an empty object, so convert it to an array or object first.
@@ -100,7 +100,7 @@ When a staleness budget is stated, TTL = budget minus a safety margin (e.g., 4s 
 ### Cache Levels
 
 - **In-process** - fastest, per-instance only. With multiple replicas, use only for data that tolerates per-node staleness or that you invalidate via broadcast (pub/sub); otherwise use the distributed tier
-- **Distributed** (Redis, Memcached) - shared, slightly higher latency
+- **Distributed** (Redis, Memcached) - shared, slightly higher latency. An entry over the engine's item limit (Memcached 1 MB by default) goes to object storage and the cache holds the pointer; Level is the pointer's tier
 - **CDN** - static assets and public API responses, cached at the edge
 
 ### Stack-Specific Adapter
@@ -140,18 +140,14 @@ Emit `Assessment` always, and every section that has content. Omit a section onl
   - Measured: {hit rate and what it implies per the Rules band, or "not measured"}
   - Risk: {unbounded growth | stale data | thundering herd | key collision/injection | stale shared state | wasted capacity | other (name it)}
   - Fix: {concrete correction, named in the detected stack's own primitives; when the stack is unknown, give the universal correction and mark it "(primitive unverified)"}
-- {cache name} - no gaps
+- {cache name} - no gaps{ - memory cap owned by {owner}, not seen}
 
 ### Assessment
 
 {One line, always present, naming all four counts so an omitted section is still accounted for: "{N existing caches | No existing caches}; {N gaps found | no gaps}; {N opportunities proposed | no additions recommended}{; nothing excluded | ; {N} excluded}". Where no caches exist and none are recommended, add why caching does not fit this workload.}
 ```
 
-An uncapped in-process cache (a plain map or dict, raw ETS) is a `memory bound` Gap; `correctness-critical` under Excluded is data that cannot tolerate any cache staleness, which is distinct from data that is cached under a lock. A writer and reader that disagree on a key is `safe key design` with Risk `stale data`, High when it makes an invalidation a no-op. A distributed cache whose cap is owned by another team and unseen is not a memory-bound Gap; name the owner on its row. A figure the source does not give (a vendor quote's validity, a hit rate) is written with `(assumed)` where it is used.
-
-## Response Payload
-
-Cache DTOs (records/dataclasses/structs), never ORM entities. Project at the query layer (select only needed columns). For full REST payload conventions (pagination, field selection, error format) see `backend-api-guidelines`.
+An uncapped in-process cache (a plain map or dict, raw ETS) is a `memory bound` Gap; `correctness-critical` under Excluded is data that cannot tolerate any cache staleness, which is distinct from data that is cached under a lock. A writer and reader that disagree on a key is `safe key design` with Risk `stale data`, High when it makes an invalidation a no-op. A distributed cache whose cap is owned by another team and unseen is not a memory-bound Gap; name the owner on its row, with the clean-row suffix when it has no other gap. A figure the source does not give (a vendor quote's validity, a recompute duration) is written with `(assumed)` where it is used; an unknown hit rate is `not measured`, never an assumed figure.
 
 ## Avoid
 

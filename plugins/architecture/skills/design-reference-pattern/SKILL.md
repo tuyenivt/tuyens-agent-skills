@@ -41,17 +41,17 @@ Extraction differs by kind. Classify before extracting.
 
 | Kind | Signals | Extract | Never extract |
 | --- | --- | --- | --- |
-| Blank template | Placeholders, empty sections, author instructions, `<fill in>` | Section skeleton and order verbatim, metadata slots, any stated length or format rule (recorded under Depth convention) | - |
+| Blank template | Placeholders, empty sections, author instructions, `<fill in>` | Section skeleton and order verbatim, metadata slots, any stated length or format rule (recorded under Depth convention), any stated diagram tool (recorded under Diagram convention) | - |
 | Approved prior design | Real content about a real system, sign-off names, a version history | Skeleton, metadata slots, per-section depth, diagram tool and types actually used, tone, terminology | Every fact, entity, decision, number, and diagram element in it |
 | Not a design doc | It is a PRD, ticket, runbook, or postmortem | Nothing | - |
 
-For "not a design doc": name which artifact it looks like in `Rejected` and set it aside; fall back to the built-in template only when no valid reference remains. A fragment matching no kind's signals classifies as the nearest kind and caps the aspects it contributes. Either way, continue - do not stop the workflow.
+For "not a design doc": name which artifact it looks like in `Rejected` and set it aside; fall back to the built-in template only when no valid reference remains. A fragment matching no kind's signals classifies as the nearest kind and caps the aspects it contributes. Status does not change the kind: a complete design still marked Draft is extracted as an approved design is, and its `Source` line adds `(draft)`. Whatever the kind, continue - do not stop the workflow.
 
-Several references that survive Step 1: the most recent approved design wins on depth, tone and diagram convention, a blank template wins on skeleton and metadata slots. Record any divergence in `Divergence`.
+Several references that survive Step 1: the most recent approved design wins on depth, tone and diagram convention, a blank template wins on skeleton and metadata slots; with no template, the most recent approved design wins those too. Record any divergence in `Divergence`.
 
 ### The built-in template
 
-Used when no valid reference remains. Skeleton: Context and Problem; Goals and Non-Goals; Current State; Proposed Design; Alternatives Considered; Risks and Rollback; Operational Impact; Open Questions. Metadata slots: author, status, reviewers. Depth: prose for Context and Proposed Design, bullets elsewhere. Diagrams: the `Tool:` value from `## Design Docs` when one is set, else Mermaid; one current state and one target. Tone: first-person plural. `Omits` lists whatever caller items find no home among the eight headings, since those are appended like any other.
+Used when no valid reference remains. Skeleton: Context and Problem; Goals and Non-Goals; Current State; Proposed Design; Alternatives Considered; Risks and Rollback; Operational Impact; Open Questions. Metadata slots: author, status, reviewers. Depth: prose for Context and Proposed Design, bullets elsewhere. Diagrams: the `Tool:` value from `## Design Docs` when one is set, else Mermaid; one current state and one target. Tone: first-person plural. `Omits` lists whatever caller items find no home among the eight headings, since those resolve through Step 4 like any other.
 
 ### Step 3 - Extract the pattern
 
@@ -71,22 +71,22 @@ A house pattern that omits a section the workflow requires is a placement instru
 
 The caller supplies its required-content list, and states whether its deliverable carries an appendix; absent that, assume it does not. Map every item to a house section before writing a word of the document. Place an item in a house section only when that heading would let a reader find it; a loose thematic fit misleads more than it helps. Items with no such section resolve as `appendix as <heading>` when the deliverable carries one, else `appended as <name>`. Nothing resolves as dropped.
 
-Items a single reader would look for in one place go in one appended section, or one appendix heading - a data migration plan and a rollback plan are both "how we get there and back"; a security sign-off is not. Unrelated items get their own. Name an appended section for what it holds, and never reuse a house heading that already exists elsewhere in the skeleton. Appended sections sit after the last skeleton section and before a trailing metadata block such as a version history. Each appended section carries its reason in the mapping row.
+Items a single reader would look for in one place go in one appended section, or one appendix heading - a data migration plan and a rollback plan are both "how we get there and back"; a security sign-off is not. Unrelated items get their own. Name an appended section, or an appendix heading, for what it holds (appendix headings lettered A, B, ... in order of each heading's first required-content item, continuing after any letter the house appendix already uses; `<heading>` in the mapping row includes its letter), and never reuse a house heading that already exists elsewhere in the skeleton. Appended sections sit after the last skeleton section and before a trailing metadata block such as a version history. Each appended section carries its reason in the mapping row. Every item resolving as appended or appendix is listed under `Omits`.
 
 ## Output Format
 
-Internal contract. The calling workflow applies it and never emits this block. Four things always reach the document: the skeleton with its metadata slots, the `Reviewer` value (in the reviewers slot, or as a metadata line at the top when the pattern has none), the `Attribution` line, and one line under each appended section or appendix heading saying why it was added - the mapping table's `Reason` is where that line is drafted. `Other keys` are reported verbatim for the caller to act on and reach the document only where the caller maps them.
+Internal contract. The calling workflow applies it and never emits this block; this skill's output is this block and the mapping table, and the document itself is the caller's. Four things always reach the document: the skeleton with its metadata slots, the `Reviewer` value when an `Approver:` was supplied (in the reviewers slot, or as a metadata line at the top when the pattern has none), the `Attribution` line, and one line under each appended section or appendix heading saying why it was added - the mapping table's `Reason` is where that line is drafted. `Other keys` are reported verbatim for the caller to act on and reach the document only where the caller maps them.
 
 ```
 House pattern:
-  Source: {one line per reference used - "template: <path or pasted>" | "approved design: <path or pasted>" | the single line "built-in"}
+  Source: {one line per reference used - "template: <path or pasted>" | "approved design: <path or pasted>{ (draft)}" | the single line "built-in"}
   Rejected: {one line per supplied reference not used - <path or paste> followed by the artifact it looks like, or "superseded by <which>" | "none"}
   Confidence: {High | Medium | Low}{ - capped on <aspects> by a partial reference}
   Section skeleton: {ordered headings verbatim, with "<unseen>" where a fragment's numbering implies a section you cannot see | built-in (see The built-in template)}
   Metadata slots: {slot names the pattern carries, e.g. doc ID, author, status, reviewers | none}
   Reviewer: {the Approver value, whether or not the pattern has a slot for it | none supplied}
   Depth convention: {per-section note, including headings the house leaves empty and any stated length or format rule | not observable - headings only | built-in}
-  Diagram convention: {tool and types | tool only, no diagrams observed | none observed | built-in: <tool>, one current state and one target}
+  Diagram convention: {tool and types | tool only, no diagrams observed | none observed | none observed; tool from Design Docs: <tool> | built-in: <tool>, one current state and one target}
   Terminology: {house terms | none observed}
   Tone: {first-person plural | impersonal | passive | none observed}
   Omits: {content the house pattern has no heading for | none}
@@ -106,11 +106,9 @@ Contract: every required-content item the caller supplied appears as a row, and 
 
 `Confidence` is decided on the best evidence available, then capped:
 
-- `High` - a blank template plus at least one complete approved design.
-- `Medium` - one complete reference of either kind, or several of the same kind.
+- `High` - a complete blank template plus at least one complete approved design.
+- `Medium` - one complete reference of either kind, or several complete references of the same kind.
 - `Low` - every reference is partial (a skeleton inferred from fewer than three headings, or a fragment classified as its nearest kind, with no complete reference beside it), or the built-in fallback was used.
-
-A partial reference alongside a complete one does not force Low; it caps the aspects it contributes, named after the level in `Confidence`.
 
 ## Avoid
 
