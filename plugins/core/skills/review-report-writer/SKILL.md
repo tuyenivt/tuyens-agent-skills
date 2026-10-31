@@ -41,9 +41,9 @@ Only the workflow that owns the report invokes this skill. Sub-agents spawned fo
 - Validate every input before anything else runs, and report all failures at once - one line per bad field (the first matching check below wins), in the input table's row order, so the caller fixes them in a single pass:
   - Missing or empty required field -> `Missing required input: <field>`
   - `branch` equal to `HEAD` or starting with `refs/` -> `Invalid input: branch: <value>` (stripping a remote prefix is `review-precondition-check`'s job, done before this skill runs)
-  - `base_sha`, `head_sha`, or `prior_head_sha` not matching `[0-9a-f]{40}` or `[0-9a-f]{64}` (SHA-1 or SHA-256), or a well-formed `head_sha` or `prior_head_sha` whose length differs from a well-formed `base_sha` -> `Invalid input: <field>: <value>` for that field - an abbreviated SHA defeats the next round's same-SHA equality check
+  - `base_sha`, `head_sha`, or `prior_head_sha` not matching `[0-9a-f]{40}` or `[0-9a-f]{64}` against the entire value (Ruby `\A...\z`, Python `re.fullmatch`, JavaScript `^...$` without the `m` flag; SHA-1 or SHA-256; a trailing newline fails), or a well-formed `head_sha` or `prior_head_sha` whose length differs from a well-formed `base_sha` (the length check runs only when both are well-formed) -> `Invalid input: <field>: <value>` for that field - an abbreviated SHA defeats the next round's same-SHA equality check; when `round` is invalid or `1`, a passed `prior_head_sha` is ignored, neither validated nor emitted
   - Value-set field (`report_type`, `mode`, `depth`) holding a value outside its set, or `scope` not matching the grammar above -> `Invalid input: <field>: <value>`
-  - `round` not a positive integer -> `Invalid input: round: <value>` - a malformed round writes clean today and breaks the next round's checkpoint parse into legacy, losing the chain
+  - `round` not matching `[1-9][0-9]*` against the entire value, checked as the SHAs are (canonical decimal: no sign, leading zero, `_`, or trailing newline - YAML 1.1 parsers such as PyYAML and Psych read `010` as 8 and `08` as a string, YAML 1.2 parsers such as js-yaml 4 read them as 10 and 8) -> `Invalid input: round: <value>` - a malformed round writes clean today and breaks the next round's checkpoint parse into legacy, losing the chain
   - `round` valid and greater than 1 with no `prior_head_sha` -> `Missing required input: prior_head_sha` (this check is skipped when `round` itself is invalid)
 - On any failure: emit the failure lines and stop. Do not write a partial file, invent a default, or blank a field. Value sets are matched exactly, case included: `Core` and `Deep` are invalid, not variants of `core-only` and `deep` - mapping display values to enum values is the caller's job.
 - **`report_body` is raw Markdown, never fenced.** The consuming workflow's Output Format section shows its template inside a fence for display only; that fence is not part of the report. When the body's first non-blank line is a fence opener (three or more backticks or tildes) whose info string is `markdown` or `md` - the opener every review workflow's Output Format uses - and its last non-blank line is a bare fence of the same character with at least the opener's count, those two lines are the display wrapper: strip both and write what is between them. Every other fence is content - keep it, including a body that opens and closes with code samples.
@@ -52,15 +52,11 @@ Only the workflow that owns the report invokes this skill. Sub-agents spawned fo
 - Write the file in the repository root (the workflow runs there; next round's `review-precondition-check` looks for it there): the frontmatter (below), then `report_body` (after any wrapper strip above) starting on the line after the closing `---` (no blank line inserted; leading blank lines of the written body are kept). Write UTF-8 with LF line endings, ending in exactly one newline.
 - Overwrite without prompting - the file is a rolling checkpoint, not an archive. Round history lives inside the report body.
 - Run no git command (the workflow already captured `base_sha` and `head_sha`).
-- Print one confirmation line after writing:
-
-  ```
-  Report written to <filename> (round <N>)
-  ```
+- Print the confirmation line in Output Format after writing, to the caller - never into the file.
 
 ## Frontmatter Contract
 
-Emit exactly this block at the top of the file, one field per line, no comments; the brace annotations on the two conditional lines are authoring notes, never emitted. Every field except the enums (`report_type`, `mode`, `scope`, `depth`) and `round` is double-quoted, because a bare value could parse as a YAML timestamp, number, or boolean; a `"` or `\` inside a quoted value is escaped with a preceding `\`. Emit `prior_head_sha` only when `round > 1`; emit `pr_url` only when the caller passed a non-empty value (never write `pr_url:` with a blank value). `generated_at` is the writer's current UTC time (`date -u +%Y-%m-%dT%H:%M:%SZ`) as `YYYY-MM-DDTHH:MM:SSZ`; the workflow does not pass it.
+Emit exactly this block at the top of the file, one field per line, no comments; the brace annotations on the two conditional lines are authoring notes, never emitted. Every field except the enums (`report_type`, `mode`, `scope`, `depth`) and `round` is double-quoted, because a bare value could parse as a YAML timestamp, number, or boolean; a `"` or `\` inside a quoted value is escaped with a preceding `\`. Emit `prior_head_sha` only when `round > 1`; emit `pr_url` only when the caller passed a non-empty value (never write `pr_url:` with a blank value). `generated_at` is the writer's current UTC time as `YYYY-MM-DDTHH:MM:SSZ`, read with `date -u +%Y-%m-%dT%H:%M:%SZ` - the one shell command this skill runs, and not a git command; the workflow does not pass it.
 
 ```yaml
 ---

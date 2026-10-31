@@ -19,15 +19,16 @@ user-invocable: false
 
 ## Rules
 
-- Index JOIN columns and frequent WHERE/ORDER BY predicates. Index foreign-key columns on PostgreSQL, SQLite, and SQL Server; InnoDB creates one automatically only when no existing index leads with the FK columns, so an explicit FK index there is adopted, and a second index leading with the same column is the duplicate. A primary key or unique constraint is an index for every rule here.
+- Index JOIN columns and frequent WHERE/ORDER BY predicates. Index foreign-key columns on PostgreSQL, SQLite, and SQL Server; InnoDB creates one automatically only when no existing index leads with the FK columns and silently drops that implicit index once a later index leads with them; an explicit FK index is kept, so a second index leading with the same column duplicates only an explicit one. A primary key or unique constraint is an index for every rule here.
 - Align indexes with actual query patterns - inspect EXPLAIN, not intuition. Without EXPLAIN, recommend from schema and query shape and suffix each finding `(unverified - confirm with EXPLAIN)`. When traffic or table size is unknown, take severity from the query's role (request path or incident cause vs background path) under the same suffix; read a query's callers, inside the reviewed files or not, to settle its role; a caller that cannot be read adds the suffix `(unverified - callers outside the reviewed files)`.
 - Composite column order: always-present equality columns first, then the ORDER BY columns, then range columns - a range column before the sort column breaks the index's ability to return rows pre-sorted. Key direction matters only when the ORDER BY mixes ASC and DESC (a uniform sort is served by a backward scan; MySQL honours `DESC` key parts from 8.0). An optional equality filter (`?status=`) never leads: it trails the sort column as an index filter, or gets a second index when its filtered path is hot.
 - Functions on indexed columns disable the index - rewrite the query or add an expression index. Under a case-insensitive collation (MySQL `utf8mb4_0900_ai_ci`, SQL Server defaults) a `LOWER()` wrapper is unnecessary: drop it rather than index it.
 - Avoid single-column indexes on evenly distributed low-cardinality columns (a few distinct values - the optimizer prefers a scan). A skewed column whose rare value is the one queried (`status = 'failed'` at 0.1%) is a legitimate target, as is the column as the leading equality column of a composite or as a partial-index predicate.
-- Every index taxes writes - on write-heavy tables, recommending no index is a valid outcome (state it with the trade-off). That outcome wins over the FK rule unless a query or a parent-row delete or key update reads by the FK. Several new indexes on one table state their combined write cost once, in the last row's gap description. An index the database has but no migration creates is drift: assess it on its merits and add `absent from migrations` to its recommendation.
+- Every index taxes writes - on write-heavy tables, recommending no index is a valid outcome (state it with the trade-off). That outcome wins over the FK rule unless a query or a parent-row delete or key update reads by the FK. Several new indexes on one table state their combined write cost once, in the gap description of that table's last `Missing Indexes` row. An index the database has but no migration creates is drift: assess it on its merits and add `absent from migrations` to its recommendation.
 - Avoid duplicate or overlapping indexes - a composite `(a, b)` already covers single-column lookups on `a`.
 - Always include lock risk when recommending any DDL (callers use it for migration planning). A replacement is two steps - build the new index, then drop the old - never one; a dedup lookup that must reject duplicates is a `UNIQUE` index, not a plain one.
 - Engine version unknown: give the advice valid at the lowest version it depends on and name the version gate in the finding.
+- Non-index DDL in the diff (`ADD COLUMN ... NOT NULL`, a type change) is `backend-db-migration`'s finding, not a row here.
 
 ## Patterns
 
@@ -56,7 +57,7 @@ A composite index is traversed left-to-right. It is efficient only when the lead
 -- Uses index:          WHERE user_id = ?
 -- Full index scan:     WHERE status = ?      <- non-leading column alone (PostgreSQL 17 and earlier walks the whole index, 18 adds skip scan; MySQL 8.0.13+ skip-scans only when the index covers the query)
 
--- Fix when that query is hot: a partial index on the rare status, or a composite led by status
+-- Fix when that query is hot: a partial index on the rare status (PostgreSQL, SQLite, SQL Server; only when the query passes that status as a literal - see Partial index), or a composite led by status
 ```
 
 ### Equality, sort, then range
@@ -67,7 +68,7 @@ A composite index is traversed left-to-right. It is efficient only when the lead
 -- Good - equality narrows, the sort column is also the range column
 CREATE INDEX idx_users_status_created ON users (status, created_at);
 
--- Bad - range first prevents the skip to equality
+-- Bad - range first scans every status inside the date range and filters per entry; equality first reads only the matching status
 CREATE INDEX idx_users_created_status ON users (created_at, status);
 ```
 
@@ -107,6 +108,8 @@ Each secondary index amplifies every insert (extra page writes and log records; 
 CREATE INDEX idx_events_recorded_brin ON events USING BRIN (recorded_at);
 ```
 
+On a PostgreSQL partitioned table (indexes on one exist from 11) `CONCURRENTLY` is refused on the parent: build each partition's index `CONCURRENTLY`, create the parent index `ON ONLY` (a brief SHARE lock on the parent that blocks writes while it waits - set a `lock_timeout`), then `ALTER INDEX ... ATTACH PARTITION` each one (a brief ACCESS EXCLUSIVE lock on that partition's index that queues its reads and writes while it waits - same `lock_timeout`; Lock risk Low); a unique index there must include every partition-key column.
+
 ### Diagnosing "index exists but query scans"
 
 Check, in order:
@@ -123,7 +126,7 @@ Check, in order:
 
 Consuming workflows parse this structure. Modes set the row shapes, and one assessment uses every shape its inputs call for (an audit that finds an index existing but unused by its query writes that row in the diagnosis shape):
 
-- Reviewing a diff: problematic indexes the diff adds go under `Existing Index Issues` (a diff-added index whose own build is High has reason `blocking build`, and its Lock risk slot states the corrected statement's risk; an index that also carries any other reason takes that reason and names the blocking build in its recommendation), gaps the diff leaves under `Missing Indexes`; `Indexes Not Recommended` appears only when an index that was proposed or considered is declined.
+- Reviewing a diff: problematic indexes the diff adds go under `Existing Index Issues` (a diff-added index whose own build is High has reason `blocking build`, and its Lock risk slot states the recommended statement's risk - the corrected build, or `None` when the recommendation is to drop the index before it ships; a plain `DROP INDEX` the diff adds on a busy PostgreSQL table is the same reason, recommending `DROP INDEX CONCURRENTLY` (a partitioned index refuses `CONCURRENTLY` and its attached partition indexes cannot be dropped separately: the only drop is a plain `DROP INDEX` on the parent, High on a busy table); an index that also carries any other reason - a diff-added FK index is `unused within the reviewed scope` only under the no-index conditions of the write-tax rule, and never on InnoDB when it is the only index leading with the FK columns - takes that reason and names the blocking build in its recommendation; a diff-added index with no reason gets no row), gaps the diff leaves under `Missing Indexes` (queries and FK columns the diff adds or changes, and the queries a diff-added index targets; untouched tables are out of scope); `Indexes Not Recommended` appears only when an index that was proposed or considered is declined.
 - Audit mode (an existing schema, no diff): every index on the tables in scope is an `Existing Index Issues` candidate (`over-indexed`, `low-cardinality`, `unused within the reviewed scope`, `duplicate`), every unserved query a `Missing Indexes` row.
 - Design mode (new queries or tables to serve): `Missing Indexes` holds the proposed indexes, `Indexes Not Recommended` the declined ones, `Existing Index Issues` any existing index on a table the design touches that a proposal makes redundant or that the reading found ineffective.
 - Diagnosis mode (an index exists but the query scans): the defective index is an `Existing Index Issues` row with reason `ineffective`, the corrective index or rewrite is a `Missing Indexes` row (its `Recommended index` slot holds the rewrite when no index can fix it), and a non-index remedy is an `Existing Index Issues` row anchored on the table with reason `stale statistics` or `planner settings`.
@@ -131,19 +134,19 @@ Consuming workflows parse this structure. Modes set the row shapes, and one asse
 ```
 ## Database Indexing Assessment
 
-**Engine:** {database / version | database (version unknown) | unknown}
+**Engine:** {database and version as named (PostgreSQL 16) | database (version unknown) | unknown}
 
 ### Missing Indexes                              {when at least one entry}
 
-- [Severity: High | Medium | Low] {table.column(s)} - {gap description}{ (unverified - <confirm with EXPLAIN | callers outside the reviewed files | both>)}
+- [Severity: High | Medium | Low] {table.column(s)} - {gap description}{ (unverified - confirm with EXPLAIN)}{ (unverified - callers outside the reviewed files)}
   - Query pattern: {WHERE / JOIN / ORDER BY needing the index}
   - Recommended index: {CREATE INDEX statement, ORM equivalent, or the query rewrite when no index can fix it}
-  - Lock risk: {None - no DDL (a rewrite, a statistics refresh), or an index on a table the same diff creates | Low - online build (PostgreSQL CONCURRENTLY, outside any transaction block - `backend-db-migration` names each migration tool's opt-out; InnoDB plain secondary index, the default ALGORITHM=INPLACE, LOCK=NONE; SQL Server ONLINE=ON, Enterprise edition) | High - blocking DDL (plain CREATE INDEX on PostgreSQL, SQL Server, or SQLite; plain DROP INDEX on a busy PostgreSQL table; MySQL functional (including multi-valued), FULLTEXT, or SPATIAL index; SQL Server online build unavailable on the edition)}
+  - Lock risk: {None - no DDL (a rewrite; a statistics refresh on PostgreSQL or SQL Server), or an index on a table the same diff creates | Low - online build (PostgreSQL CONCURRENTLY, outside any transaction block - `backend-db-migration` names each migration tool's opt-out; InnoDB plain secondary index, the default ALGORITHM=INPLACE, LOCK=NONE; SQL Server ONLINE=ON on Enterprise, Developer, or Azure SQL), or MySQL `ANALYZE TABLE` (brief read lock), or SQLite `ANALYZE` bounded with `PRAGMA analysis_limit` (3.32+) | High - blocking DDL (plain CREATE INDEX on PostgreSQL, SQL Server, or SQLite; plain DROP INDEX on a busy PostgreSQL table; MySQL functional (including multi-valued), FULLTEXT, or SPATIAL index; SQL Server online build unavailable on the edition; unbounded SQLite `ANALYZE` on a large live table, which holds the write lock for the scan)}
 
 ### Existing Index Issues                        {when at least one entry}
 
-- [Severity: High | Medium | Low] {table.index_name, or table (statistics) or table (planner)} - {over-indexed | low-cardinality | unused within the reviewed scope | duplicate | ineffective (wrong column order, type mismatch, unmatchable predicate) | stale statistics | planner settings | blocking build} - {recommendation}{ (unverified - <confirm with EXPLAIN | callers outside the reviewed files | both>)}
-  - Lock risk: {as above; a DROP INDEX is Low (PostgreSQL: `DROP INDEX CONCURRENTLY`); dropping a constraint-backed index is `ALTER TABLE ... DROP CONSTRAINT`, High on a busy PostgreSQL table; a rewrite-only fix, a statistics refresh, or keeping the index unchanged is None}
+- [Severity: High | Medium | Low] {table.index_name, or table (statistics) or table (planner)} - {over-indexed | low-cardinality | unused within the reviewed scope | duplicate | ineffective (wrong column order, type mismatch, unmatchable predicate) | stale statistics | planner settings | blocking build} - {recommendation}{ (unverified - confirm with EXPLAIN)}{ (unverified - callers outside the reviewed files)}
+  - Lock risk: {as above; a DROP INDEX is Low (PostgreSQL: `DROP INDEX CONCURRENTLY`; a partitioned index refuses it, so its plain `DROP INDEX` is High on a busy table); dropping a constraint-backed index is `ALTER TABLE ... DROP CONSTRAINT`, High on a busy PostgreSQL table; a rewrite-only fix, a PostgreSQL or SQL Server statistics refresh, or keeping the index unchanged is None; MySQL `ANALYZE TABLE` is Low; SQLite `ANALYZE` is Low when bounded with `PRAGMA analysis_limit`, High on a large live table otherwise}
 
 ### Indexes Not Recommended                      {when an index proposed or considered is declined}
 
@@ -158,7 +161,9 @@ Consuming workflows parse this structure. Modes set the row shapes, and one asse
 - **Medium**: missing composite causing a partial scan on a background or reporting path; a duplicate index the diff adds
 - **Low**: a pre-existing low-cardinality, duplicate, over-indexed, or unused index with write cost and no read benefit
 
-When table size is unknown, the query's role decides between High and Medium - role wins over size. An `ineffective`, `stale statistics`, or `planner settings` row takes the severity of the query it degrades: High on a request path or as an incident cause, Medium on a background path. A `blocking build` row is High when the table is live and large or of unknown size, Medium when it is known small; every other diff-added `Existing Index Issues` row is Medium, raised to High when its own build is blocking against a live table that is large or of unknown size.
+When table size is unknown, the query's role decides between High and Medium - role wins over size. An `ineffective`, `stale statistics`, or `planner settings` row takes the severity of the query it degrades: High on a request path or as an incident cause, Medium on a background path. A `blocking build` row is High when the table is live and large or of unknown size, or, for a plain `DROP INDEX`, busy; Medium otherwise; every other diff-added `Existing Index Issues` row is Medium, and any diff-added row of any reason is High when its own build is blocking against a live table that is large or of unknown size.
+
+`**Engine:**` is stack-detect's `Database` value, or the engine a reviewed file (a migration, a compose image tag) names when that value is `unknown`; a version is written only when that value or a reviewed file names one; `unknown` when neither names the engine.
 
 Lock risk is mandatory on every DDL recommendation. A plain `CREATE INDEX` blocks writes for the whole build on PostgreSQL, SQL Server, and SQLite at any table size; InnoDB builds a plain secondary index online by default, while a functional (including multi-valued), FULLTEXT, or SPATIAL index blocks writes. An index on a table the same diff creates is Lock risk None and keeps the plain `CREATE INDEX`. `unused within the reviewed scope` is a claim about the reviewed scope only - carry the `callers outside the reviewed files` suffix when the review did not cover every caller.
 

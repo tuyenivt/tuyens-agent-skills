@@ -56,9 +56,9 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Detect Stack and Load Atomic
 
-Use skill: `stack-detect` to identify language, framework, build tool, test framework and database / ORM. Async / messaging and IaC / deployment tooling reach `stack-detect` only as `Additional` keys declared in the instruction file: take them from `Additional` when present, since an explicit declaration wins, and otherwise from the manifests and infrastructure files read below. A secondary stack `stack-detect` writes into `Additional` (a fullstack monorepo's `Frontend: TypeScript (React)`) gets its own Stack rows (`Frontend language`, `Frontend framework`). The `## Stack` table is this report's Stack slot: detection fills its rows, and the `Detected stack:` block itself is never emitted.
+Use skill: `stack-detect` to identify language, framework, build tool, test framework and database / ORM. Async / messaging and IaC / deployment tooling reach `stack-detect` only as `Additional` keys declared in the instruction file: take them from `Additional` when present, since an explicit declaration wins, and otherwise from the manifests and infrastructure files read below. A secondary stack `stack-detect` writes into `Additional` (a fullstack monorepo's `Frontend: TypeScript (React, Next.js); build tool pnpm`) gets its own Stack rows prefixed by its side (`Frontend language`, `Frontend framework`, then `Frontend build` / `Frontend test` for each `; build tool` / `; test` segment; `Backend ...` for a `Backend:` entry): the part before the first `;` gives language and framework, `Base, Meta` written back as `Base (Meta)`. The `## Stack` table is this report's Stack slot: detection fills its rows, and the `Detected stack:` block itself is never emitted.
 
-Read repo context file (`CLAUDE.md` at root or `.claude/`, `AGENTS.md`, `GEMINI.md`) plus build manifests (`package.json`, `build.gradle`, `go.mod`, `pyproject.toml`, `Gemfile`, `*.csproj`, `pom.xml`, `Cargo.toml`, `mix.exs`) to fill gaps. A stack-detect `unknown` may be upgraded from direct repo evidence (ExUnit from `test/test_helper.exs`); mark it Inferred.
+Read repo context file (`CLAUDE.md` at root or `.claude/`, `AGENTS.md`, `GEMINI.md`) plus build manifests (`package.json`, `build.gradle`, `go.mod`, `pyproject.toml`, `Gemfile`, `*.csproj`, `pom.xml`, `Cargo.toml`, `mix.exs`) to fill gaps. A stack-detect `unknown` may be upgraded from direct repo evidence (pytest from a root `conftest.py` no manifest lists); mark it Inferred.
 
 If detected stack matches, load the atomic. It injects stack-specific bootstrap commands, key files, conventions, and risk hotspots into the matching report sections; do not produce a separate "stack-specific" section - the atomic governs content, this template governs placement and shape, and the atomic's own section order and envelope are discarded.
 
@@ -71,7 +71,7 @@ If detected stack matches, load the atomic. It injects stack-specific bootstrap 
 | Go / Gin             | `go-onboard-map`      |
 | React / Next.js | `react-onboard-map` |
 
-A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the generic workflow); a row named by language alone (Python, JavaScript / TypeScript) matches that language under any server framework or `unknown`, except that a Framework naming Next.js takes the React row: `React (Next.js)` from detection or a declared value such as `Next.js 16.3 (App Router)`. Any other client framework stack-detect names (React with Vite/CRA, React Router, Remix, React Native, React Native (Expo), Vue, Angular, Svelte) matches no row. A primary or secondary stack naming React without Next.js (a declared `React 19`, `Frontend: TypeScript (React)`) takes the React row when its own manifest lists `next` or its directory holds a `next.config.*`, its Framework row then written `React (Next.js)`, Source Inferred. Matching keys on the primary `Language`/`Framework` pair; a secondary stack in `Additional` loads its own atomic too when one resolves, matched by the same rule, and each atomic folds into the sections for its directory. If no atomic matches the detected stack (e.g., Elixir), or the matched atomic does not resolve (stack plugin not installed), proceed with the generic workflow and note `no stack-specific onboarding atomic - generic guidance applied` under the Stack table.
+A row matches only when the detected framework matches it (Java / Micronaut does not match Java / Spring Boot - use the generic workflow; the Ruby row matches a Framework naming Rails, version included - `Rails`, `Ruby on Rails`, `Rails 8.1`); a row named by language alone (Python, JavaScript / TypeScript) matches that language under any server framework or `unknown`, except that a Framework naming Next.js takes the React row: `React (Next.js)` from detection or a declared value such as `Next.js 16.3 (App Router)`. Any other client framework stack-detect names (React with Vite/CRA, React Router, Remix, React Native, React Native (Expo), Vue, Angular, Svelte) matches no row. A primary or secondary stack naming React without Next.js takes the React row when its directory holds a `next.config.*`, or, for a declared value such as `React 19`, when its own manifest lists `next`; its Framework row then written `React (Next.js)`, Source Inferred. Matching keys on the primary `Language`/`Framework` pair; a secondary stack in `Additional` loads its own atomic too when one resolves, matched by the same rule, and each atomic folds into the sections for its directory. If no atomic matches the detected stack (e.g., Elixir), or the matched atomic does not resolve (stack plugin not installed), proceed with the generic workflow and note `no stack-specific onboarding atomic - generic guidance applied` under the Stack table.
 
 Also extract a **one-paragraph system summary**: what problem this system solves, who uses it, and 2-3 main capabilities. Source from `README.md`, repo context file, top-level package descriptions, or service manifest. If not declared, mark `unknown - repo does not declare purpose` rather than inferring from code.
 
@@ -79,7 +79,7 @@ State explicitly what was *declared* vs *inferred* from file presence.
 
 ### Step 3 - Map Repository Structure
 
-Explore top-level layout. Identify entry points (`main`, `app`, `server`, `index`, `Program.cs`, `Application.java`), module layout (by domain / layer / feature), configuration files (env, secrets, flags), migration files and tooling, test structure, infrastructure files (`Dockerfile`, `docker-compose.yml`, CI configs, Helm, Terraform).
+Explore top-level layout as checked out; the header's `Branch` slot reads `git branch --show-current` (`detached at <short sha>` when it exits 0 and prints nothing, `none - not a git checkout` when it fails) and names the default branch (Step 11) when it differs. Identify entry points (`main`, `app`, `server`, `index`, `Program.cs`, `Application.java`), module layout (by domain / layer / feature), configuration files (env, secrets, flags), migration files and tooling, test structure, infrastructure files (`Dockerfile`, `docker-compose.yml`, CI configs, Helm, Terraform).
 
 Produce a **directory map** (top 2-3 levels, one-line annotations per significant directory) plus:
 
@@ -180,7 +180,7 @@ Mark `unknown - not discoverable from the repo` for anything the codebase does n
 
 ### Step 11 - Contribution Workflow
 
-Capture the path from edit to merge. Read `README.md`, `CONTRIBUTING.md`, `CODEOWNERS` (`.github/`, root, or `docs/`; GitLab also `.gitlab/`), the PR template (`pull_request_template.md` or a `PULL_REQUEST_TEMPLATE/` directory in `.github/`, root, or `docs/`), `.github/workflows/`, `.gitlab/`, pre-commit configs (`.pre-commit-config.yaml`, `.husky/`, `lefthook.yml`), lint configs, CI files.
+Capture the path from edit to merge. Read `README.md`, `CONTRIBUTING.md`, `CODEOWNERS` (`.github/`, root, or `docs/`; GitLab also `.gitlab/`), the PR template (`pull_request_template.md` or a `PULL_REQUEST_TEMPLATE/` directory in `.github/`, root, or `docs/`; GitLab `.gitlab/merge_request_templates/*.md`), `.github/workflows/`, `.gitlab/`, pre-commit configs (`.pre-commit-config.yaml`, `.husky/`, `lefthook.yml`), lint configs, CI files.
 
 - **Branching** - default branch, naming rules, forbidden direct pushes.
 - **PR requirements** - template fields, required reviewers via `CODEOWNERS`, required approvals, required CI checks.
@@ -193,7 +193,7 @@ Capture the path from edit to merge. Read `README.md`, `CONTRIBUTING.md`, `CODEO
 - **Reference example PRs** - linked from `README`, `CONTRIBUTING`, or PR template; otherwise `unknown - not discoverable from the repo` (do not invent PR numbers).
 - **First-PR safe zones** - cross-reference Step 7 hotspots. List 2-3 well-tested, low-churn, narrow-blast areas; list 2-3 areas to avoid first. When the repo cannot honestly supply that many (nothing is tested), list what qualifies and say why the rest does not.
 
-Use skill: `dependency-impact-analysis` when the user names a specific candidate change for their first PR, to estimate blast radius; a bare file name becomes the smallest plausible change to that file's public surface, stated in the rationale, and a module-level scope focus alone does not trigger it. Its Impact rows fold into the First-PR Safe Zones / Avoid rationale for that candidate; its migration, deployment-order, and cross-team notification sections are not emitted (this report maps, it does not plan). A clean result is named in `Checked clean:`.
+Use skill: `dependency-impact-analysis` when the user names a specific candidate change for their first PR, to estimate blast radius; a bare file name becomes the smallest plausible change to that file's public surface, stated in the rationale; a stated change already present on the checked-out branch is named as such in the rationale's first sentence and analysed as the candidate anyway; a module-level scope focus alone does not trigger it. Its Impact rows fold into the First-PR Safe Zones / Avoid rationale for that candidate; its migration, deployment-order, and cross-team notification sections are not emitted (this report maps, it does not plan). A clean result is named in `Checked clean:`.
 
 ### Step 12 - Synthesize Recommendations and Summary
 
@@ -204,7 +204,7 @@ From Steps 2-11, produce `## Onboarding Recommendations` - the subsections whose
 ```markdown
 # Codebase Onboarding Report
 
-**Mode:** [focus mode]{ (assumed)} | **Scope focus:** [module, `<team or area> -> <modules>` when the user named a team or area, or none] | **Pain points:** [list, or none]
+**Mode:** [focus mode]{ (assumed)} | **Scope focus:** [module, `<team or area> -> <modules>` when the user named a team or area, or none] | **Pain points:** [list, or none] | **Branch:** [`git branch --show-current` output; `detached at <short sha>` when it exits 0 and prints nothing; `none - not a git checkout` when it fails; `(default: <name>)` appended when it differs from the Contribution Workflow default branch, `(default: unknown)` when that row is unknown]
 
 ## System Summary
 
@@ -215,13 +215,13 @@ From Steps 2-11, produce `## Onboarding Recommendations` - the subsections whose
 | Concern    | Technology              | Source              |
 | ---------- | ----------------------- | ------------------- |
 | Language   | [e.g., Go 1.25]         | Declared / Inferred |
-| Framework  | [Gin + GORM]            | Declared / Inferred |
-| Build      | [Go modules]            | Declared / Inferred |
+| Framework  | [Gin]                   | Declared / Inferred |
+| Build      | [go]                    | Declared / Inferred |
 | Test       | [testify + mockery]     | Declared / Inferred |
 | Database   | [PostgreSQL via GORM]   | Declared / Inferred |
 | Async/Jobs | [Asynq (Redis)]         | Declared / Inferred |
 | Deployment | [Docker + GH Actions]   | Declared / Inferred |
-| Stack Type | [backend / frontend / fullstack] | Inferred            |
+| Stack Type | [backend / frontend / fullstack] | Declared / Inferred |
 
 `no stack-specific onboarding atomic - generic guidance applied`   {only when Step 2 matched no row, or the matched atomic did not resolve}
 
@@ -235,7 +235,7 @@ From Steps 2-11, produce `## Onboarding Recommendations` - the subsections whose
 
 ## Architecture
 
-**Pattern:** [backend: Layered / Clean / Modular monolith / Vertical slice / Microservice / Event-driven / None established | frontend: Feature-based / Atomic Design / Route-based / Module-based / Monolith integration / None established - name one per applicable `Stack Type` half]
+**Pattern:** [backend: Layered / Clean/Hexagonal / Modular monolith / Vertical slice / Microservice / Event-driven / None established | frontend: Feature-based / Atomic Design / Route-based / Module-based / Monolith integration / None established - name one per applicable `Stack Type` half]
 
 **Evidence:** [2-3 paths / naming observations]
 
@@ -364,7 +364,7 @@ From Steps 2-11, produce `## Onboarding Recommendations` - the subsections whose
 | Concern                | Details |
 | ---------------------- | ------- |
 | Default branch         | [`git symbolic-ref --short refs/remotes/origin/HEAD` with the `origin/` prefix dropped, else the branch CI, `CONTRIBUTING`, or `README` treat as the merge target; `unknown - not discoverable from the repo` if neither resolves] |
-| Branch naming          | |
+| Branching              | [naming rules; direct-push restrictions when CI or docs show them] |
 | PR requirements        | |
 | CODEOWNERS             | [`none - <evidence>` if absent] |
 | Module owners          | [from CODEOWNERS / recent committers; `none - <evidence>` if absent] |
@@ -420,9 +420,9 @@ Areas to study before broader work: why it matters; suggested reading path.
 
 ## Self-Check
 
-- [ ] Step 1: `behavioral-principles` loaded
+- [ ] Step 1: behavioral-principles loaded
 - [ ] Step 2: `stack-detect` ran; stack atomic loaded, or no-atomic fallback noted under Stack table; signals merged into Stack, Repository Structure, Local Quickstart, Key Patterns, Tech Debt; System Summary captured or marked unknown
-- [ ] Step 3: directory map plus "Where to look first" and "Safe to skip initially"
+- [ ] Step 3: directory map plus "Where to look first" and "Safe to skip initially"; header `Branch` slot filled
 - [ ] Step 4: architecture pattern classified with cited evidence
 - [ ] Step 5: modules table; primary flow traced (pain-point or scope flow when given)
 - [ ] Step 6: patterns table cites real paths; Domain Knowledge tables capped at 5, each cited

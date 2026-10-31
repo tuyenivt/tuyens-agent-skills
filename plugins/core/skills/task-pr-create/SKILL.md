@@ -71,10 +71,10 @@ Run or accept:
 3. `current_branch` from Step 2
 4. `git diff <base_ref>...HEAD --name-only`
 
-If the diff is empty, stop and tell the user. If `git status --porcelain` lists anything (ignored files never appear), warn before emitting the description:
+If the diff is empty, stop and tell the user. If `git status --porcelain --untracked-files=normal` lists anything (ignored files never appear; the flag overrides a `status.showUntrackedFiles` setting), warn before emitting the description:
 
    ```text
-   Uncommitted work is not described: <n> tracked path(s) with changes, <m> untracked. Commit or stash first if it belongs in this PR.
+   Uncommitted work is not described: <n> tracked path(s) with changes, <m> untracked path(s) (an untracked directory counts once). Commit or stash first if it belongs in this PR.
    ```
 
 Extract from above:
@@ -88,7 +88,7 @@ Extract from above:
 
 Use skill: `review-pr-risk`. Condense its output into the Risk section of the Output Format:
 
-- `Risk Level:` + `Signals:` become `**[Low | Medium | High | Critical]** - [1-2 sentence rationale]`
+- `Risk Level:` + `Signals:` become `**[Low | Medium | High | Critical]** - [1-2 sentence rationale]`; the rationale names the signal(s) that set the level and, when `Action:` is emitted, the signal it maps from, and drops the rest; for `Low` it gives the `none (...)` cause
 - If it emits `Action:` (`require additional reviewer` | `split PR` | `add tests before merge`), append it verbatim as its own paragraph under the Risk line: `Suggested action: [action]`. Never drop it.
 
 ### Step 6 - Write the PR Description
@@ -103,13 +103,14 @@ Compose using the Output Format below.
 
 **Summary:**
 - Explain the *why* (problem, motivation) more than the *what* (mechanics)
-- Up to 5 bullets, each starting with a verb; proportional to the diff (a trivial change needs one)
+- Up to 5 bullets, the `Defers` bullet excluded, each starting with a verb; proportional to the diff (a trivial change needs one)
 - If the *why* is not inferable from diff, commits, ticket, or a requirement document the user, branch, or commits name, or the stated motivation contradicts what the diff does, ask the user - do not invent it; when the user cannot say, open the Summary (after any `Stacked on` line) with the line `Motivation: not stated by the author.` and describe only the what
 - Reference ticket/ADR inline only if essential context
+- A requirement, or an acceptance criterion of a spec, that the user, branch, or commits name and the diff does not deliver is stated in one `Defers` bullet (several share it) - a fact for reviewers, not a finding
 - Stacked PR (a user-stated base that is not a trunk name - `main`, `master`, `develop`, `trunk`, or the branch `origin/HEAD` names): open the Summary with the standalone line `Stacked on <branch>.` (bare branch name - remote prefix stripped; before the bullets) so reviewers set the right merge target
 
 **Test Plan:**
-- Concrete, runnable steps. Include the exact test command for the detected stack when production or test code changed (production code = anything shipping or configuring runtime/build behavior; prose and assets alone are docs-only, needing only a relevant verification step such as a render or build check). Where several commands wrap the same tool, use the one the repo documents (`CONTRIBUTING.md`, `README`, a `Makefile` target); with nothing documented, use the detected build tool's runner form (`uv run pytest`, `bundle exec rspec`, the package manager's runner - `npx vitest`, `pnpm vitest`, `yarn vitest`, `bun run vitest` - or `./gradlew test`) over the bare tool. When `stack-detect` reports the test framework `unknown`, use the build tool's built-in runner when it has one (`cargo test`, `mix test`), else derive a build or verification command from its `Build tool` field, or from an `Additional` `Root marker:` line (`build.zig` -> `zig build`); when neither yields one, the runnable line is the one manual step that proves the change (a `curl` of the changed route, a render), marked `no test or build tool discoverable`.
+- Concrete, runnable steps. Include the exact test command for the detected stack when production or test code changed (production code = anything shipping or configuring runtime/build behavior; prose and assets alone are docs-only, needing only a relevant verification step such as a render or build check). Where several commands wrap the same tool, use the one the repo documents (`CONTRIBUTING.md`, `README`, a `Makefile` target); with nothing documented, use the detected build tool's runner form (`uv run pytest`, `bundle exec rspec`, the package manager's runner - `npx vitest`, `pnpm vitest`, `yarn vitest`, `bun run vitest` - or `./gradlew test`) over the bare tool. When `stack-detect` reports the test framework `unknown`, use the build tool's built-in runner when it has one (`dotnet test`, `./gradlew test`), else derive a build or verification command from its `Build tool` field, or from an `Additional` `Root marker:` line (`build.zig` -> `zig build`); when neither yields one, the runnable line is the one manual step that proves the change (a `curl` of the changed route, a render), marked `no test or build tool discoverable`.
 - Manual verification for UI/API changes; migration steps when applicable.
 - New infrastructure dependency (Redis, DB, broker): include the setup step (e.g., `docker compose up -d redis`); new usage of existing infra (a new queue) gets its worker/consumer config step instead.
 
@@ -119,7 +120,7 @@ Compose using the Output Format below.
 
 ### Step 7 - Surface Linked Context
 
-When the repo ships a PR template - GitHub: `pull_request_template.md` or `PULL_REQUEST_TEMPLATE.md` in the root, `.github/`, or `docs/`, or a `PULL_REQUEST_TEMPLATE/` directory in any of those three places (use its only file, else the one the user names - GitHub selects these only by query parameter); GitLab: `.gitlab/merge_request_templates/Default.md` (or the only file there) - map this description's content into that template's sections and order; a section the template lacks is inserted where its nearest neighbour sits (Risk directly before the house's testing section, Linked Context last); a house What/Why pair takes the Summary's what-bullets and why-bullets respectively (the `Stacked on` line opens whichever section of the pair the template lists first; the `Motivation:` line opens the Why section, after `Stacked on` when both land there), and no content this Output Format requires is dropped. A house checklist keeps its own item wording, still subject to the retain-only-what-the-diff-could-violate rule; add this format's items only where the house has no equivalent. The house template governs headings and their order - including where Risk and the title sit, overriding Output Constraints on order alone; this format governs what each section must contain.
+When the repo ships a PR template - GitHub: a file named `pull_request_template` (any case, `.md` or `.txt`) in the root, `.github/`, or `docs/`, or a `PULL_REQUEST_TEMPLATE/` directory in any of those three places (use its only file, else the one the user names - GitHub selects these only by query parameter); GitLab: `.gitlab/merge_request_templates/Default.md` (any case; else the only file there) - map this description's content into that template's sections and order; a section the template lacks is inserted where its nearest neighbour sits (Risk directly before the house's testing section, Deployment Notes directly after it, Linked Context last); a house What/Why pair takes the Summary's what-bullets and why-bullets respectively, the `Defers` bullet closing the What section (the `Stacked on` line opens whichever section of the pair the template lists first; the `Motivation:` line opens the Why section, after `Stacked on` when both land there), and no content this Output Format requires is dropped. A house checklist keeps its own item wording, still subject to the retain-only-what-the-diff-could-violate rule; add this format's items only where the house has no equivalent. The house template governs headings and their order - including where Risk and the title sit, overriding Output Constraints on order alone; this format governs what each section must contain.
 
 
 Add a **Linked Context** section only if at least one of: ticket reference, ADR reference, related PR, or a requirement or design document the user, branch, or commits name. If none found, omit entirely - no empty placeholders. `Closes <ref>` is for an issue a closing directive names, the reference kept as written (`#<n>`, `owner/repo#<n>`, `group/project#<n>`); it auto-closes only when the PR merges into the default branch, so it is written only when `base_ref` is the default branch - the branch `origin/HEAD` names, or without `origin/HEAD` the only trunk name resolving in the repo (run the Step 2 probe if it has not run); otherwise, or for a bare mention, or when the default branch cannot be determined, write `Refs <ref>`; a tracker key renders as `Ticket: <ID>`, linked `[ID](url)` when a tracker URL is known and bare otherwise.
@@ -138,10 +139,11 @@ Motivation: not stated by the author.   {standalone line, only when the user cou
 - [Why this change was needed / problem solved]
 - [What changed at a high level - domain, layer, component]
 - [Notable design decision or tradeoff]
+- Defers [requirement or acceptance criterion the user, branch, or commits named that the diff does not deliver]   {only when one exists}
 
 ### Risk
 
-**[Low | Medium | High | Critical]** - [1-2 sentence rationale]
+**[Low | Medium | High | Critical]** - [1-2 sentence rationale naming the signals that set the level, or the `none (...)` cause for Low]
 
 Suggested action: [`require additional reviewer` | `split PR` | `add tests before merge`]   {only when `review-pr-risk` emitted `Action:`}
 
@@ -185,11 +187,11 @@ Related: [the reference as written - `#<n>` / `owner/repo#<n>` for a GitHub PR, 
 - Omit sections with no content
 - No line-by-line diff description - orient reviewers, do not duplicate the diff
 - Test plan includes at least one runnable command for the detected stack when production or test code changed (or, with no discoverable tool, the one manual step that proves the change)
-- Total description under 400 words - counting every prose line (Summary bullets, the Risk rationale, Test Plan manual steps, Deployment Notes, checklist item text, Linked Context) and excluding headings, commands, code, and checkbox markers; over budget, trim Summary bullets first, then Linked Context prose, then manual Test Plan steps beyond the first two, then checklist items - never Risk, the test command, or Deployment Notes
+- Total description under 400 words - counting every prose line (Summary bullets, the Risk rationale, Test Plan manual steps, Deployment Notes, checklist item text, Linked Context) and excluding headings, commands, code, and checkbox markers; over budget, trim Summary bullets first (never the `Defers` bullet), then Linked Context prose, then manual Test Plan steps beyond the first two, then checklist items - never Risk, the test command, or Deployment Notes
 
 ## Self-Check
 
-- [ ] Step 1: `behavioral-principles` loaded
+- [ ] Step 1: behavioral-principles loaded
 - [ ] Step 2: branch and base resolved; trunk-branch and detached HEAD rejected; user-stated base honored, else auto-detected or asked when ambiguous
 - [ ] Step 3: stack detected; reflected in the test plan command when production or test code changed
 - [ ] Step 4: diff and commits gathered against resolved `base_ref`, not hardcoded `main`; empty diff stopped; uncommitted work warned about before the description

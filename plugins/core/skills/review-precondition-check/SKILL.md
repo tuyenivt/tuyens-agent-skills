@@ -54,12 +54,12 @@ Whenever the head (Step 2) or the base (Step 4) resolves as `refs/heads/<name>`,
 git status --porcelain
 ```
 
-Ignore lines whose path is a repository-root `review-*.md` file, untracked (`??`) or modified (` M`, a committed checkpoint the last round rewrote) - they are this workflow's own checkpoints, and porcelain paths are always repository-root-relative. If any other line remains, stop with this message followed by those lines:
+Ignore lines whose path is a repository-root `review-*.md` file, untracked (`??`) or modified (` M`, a committed checkpoint the last round rewrote) - they are this workflow's own checkpoints and get no note, and porcelain paths are always repository-root-relative. If any other line remains, stop with this message followed by those lines:
 
 ```text
 Working tree is not clean. Review compares committed code, so uncommitted changes are out of scope.
 
-Commit to the feature branch, stash (`git stash push -u -- ':(exclude)review-*.md'` keeps the review checkpoints), or discard - then re-run.
+Commit to the feature branch, stash (`git stash push -u -- ':(top,glob,exclude)review-*.md'` keeps the review checkpoints), or discard - then re-run.
 ```
 
 ### Step 2 - Resolve the head
@@ -68,9 +68,9 @@ Apply the Argument Modes table. The result is `head_ref` (a short name the consu
 
 - No argument: `git symbolic-ref -q HEAD` with the leading `refs/heads/` stripped (`--short` prints `heads/<name>` when a tag shares the name). Failure means detached `HEAD`: stop with `HEAD is detached. Pass an explicit branch or pr-<N> ref.` Otherwise `head_short_name` = `current_branch` = the stripped name, and `head_ref` is the same name unless the collision check above applies.
 - `pr-ref`: verify `refs/heads/<verbatim argument>`, then `refs/heads/pr-<N>`. Neither exists: print the fetch instructions below and stop. `head_short_name` = the branch that resolved, and `head_ref` is the same name unless the collision check above applies.
-- `<branch>`: verify `refs/heads/<arg>`; else `refs/remotes/<arg>`; else `git for-each-ref "refs/remotes/*/<arg>"` (one match: use it; several: ask the user which remote). None resolves: stop with `Branch <arg> not found locally or on any remote. Push or fetch it, then re-run.` `head_ref` is the matched ref without `refs/heads/` or `refs/remotes/` (`feature/x`, `origin/feature/x`), or `heads/<name>` when the collision check above applies. `head_short_name` is `<arg>` when it resolved under `refs/heads/` or through `refs/remotes/*/<arg>`, and `<arg>` minus its first `<remote>/` segment when it resolved as `refs/remotes/<arg>` (`origin/feature/x` -> `feature/x`); `head_is_remote: true` when it resolved under `refs/remotes/`.
+- `<branch>`: verify `refs/heads/<arg>`; else `refs/remotes/<arg>`; else `git for-each-ref "refs/remotes/*/<arg>"` (one match: use it; several: ask the user which remote). None resolves: stop with `Branch <arg> not found locally or on any remote. Push or fetch it, then re-run.` `head_ref` is the matched ref without `refs/heads/` or `refs/remotes/` (`feature/x`, `origin/feature/x`), or `heads/<name>` when the collision check above applies. `head_short_name` is `<arg>` when it resolved under `refs/heads/` or through `refs/remotes/*/<arg>`, and `<arg>` minus its first `<remote>/` segment when it resolved as `refs/remotes/<arg>` (`origin/feature/x` -> `feature/x`); `head_is_remote: true` when it resolved under `refs/remotes/`, otherwise `false` (always `false` for no argument and `pr-ref`).
 
-Fetch instructions for a missing PR ref:
+Fetch instructions for a missing PR ref (`<N>` is substituted; `<source-branch>` stays literal for the user to fill):
 
 ```text
 Local ref `pr-<N>` not found. To fetch the PR head, run one of:
@@ -98,7 +98,7 @@ With an argument, `current_branch` is the stripped `git symbolic-ref -q HEAD`, o
 
 ### Step 3 - Head must not be a trunk branch
 
-Compare `head_short_name` to the trunk list (case-insensitive). If it matches:
+Compare `head_short_name` to the trunk list (case-insensitive). If it matches (`<name>` is `head_short_name`):
 
 ```text
 Review target is `<name>`, a trunk branch. Nothing scoped to review against itself.
@@ -112,17 +112,17 @@ If the workflow forwarded `base`: resolve via `refs/heads/<base>`, then `refs/re
 
 Otherwise, auto-detect in order:
 
-1. `git symbolic-ref -q refs/remotes/origin/HEAD`. If it prints a ref, strip `refs/remotes/` (giving `origin/main`) and verify the result still resolves - `origin/HEAD` is set at clone time (and by `git fetch` from Git 2.48 when missing) and, under the default `remote.origin.followRemoteHEAD`, is not moved when the remote deletes its default branch, so it can point at a deleted branch. Resolved: use it; record `base_source: origin-head`. Not set, or its target no longer resolves: continue to 2.
+1. `git symbolic-ref -q refs/remotes/origin/HEAD`. If it prints a ref, strip `refs/remotes/` (giving `origin/main`) and verify the result still resolves - `origin/HEAD` is set at clone time (and by `git fetch` from Git 2.48 when missing) and, under the default `remote.origin.followRemoteHEAD`, is not moved when the remote deletes its default branch; the check catches that deletion only once `git fetch --prune` has removed the stale remote-tracking ref, which otherwise keeps resolving. Resolved: use it; record `base_source: origin-head`. Not set, or its target no longer resolves: continue to 2.
 2. Otherwise probe `main`, `master`, `develop`, `trunk`, each as `refs/heads/<name>` then `refs/remotes/origin/<name>` (a trunk whose local branch was deleted still tracks remotely). Exactly one name resolves: use it; record `base_source: trunk-fallback`. Two or more resolve: ask the user which is the base; record `base_source: user-prompted`.
 3. If none resolve, ask the user which branch is the base; record `base_source: user-prompted`.
 
-Record `base_ref` as a short name (`origin/main`, `phase-01`), never `refs/...`. When `base_source` is `trunk-fallback` or `user-prompted`, add a note naming the probe or answer that chose it.
+Record `base_ref` as a short name (`origin/main`, `phase-01`), never `refs/...`. If `base_ref` - minus its first `<remote>/` segment when it resolved under `refs/remotes/`, or its `heads/` prefix in the collision case - equals `head_short_name`, stop with `Base <base_ref> is the review target itself. Nothing to diff; pass --base <branch>.` When `base_source` is `trunk-fallback` or `user-prompted`, add a note naming the probe or answer that chose it.
 
 When auto-detect was used and `mode` is `pr-ref`, add a note reminding the user that PRs opened against a non-trunk base must pass `--base <branch>` - otherwise the diff will include unrelated commits.
 
 ### Step 5 - Confirm head vs current branch (approval gate)
 
-If `head_short_name` equals `current_branch`, set `head_matches_current: true` and skip this step. Otherwise set `head_matches_current: false` and prompt (the checkout line is `git checkout -b <head_short_name> <head_ref>` when `head_is_remote` is true and `refs/heads/<head_short_name>` does not exist):
+If `head_is_remote` is false and `head_short_name` equals `current_branch`, set `head_matches_current: true` and skip this step. Otherwise set `head_matches_current: false` and prompt (the checkout line is `git checkout <head_short_name>`; when `head_is_remote` is true it is `git checkout -b <head_short_name> <head_ref>` if `refs/heads/<head_short_name>` does not exist, else `git checkout --detach <head_ref>` - a same-named local branch may point elsewhere):
 
 ```text
 Review target: <head_short_name>
@@ -132,7 +132,7 @@ Base: <base_ref>
 The review reads git history only - no checkout is required. Your current branch and working tree are untouched.
 
 If you want to run or inspect the code locally:
-    git checkout <head_short_name>
+    <checkout line>
 
 Proceed with review of `<head_short_name>` from your current branch? [y/N]
 ```
@@ -171,7 +171,7 @@ If frontmatter is valid, emit the block in the handle (see Output Format below).
 
 ## Output Format
 
-When all preconditions pass, emit this handle as one fenced `yaml` block and nothing more. `base_ref` and `head_ref` are short names (`origin/main`, `feature/x`, `pr-42`, `heads/hotfix-1` in the tag-collision case), never `refs/...`. Omit `notes` when empty.
+When all preconditions pass, emit this handle as one fenced `yaml` block and nothing more. `base_ref` and `head_ref` are short names (`origin/main`, `feature/x`, `pr-42`, `heads/hotfix-1` in the tag-collision case), never `refs/...`. Omit `notes` when empty; every note, and the `argument`, `head_ref`, `head_short_name`, `base_ref`, and `current_branch` values, is written double-quoted, with `\"` and `\\` escaped inside (a bare `42` would parse as an integer).
 
 ```yaml
 review-target:
@@ -204,7 +204,7 @@ prior_checkpoint:                       # omitted entirely when no prior report 
   pr_url: {from prior report; omitted if absent}
 ```
 
-When a precondition fails, emit only the stop message from the relevant step. Do not emit a partial handle.
+When a precondition fails, emit only the stop output from the relevant step as plain text (for an unanswerable prompt, the prompt text followed by its cancel line; for Step 1, the message followed by the remaining porcelain lines). Do not emit a partial handle.
 
 ## Avoid
 

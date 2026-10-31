@@ -9,7 +9,7 @@ user-invocable: false
 
 # Blast Radius Analysis
 
-> Load `Use skill: stack-detect` first to determine the project stack (used to trace module dependencies; its block is not part of this deliverable).
+> Load `Use skill: stack-detect` first to determine the project stack (an input for identifying consumers of the changed code; its block is not part of this deliverable).
 
 ## When to Use
 
@@ -23,15 +23,15 @@ user-invocable: false
 - Assess code, data, and user dimensions independently. A diff carrying several unrelated changes is still one assessment: each dimension takes the highest level any change in the diff reaches, and the rationale names the change that set it (both, when two changes tie).
 - Overall classification: `Critical` when either Critical condition holds (see Overall Classification), otherwise the maximum across dimensions.
 - If a feature flag or backup materially reduces the effective radius, state both the unmitigated and mitigated levels.
-- When the consumer set cannot be enumerated (shared library or engine, callers in repos you cannot see, a third-party package whose behaviour you cannot read), classify each affected dimension at the highest level a named failure mode supports and mark that rationale `(unverified)`. Mark the Reversibility rationale `(unverified)` when the rollback path it names (backup, PITR, replay retention) is not confirmed to cover the change and is not already listed as a `required:` mitigation. "Plausible" requires a mechanism you can state in the rationale, not mere possibility; the overall line still reaches Critical only through one of its two conditions. A control proven unreachable (the value is read by no code) is not unenumerable: the dimension is `N/A`.
-- A confidentiality exposure is sized like any other failure: User Scope by whose data is exposed, Reversibility Irreversible once the data has left the system (an export, an email, a third-party copy); its severity is a security review's.
+- When the consumer set cannot be enumerated (shared library or engine, callers in repos you cannot see, a third-party package whose behaviour you cannot read), classify each affected dimension at the highest level a named failure mode supports and mark that rationale `(unverified)`. Mark the Reversibility rationale `(unverified)` when the rollback path it names (backup, PITR, replay retention) is not confirmed to cover the change and is not already listed as a `required:` mitigation; `Irreversible` names no rollback path and takes no rollback-path marker; an `(unverified)` from an unenumerable consumer set or an unwritten artifact still applies. A named failure mode requires a mechanism you can state in the rationale, not mere possibility; the overall line still reaches Critical only through one of its two conditions. A control proven unreachable (the value is read by no code) is not unenumerable: the dimension is `N/A`. An artifact the change describes but does not yet contain (an unwritten script) is assessed on its described behaviour, marked `(unverified)`.
+- A confidentiality exposure is sized like any other failure: Data Narrow (no stored value is wrong or destroyed), User Scope by whose data is exposed, Reversibility Irreversible once the data has left the system (an export, an email, a third-party copy); its severity is a security review's.
 - A contract is behavior as well as shape: changing defaults, semantics, or error behavior of a surface consumed outside the repository is a contract break for Critical purposes when existing callers relying on the documented or long-standing behavior would misbehave without a code change on their side; when those callers cannot be inspected, the break is `(unverified)` and still counts for Critical.
 
 ## Patterns
 
 ### Dimensions
 
-**Code Scope** - who directly or transitively depends on the changed code.
+**Code Scope** - who directly or transitively depends on the changed code; for a dependency bump, the code paths that call its changed surface; a one-shot script that changes no service code is Narrow (the script) and its effects are sized under Data; the level a definition yields holds only when the consumer set is known, otherwise the unenumerable-consumer rule applies.
 - Narrow: single feature, single consumer
 - Moderate: multiple features or consumers within one service
 - Wide: shared library, core module, or cross-service contract
@@ -58,14 +58,14 @@ Wide data scope on a core model implies code scope expansion across every API th
 ### Reversibility
 
 - **Recoverable** - rolled back by redeploy or schema rollback, or repairable by deterministic backfill from surviving source data
-- **Conditional** - recoverable within a window (message replay within topic retention, soft delete until the purge job runs; or, as the mitigated value, PITR retention or a recent backup)
+- **Conditional** - recoverable within a window (message replay within topic retention, soft delete until the purge job runs; or, as the mitigated value, PITR retention or a backup taken before the change runs)
 - **Irreversible** - data destruction or corruption that no redeploy, backfill source, replay, or soft delete recovers (includes mis-attributed writes with no source to backfill from), or data that has left the system; a backup or PITR moves destruction or corruption to Conditional only as a mitigation
 
 ### Mitigations
 
 A mitigation is a safeguard that changes a printed level, now or once its required action is done; a safeguard that would change no level is not a mitigation and is not listed:
-- Feature flag off: Wide code becomes Narrow until flipped - only when code reads the flag; a flag defined but never read is a `required:` mitigation until wired, and a flag only a deploy can flip (a value in code) is `in-place:` with the deploy as its rollback speed
-- A backup taken, or PITR archiving confirmed to cover the change, before it runs: Data Wide becomes Moderate and an Irreversible destruction or corruption becomes Conditional (PITR yields a clone at a timestamp to copy the old values back from - a manual repair, not a row-level undo)
+- Feature flag off: Wide code becomes Narrow until flipped, and no other dimension moves - only when code reads the flag; a flag defined but never read is a `required:` mitigation until wired, and a flag only a deploy can flip (a value in code) is `in-place:` with its safeguard text naming the deploy (`in-place: feature flag off (flip requires a deploy)`)
+- A backup taken before the change runs, or PITR confirmed to cover it (a base backup that finished before the change plus an unbroken WAL or binlog archive from the backup's start position): Data Wide becomes Moderate and an Irreversible destruction or corruption becomes Conditional (PITR yields a clone at a timestamp to copy the old values back from - a manual repair, not a row-level undo)
 - A mitigation covering one change in a multi-change diff moves only the levels that change set
 
 ## Output Format
@@ -86,20 +86,20 @@ Reversibility: {Recoverable | Conditional | Irreversible} ({1-sentence rationale
 Mitigation: {in-place: | required:} {the safeguard and, for required:, the action that makes it count}    {only when a mitigation exists}
 ```
 
-Any of the level slots may take the two-state form `{level} (unmitigated) -> {level} (with {mitigation})` described below. The overall line's parenthetical is present exactly when Critical comes from a contract break, so the reader can trace a Critical that no dimension line shows; several broken surfaces are comma-separated inside one parenthetical, with `unverified` once when any of them is. In the two-state form the parenthetical follows each Critical it explains: `Critical (unmitigated) (contract break: <surface>) -> Critical (with <mitigation>) (contract break: <surface>)`.
+Any of the level slots may take the two-state form `{level} (unmitigated) -> {level} (with {mitigation})` described below. The overall line's parenthetical is present exactly when Critical comes from a contract break, so the reader can trace a Critical that no dimension line shows; several broken surfaces are comma-separated inside one parenthetical, with `unverified` once when any of them is. In the two-state form the parenthetical follows each Critical it explains, the mitigated side listing only the breaks that survive: `Critical (unmitigated) (contract break: <surface>) -> Critical (with <mitigation>) (contract break: <surface>)`.
 
-`N/A` dimensions are skipped when taking the maximum; when every dimension is `N/A`, the overall line is `Narrow`. Read-only changes are Data: Narrow unless a downstream consumer persists the returned values. Use `N/A` only when a dimension genuinely has no path to impact (Data: N/A for a docs-only or pure copy change).
+`N/A` dimensions are skipped when taking the maximum; when every dimension is `N/A`, the overall line is `Narrow`. Read-only changes are Data: Narrow unless a downstream consumer persists wrong returned values; a confidentiality exposure stays Data Narrow (see Rules). Use `N/A` only when a dimension genuinely has no path to impact (Data: N/A for a docs-only or pure copy change).
 
 When a mitigation changes a level, write every line it changes - each affected dimension line, the Reversibility line, and the overall line - in the two-state form, so the mitigated overall value is re-derivable from the printed mitigated values (Critical-by-contract-break survives mitigation unless the mitigation removes the break). Lines the mitigation does not change stay single-state. The `Mitigation:` tag is `in-place:` (the safeguard already works) or `required:` (an action must be taken first); with several mitigations, list each with its own tag, and the line's leading tag is `required:` until every required action is done. Callers gate on the mitigated (second) value only when the leading tag is `in-place:`; on `required:`, gate on the unmitigated (first) value - the printed mitigated value states what completing the actions buys.
 
 ```
 Blast Radius: Critical (unmitigated) -> Moderate (with feature flag off and verified PITR)
 
-Code: Wide (unmitigated) -> Narrow (with feature flag off) (the new checkout path lives in the shared checkout library both storefront services import and rewrites helpers both call, all behind checkout_v2_enabled, which only the EU storefront's service turns on)
+Code: Wide (unmitigated) -> Narrow (with feature flag off) (the shared checkout library both storefronts import changes, all behind checkout_v2_enabled, which neither storefront has turned on yet and only the EU storefront is configured to enable)
 
-Data: Wide (unmitigated) -> Moderate (with verified PITR) (the backfill overwrites order totals and nothing else holds the old values; a verified PITR clone gives a copy to restore from within 7 days)
+Data: Wide (unmitigated) -> Moderate (with verified PITR) (the backfill overwrites order totals nothing else holds; a PITR clone gives a copy to restore from within 7 days)
 
-User: Moderate (EU storefront customers: checkout runs the new path, and the backfill rewrites their order totals)
+User: Moderate (EU storefront customers: checkout runs the new path once the EU storefront enables the flag, and the backfill rewrites their order totals)
 
 Reversibility: Irreversible (unmitigated) -> Conditional (with verified PITR) (restore from the clone is the only undo)
 

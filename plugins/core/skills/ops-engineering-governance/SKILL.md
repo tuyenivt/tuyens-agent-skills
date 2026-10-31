@@ -13,7 +13,7 @@ user-invocable: false
 
 - During postmortem, after root cause is identified and containment is in place
 - When converting incident lessons into enforceable guardrails or process changes
-- When reviewing guardrail effectiveness across a pattern of related incidents - the same output, where every existing control that failed to stop at least one incident in the pattern gets a `[strengthen]`, `[automate]`, `[broaden]`, or `[retire]` row naming those incidents, `Guardrails That Held` names the controls that caught or bounded one, with the incident each held on, and a control the record never shows running gets neither
+- When reviewing guardrail effectiveness across a pattern of related incidents - the same output, where every distinct failure class with an existing control that failed to stop an incident gets one `[strengthen]`, `[automate]`, or `[broaden]` row per enforcing control under the Rules' merge rule - or, for a blanket gate whose risk-scoped replacement covers the class or an ADR or runbook step the incident shows wrong, the `[retire]` row and its replacing row from the Rules - naming those incidents (a failed control is `[retire]` only when a row in the same table supersedes it, the incidents named in its `superseded by` cell), `Guardrails That Held` names the controls that caught or bounded one, with the incident each held on, and a control the record never shows running gets neither a failure row nor a `Guardrails That Held` entry, and an `obsolete` `[retire]` row only when the code shows it obsolete
 
 ## Rules
 
@@ -21,8 +21,8 @@ user-invocable: false
 - Every guardrail carries one Enforcement value from the Enforcement Tiers table (a `[retire]` row carries `remove: <step>`) and is verifiable; Manual-tier values follow the conditions in Enforcement Tiers.
 - Every process change must be actionable, assignable, and tied to a trigger condition.
 - Match the weight of the control to the risk it mitigates; prefer structural enforcement over "be careful".
-- Weigh a guardrail's cost (deploy friction, reviewer load, false positives) against the blast radius it prevents. Reshape blanket manual gates into risk-scoped automated controls instead of adopting or silently dropping them. A *proposed* gate emits one row: the reshaped guardrail, naming what it replaces in its Rule. A gate *already in force* emits the pair: a `[retire]` row for the blanket rule and a `[new]` row for its risk-scoped replacement whose Rule names the gate it replaces, when the replacement covers the class the gate was created for (its motivating incident); otherwise the gate gets a `[strengthen]` row and stays.
-- Prioritize by blast-radius reduction. The bound on the list: one row per distinct failure class the incident evidence names, plus the `[retire]` rows those rows supersede or the incident evidence or code shows obsolete; a non-retire row with no incident sentence or code fact behind it is wishlist and is cut. Two mechanisms that prevent the same class merge into one row when one control enforces both, and stay separate otherwise.
+- Weigh a guardrail's cost (deploy friction, reviewer load, false positives) against the blast radius it prevents. Reshape blanket manual gates into risk-scoped automated controls instead of adopting or silently dropping them. A *proposed* gate emits one row: the reshaped guardrail, naming what it replaces in its Rule. A gate *already in force* emits the pair: a `[retire]` row for the blanket rule and a `[new]` row for its risk-scoped replacement whose Rule names the gate it replaces, when the replacement covers the class the gate was created for (its motivating incident); otherwise the gate stays and gets a `[strengthen]` row only when the incident evidence shows it too weak; a gate kept solely for coverage emits no row and no replacement row. An ADR or runbook step the incident shows wrong is a `[retire]` row superseded by the row that replaces it and taking that row's priority, Enforcement `remove: <step>` (for an ADR the step marks it `Superseded by ADR-NNNN` and writes the new one; the record stays), Scope `code review` for an ADR and `operations` for a runbook step.
+- Prioritize by recurrence risk weighted by blast radius, per the Priority assignment under Guardrail Definition. The bound on the list: one row per enforcing control per distinct failure class the incident evidence names, plus the `[retire]` rows those rows supersede or the incident evidence or code shows obsolete; a non-retire row with no incident sentence or code fact behind it is wishlist and is cut. Two mechanisms that prevent the same class merge into one row when one control enforces both, and stay separate otherwise (a timeout and a circuit breaker set in one client wrapper are one row; a client-side timeout and a vendor contract term are two).
 - The incident record is the authority for what happened; the code and its deployment manifests are the authority for what the system does. Read the code the record names and each row's enforcement point, no further. When they disagree (the record names a call or route the code does not have, a timeline that does not add up), cite the contradiction in the row's Failure Class Prevented or the process change's Why, and classify from the code; when the code has no such path at all, classify from the nearest code-confirmed instance of the class and cite both.
 - A vendor is in scope when the trigger was theirs: contract terms (latency SLA, status webhook, escalation contact) are guardrails with scope `vendor`.
 
@@ -36,12 +36,12 @@ Prefer higher-tier enforcement. `policy-as-code` is a check that refuses a chang
 | ---------- | ------------------------------------------- | ----------- |
 | Automated  | CI gate, lint rule, policy-as-code          | High        |
 | Structural | architecture test, framework constraint     | High        |
-| Monitored  | alert, dashboard, SLO                       | Medium      |
+| Monitored  | alert, SLO (burn-rate alert)                | Medium      |
 | Manual     | checklist, review policy, contract term     | Low         |
 
 ### Guardrail Definition
 
-Each row of the Guardrails table carries: a category prefix (`[new]` no rule covers this class, or the risk-scoped replacement of a gate retired in the same table; `[strengthen]` existing rule too weak; `[automate]` manual rule needs CI enforcement; `[broaden]` rule exists but missed the affected area; `[retire]` obsolete rule to remove); the Rule (specific, enforceable constraint); Scope (one of `code review`, `CI`, `deployment`, `runtime`, `operations`, `vendor` - where the check runs: an architecture test or lint in a pipeline job is `CI`, a gate evaluated at deploy time is `deployment`); Enforcement (one value from the tiers table, plus `(automate: ...)` on a checklist or review policy; on a `[retire]` row `remove: <step>`); Failure Class Prevented (the category with the incident sentence or code fact behind it in parentheses, or on a `[retire]` row `superseded by <replacement>` / `obsolete - <reason>`); Priority.
+Each row of the Guardrails table carries: a category prefix (`[new]` no rule covers this class, or the replacement of a gate, ADR, or runbook step retired in the same table; `[strengthen]` existing rule too weak; `[automate]` manual rule needs CI enforcement; `[broaden]` rule exists but missed the affected area; `[retire]` obsolete rule to remove); the Rule (specific, enforceable constraint; on a `[retire]` row, the existing rule being removed, quoted as it stands); Scope (one of `code review`, `CI`, `deployment`, `runtime`, `operations`, `vendor` - where the check runs: an architecture test or lint in a pipeline job is `CI`, a gate evaluated at deploy time is `deployment`, an alert or SLO is `operations`); Enforcement (one value from the tiers table, plus `(automate: ...)` on a checklist or review policy; on a `[retire]` row `remove: <step>`); Failure Class Prevented (the category with the incident sentence or code fact behind it in parentheses, or on a `[retire]` row `superseded by <replacement>`, followed in a pattern review by the incidents it failed on, / `obsolete - <reason>`); Priority.
 
 Priority assignment: **immediate** - the failure class can recur now with comparable or larger blast radius; **next sprint** - recurrence partially mitigated or blast radius reduced; **quarterly** - hygiene or low blast radius. A `[retire]` row takes its replacement row's priority and takes effect once that replacement is live; an `obsolete` retire is `quarterly`. Priority tracks recurrence risk, not lead time: a contract renegotiation that closes an immediate class is `immediate` with a long lead, and the code-side rows that bound the risk meanwhile sit beside it.
 
@@ -49,23 +49,14 @@ Priority assignment: **immediate** - the failure class can recur now with compar
 
 For each process change, specify: **What** (the change), **Why** (failure class addressed), **Trigger** (when the process activates), **Owner** (role, not individual), **Priority**.
 
-When the incident's failure class is one of transaction-boundary change across services, new async/event flow, data-model change with several consumers, new external dependency, auth/authz change, or infrastructure topology change, the Process Improvements list contains a design-doc entry whose Trigger covers that class.
+When the incident's failure class is one of transaction-boundary change across services, new async/event flow, data-model change with several consumers, new external dependency, auth/authz change, or infrastructure topology change (or the fix introduces one), the Process Improvements list contains a design-doc entry whose Trigger covers that class. A Process Improvement never restates a Guardrails row; it carries what no control enforces.
 
 Bad - "be more careful with external service calls": no gate, no check that fails, no failure class, so nothing enforces it.
 
-### Good: Enforceable guardrail (a table row)
+Good - an enforceable guardrail row:
 
 ```
-| [new] Every outbound HTTP client (RestClient, RestTemplate, WebClient, Feign or @HttpExchange interface) is used only from the adapter package, whose call sites go through the breaker-decorating factory; an architecture test fails the build when any other package imports a client type or any adapter class other than the breaker-decorating factory constructs one | CI | architecture test | Cascading failure from external dependency timeout (INC-2104, INC-2291: gateway p99 9s pinned the DB pool) | immediate |
-```
-
-### Good: Specific process change (a bullet)
-
-```
-- **[Priority: next sprint]** Require a design doc for changes that modify transaction boundaries or add async flows
-  - Why: transaction boundary error across services (three incidents last quarter); review alone misses distributed-state impact
-  - Trigger: PR modifies transaction scope, adds an event publisher, or changes consumer logic
-  - Owner: tech lead for the affected module
+| [new] Every outbound HTTP client type is used only from the adapter package, whose call sites go through the breaker-decorating factory; an architecture test fails the build when any other package imports a client type, or when any class other than that factory calls a client factory or builder or declares a client interface outside the adapter package | CI | architecture test | Cascading failure from external dependency timeout (INC-2104, INC-2291: gateway p99 9s pinned the DB pool) | immediate |
 ```
 
 ## Output Format
@@ -79,7 +70,7 @@ Consuming workflow skills parse this structure to surface actionable, prioritize
 
 | Rule | Scope | Enforcement | Failure Class Prevented | Priority |
 | ---- | ----- | ----------- | ----------------------- | -------- |
-| {[new] \| [strengthen] \| [automate] \| [broaden] \| [retire]} {specific enforceable constraint} | {code review \| CI \| deployment \| runtime \| operations \| vendor} | {CI gate \| lint rule \| policy-as-code \| architecture test \| framework constraint \| alert \| dashboard \| SLO \| checklist (automate: ...) \| review policy (automate: ...) \| contract term \| remove: <step>} | {failure category (incident sentence or code fact), or `superseded by <replacement>` / `obsolete - <reason>` on a retire row} | {immediate \| next sprint \| quarterly} |
+| {[new] \| [strengthen] \| [automate] \| [broaden] \| [retire]} {specific enforceable constraint; on a [retire] row, the existing rule being removed, quoted} | {code review \| CI \| deployment \| runtime \| operations \| vendor} | {CI gate \| lint rule \| policy-as-code \| architecture test \| framework constraint \| alert \| SLO \| checklist (automate: ...) \| review policy (automate: ...) \| contract term \| remove: <step>} | {failure category (incident sentence or code fact), or `superseded by <replacement>`{; failed on <incidents>} / `obsolete - <reason>` on a retire row} | {immediate \| next sprint \| quarterly} |
 
 ### Process Improvements                         {when at least one entry}
 
@@ -99,5 +90,4 @@ Consuming workflow skills parse this structure to surface actionable, prioritize
 
 ## Avoid
 
-- Adding guardrails without retiring the obsolete ones they make redundant.
 - Architectural rewrites when a targeted control closes the class.
