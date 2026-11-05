@@ -20,12 +20,13 @@ user-invocable: false
 
 - Every job idempotent - check state before mutating
 - Pass IDs only - never AR objects, request context, or payloads > 1 KB
-- Enqueue after the DB transaction commits - inside `Model.transaction` only when `Sidekiq.transactional_push!` or Active Job's `enqueue_after_transaction_commit` defers it (`rails-transaction-patterns`)
+- Enqueue after the DB transaction commits - inside `Model.transaction` only when `Sidekiq.transactional_push!` (single pushes only; `push_bulk` / `perform_bulk` are never deferred) or Active Job's `enqueue_after_transaction_commit` defers it (`rails-transaction-patterns`)
 - No HTTP / S3 / Redis inside `Model.transaction` - holds row locks for the network round-trip
 - Rescue known errors; let unknown propagate to Sidekiq retry
 - Cap `perform` at ~5 min; longer jobs split, fan out, or run as an Active Job with Continuations (steps + cursor - Graceful Shutdown)
 - The process's total threads - `concurrency` plus every capsule's `:concurrency:` - never exceed its DB `max_connections` (`pool` before 8.1; `RAILS_MAX_THREADS`), since each thread checks out its own connection - `rails-connection-pool-sizing`
 - Bulk jobs bypass per-row callbacks (`update_all`) or budget for them - an `after_commit` enqueue per row turns one job into N
+- Removing or renaming a job class is staged across deploys, because a process raises `NameError` on every attempt at a class name it lacks - an old pod during a rolling deploy as much as new code facing an old entry: a new name ships one deploy before anything enqueues it; an old name stops being enqueued (schedule entries included) and keeps its class (a no-op `perform` once its work no longer matters) until the queue, retry and scheduled sets hold none of it, and only then is deleted
 
 ## Patterns
 
@@ -73,7 +74,7 @@ end
 
 Give every `until_executed` lock a `lock_ttl` - a worker killed without the graceful path (OOM, SIGKILL) orphans the lock, blocking enqueues for those args until the gem's reaper (default every 10 min) or the TTL clears it. Size the TTL above worst-case runtime plus retry window. For mutual exclusion under load use `while_executing` with `on_conflict: :reschedule` (a server strategy - this lock takes no client lock; it re-enqueues via `perform_in(5, ...)` without touching the retry counter) rather than a hand-rolled rescue-and-`perform_in`.
 
-A cron-fired job takes its period from the fire time: a sidekiq-cron entry's `args:` are static, so set `date_as_argument: true` (appends the fire epoch) and derive the period from it, or have the CronJob / rake enqueuer pass it (`perform_async(Date.yesterday.iso8601)`); computed inside `perform` or as a default argument, a retry after midnight processes the wrong day. One scheduler owns each job - sidekiq-cron or the CronJob / rake enqueuer, never both; two schedulers fire it twice per period.
+A cron-fired job takes its period from the fire time: a sidekiq-cron entry's `args:` are static, so set `date_as_argument: true` (appends the enqueue time as a Float epoch, `Time.now.to_f`, moments after the tick) and derive the period from it, or have the CronJob / rake enqueuer pass it (`perform_async(Date.yesterday.iso8601)`); computed inside `perform` or as a default argument, a retry after midnight processes the wrong day. One scheduler owns each job - sidekiq-cron or the CronJob / rake enqueuer, never both; two schedulers fire it twice per period.
 
 ### Post-Commit Dispatch
 
@@ -125,8 +126,7 @@ class ImportDataJob
   sidekiq_retry_in do |count, exception|
     case exception
     when ExternalApi::RateLimitError then (exception.retry_after || 60 * (count + 1)) + rand(10)
-    else (count ** 4) + 15 + (rand(10) * (count + 1))
-    end
+    end   # nil keeps the default, count**4 + 15; Sidekiq adds rand(10 * (count + 1)) to every delay - under 10 s on a first retry, so jobs released by one reset get their own term
   end
 
   def perform(id)
@@ -165,7 +165,7 @@ On deploy the supervisor - systemd, the k8s kubelet, the dyno manager - sends `S
 
 ### Fan-out and Fan-in
 
-Open-source Sidekiq has no Batches, so a completion step is yours: the parent seeds a counter (`INCRBY run:<id>:remaining N` with a TTL past the deadline) and enqueues the children with `push_bulk`; each child runs `DECR` after its idempotent write and enqueues the finalizer when it reads 0. A crash between the `DECR` and the end of `perform` decrements twice on retry, so the counter only *triggers* the finalizer: it re-checks the source (every row's output exists) before marking the run done, and a sweep at the deadline catches a counter that never reaches zero. A heavy or rate-limited child class runs in its own capsule:
+Open-source Sidekiq has no Batches, so a completion step is yours: the parent seeds a counter (`INCRBY run:<id>:remaining N` with a TTL past the deadline) and enqueues the children with `push_bulk`; each child runs `DECR` after its idempotent write and enqueues the finalizer when it reads 0. A crash between the `DECR` and the end of `perform` decrements twice on retry, so the counter only *triggers* the finalizer: it re-checks the source (every row's output exists) before marking the run done, and a sweep at the deadline catches a counter that never reaches zero. Size a child as an id range (`first_id`, `last_id`) that finishes far inside the ~5 min cap, so a failure retries only its range - not one job per row at six figures of rows. A heavy or rate-limited child class runs in its own capsule:
 
 ```yaml
 # config/sidekiq.yml - capsules cap concurrency per queue; a weight alone does not
@@ -194,10 +194,10 @@ ProcessOrderJob.perform_async(order.id, ProcessOrderJob::CURRENT_VERSION)
 
 ## Output Format
 
-One block per concrete job class in the read set (an abstract base such as `ApplicationJob` gets none - its settings appear in each child's `Retry`); fan-out designs emit one per job. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to add code, or to change code the request does not ask you to judge, is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. A request that names existing code to assess, even when it also asks for the fix, is review mode.
+One block per concrete job class in the read set (an abstract base such as `ApplicationJob` gets none - its settings appear in each child's `Retry`); fan-out designs emit one per job, and a renamed class is one block keyed on the new name, naming the old. In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (the work runs inline in a request or callback, with no job class) gets a block for the job the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to add code, or to change code the request does not ask you to judge, is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. A request that names existing code to assess, even when it also asks for the fix, is review mode.
 
 ```
-Job: {class name}
+Job: {class name | <new name> (renamed from <old name>) | <name> (proposed)}
 
 Queue: {critical | default | mailers | low | custom - name the isolation: a dedicated process (`-q x -c N`) or a Sidekiq 7+ capsule; a weight alone caps nothing | shared weighted pool, no isolation - GAP when the job is heavy (minutes per run) or rate-limited | queue no process consumes - GAP}
 
@@ -209,7 +209,7 @@ Arguments: {names and types - IDs only; flag any mismatch between `perform`'s ar
 
 Idempotency: {state check | natural (recompute from source) | external idempotency key forwarded | monotonic guard (updated_at) | sidekiq-unique-jobs lock: <until_executed | while_executing | until_and_while_executing> + lock_ttl | limits_concurrency key + to + duration (Solid Queue; on_conflict :block = exclusion, :discard = dedup) | Redis SET NX fence | none - GAP on an at-least-once path - list all that apply}
 
-Retry: {count and backoff; channel: `sidekiq_options retry:` + `sidekiq_retry_in` | ActiveJob `retry_on` | rescue-and-`perform_in` - GAP (resets the counter) | rescue swallows, nothing retries - GAP | two channels for one class - GAP (`retry: 0` beside `retry_on` is one channel) | two channels plus an inner rescue of the same class - GAP (the rescue wins; keep `retry_on` on an Active Job class) | inherited from ApplicationJob (`retry_on` there; on the Sidekiq adapter plus Sidekiq's own 25 unless `retry: 0`, on Solid Queue nothing else) - state both | `retry: 25` (the default) on a non-idempotent side effect - GAP (bound it)}
+Retry: {count and backoff; channel: `sidekiq_options retry:` + `sidekiq_retry_in` | ActiveJob `retry_on` | rescue-and-`perform_in` - GAP (resets the counter) | rescue swallows, nothing retries - GAP | two channels for one class - GAP (`retry: 0` beside `retry_on` is one channel) | two channels plus an inner rescue of the same class - GAP (the rescue wins; keep `retry_on` on an Active Job class) | inherited from ApplicationJob (`retry_on` there; on the Sidekiq adapter plus Sidekiq's own 25 unless `retry: 0`, on Solid Queue nothing else) - state both | inherited, `ApplicationJob` outside the read set - its settings not in evidence | `retry: 25` (the default) on a non-idempotent side effect - GAP (bound it)}
 
 Dead-letter: {dead set + alerting on its size | solid_queue_failed_executions + failed-count alert (Solid Queue) | sidekiq_retries_exhausted hook, or a retry_on exhaustion block (Active Job) | dead set or failed executions, no alerting - GAP (the alert config is in the read set and silent) | dead set or failed executions, alerting not in evidence (its config is outside the read set) | dead set on first failure (`retry: 0`, `dead` left true) | unreachable - perform swallows every error - GAP | none - GAP (retry: false or dead: false)}
 
@@ -217,7 +217,7 @@ Shutdown safety: {checkpointed per chunk - re-run resumes | continuable - `Activ
 
 Dispatch: {post-commit | after_all_transactions_commit / after_commit_everywhere | model after_commit | cron/scheduler | rake task | parent job | not in evidence (call site outside the read set) | perform_later inside a transaction - GAP unless enqueue_after_transaction_commit defers it (rails-transaction-patterns) | perform_async inside a transaction - GAP unless Sidekiq.transactional_push! is on (rails-transaction-patterns)}
 
-Versioning: {args carry a version (CURRENT_VERSION) | n/a - the arg contract is unchanged | none - GAP (the contract changes under queued jobs)}
+Versioning: {args carry a version (CURRENT_VERSION) | n/a - the arg contract is unchanged | none - GAP (the contract changes under queued jobs) | class kept until the queue, retry and scheduled sets drain, a new name deployed before anything enqueues it (a removal or rename - name the check) | class removed or renamed under queued jobs - GAP | new name enqueued in the deploy that introduces it - GAP (old pods raise `NameError`)}
 ```
 
 ## Avoid

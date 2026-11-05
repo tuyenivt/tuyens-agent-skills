@@ -62,7 +62,7 @@ class ShipperClient
       req.headers["Idempotency-Key"] = idempotency_key
       req.body = { order_id: order_id }
     end
-    response.body
+    response.body.is_a?(Hash) ? response.body : raise(TransientError, "non-JSON 2xx")   # a captive portal or WAF page: :json skipped it
   rescue Faraday::ConnectionFailed, Faraday::TimeoutError, Faraday::SSLError => e
     raise TransientError, e.message
   rescue Faraday::ClientError => e
@@ -84,7 +84,7 @@ class ShipperClient
       f.request  :authorization, "Bearer", token
       f.response :raise_error
       f.response :json, content_type: /\bjson$/
-      f.request  :instrumentation          # the subscriber under Logging; :logger prints the full URL, query string included
+      f.request  :instrumentation          # the subscriber under Logging; :logger prints the full URL and, by default, the Authorization header
       f.options.open_timeout = 2
       f.options.timeout      = 5
       f.adapter Faraday.default_adapter
@@ -117,6 +117,8 @@ class ShipperClient
 end
 ```
 
+A 2xx whose `Content-Type` is not JSON (a captive portal, a WAF page) passes `:raise_error` and skips `:json`, so `response.body` is a `String`: the client checks the type it promised and raises `TransientError`, as `create_shipment` does, instead of handing HTML to the caller.
+
 Expiring tokens (OAuth, 12h bearers): the client owns the refresh - cache the token in `Rails.cache` (TTL slightly under its lifetime, shared so every process and pod refreshes once, not once per worker), and on 401 refresh once and retry once before raising `AuthError`. A 401 is only *permanent* after a fresh token also failed.
 
 One client serving both web and Sidekiq callers keeps the connection default at the web budget and overrides per call (`req.options.timeout = 15`) on job-path operations - don't build two clients.
@@ -146,9 +148,11 @@ Rescuing `Faraday::Error` in a service couples business logic to the transport. 
 | `open_timeout` | 60s (net_http) | 1-2s  | TCP connect + TLS - slow connect signals dead host |
 | `timeout`      | 60s (net_http) | 3-10s | Faraday resolves it as `read_timeout \|\| timeout` (likewise write, and connect when `open_timeout` is unset), so it bounds each socket operation, **not** the whole call |
 
+The Recommended column is a starting range, not a limit. Derive `timeout` per dependency: above its p99 for a *successful* call (a payment authorization legitimately runs for seconds; a timeout below that fails real transactions and leaves their outcome unknown) and below what the caller has left - the request budget on the web path, the job's runtime budget in a job. When no value satisfies both, the call does not belong on that path.
+
 Faraday sets no timeout of its own; the adapter's default applies, and `net_http` (the default adapter) uses 60s for open, read and write. So "no timeout configured" means 60s per operation, not infinite - and because `timeout` is per-read, a response that drips bytes can outlive it many times over. A true wall-clock cap needs `rack-timeout` on the web path or an explicit deadline around the call.
 
-Web request path: attempts x (`open_timeout` + `timeout`) plus backoff is the minimum budget (`timeout` is per socket read, so a dripping response runs past it), and it stays under the request timeout - `max: 2` with `timeout 5` is 15 s and more, so a web-path call gets one attempt or shorter timeouts; push longer work to Sidekiq. Sidekiq path: 10-30s is fine *when nothing downstream is waiting* - but a client called from a bounded worker pool during a multi-minute brownout should keep the web-path tightness, because per-thread stall time is what exhausts the pool. Size it against the pool, then let the circuit breaker carry the rest.
+Web request path: attempts x (`open_timeout` + `timeout`) plus backoff is the minimum budget (`timeout` is per socket read, so a dripping response runs past it), and it stays under the request timeout - `max: 2` with `open_timeout 2` / `timeout 5` is 21 s plus backoff, so a web-path call gets one attempt or shorter timeouts; push longer work to Sidekiq. Sidekiq path: 10-30s is fine *when nothing downstream is waiting* - but a client called from a bounded worker pool during a multi-minute brownout should keep the web-path tightness, because per-thread stall time is what exhausts the pool. Size it against the pool, then let the circuit breaker carry the rest.
 
 ### Middleware Order
 
@@ -157,7 +161,7 @@ Request middleware runs top-down, response bottom-up (last-registered response m
 - Registering `:json` (response) before `:raise_error` -> `raise_error` runs first and the raised error carries an unparsed body. Register `:raise_error` above `:json`, as in the client above.
 - Registering `:retry` *above* `:raise_error` -> `raise_error` converts the 5xx before `:retry` can see it, so every `retry_statuses` entry is dead. `:retry` must sit closer to the adapter than `:raise_error`. This is the ordering footgun that silently disables the retry config below.
 - `:json` (request) skips `JSON.generate` for a `String` body but still sets `Content-Type: application/json` - so a pre-serialized string is sent as-is, and a non-JSON string is silently mislabelled. Pass hashes.
-- `:logger` in production -> its request line prints the full URL (query-string tokens included), and `bodies: true` leaks payload PII; log through the instrumentation subscriber instead.
+- `:logger` in production -> its request line prints the full URL (query-string tokens included), its default `headers: true` prints the `Authorization` bearer token, and `bodies: true` leaks payload PII; log through the instrumentation subscriber instead.
 
 ### Retry Strategy
 
@@ -176,9 +180,9 @@ f.request :retry,
 
 `exceptions:` **replaces** the gem's default list rather than adding to it, and `Faraday::RetriableResponse` must stay in it: that is the class faraday-retry raises internally to signal a `retry_statuses` hit, and it converts it back to a response only in its own rescue. Omit it and a 429 or 503 escapes the middleware as `Faraday::RetriableResponse`, which the `ClientError`/`ServerError` rescues skip and the `Faraday::Error` catch-all turns into `PermanentError` - Sidekiq then stops retrying a retryable status.
 
-`retry_if` opts `POST` back in only when `Idempotency-Key` is present - required for Stripe-style APIs. `max:` counts retries, not attempts (`max: 2` is three attempts).
+`retry_if` opts `POST` back in only when `Idempotency-Key` is present - required for Stripe-style APIs. A vendor with no idempotency key gets no automatic `POST` retry at any layer: the job's re-attempt reads back by the reference the first attempt sent and re-sends only when nothing is found. `max:` counts retries, not attempts (`max: 2` is three attempts).
 
-Hard quotas (60/min per token) need proactive throttling before any retry logic: a Redis token bucket shared by every process (`rails-work-splitter-patterns`) or a low-concurrency queue, sized per key at the documented quota minus every other consumer's share (a nightly sync on the same key counts). `Retry-After` on 429: faraday-retry sleeps the header value in-process, capped by `max_interval` (default `Float::MAX` - set it, or a Puma thread sleeps for minutes). Past the cap it stops retrying and returns the 429, which `:raise_error` and `translate` then turn into `RateLimitError` for Sidekiq to reschedule. Make the seconds machine-readable - `translate` parses the header into the error (`RateLimitError.new(retry_after: ...)`), and `sidekiq_retry_in` returns `exception.retry_after` plus jitter (`+ rand(10)`) so recovering jobs don't re-herd. The header is often absent, so the reader falls back rather than trusting it: `(exception.respond_to?(:retry_after) && exception.retry_after) || 60 * (count + 1)`, as `rails-sidekiq-patterns` does - a bare `exception.retry_after` raises `NoMethodError` for every other `TransientError`, and Sidekiq then logs the handler failure and uses its default backoff. Reactive 429 handling alone herds.
+Hard quotas (60/min per token) need proactive throttling before any retry logic: a Redis token bucket shared by every process (`rails-work-splitter-patterns`) or a low-concurrency queue, sized per key at the documented quota minus every other consumer's share (a nightly sync on the same key counts). `Retry-After` on 429: faraday-retry sleeps the header value in-process, capped by `max_interval` (default `Float::MAX` - set it, or a Puma thread sleeps for minutes). Past the cap it stops retrying and returns the 429, which `:raise_error` and `translate` then turn into `RateLimitError` for Sidekiq to reschedule. Make the seconds machine-readable - `translate` parses the header into the error (`RateLimitError.new(retry_after: ...)`), and `sidekiq_retry_in` returns the header's delay plus its own random term, `((exception.respond_to?(:retry_after) && exception.retry_after) || 60 * (count + 1)) + rand(10)` (Sidekiq's own `rand(10 * (count + 1))` jitter spreads a first retry over under 10 s, too narrow for jobs released by one reset). The header is often absent, so the reader falls back rather than trusting it, as `rails-sidekiq-patterns` does - a bare `exception.retry_after` raises `NoMethodError` for every other `TransientError`, and Sidekiq then logs the handler failure and uses its default backoff. On an Active Job class `retry_on`'s `wait:` proc receives only the execution count, so the header is honoured with `rescue_from(RateLimitError) { |e| executions < 8 ? retry_job(wait: (e.retry_after || 60) + rand(10)) : raise(e) }`. Reactive 429 handling alone herds.
 
 | Layer             | Count | Backoff       | When                                            |
 | ----------------- | ----- | ------------- | ----------------------------------------------- |
@@ -208,7 +212,7 @@ end
 
 Without that rescue (or a fallback) an open circuit raises `Stoplight::Error::RedLight`, a class outside the taxonomy that callers rescuing `TransientError`/`PermanentError` will not catch. The translation runs *inside* the `run` block (wrap the translating method, not the bare `@connection.post`), so nothing leaves untranslated and `skipped_errors:` can name the permanent side - Stoplight counts every `StandardError` otherwise, and five bad payloads open the circuit.
 
-Use when synchronous on the request path (outages cascade into Puma worker exhaustion), volume >10 req/s sustained, upstream has documented SLOs, or a hard quota is shared with a batch consumer. Low-volume background work doesn't need one.
+Any one of these warrants a breaker: the call is synchronous on the request path (outages cascade into Puma worker exhaustion); volume is above 10 req/s sustained; the upstream has documented SLOs; or a hard quota is shared with a batch consumer. With none of them - low-volume background work against one upstream - the slot is `none (justified)`, naming what is absent. A job that sweeps many hosts takes none either: a dead host costs a full timeout on every run, so the failure is recorded on the host's row (`unreachable_until`, backed off) and the sweep's query skips it - state the sweep already reads, where a light's default in-memory store is per process and gone on every deploy.
 
 Two decisions the breaker forces on the caller:
 
@@ -260,7 +264,7 @@ end
 
 ## Output Format
 
-In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. One block per client class; when methods differ in retry or breaker posture, `Retry:` and `Circuit breaker:` name the method. A vendor SDK client (Stripe) fills `Base URL:` and `Timeouts:` from the SDK's configuration and `n/a` where the SDK owns them. A call site that bypasses the client class (`Faraday.get` in a service, an SDK called from a service while the client exists) is a finding against Rule 5.
+In review or diagnosis mode, numbered findings precede the blocks, each citing the violated rule or pattern and `file:line`; the consuming workflow owns the finding envelope, and invoked standalone, order `[Must]` first and label each finding `[Must]` when it risks incorrect behaviour, data loss, or a security hole, `[Recommend]` otherwise. Every block field holds the corrected value, except a field the reviewed code violates: it holds `<observed> - GAP -> <corrected>` (`none - GAP -> <corrected>` when the code has nothing there), and when the enum value that matches already carries a `GAP`, `FIX` or `BLOCKER` marker in any spelling (` - GAP`, `(GAP)`, `(FIX)`, `(BLOCKER)`, a trailing parenthetical included), that value is the observed half and ` -> <corrected>` follows it. The marker applies to every field, whether or not its enum lists a `GAP` value; a field whose value is several named or `+`-joined parts marks only the violated part. A violation that belongs to no block - process or deploy config, a schema defect, a sibling skill's concern, a bug seen in passing - is a numbered finding with no block, naming the file and, for a sibling's concern, the owning skill. A violation whose block unit the code lacks (no client class, no transaction, no channel class) gets a block for the unit the fix introduces, its name suffixed `(proposed)`. When the request's premise or a document contradicts the code or schema, the code wins: say so in a finding and proceed on what the code shows. A request to design or change code is build mode: every block field holds the corrected value and no GAP marker (an enum value's own marker is dropped), and a pre-existing violation the change touches is still a numbered finding. One block per client class; when methods or caller paths differ in retry or breaker posture, `Retry:` and `Circuit breaker:` name each. A vendor SDK client (Stripe) fills `Base URL:` and `Timeouts:` from the SDK's configuration and `n/a` where the SDK owns them. A call site that bypasses the client class (`Faraday.get` in a service, an SDK called from a service while the client exists) is a finding against Rule 5.
 
 The job backend comes from the Gemfile (`sidekiq` or `solid_queue`), not from stack-detect. An Active Job class (`ApplicationJob`, any backend) retries through `retry_on` / `discard_on` and enqueues with `perform_later`; a `Sidekiq::Job` retries through `sidekiq_options retry:` + `sidekiq_retry_in` and enqueues with `perform_async`. A slot named for Sidekiq (`Sidekiq retry`, `sidekiq only`) takes the channel of whichever backend runs the job. A `rescue` inside `perform` for a class the retry channel owns wins and silently disables that retry - one channel per class.
 
@@ -269,23 +273,23 @@ Client: {ClassName}
 
 Base URL: {url}
 
-Auth: {Bearer | API key header | OAuth (refresh: cached TTL + once-on-401) | credentials in query string - GAP | none - public endpoint (cite the doc) or trusted network (say which) | none - GAP (neither documented)}
+Auth: {Bearer | API key header | OAuth (refresh: cached TTL + once-on-401) | OAuth token with no refresh - GAP | credentials in query string - GAP | none - public endpoint (cite the doc) or trusted network (say which) | none - GAP (neither documented)}
 
 Timeouts: open={Ns}, read={Ns} (+ per-call overrides for job-path ops); wall-clock cap: {rack-timeout | explicit deadline | none - a slow-drip response is unbounded}
 
 Called inside a transaction: {No | Yes - BLOCKER, name the transaction | not in evidence - callers outside the read set}
 
-Retry: {faraday | retriable | sidekiq only (job path, stated) | none | stacked - GAP | gem absent - GAP} (one entry per method when methods differ: `charge: faraday ...; capture: sidekiq only`), max={N}, backoff={strategy}, order={:retry below :raise_error | above - dead (GAP) | :retry with no :raise_error - retry_statuses honoured, the exhausted status returns as a plain response (GAP when the caller does not branch on it) | n/a}
+Retry: {faraday | retriable | sidekiq only (job path, stated) | none | stacked - GAP | gem absent - GAP} (one entry per method or caller path when they differ: `charge: faraday ...; capture: sidekiq only`, `web: none; job: sidekiq only`; `none` is a call nothing re-attempts - a one-attempt web path, a sweep its schedule re-runs), max={N | n/a}, backoff={strategy | n/a}, order={:retry below :raise_error | above - dead (GAP) | :retry with no :raise_error - retry_statuses honoured, the exhausted status returns as a plain response (GAP when the caller does not branch on it) | n/a}
 
 Rate budget: {none | Redis token bucket shared across processes | low-concurrency queue | n/a - no hard quota}
 
-Idempotency: {how POST/PATCH replay safety is achieved}
+Idempotency: {how POST/PATCH replay safety is achieved; the key's derivation is `rails-service-objects`' rule}
 
 Error taxonomy: {domain error classes}
 
 Circuit breaker: {none (justified) | Stoplight threshold/cool-off; skipped errors: permanent 4xx | all StandardError counted - GAP; open-circuit fallback per call site | gem absent - GAP}
 
-Logging: {instrumentation subscriber - host, path, status, duration, request id; bodies off | instrumentation subscriber, request id not propagated outbound - GAP | :logger middleware - full URL in logs (GAP) | bodies: true - GAP | none - GAP}
+Logging: {instrumentation subscriber - host, path, status, duration, request id; bodies off | instrumentation subscriber, request id not propagated outbound - GAP | :logger middleware - full URL and Authorization header in logs (GAP) | bodies: true - GAP | a credential or token in a log line - GAP | none - GAP}
 
 Tests: {WebMock unit | VCR cassettes | both - file paths | none or live HTTP - GAP (spec/ read, nothing stubs the host) | not in evidence (spec/ outside the read set)}
 ```
@@ -293,5 +297,5 @@ Tests: {WebMock unit | VCR cassettes | both - file paths | none or live HTTP - G
 ## Avoid
 
 - Stacking retry layers (Faraday + Retriable + Sidekiq) - wait times compound unpredictably
-- Circuit breakers on every integration - reserve for high-volume request-path calls
+- Circuit breakers on every integration - a low-volume background call to one upstream needs none
 - Retrying a 4xx outside the retryable set (408, 425, 429, and the conditional 409 / 401 / 412 / 423 cases)
