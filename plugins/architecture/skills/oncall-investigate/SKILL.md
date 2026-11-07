@@ -79,7 +79,7 @@ Synthesize what comes back into the `Evidence` bullets with its source named; do
 
 Where a row names `log-analysis`, hand it the failure window or a held log/trace/issue URL (its required inputs), plus the affected service, which it needs to fetch a `log_window`, and any request ID; fold what it returns into this report: its Key Evidence and Healthy vs Unhealthy deltas into `Evidence`, its trigger, amplifier and causal chain into `Root Finding`, its Log Gaps into `Remaining Uncertainty`.
 
-Some evidence these rows call for lives outside all six capabilities - DB state, role and entitlement records, flag assignments, migration history. Read those from the systems that hold them, or mark the check `Not run` per the Rules.
+Some evidence these rows call for lives outside all seven capabilities - DB state, role and entitlement records, flag assignments, migration history. Read those from the systems that hold them, or mark the check `Not run` per the Rules.
 
 | Type                    | Capabilities                              | Primary evidence                                                                                |
 | ----------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------- |

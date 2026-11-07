@@ -1,9 +1,9 @@
 ---
 name: ops-observability-fetch
-description: Fetch oncall evidence - issues, metrics, logs, traces, deploys, monitors - via observability MCPs. Normalizes into blocks; falls back to paste-mode.
+description: Fetch oncall evidence - issues, metrics, logs, traces, deploys, monitors, security signals - via observability MCPs; blocks, paste fallback.
 metadata:
   category: ops
-  tags: [oncall, observability, evidence, mcp, sentry, datadog]
+  tags: [oncall, observability, evidence, mcp, sentry, datadog, security]
 user-invocable: false
 ---
 
@@ -16,17 +16,20 @@ Transport-agnostic evidence gathering for oncall workflows. Detects available MC
 | Capability      | Emits block     | Inputs                              | URL pattern (auto-fetch trigger)                                                          |
 | --------------- | --------------- | ----------------------------------- | ----------------------------------------------------------------------------------------- |
 | `fetch_issue`   | `error_event`   | issue ID or URL                     | a Sentry issue path `/issues/{numeric id}` on `{org}.sentry.io` or `sentry.io/organizations/{org}/...`, or the regional API forms `us.sentry.io/api/0/organizations/{org}/issues/{id}/` and org-less `us.sentry.io/api/0/issues/{id}/` (also `de.`) |
-| `fetch_monitor` | `monitor_state` | monitor ID or URL                   | a Datadog `/monitors/{id}` path on any site host                                          |
+| `fetch_monitor` | `monitor_state` | monitor ID or URL                   | a Datadog `/monitors/{id}` path on any site host; `group`, `from_ts`, `to_ts` and `event_id` query parameters, present on notification links, are parsed into `Group`, `Window` and `Event` |
+| `fetch_signal`  | `security_signal` | signal ID or URL                  | a Datadog `/security` path on any site host (the Signals explorers `/security/siem/signals` and `/security/appsec/signals` included) whose query string carries `event={signal id}` |
 | `fetch_trace`   | `trace`         | trace ID or URL                     | a Datadog `/apm/trace/{id}` path on any Datadog site host, or a trace path on a host the project's `## Observability` section names for tracing |
 | `query_logs`    | `log_window`    | service, window, filters / corr. ID | a Datadog `/logs?query=...&from_ts=...&to_ts=...` path (extract query + window)            |
 | `query_metrics` | `metric_series` | metric name(s), window, filters     | none - metrics require a named metric                                                      |
 | `list_deploys`  | `deploy_event`  | service(s), window                  | none                                                                                       |
 
-**Host forms.** Datadog sites vary by region and several carry no `app.` label - `app.datadoghq.com`, `app.datadoghq.eu`, `us3`, `us5`, `ap1`, `ap2` under `.datadoghq.com`, and `app.ddog-gov.com`, plus custom org sub-domains on the same site domains. Sentry's browser-facing issue URLs are `{org}.sentry.io/...` or `sentry.io/organizations/{org}/...`; its regional `us.` and `de.` hosts are API domains: `/api/0/organizations/{org}/issues/{id}/` carries the org and the deprecated `/api/0/issues/{id}/` does not - treat both as valid, and for the org-less form ask for the org slug as for a short ID.
+**Host forms.** Datadog sites vary by region and several carry no `app.` label - `app.datadoghq.com`, `app.datadoghq.eu`, `us3`, `us5`, `ap1`, `ap2` under `.datadoghq.com`, and `app.ddog-gov.com` and `us2.ddog-gov.com`, plus custom org sub-domains on the same site domains. Sentry's browser-facing issue URLs are `{org}.sentry.io/...` or `sentry.io/organizations/{org}/...`; its regional `us.` and `de.` hosts are API domains: `/api/0/organizations/{org}/issues/{id}/` carries the org and the deprecated `/api/0/issues/{id}/` does not - treat both as valid, and for the org-less form ask for the org slug as for a short ID.
 
 Match on host and path together: path alone would claim `/issues/{id}` URLs belonging to GitLab, Jira and every internal tracker. For self-hosted Sentry, which can live on any hostname, take the whole Sentry path shape (`/organizations/{org}/issues/{id}`) as the signal: emit the block with `Tool:` omitted; when a Sentry transport serves it, write `Tool: sentry` and ask no vendor question; otherwise close it with `Paste prompt (no transport):` and add a trailing `Question:` confirming the vendor. A URL that matches a path shape but fails the host test (a tracker's `/issues/{id}`) gets a `Note:` and no block. Datadog is SaaS-only and has no self-hosted form.
 
 **Sentry short IDs** (`PROJ-123`, `FRONTEND-3D` - the uppercased project slug, which may itself contain hyphens, plus an alphanumeric suffix) already encode the project, so only the org slug is missing. With no URL to carry it, take the org slug from the project's `## Observability` section; where that is absent too, emit the block unavailable, ask for the slug in the trailing notes, and fetch once answered.
+
+**Signal IDs** are opaque strings that name no vendor: a bare one takes `Tool:` from the transport that serves `fetch_signal` when exactly one does, else from the project's `## Observability` section; where neither names it, emit the block unavailable closed by `Needs: vendor`, ask the vendor in a trailing `Question:`, and fetch once answered.
 
 **Dashboard URLs** (`*/dashboard/*`, Grafana's `/d/{uid}/...`) are never auto-fetched - they aggregate many tiles. A dashboard URL anchors no block on its own: ask which metric or panel in the trailing notes and emit the resulting `metric_series` once answered; its time range, when the URL carries one, fills that block's `Window`. Where the consumer separately asked for `metric_series`, that request still gets its block, unavailable with `Needs:` naming what is still missing (metric name, window); when the consumer already named the metric, the dashboard URL contributes only its time range (where it carries one and no window was given) and otherwise becomes a `Note:`.
 
@@ -44,7 +47,7 @@ Match on host and path together: path alone would claim `/issues/{id}` URLs belo
 
 ## Transport Detection
 
-Read the available MCP tool names and match them to capabilities by what they do, not by a fixed name. The namespace segment is the user's own server key in their MCP config (`sentry-remote`, `dd`, `obs`), so a prefix like `mcp__sentry__*` is a hint, never a test - a correctly installed server under another key must still be found. Tool names differ by vendor: Sentry exposes issue lookups such as `find_issues` and `get_issue_details`; Honeycomb exposes `run_query` and `list_datasets`; Grafana exposes `query_prometheus` and `query_loki_logs`. Map whatever exists onto the six capabilities.
+Read the available MCP tool names and match them to capabilities by what they do, not by a fixed name. The namespace segment is the user's own server key in their MCP config (`sentry-remote`, `dd`, `obs`), so a prefix like `mcp__sentry__*` is a hint, never a test - a correctly installed server under another key must still be found. Tool names differ by vendor: Sentry exposes issue lookups such as `search_issues` and `get_issue_details`; Honeycomb exposes `run_query` and `list_datasets`; Grafana exposes `query_prometheus` and `query_loki_logs`. Map whatever exists onto the seven capabilities. Datadog's MCP server exposes security signal search and per-signal lookup only when its `security` toolset is enabled; those serve `fetch_signal`.
 
 Deploy data hides under release and event names rather than a "deploys" tool: Sentry exposes release lookups, Datadog exposes software-delivery and event search. Look for those before concluding `list_deploys` has no transport. Where none exists, it resolves to an unavailable `deploy_event` block plus a paste prompt, since a CI or release API is the other place deploy data lives.
 
@@ -65,6 +68,7 @@ When a capability cannot be fetched, emit the block with `Source: unavailable`, 
 | `deploy_event`  | timestamp, service, commit sha for each deploy in the window                      |
 | `monitor_state` | name, status, threshold, current value, last triggered                            |
 | `trace`         | trace ID, services traversed, error span count, slowest span                      |
+| `security_signal` | rule, severity, source actor, targets, outcome, first_seen/last_seen, event count |
 
 Derived fields (`Baseline delta`, `Anomaly`) are computed, never requested from the user: when a transport is available, fetch the same-length series from 7 days earlier as the baseline to compute them; with no baseline to compare against, write `Baseline delta: no baseline` and `Anomaly: unknown - no baseline`. With a baseline, `Anomaly: yes` when the window departs from it by more than the threshold the consumer or the project's `## Observability` section states, `unknown - no threshold` when none is stated, and `no` otherwise. Unavailable and user-paste blocks carry neither field, since nothing was fetched to derive them from.
 
@@ -145,6 +149,9 @@ Status: {OK | Alert | Warn | No Data | Skipped | Ignored | Unknown}
 Threshold: {expression}
 Current value: {value}
 Last triggered: {ISO}
+Group: {alerting group tags, percent-decoded}
+Window: {start} to {end}
+Event: {alert event id}
 
 ### trace
 Source: {mcp | user-paste | unavailable}
@@ -154,6 +161,21 @@ Duration: {ms}
 Services traversed: {a -> b -> c}
 Error spans: {N, with service:operation list}
 Slowest span: {service:operation, {ms}}
+
+### security_signal
+Source: {mcp | user-paste | unavailable}
+Tool: {datadog | ...}
+ID: {signal id}
+Rule: {detection rule name}
+Severity: {info | low | medium | high | critical}
+Attack: {technique or tactic}
+Qualification: {harmful | safe | unknown}
+Source actor: {ip, user, or token}
+Targets: {service, endpoint, host}
+Outcome: {blocked | allowed | unknown}
+First seen / Last seen: {ISO timestamps}
+Event count: {N}
+Triage state: {open | under_review | archived}
 
 {closing line, unavailable blocks only - exactly one:}
 Needs: {every missing parameter, comma-separated}
@@ -166,7 +188,7 @@ Question: {parameter still needed, vendor to confirm, or time zone of a pasted t
 Note: {URL that produced no block, and why}
 ```
 
-Omit fields the capability did not return. `Total in window` appears on the first `deploy_event` block when the cap bites and on the single block of a fetched empty list. Unavailable blocks keep only `Source`, `Tool`, input-parsed fields, and their closing `Paste prompt (...):` or `Needs:` line.
+Omit fields the capability did not return. In `security_signal`, `Outcome` and `Qualification` both come from the signal's traces, fetched through the transport that serves `fetch_trace`, or from a paste that states them; in a fetched or pasted block with neither, `Outcome` is `unknown` and `Qualification` is omitted. `Outcome` records blocking, never a status code: `allowed` when any targeted request was recorded without a block, else `blocked` when the traces carry `@appsec.blocked:true` or the paste states a block - a Denylist entry for the actor is mitigation, not outcome. `Qualification` reduces AAP's per-trace verdict: `harmful` when any trace is Harmful, else `safe` when every trace is None successful, else `unknown`. `Severity` is the rule's own rating, carried as data and never read as a verdict. In `monitor_state`, `Window` appears only when the URL carried `from_ts` and `to_ts`, and `Event` only when it carried `event_id`; `Group` appears when the URL's `group` parameter names one, else lists every group in Alert or Warn that the fetch returns (via `group_states=alert,warn` where the transport takes it); when `Group` names a single group, `Status` and `Last triggered` are that group's, not the monitor's overall state; when it lists several, they are the overall state and the latest `last_triggered_ts` among them. `Total in window` appears on the first `deploy_event` block when the cap bites and on the single block of a fetched empty list. Unavailable blocks keep only `Source`, `Tool`, input-parsed fields, and their closing `Paste prompt (...):` or `Needs:` line.
 
 ## Avoid
 
