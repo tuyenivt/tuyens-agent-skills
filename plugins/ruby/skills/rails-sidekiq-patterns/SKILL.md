@@ -7,8 +7,6 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first to determine the project stack.
-
 ## When to Use
 
 - Designing or reviewing a Sidekiq job

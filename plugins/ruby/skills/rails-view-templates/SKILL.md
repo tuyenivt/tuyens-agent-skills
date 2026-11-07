@@ -7,8 +7,6 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first to determine the project stack.
-
 ## When to Use
 
 - Generating or reviewing server-rendered views (`app/views/**/*.{erb,haml,slim}`)
@@ -122,7 +120,7 @@ Uniform lists use collection caching - one `read_multi` instead of a cache read 
 
 `cached: true` keys on the record alone, so one partial reused with different `locals:` - a public variant and an operator variant with extra columns - collides, and whichever renders first is served to both. Put the distinguishing local in the key: `cached: ->(order) { [order, show_operator_columns] }`.
 
-`cached: true` is partial-only. ViewComponent rows render via `OrderCardComponent.with_collection(@orders)`, which passes the collection member as `order_card:` (derived from the class name) - so the component needs `with_collection_parameter :order` for an `order:` initializer, or it raises `ViewComponent::MissingCollectionArgumentError`. Don't wrap component renders in `cache` blocks - template digests don't track component files, so component edits never bust the fragment (view_component 4.15+'s opt-in `ViewComponent::ExperimentallyCacheable` registers them with the digestor).
+`cached: true` is partial-only. ViewComponent rows render via `OrderCardComponent.with_collection(@orders)`, which passes the collection member as `order_card:` (derived from the class name) - so the component needs `with_collection_parameter :order` for an `order:` initializer, or it raises `ViewComponent::MissingCollectionArgumentError`. Below view_component 4.18 don't wrap component renders in `cache` blocks - template digests don't track component files, so component edits never bust the fragment (4.15-4.17 opt in per component with `include ViewComponent::ExperimentallyCacheable`; 4.18+ tracks a component the view names in its `render` call, no include; 4.21+ also one held in a local).
 
 Russian-doll: `touch: true` on child associations bubbles writes so the parent cache key invalidates:
 
@@ -237,7 +235,7 @@ Reviewing - a `Default engine: {ERB | HAML | Slim}` line, then one block per fin
 ```
 Severity: {Critical (XSS, JS-context injection, a cache or stream that leaks across users, roles or tenants, a credential or token rendered into the markup - a key designed as publishable is not one) | High (stale/never-invalidating cache, logic/indentation bug, frame collision, a Stimulus wiring bug (misnamed identifier, an action outside its controller's scope), a broadcast that replaces its own `turbo_stream_from` container, per-row rendering or N+1 that degrades the page, a user-supplied href with an unrestricted scheme, a state-changing bare GET link) | Medium (attribute-value injection - class tokens, style; helper/presenter misplacement; an inline script with no user data) | Low (style, partial contract, a user-visible string outside i18n)}
 
-Engine: {ERB | HAML | Slim | n/a (non-template file)}
+Engine: {ERB | HAML | Slim | n/a}
 
 Location: file:line
 

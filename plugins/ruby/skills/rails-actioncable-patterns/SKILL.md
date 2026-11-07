@@ -170,8 +170,8 @@ end
 # record or array target without `.from_channel(...)` raises "Broadcasting channel can't be
 # inferred", and from_channel(Turbo::StreamsChannel) is wrong for Turbo streams anyway, because
 # broadcasting_for prefixes the channel name. perform_enqueued_jobs runs the _later_to render job -
-# it needs ActiveJob::TestHelper (request specs get it through the integration-test load hook;
-# model and service specs do not: config.include ActiveJob::TestHelper, type: :model) and the :test queue adapter.
+# it needs ActiveJob::TestHelper (rspec-rails 8.0.5+ includes it in every typed Rails group; below that,
+# and in an untyped service spec, add config.include ActiveJob::TestHelper) and the :test queue adapter.
 # An inline broadcast_to needs no perform_enqueued_jobs; match the payload with .with(a_hash_including("status" => "paid")) - keys arrive as strings.
 it "broadcasts the updated card" do
   expect { perform_enqueued_jobs { order.update!(status: :paid) } }

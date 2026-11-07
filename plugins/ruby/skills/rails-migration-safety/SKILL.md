@@ -286,7 +286,7 @@ Table: {name} ({row count | new - 0 rows | absent from the schema - Blocked | "s
 
 Engine: MySQL {x.y.z from SELECT VERSION(), the declared ## Tech Stack or committed ops docs | unknown - assume no INSTANT support}
 
-Algorithm: {INSTANT | INPLACE | COPY | gh-ost | pt-online-schema-change | batched rake | n/a (Create Table, Coordination, Reconcile, Reject)}
+Algorithm: {INSTANT | INPLACE | COPY | gh-ost | pt-online-schema-change | batched rake | n/a (Create Table, Drop Table, Drop/Recreate View, Coordination, Reconcile, Reject)}
 
 Lock window: {none (online) | brief cut-over lock (gh-ost / pt-osc) | brief metadata lock | write-blocking rebuild (COPY or LOCK=SHARED - brief only on a small table) | maintenance required | n/a (Coordination, Reconcile, Backfill, Reject)}
 

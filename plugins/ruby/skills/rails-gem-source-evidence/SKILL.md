@@ -37,7 +37,7 @@ Rails is several gems - probe the one that owns the behaviour (`activerecord`, `
 
 | Rung | Source |
 | ---- | ------ |
-| 1 | The installed gem, at the path the probe printed - an empty directory there is a default gem at Ruby's own version: read `RbConfig::CONFIG["rubylibdir"]` |
+| 1 | The installed gem, at the path the probe printed - a directory with no `lib/` there (empty, or executables only) is a default gem at Ruby's own version: read `RbConfig::CONFIG["rubylibdir"]` |
 | 2 | The gem's upstream repository, or a checkout of it, at the locked version's tag, when the probe fails and the tag is reachable |
 | 3 | Neither readable - the claim stays unverified |
 
@@ -67,12 +67,12 @@ Gem evidence: activerecord <locked version> - lib/active_record.rb:<line> - `sel
 
 ## Output Format
 
-One block per claim - a statement that bundles separable claims gets a block for each: the verdict, then one evidence line per line read. A claim that rests on two gems carries a line for each, the app's own pin or override carries an app-file line, and a part left unread carries the rung 3 line. The verdict states only what the lines read establish. A review passes the block to its verify step, and a claim with any unread part publishes with `_(unverified: gem source not read - <reason>)_`; a build or triage places it beside the decision it supports.
+One block per claim - a statement that bundles separable claims gets a block for each: the verdict, then one evidence line per line read. A claim that rests on two gems carries a line for each, the app's own pin or override carries an app-file line, and a part left unread carries the rung 3 line. The verdict states only what the lines read establish. A construct spanning several lines cites its range (`:335-342`) and quotes the deciding line. A review passes the block to its verify step, and a claim with any unread part publishes with `_(unverified: gem source not read - <reason>)_`; a build or triage places it beside the decision it supports.
 
 ```
 Gem claim: {the claim as stated} - {holds | does not hold | holds in part - <the part that holds; the rest does not hold or is unread> | unverified}
 
-Gem evidence: {<gem> <locked version> - <path in gem>:<line> - `<quoted line>` - <what it shows> | <gem> <locked version> - upstream tag <tag> - <path>:<line> - `<quoted line>` - <what it shows> | <app file>:<line> - `<quoted line>` - <what it shows> | unverified: gem source not read - <reason>}
+Gem evidence: {<gem> <locked version> - <path in gem>:<line or range> - `<quoted line>` - <what it shows> | <gem> <locked version> - upstream tag <tag> - <path>:<line or range> - `<quoted line>` - <what it shows> | <app file>:<line or range> - `<quoted line>` - <what it shows> | unverified: gem source not read - <reason>}
 ```
 
 ## Avoid

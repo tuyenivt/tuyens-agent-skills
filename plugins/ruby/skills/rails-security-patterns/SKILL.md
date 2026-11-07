@@ -7,8 +7,6 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first to determine the project stack.
-
 For template-layer XSS (`sanitize` allowlists, engine escape operators), see `rails-view-templates`. For upload validation / magic-byte sniffing and blob URL exposure or expiry, see `rails-active-storage-patterns`. A friendly-500 `rescue_from StandardError` that hides bugs is `rails-exception-handling`'s.
 
 ## When to Use
@@ -64,7 +62,7 @@ end
 User.authenticate_by(email: params[:email], password: params[:password])
 ```
 
-`bin/rails generate authentication` (8.0+) is the session scaffold for an app without Devise: `User` with `has_secure_password` and `normalizes :email_address`, a `Session` row per login referenced by a signed, `httponly` cookie, `Current.session`, and `PasswordsMailer` with a `password_reset_token` valid 15 minutes by default (configurable on 8.1: `has_secure_password reset_token: { expires_in: 1.hour }`). It is generated app code - review it like any other: the generated `rate_limit to: 10, within: 3.minutes, only: :create` on both `SessionsController` and `PasswordsController` is IP-only, so key it on IP plus `email_address` (Rate Limiting), and check for enumeration through the reset flow's response. The reset token is a signed `generates_token_for` token, so `update` needs no guess throttle; the 8.1 generator ends every session after a reset (`@user.sessions.destroy_all` in `update`) - an app generated on 8.0 lacks that line, so add it.
+`bin/rails generate authentication` (8.0+) is the session scaffold for an app without Devise: `User` with `has_secure_password` and `normalizes :email_address`, a `Session` row per login referenced by a signed, `httponly` cookie, `Current.session`, and `PasswordsMailer` with a `password_reset_token` valid 15 minutes by default (configurable on 8.1: `has_secure_password reset_token: { expires_in: 1.hour }`). It is generated app code - review it like any other: the generated `rate_limit to: 10, within: 3.minutes, only: :create` (on `SessionsController`; on `PasswordsController` too from the 8.1 generator - an app generated on 8.0 has no throttle on the reset request, add one) is IP-only, so key it on IP plus `email_address` (Rate Limiting), and check for enumeration through the reset flow's response. The reset token is a signed `generates_token_for` token, so `update` needs no guess throttle; the 8.1 generator ends every session after a reset (`@user.sessions.destroy_all` in `update`) - an app generated on 8.0 lacks that line, so add it.
 
 JWT for APIs: default to Devise + `devise-jwt` (`:jwt_authenticatable` with `Devise::JWT::RevocationStrategies::Denylist` - a `jti` claim checked against a denylist table swept past the token TTL); secret from credentials; `expiration_time` <= 1 hour. Devise earns its weight whenever the account lifecycle (registration, reset, lockout) is needed - almost every email+password API; hand-roll `authenticate_by` plus a JWT gem only for minimal token auth, and then own encode/decode, `jti` revocation and refresh. Hand-rolled verification pins the algorithm: `JWT.decode(token, key, true, algorithms: ["HS256"])` - `false` as the third argument skips the signature check, and `alg: none` must be refused.
 

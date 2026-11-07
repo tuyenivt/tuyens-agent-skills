@@ -62,7 +62,7 @@ Hidden defaults invisible from the call site:
 
 `config.active_support.cache_format_version` is one non-AR case (the others: `add_autoload_paths_to_load_path` (7.1), `action_dispatch.strict_freshness` (8.0), `active_support.escape_js_separators_in_json` (8.1), each copied by a railtie initializer that runs before `config/initializers/*`): the `:initialize_cache` bootstrap builds `Rails.cache` before `config/initializers/*` runs, so setting it there is a silent no-op (the generated template's own comment says to set it in `config/application.rb`).
 
-If the initializer exists and any of these lines is uncommented there, report `Footgun: initializer-timing` regardless of stated intent. The non-AR flags the generator places in that file work from it, except the four named above - `Footgun: initializer-timing` as well (a leftover `active_support.disable_to_s_conversion`, removed in 7.2, or `to_time_preserves_timezone` on 8.1, deprecated there because `to_time` always preserves the zone, does nothing anywhere: a Low redundancy); a runtime-read `ActiveRecord.` flag not listed above (`verify_foreign_keys_for_fixtures`, `marshalling_format_version`, 8.1's `raise_on_missing_required_finder_order_columns`) reaches its reader through the `after_initialize` copy and works from it. For those, report `Footgun: none`.
+If the initializer exists and any of these lines is uncommented there, report `Footgun: initializer-timing` regardless of stated intent. The non-AR flags the generator places in that file work from it, except the four named above - `Footgun: initializer-timing` as well; a leftover `active_support.disable_to_s_conversion`, removed in 7.2, or `to_time_preserves_timezone` on 8.1, deprecated there because `to_time` always preserves the zone, does nothing anywhere - a Low redundancy with `Footgun: none`; a runtime-read `ActiveRecord.` flag not listed above (`verify_foreign_keys_for_fixtures`, `marshalling_format_version`, 8.1's `raise_on_missing_required_finder_order_columns`) reaches its reader through the `after_initialize` copy and works from it. For those, report `Footgun: none`.
 
 Two per-model and per-call-site behaviours belong in the Behaviours section beside the config flags: `attachment-blank-param` - `record.files.attach(params[:files])` with a nil or blank param is a silent no-op that reads as success (guard with `present?`, and `attach` on a persisted record returns `nil` on a validation rejection); and `call-site-opt-out` - `redirect_to url, allow_other_host: true` or a `skip_before_action` re-opens, for one action, a protection a config flag or base class closed (`action_on_open_redirect`, named `raise_on_open_redirects` before 8.1; an auth filter), so the Diagnosis cites both the flag and the call site.
 
@@ -107,7 +107,7 @@ The report is the template below, sections in this order. Diagnosis exists only 
 - Rails version: {from Gemfile.lock | Gemfile constraint (unverified) - no Gemfile.lock}
 - config.load_defaults: {version from config/application.rb:NN | none - the call is absent, pre-5.0 defaults apply}
 - Target load_defaults: {version the request names | version a past bump moved to | n/a}
-- new_framework_defaults: {file - N of M flips uncommented | absent}
+- new_framework_defaults: {file - N of M flips uncommented | absent | not provided}
 
 ## Diagnosis {only when symptoms were reported}
 
@@ -129,7 +129,7 @@ The report is the template below, sections in this order. Diagnosis exists only 
 
 ## Implicit Per-Model / Per-Controller Behaviours
 
-- Path: {app/models|app/controllers/<file>.rb:NN | config/application.rb:NN | config/environments/<env>.rb:NN | config/initializers/<file>.rb:NN}
+- Path: {app/<dir>/<file>.rb:NN | lib/<file>.rb:NN | config/application.rb:NN | config/environments/<env>.rb:NN | config/initializers/<file>.rb:NN}
   - Behaviour: {touch | autosave | nested-attributes | default_scope | inverse_of-missing | callback-touches-association | callback-side-effect | enqueue-in-transaction (perform_later / perform_async inside Model.transaction - Pattern D decides whether it defers) | job-retry-config (retry_on / discard_on / sidekiq_options retry: in ApplicationJob or a job class) | callback-skipped (update_columns / update_all / insert_all bypass) | validation-touches-association | attr_readonly | serialize-without-coder | attachment-blank-param | blanket-rescue (rescue StandardError on a path Regexp.timeout guards) | before_action-chain | call-site-opt-out (allow_other_host: true, skip_before_action) | autoload-path}
   - Effect: {one sentence}
 

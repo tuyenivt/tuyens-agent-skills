@@ -106,10 +106,10 @@ An export is this shape with the artifact as the side effect: one part file per 
 
 ### Replication-Lag Throttle
 
-Any backfill on a replicated primary can lag replicas. Poll between chunks and pause below the alarm threshold:
+Any backfill on a replicated primary can lag replicas. Poll between chunks and pause below the alarm threshold (the lowest lag anything acts on: a page, or a reader pulled from rotation):
 
 ```ruby
-def wait_for_replica(threshold: 1.5)  # seconds; ~half the paging alarm, 1.5 when none is documented
+def wait_for_replica(threshold: 1.5)  # seconds; ~half the alarm threshold, 1.5 when none is documented
   sleep(5) while replica_lag_seconds > threshold   # replica_lag_seconds: your probe, sources below
 end
 ```
@@ -217,7 +217,7 @@ Workload: {backfill | recompute | export | migration | fan-out dispatch (enqueue
 
 Volume: {unknown - count with <query> | driving rows per invocation, or jobs x rows per job; child rows touched stated separately; the aggregate stated separately when the code is scoped per tenant or date range}
 
-Engine: {MySQL | unknown - read config/database.yml}
+Engine: {stack-detect's Database, verbatim (MySQL 8.0.42 (RDS)) | unknown - read config/database.yml}
 
 Chunk size: {N} (rationale: {OLTP contention | cold table | large payload | per-row external calls | read-only scan (no transaction to bound) | id-only dispatch (no row payload)}) | unchunked - GAP
 
@@ -229,13 +229,13 @@ Cursor store: {durable table | continuation - serialized with the job on resume 
 
 External side effects: {none | per-chunk call with completion flag | post-commit only | whole-job (non-chunked) | per-row call in a read-only loop (no transaction; read batch keeps 1,000) | per-row, no chunk at all - GAP | inside the open chunk transaction - GAP}
 
-Throttle: {none - read-only or unreplicated | none - GAP (write backfill on a replicated primary) | per-chunk sleep {N} ms (shared primary, no replica) | replica-lag poll @ {threshold}s (~half the paging alarm; 1.5 when none is documented) | queue depth cap (fan-out dispatch: pause enqueueing above N ready jobs)}
+Throttle: {none - read-only or unreplicated | none - GAP (write backfill on a replicated primary) | per-chunk sleep {N} ms (shared primary, no replica) | replica-lag poll @ {threshold}s (~half the alarm threshold; 1.5 when none is documented) | queue depth cap (fan-out dispatch: pause enqueueing above N ready jobs)}
 
 Memory mitigations: {drop eager-load / narrow columns | jemalloc | MALLOC_ARENA_MAX | pluck cursor | WorkerKiller@N MB | periodic GC.compact | streamed artifact to tempfile/IO | none (short run, bounded RSS)}
 
 Concurrency cap: {N - the Sidekiq concurrency of the process or capsule that runs this queue (a queue weight does not cap it) | N - Solid Queue threads (or fibers) x processes of the worker that runs this queue | not in evidence - config/sidekiq.yml or config/queue.yml unread | n/a - rake process, one connection}
 
-Telemetry: {RSS log every N batches | progress log (cursor, rows, elapsed) every N batches | StatsD gauge | Prometheus | none - GAP (a run over a few minutes with no RSS or progress signal)}
+Telemetry: {RSS log every N batches | progress log (cursor, rows, elapsed) every N batches | StatsD gauge | Prometheus | none (run under a few minutes) | none - GAP (a run over a few minutes with no RSS or progress signal)}
 ```
 
 ## Avoid

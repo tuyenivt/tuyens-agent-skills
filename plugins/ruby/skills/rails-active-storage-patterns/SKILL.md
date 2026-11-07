@@ -7,7 +7,7 @@ metadata:
 user-invocable: false
 ---
 
-> Load `Use skill: stack-detect` first. The storage service and image processor are not stack-detect fields - read `config/storage.yml` and `config.active_storage.variant_processor` (`config/application.rb`), unless declared under `## Tech Stack`. The patch-gated rules below (8.1.2.1, 8.1.4) read the locked `rails` version from `Gemfile.lock`; absent, the gated value is `not in evidence`.
+> Load `Use skill: stack-detect` first. The storage service and image processor are not stack-detect fields - read `config/storage.yml` and `config.active_storage.variant_processor` (`config/application.rb`), unless declared under `## Tech Stack`. The patch-gated rules below (8.1.2.1, 8.1.4) read the locked `rails` version from `Gemfile.lock`; absent, state both behaviours (the `Purge` value does).
 
 ## When to Use
 
@@ -24,7 +24,7 @@ user-invocable: false
 - Leave `dependent:` at its default `:purge_later` (omitting the option is compliant). `:purge` is honoured from 8.1.4 but deletes synchronously inside the destroy's commit callback (blocking the request) and purges nothing on 8.1.0-8.1.3, so it stays a GAP; `false` and any other value purge nothing. The sync `purge` *method* is for admin/rake scripts
 - Validate `content_type` and `byte_size` in the model (or via `active_storage_validations`) - Active Storage does no validation itself. `attach` on a persisted record with no unsaved changes calls plain `record.save`, so validations *do* run - but it returns `nil` instead of raising, so a rejected attach looks like success and leaves the blob (already a row and an object, on the direct-upload path) orphaned. Check the return value or `record.errors`, and purge on rejection. The genuinely unvalidated case is the other branch: when the record has unsaved attribute changes, `attach` defers to the next save and validates nothing at attach time
 - Re-detect content type via magic bytes for sensitive uploads. Rails already re-identifies on attach (`identify_without_saving` sniffs the first 4 KB with Marcel), so the stored `content_type` is not simply the client's - but Marcel falls back to the client-declared type when the magic bytes are unrecognized, and that fallback is the hole. Run the check in the attach-time background job using `blob.open { |f| Marcel::MimeType.for(f) }` - streaming, not `blob.download` (loads the whole file into memory). Before 8.1.2.1 (CVE-2026-33173) the direct-upload endpoint stored client-sent `metadata` unfiltered; patched releases strip only `analyzed`, `identified` and `composed` - every other key is still client-written. Sniff unconditionally, and gate visibility on state the client cannot write - a per-blob row the sniff job sets (per file, so it works for `has_many_attached`), or for a `has_one_attached` a column on the owning record (`scanned_at`); never a `blob.metadata` key (a client can pre-set it, and `AnalyzeJob`, enqueued by the same attach for image, video and audio blobs, merges a stale copy of `metadata` on `update!`, so one of the two writes is lost); purge on confirmed mismatch
-- libvips is already the processor under `load_defaults 7.0`+ (`variant_processor = :vips`) - an app that never sets it is compliant, not a GAP. Only flag an explicit `:mini_magick`, or a missing `libvips`, or a `Gemfile.lock` without `image_processing` or `ruby-vips`
+- libvips is already the processor under `load_defaults 7.0`+ (`variant_processor = :vips`) - an app that never sets it is compliant, not a GAP. Only flag a `:mini_magick` processor (explicit, or by pre-7.0 defaults, where it is the fallback), `:disabled` (8.1+) while the attachment declares variants, or, when the processor is vips (set or by default), a missing `libvips` or a `Gemfile.lock` without `image_processing` or `ruby-vips`
 - Variants are lazy by default; on hot paths declare them `preprocessed: true` per variant (`attachable.variant :thumb, resize_to_fill: [80, 80], preprocessed: true` - `ActiveStorage::TransformJob` is enqueued on attach and never waits for a sniff, so sensitive uploads warm in the attach job instead)
 - Signed URLs only (`rails_blob_url` / `url_for` / `blob.url`); never expose raw blob keys. `service_url` was deprecated in 6.1 and is gone from 7.x - a call site still using it raises `NoMethodError`. Note the two knobs differ: `ActiveStorage.urls_expire_in` defaults to `nil`, so `rails_blob_url` signed ids never expire until you set it, and it is app-wide; the 5-minute default belongs to `service_urls_expire_in` on the redirect target. For a per-viewer window use `blob.url(expires_in: 5.minutes)` at the call site
 - One service per environment and purpose in `config/storage.yml` (a private and a public bucket are two services; an attachment picks the non-default with `has_one_attached :logo, service: :amazon_public`); reference by symbol in `config.active_storage.service`; never hardcode bucket names or keys (credentials via `credentials.dig`)
@@ -190,7 +190,7 @@ Variants: <list with sizes | none | conditional on blob.variable? (image? is tru
 
 Variant warming: <lazy | preprocessed: true (7.1+) | background job (the attach point) | n/a - no variants | not in evidence>
 
-Processor: <vips (default, 7.0+) | mini_magick - reason | mini_magick by pre-7.0 defaults - GAP (set :vips, install libvips) | not configured - compliant (load_defaults 7.0+) | vips configured, libvips, ruby-vips or image_processing missing - GAP | pre-7.0 defaults with no backend installed - GAP | not in evidence>
+Processor: <vips (default, 7.0+) | mini_magick - reason | mini_magick by pre-7.0 defaults - GAP (set :vips, install libvips) | not configured - compliant (load_defaults 7.0+) | vips (set or by default), libvips, ruby-vips or image_processing missing - GAP | pre-7.0 defaults with no backend installed - GAP | disabled (8.1+; every variant returns the original untransformed) - GAP when Variants is not none | not in evidence>
 
 Purge: <purge_later (default) | purge method in a rake/admin script | dependent: :purge - GAP (8.1.4+: synchronous delete inside the destroy; 8.1.0-8.1.3: purges nothing, the blob orphans) | dependent: false or any other value - GAP (the blob orphans)>
 
@@ -203,7 +203,7 @@ Access: <signed URL default | controller-gated + per-call expiry (any private fi
 Migration: <none | from <uploader> - step N of 7 (the next step to run) | service move via MirrorService>
 ```
 
-Previews are warmed in the same job as variants, so `Variant warming` has no separate preview value. When the retention rule keys on a state transition the model does not record, say so - the timestamp column is part of the deliverable.
+Previews are warmed in the same job as variants, so `Variant warming` has no separate preview value; variants that warm differently take one value each (`thumb: preprocessed: true; archive: lazy`). When the retention rule keys on a state transition the model does not record, say so - the timestamp column is part of the deliverable.
 
 ## Avoid
 

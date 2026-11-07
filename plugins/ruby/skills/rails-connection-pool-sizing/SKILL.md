@@ -165,7 +165,7 @@ Active Record resets connections in forked children itself (`ForkTracker`), so a
 
 ### Multiplexer notes
 
-- **RDS Proxy**: session state pins a client to one backend connection (`LOCK TABLES`, temporary tables, session variables), and the session `SET` the mysql2 / trilogy adapter issues on connect may pin every session - no parameter group or Rails setting prevents it. Measure `DatabaseConnectionsCurrentlySessionPinned` after rollout; when pinning shows, accept it or use ProxySQL. `MaxConnectionsPercent` caps the proxy's share of `max_connections`; the app's pools then size against the proxy.
+- **RDS Proxy**: session state pins a client to one backend connection (`LOCK TABLES`, temporary tables, session variables), and the session `SET` the mysql2 / trilogy adapter issues on connect may pin every session - no parameter group or Rails setting prevents it, but the proxy's own session pinning filter `EXCLUDE_VARIABLE_SETS` does (safe only when every client of the proxy sets the same session variables - a tier with its own `variables:` breaks that). Measure `DatabaseConnectionsCurrentlySessionPinned` after rollout; when pinning still shows, accept it or use ProxySQL. `MaxConnectionsPercent` caps the proxy's share of `max_connections`; the app's pools then size against the proxy.
 - **ProxySQL**: query routing, read/write splitting; more ops overhead than RDS Proxy.
 
 ## Output Format
@@ -181,7 +181,7 @@ Headroom target: {15% bounded and measured deploy peak | 25% unmeasured, unbound
 
 Reserved (CLI + ops): {N}
 
-Available for app: {(max_connections - neighbour) x (1 - headroom) - reserved} = {value}; neighbour = {0 - no other application or schema on this server | N - its budget or measured draw (`performance_schema.threads` by user or schema) | not in evidence - name where to measure, and state the break-even draw}
+Available for app: {(max_connections - neighbour) x (1 - headroom) - reserved} = {value}; neighbour = {0 - no other application or schema on this server | N - its budget or measured draw (`performance_schema.threads` by user or schema) | not in evidence - compute at 0, name where to measure, and state the break-even draw (`Result` is judged on that figure)}
 
 Web tier: {pods} x {max(workers, 1)} x {threads} = {total}, pool = {N}{ + {N} per other logical database on this server}
 
