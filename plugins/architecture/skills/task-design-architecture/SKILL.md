@@ -28,7 +28,7 @@ Not this workflow when the artifact's only consumer is an approver who will not 
 
 ## Mode Detection
 
-If the user's input makes mode obvious (e.g., "here's a design doc, review it" or "design a payment service"), proceed. A pasted authored design artifact (design doc, proposal, design spec) with no authoring request is Review Mode even without a verb; a requirements document, PRD, or the requester's own rough sketch or direction note - inside the request or in a file - is input to New Design, not an artifact to review, and "is this direction sensible?" about it is always a `quick` New Design run; a direction argued by someone else and pasted for review is Review Mode (the pre-design rule under the factor list). Otherwise ask: **new design** (full proposal) or **review existing** (evaluate proposal). Default: New Design.
+If the user's input makes mode obvious (e.g., "here's a design doc, review it" or "design a payment service"), proceed. A pasted authored design artifact (design doc, proposal, design spec) with no authoring request is Review Mode even without a verb; a requirements document, PRD, or the requester's own rough sketch or direction note - inside the request or in a file - is input to New Design, not an artifact to review, and "is this direction sensible?" about it is always a `quick` New Design run; a direction argued by someone else and pasted for review is Review Mode (the pre-design rule under the factor list). A request asking whether the requirements themselves are clear, complete, or consistent with the current system runs `task-analyze-requirements` instead; its output is this workflow's Requirements analysis input. Otherwise ask: **new design** (full proposal) or **review existing** (evaluate proposal). Default: New Design.
 
 ### New Design Mode
 
@@ -59,7 +59,7 @@ Supply this design-specific factor list to the completeness audit. The `Required
 | Problem framing and NFRs      | Yes      | Business objective, measurable NFRs, explicit constraints                                  |
 | System context and boundaries | Yes      | Upstream/downstream, module boundaries, data ownership                                     |
 | Component design              | No       | Named components, responsibilities, failure modes                                          |
-| Data and consistency model    | Yes      | Per-boundary consistency, partial-failure behavior, recovery                               |
+| Data and consistency model    | Yes      | Per-boundary consistency, partial-failure behavior, recovery; entity ownership, identity, cardinality, lifecycle |
 | Failure mode analysis         | Yes      | Per-component failure modes, blast radius, mitigations                                     |
 | Security and auth             | Yes      | Authn/authz model, tenant isolation, secret/key rotation, rate limiting and abuse controls                   |
 | Observability plan            | No       | Metrics, logs, traces, alerts, SLO candidates                                              |
@@ -67,12 +67,13 @@ Supply this design-specific factor list to the completeness audit. The `Required
 | Deployment and rollback       | Yes      | Rollout approach, migration order, rollback trigger                                        |
 | Trade-off analysis            | No       | Alternatives considered, why rejected, reversibility                                       |
 | Guardrails                    | No       | Architecture constraints implementation must follow                                       |
+| Verification plan             | No       | Each NFR target, consistency boundary, contract, migration phase, and the highest-blast-radius failure scenario has a named proof and gate |
 | API contracts                 | Yes*     | Endpoints, auth per endpoint, idempotency, multi-tenancy, RFC 9457 errors, backward compat, outbound event contracts |
-| Diagrams                      | No       | At minimum a C4 Container; sequence/data-flow/deployment when relevant                     |
+| Diagrams                      | No       | At minimum a C4 Container; sequence/data-flow/deployment/entity-relationship when relevant |
 
 *Required only when the design exposes an API surface or delivers events/webhooks to consumers outside the design's boundary - another team's service counts as outside.
 
-The factor list mirrors Design Model Sections 1-12 (Security and auth spans Sections 3 and 11): for per-factor depth, compose that section's atomic skills to evaluate the quality of what the author wrote; a factor with no dedicated atomic (Security and auth, Diagrams, multi-tenancy within API contracts) is evaluated directly against its "What Present Looks Like" column. Treat performance, deployment, trade-offs, API contracts, and diagrams as first-class review targets - when Present or Under-specified, evaluate their substance; when Missing, the completeness finding carries them. Depth levels apply to New Design only; reviews always run the full lens, using the lens's own skip rule for steps that do not fit. Compose a section's atomic only where the factor is Present and its quality is what the finding turns on - a Missing factor is settled in the Completeness Audit and needs no atomic. Diagrams are N/A under Section 12's skip conditions and API contracts when the asterisk condition fails; every factor follows the Required rule above.
+The factor list mirrors Design Model Sections 1-12 (Security and auth spans Sections 3 and 11; Verification plan sits in Section 10): for per-factor depth, compose that section's atomic skills to evaluate the quality of what the author wrote; a factor with no dedicated atomic (Security and auth, Verification plan, Diagrams, multi-tenancy within API contracts) is evaluated directly against its "What Present Looks Like" column. Treat performance, deployment, trade-offs, API contracts, and diagrams as first-class review targets - when Present or Under-specified, evaluate their substance; when Missing, the completeness finding carries them. Depth levels apply to New Design only; reviews always run the full lens, using the lens's own skip rule for steps that do not fit. Compose a section's atomic only where the factor is Present and its quality is what the finding turns on - a Missing factor is settled in the Completeness Audit and needs no atomic. Diagrams are N/A under Section 12's skip conditions and API contracts when the asterisk condition fails; every factor follows the Required rule above.
 
 Output header: `# Architecture Review` and use the output structure defined in `architecture-review-lens` (tables for audits, lists for findings; report depth as "full") - the Completeness Audit table carries Factor, Required, Status (Present / Under-specified / Missing / N/A) and the lens's three finding columns - `F{n}` (the F-number the row raises, or `-`), Severity, Recommendation - `-` in each on a row with no Step 2 finding; an N/A reason sits with the N/A status. Skip the New Design output template. In this mode the Review Self-Check below replaces the authoring Self-Check (self-checks are applied internally, never emitted in the deliverable):
 
@@ -88,8 +89,9 @@ Output header: `# Architecture Review` and use the output structure defined in `
 | Input                  | Required | Description                                                       |
 | ---------------------- | -------- | ----------------------------------------------------------------- |
 | Feature requirements   | Yes      | What the system must do                                           |
+| Requirements analysis  | No       | A `task-analyze-requirements` output; Section 1 cites its `R<n>` and `Q<n>` IDs. Requester answers supplied beside it are applied to its register and Handoff first, as its re-run would: a row whose Blocking findings are all answered is ungated, and an answered Implied row enters scope or, when declined, is removed; a revised PRD is a `task-analyze-requirements` re-run, not an input here |
 | Business context       | No       | Business objective, success criteria, priority                    |
-| Existing system sketch | No       | Current architecture, services, and data stores                   |
+| Existing system sketch | No       | Current architecture, services, and data stores; a `task-onboard` report is the preferred form |
 | Constraints            | No       | Performance, compliance, timeline, legacy, team capacity          |
 | Traffic assumptions    | No       | Expected request volume, growth projections, burst profile        |
 | Integration needs      | No       | External APIs, third-party services, event sources                |
@@ -131,11 +133,11 @@ The Staff-Level Summary ships at every depth. At `quick`, produce template Secti
 Capture:
 
 - **Business objective** -- what business outcome does this serve
-- **Functional scope** -- what must the system do (in / out of scope)
+- **Functional scope** -- what must the system do (in / out of scope). With a requirements analysis supplied, each in-scope line cites its `R<n>` IDs; its Handoff's Proceed-on rows are in scope, its Gated rows are listed under Open Questions first, each with its Blocking `Q<n>` and the sections that would change with the answer, its Out of scope until answered rows are out of scope, and each Defaulted answer the design rests on is an Assumption tagged `(assumed: Q<n> recommended)`. A design never resolves a Blocking finding itself
 - **Constraints** -- technical debt, legacy systems, team capacity, timeline, budget
 - **Assumptions** -- what is assumed true but not yet validated
 
-Use skill: `nfr-specification` to elicit and structure non-functional requirements into measurable SLOs and constraints - its Performance and Availability tables fill the Non-Functional Requirements table one row per metric, and its Scalability, Security, Operability and Data field blocks contribute their stated values as rows in the same table - a field with no stated or derivable target gets its row reading `not specified`, the atomic's own value, never an invented figure. Its Conflicts (with resolution options) go under Constraints, its Gaps under Open Questions. The NFR output feeds into Section 6 (Observability) as alert baselines and Section 7 (Performance) as capacity targets.
+Use skill: `nfr-specification` to elicit and structure non-functional requirements into measurable SLOs and constraints - its Performance and Availability tables fill the Non-Functional Requirements table one row per metric, and its Scalability, Security, Operability and Data field blocks contribute their stated values as rows in the same table - a field with no signal at all gets its row reading `not specified`, the atomic's own value, never an invented figure. Its Conflicts (with resolution options) go under Constraints, its Gaps under Open Questions. The NFR output feeds into Section 6 (Observability) as alert baselines and Section 7 (Performance) as capacity targets.
 
 ### 2. System Context and Boundaries
 
@@ -153,7 +155,9 @@ For each component, state: what it owns (data, state), what it depends on, prima
 
 Use skill: `architecture-data-consistency` for consistency strategy selection. Use skill: `backend-db-indexing` for data access patterns and index strategy - recorded in Data Flow as the lookups each path relies on, each carrying the atomic's recommended index and lock-risk line as a sub-bullet.
 
-For each data boundary: consistency guarantee, partial-failure behavior, recovery mechanism. Name the distributed consistency strategy when applicable (outbox, saga, compensating transactions). The Data Flow, Consistency Boundaries, Saga Steps, and Schema Evolution blocks in the Output template are the contract; `architecture-data-consistency`'s Schema Evolution Plan fills the last, its Risks become Section 5 Failure Scenarios rows (Transaction boundary error or the matching Failure Type, Blast Radius sized by `review-blast-radius` for that boundary, the risk's Recommendation as the Mitigation), and an `unconfirmed boundary` risk also becomes a Section 1 Open Questions item.
+For each data boundary: consistency guarantee, partial-failure behavior, recovery mechanism. Name the distributed consistency strategy when applicable (outbox, saga, compensating transactions). The Entity Model, Data Flow, Consistency Boundaries, Saga Steps, and Schema Evolution blocks in the Output template are the contract; `architecture-data-consistency`'s Schema Evolution Plan fills the last, its Risks become Section 5 Failure Scenarios rows (Transaction boundary error or the matching Failure Type, Blast Radius sized by `review-blast-radius` for that boundary, the risk's Recommendation as the Mitigation), and an `unconfirmed boundary` risk also becomes a Section 1 Open Questions item.
+
+**Entity Model.** One row per entity the design creates or changes, plus each existing entity a new relationship points at. Owner is a Module Boundaries row. Key and Uniqueness names the identifier, any natural key that must stay unique, and the tenant scope when Section 3 isolates tenants. Relationships give cardinality (`Order 1-N Shipment`). States and Retention name the lifecycle states, how a record ends (hard delete, soft delete, archive), and the retention period - `not specified` when no NFR or requirement states one, raised under Open Questions. Sensitivity takes `nfr-specification`'s data classification. Columns, types, and DDL belong to the implementing stack's workflow; this table fixes the decisions that are expensive to change later.
 
 ### 5. Failure and Risk Analysis
 
@@ -191,6 +195,8 @@ Use skill: `architecture-guardrail` for the violations it detects; each becomes 
 
 Each constraint must be concrete and detectable: rule, what violation looks like, consequence - at least one guardrail per module (per Module Boundaries row). "Follow clean architecture" is not a guardrail; "no module under `domain/` may import from `infrastructure/`" is. Include AI-codegen constraints when patterns must be enforced on generated code.
 
+**Verification Plan.** One row per claim a test or signal must prove: each NFR row with a target (Section 1), each Consistency Boundaries row (Section 4), each Section 11 Endpoints row and Outbound Events / Webhooks row, each Schema Evolution phase, the highest-blast-radius Failure Scenario (Section 5), and, with a requirements analysis supplied, each in-scope `R<n>` whose System impact is not `none`, proven by its Acceptance check or, where that reads `pending Q<n>`, by the outcome the requester's answer settles or, while a Defaulted Q<n> is open, the outcome its Recommended answer settles, marked assumed. Level is the cheapest test that proves the claim; a claim no pre-release test can prove names its Section 6 signal at Level `production signal`. Gate is when it must pass.
+
 ### 11. API Contracts
 
 Run at `standard` and `deep` for any design exposing an API surface, or delivering events/webhooks, to consumers outside the design's boundary - another team's service counts as outside. Skip with a one-liner only if neither surface exists (e.g., "Internal worker; no external consumers").
@@ -205,15 +211,15 @@ Run at `standard` and `deep`. Skip with a one-liner only if a current accurate d
 
 Default format: **Mermaid**. Use **PlantUML** only when explicitly requested; a house Diagram convention that is not text-rendered (a draw.io export, screenshots) keeps the Mermaid fence and is named on the `Format` line.
 
-Always: **C4 Container** (major deployable units + tech). When applicable: **C4 Context** (3+ external interactors), **Sequence** (non-obvious ordering or async/sync semantics), **Data flow** (multiple paths through the system), **Deployment** (multi-region, VPC, networking).
+Always: **C4 Container** (major deployable units + tech). When applicable: **C4 Context** (3+ external interactors), **Sequence** (non-obvious ordering or async/sync semantics), **Data flow** (multiple paths through the system), **Deployment** (multi-region, VPC, networking), **Entity relationship** (an Entity Model row New or Changed with a relationship).
 
 **Rules:**
 
-- Every element traces to a component or boundary from Sections 2-3; never invent elements to "complete" the diagram
+- Every element traces to a component or boundary from Sections 2-3, and an entity relationship diagram's entities to Section 4's Entity Model; never invent elements to "complete" the diagram
 - One abstraction level per diagram: a Container diagram shows containers, not the internals of one. The actors and external systems at the system boundary belong on it and are not a level mix
 - One `Diagram Notes` block after the last diagram (a house pattern may separate them; diagrams relocated to the appendix get their own block there), one sub-list per diagram carrying Scope / Assumptions / Next level and, on the container diagram's entry only, the form used; assumptions go in Notes, not silently inside the diagram
 
-Use Mermaid: `C4Container` for C4, `sequenceDiagram` with `autonumber` for sequence, `flowchart LR/TD` for data flow, nested `subgraph` blocks for deployment topology. Mermaid's C4 support is still experimental; where the renderer does not carry it, a `flowchart` showing the same containers, actors and external systems satisfies the requirement - say which form was used in Diagram Notes.
+Use Mermaid: `C4Container` for C4, `sequenceDiagram` with `autonumber` for sequence, `flowchart LR/TD` for data flow, `erDiagram` for entity relationships, nested `subgraph` blocks for deployment topology. Mermaid's C4 support is still experimental; where the renderer does not carry it, a `flowchart` showing the same containers, actors and external systems satisfies the requirement - say which form was used in Diagram Notes.
 
 ## Output
 
@@ -222,7 +228,7 @@ Use Mermaid: `C4Container` for C4, `sequenceDiagram` with `autonumber` for seque
 
 **Direction: {Sensible | Sensible with changes | Reconsider}** - {reason} {only on a quick "is this direction sensible?" run}
 
-**Stack:** {<language / framework> (detected) | <stack> (prompt-stated) | unknown - recommendations stay stack-agnostic}
+**Stack:** {<language> / <framework> (detected) | <language> (no framework detected) | <stack> (prompt-stated) | unknown - recommendations stay stack-agnostic}
 
 Written for: {design-audience-calibration's Attribution line}. Format: {design-reference-pattern's Attribution sentence | built-in template}{; diagrams: <house convention> kept as Mermaid} {only when calibration or the house pattern was loaded; below the Direction line, above any house metadata table; below house front matter. With a house pattern but no reviewer profile, the axes take the calibration's inferred value, or its default - Architecture Low, Domain High, source assumed default - when no signal exists}
 
@@ -311,6 +317,12 @@ Secret and key rotation:
 Rate limiting and abuse controls:
 
 ## 4. Data and Consistency Model
+
+### Entity Model {when the design creates or changes an entity}
+
+| Entity | Change | Owner | Key and Uniqueness | Relationships | States and Retention | Sensitivity |
+| ------ | ------ | ----- | ------------------ | ------------- | -------------------- | ----------- |
+| Shipment | {New \| Changed \| Existing - referenced} | Module Boundaries row | `id`; unique (`order_id`, `carrier_ref`); tenant-scoped by `store_id` | Order 1-N Shipment | pending -> shipped -> delivered; soft delete; retained 7 years | {PII \| cardholder data \| PHI \| none} |
 
 ### Data Flow
 
@@ -468,6 +480,12 @@ Feature Flags:
 
 - Signal to watch for erosion
 
+### Verification Plan
+
+| Claim | Source | Proven by | Level | Gate |
+| ----- | ------ | --------- | ----- | ---- |
+| p99 write latency < 500ms | S1 NFR | Load test at peak RPS on staging | {unit \| integration \| contract \| end-to-end \| load \| failure injection \| migration rehearsal \| production signal} | {pre-merge \| pre-release \| rollout phase <n> \| post-release} |
+
 ## 11. API Contracts {skipped with a one-liner when no API surface, event, or webhook reaches a consumer outside the design's boundary}
 
 ### Endpoints
@@ -521,6 +539,12 @@ RFC 9457 problem details; example bodies for the error statuses the API actually
 
 ```mermaid
 {Mermaid sequenceDiagram code for the flow}
+```
+
+### Entity Relationship Diagram {when an Entity Model row is New or Changed and has a relationship}
+
+```mermaid
+{Mermaid erDiagram code for the Entity Model rows and their relationships}
 ```
 
 ### Data Flow / Deployment {when applicable}
@@ -585,13 +609,15 @@ Walk through the failure end-to-end:
 - [ ] Every component lists primary failure mode
 - [ ] Every significant decision has a rejected alternative with reason; trade-offs include negatives; each carries a review trigger
 - [ ] Consistency model stated per data boundary, with partial-failure behavior
+- [ ] Entity Model present when the design creates or changes an entity: owner from Module Boundaries, key, cardinality, lifecycle and retention, sensitivity; no column-level DDL
+- [ ] Verification Plan carries a row per NFR target, consistency boundary, contract, schema phase, the top failure scenario, and each impacted in-scope R-ID, each with a level and a gate
 - [ ] Highest-blast-radius scenario has a mitigation; retry amplification and backpressure assessed
 - [ ] Rollback strategy and rollback trigger present; observability plan names an SLO candidate
 - [ ] Guardrails are concrete, detectable rules (one per Module Boundaries row minimum)
 - [ ] Security Model block states authn, authz enforcement point, tenant isolation, secret rotation, and abuse controls
 - [ ] Section 11 produced when an API surface, event, or webhook reaches a consumer outside the boundary: auth per endpoint, RFC 9457 errors, idempotency on every non-idempotent POST or PATCH and inbound webhook, pagination on collections, multi-tenancy if applicable; outbound event/webhook contracts documented when the design delivers them
-- [ ] Section 12 produced at standard/deep, or its skip one-liner: at minimum a C4 Container diagram; every diagram element traces to a component/boundary defined in Sections 2-3; Diagram Notes state scope, assumptions, and next level per diagram
-- [ ] Section 1 states the problem, the NFRs the design is accountable to, and the constraints; each NFR without a stated value carries nfr-specification's `(assumed: basis)` default with its confirmation question under Open Questions, or reads `not specified` and is listed there as a gap; at `quick`, NFRs the decisions do not depend on appear only under Open Questions
+- [ ] Section 12 produced at standard/deep, or its skip one-liner: at minimum a C4 Container diagram; every diagram element traces to a component/boundary defined in Sections 2-3, or an ER entity to the Entity Model; Diagram Notes state scope, assumptions, and next level per diagram
+- [ ] Section 1 states the problem, the NFRs the design is accountable to, and the constraints; each NFR without a stated value carries nfr-specification's `(assumed: basis)` default with its confirmation question under Open Questions, or reads `not specified` and is listed there as a gap; at `quick`, NFRs the decisions do not depend on appear only under Open Questions; with a requirements analysis supplied, in-scope lines cite R-IDs, Gated rows lead Open Questions with their Q-IDs, and Defaulted answers appear as assumptions
 - [ ] Section 7 names the binding bottleneck and the scaling model at every depth where it runs, not only at deep
 - [ ] Heading list settled before drafting; every numbered heading appears exactly once, comes from the house skeleton or the template rather than being invented, and runs in order; appended sections sit after the appendix, unnumbered, each with its one-line reason
 - [ ] Staff-Level Summary present at every depth, each bullet specific to this design; the Direction line present on a quick direction check

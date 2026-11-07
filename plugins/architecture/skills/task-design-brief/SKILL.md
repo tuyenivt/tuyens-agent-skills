@@ -43,7 +43,8 @@ A pasted brief with no authoring request is **Review Mode** (a pasted full desig
 | Input | Required | Description |
 | --- | --- | --- |
 | Epic or feature | Yes | What must be built or changed, and why |
-| Current system | No | The services, tables, jobs, and queues the epic touches - the input the change inventory's accuracy depends on most |
+| Current system | No | The services, tables, jobs, and queues the epic touches - the input the change inventory's accuracy depends on most; a `task-onboard` report is the preferred form |
+| Requirements analysis | No | A `task-analyze-requirements` output; the inventory's Why cells cite its `R<n>` IDs. Requester answers supplied beside it are applied to its register and Handoff first, as its re-run would: a row whose Blocking findings are all answered is ungated, and an answered Implied row enters scope or, when declined, is removed; a revised PRD is a `task-analyze-requirements` re-run, not an input here |
 | Reviewer profile | No | Architecture fluency and domain fluency, `High` or `Low` each; default Architecture: Low, Domain: High. An `Approver:` line under `## Design Docs` names the reader but states no fluency - take the identity, keep the default profile, and record the source as `assumed default` |
 | Reference doc | No | Company template or an approved prior design, as a path or pasted content |
 | Existing HLD | No | An already-written design; the brief renders from it - content, never handed to the reference skill as a pattern |
@@ -98,7 +99,7 @@ A signal that fires but yields nothing the reviewer needs in order to decide is 
 
 This is the section a domain-fluent reviewer evaluates on, and the one that earns their correction. Every row names a real, findable thing: `orders.status`, `POST /v1/orders`, `NotificationWorker`, `settlement.nightly`. "The order flow" is not a row.
 
-- **Trace or flag.** Every row ties back to Section 1's problem. A row that does not is scope creep - surface it as a Section 8 Decision (keep or cut; all scope-creep rows share one such Decision, and when Section 8's Decisions would then exceed three, the lowest-consequence design Decision other than an HLD-conflict Decision moves to the appendix as an open question), do not quietly build it.
+- **Trace or flag.** Every row ties back to Section 1's problem; with a requirements analysis supplied, its Why cell ends with the `R<n>` IDs it serves, and an open Defaulted finding it rests on is an appendix assumption naming its `Q<n>`. Gated and Out-of-scope R-IDs are not designed here. A row that traces to nothing, or only to an Out-of-scope R-ID, is scope creep - surface it as a Section 8 Decision (keep or cut; all scope-creep rows share one such Decision, and when Section 8's Decisions would then exceed three, the lowest-consequence design Decision other than an HLD-conflict Decision moves to the appendix as an open question), do not quietly build it.
 - **Find the rows the epic implies but never states.** The batch job that reads the column being changed, the report built on the table being split, the consumer of the event whose shape is moving. These are the highest-value rows in the document.
 - **Mark unverified `Also touches` and `If it goes wrong` cells `assumed`.** A cell is verified when it cites the current-system input or code; an inference from either is not, and a cell no inference reaches reads `unknown`. Each `assumed` or `unknown` cell is resolved by Step 7's rule.
 - **State what is not changing.** Name the adjacent systems a reviewer would reasonably fear are affected and are not. This is a required line, not an exhaustive inventory.
@@ -136,8 +137,8 @@ Legend: "new" = added by this epic, "changed" = existing and modified, unmarked 
 **The ask.** Three slots:
 
 - **Decisions**, at most three. Each states the question, the options, the recommended option, and the consequence of not taking it. A pre-picked recommendation turns the reviewer's job from inventing an answer into confirming one. Nothing left to decide (an already-approved HLD as input, with no conflict against a stated requirement and no scope-creep row) collapses the block to one line saying so.
-- **Confirm from your side.** Every `assumed` or `unknown` cell in Section 3, and every `assumed` value in Section 7 (the switch, the back-out data answer), that the reviewer's own knowledge can settle becomes a confirm-question; cells one answer settles merge into one question. A cell only an engineer can resolve is not a confirm-question - make it a spike (one `Spike:` line in the same block) or an appendix assumption. With readers in different quadrants, address each question to the reader who can settle it by name; a secondary reader's `Also answer` question is answered for them in the body section that owns it, never asked back here. More than four questions means the current-system input was thin - keep the four with the largest `If it goes wrong`, and list the rest as open assumptions in the appendix. Zero `assumed` or `unknown` cells collapses the block to one line saying nothing needs confirming.
-- **What approval means**, one line bounding exactly what is being signed off and what would come back for a second look. An approver who knows the edge of their liability approves faster.
+- **Confirm from your side.** Every `assumed` or `unknown` cell in Section 3, and every `assumed` value in Section 7 (the switch, the back-out data answer), that the reviewer's own knowledge can settle becomes a confirm-question; cells one answer settles merge into one question. A cell or value only an engineer can resolve is not a confirm-question - make it a spike (one `Spike:` line in the same block) or an appendix assumption. With readers in different quadrants, address each question to the reader who can settle it by name; a secondary reader's `Also answer` question is answered for them in the body section that owns it, never asked back here. More than four questions means the current-system input was thin - keep the four with the largest `If it goes wrong`, and list the rest as open assumptions in the appendix. Zero `assumed` or `unknown` cells in Section 3 and zero `assumed` values in Section 7 collapses the block to one line saying nothing needs confirming.
+- **What approval means**, one line bounding exactly what is being signed off and what would come back for a second look; with a requirements analysis supplied, its Gated R-IDs are named as outside this approval, each with the open Blocking `Q<n>` IDs it waits on. An approver who knows the edge of their liability approves faster.
 
 ### Step 8 - Fit and compress
 
@@ -182,7 +183,7 @@ The budget is a target, not a licence to drop required content: where it conflic
 
 | What | Kind | Change | Why | Also touches | If it goes wrong |
 | --- | --- | --- | --- | --- | --- |
-| `orders.status` | table/column | Modified | <one clause> | Nightly settlement job (assumed) | <user-visible consequence> |
+| `orders.status` | table/column | Modified | <one clause>{ (R<n>{, R<n>})} | Nightly settlement job (assumed) | <user-visible consequence> |
 
 Kind: service | endpoint | table/column | job | event/queue | config | infra | third-party. Change: New | Modified | Removed.
 
@@ -228,13 +229,13 @@ sequenceDiagram
 
 **Please confirm from your side** {at most four confirm-questions, Spike lines not counted; the rest as appendix assumptions}
 
-- <question only this reviewer's domain knowledge can settle, drawn from an `assumed` or `unknown` cell in Section 3 or value in Section 7>
+- {<reader>: }<question only this reviewer's domain knowledge can settle, drawn from an `assumed` or `unknown` cell in Section 3 or an `assumed` value in Section 7>
 
-- Spike: <question only engineering can settle, from an `assumed` or `unknown` cell>
+- Spike: <question only engineering can settle, from an `assumed` or `unknown` Section 3 cell or an `assumed` Section 7 value>
 
-{instead, when no `assumed` or `unknown` cell exists: one line saying nothing needs confirming}
+{instead, when Section 3 has no `assumed` or `unknown` cell and Section 7 no `assumed` value: one line saying nothing needs confirming}
 
-**What approval means:** <what is being signed off>. <What would come back for a second look.>
+**What approval means:** <what is being signed off>. <What would come back for a second look.>{ Outside this approval: R<n> (Q<n>{, Q<n>}), ...}
 
 {only at a one-page quadrant whose body is at its floor: one line saying so}
 
@@ -257,9 +258,9 @@ Applied internally, never emitted in the deliverable.
 - [ ] **Step 2:** stack-detect loaded; a request-stated stack honored when detection is `unknown`
 - [ ] **Step 3:** calibration recorded with its source; house pattern located or `built-in` declared, with every required content item mapped
 - [ ] **Step 4:** every fired signal's atomic loaded; findings absorbed into sections or the appendix; no atomic output block emitted
-- [ ] **Step 5:** every row names a findable thing and traces to Section 1 or is surfaced as a Section 8 keep-or-cut Decision; implied rows found; unverified impact marked `assumed`, or `unknown` where no inference reaches it; Not-changing line present
+- [ ] **Step 5:** every row names a findable thing and traces to Section 1, citing its R-IDs when a requirements analysis was supplied, or is surfaced as a Section 8 keep-or-cut Decision; implied rows found; unverified impact marked `assumed`, or `unknown` where no inference reaches it; Not-changing line present
 - [ ] **Step 6:** change state marked in labels with a legend; every element traces to the inventory or the current system; each diagram precedes its prose
-- [ ] **Step 7:** each risk states a user-visible consequence; back-out gives trigger, action, time to restore, and the data answer; every `assumed` or `unknown` cell became a confirm-question, merged into one, a spike, or is listed in the appendix; an irreversible step names its point of no return; the ask bounds what approval covers
+- [ ] **Step 7:** each risk states a user-visible consequence; back-out gives trigger, action, time to restore, and the data answer; every `assumed` or `unknown` Section 3 cell or `assumed` Section 7 value became a confirm-question, merged into one, a spike, or is listed in the appendix; an irreversible step names its point of no return; the ask bounds what approval covers, naming a supplied analysis's Gated R-IDs as outside it
 - [ ] **Step 8:** body within budget with overflow relocated to the appendix, not deleted; no unglossed term at Low architecture fluency, severity enum standing in for a consequence, or condescension marker in the body
 
 ## Review Mode

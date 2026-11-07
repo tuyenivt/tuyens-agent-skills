@@ -55,7 +55,7 @@ Read the design and extract the work it implies. Match the design's content to t
 | Design content | Produces |
 | --- | --- |
 | **Module Boundaries / Components** (S2, S3) | Foundation tasks - one per new/changed module or data owner |
-| **Data and Consistency Model** (S4) | Foundation tasks of type `data`; schema, migration, backfill |
+| **Data and Consistency Model** (S4) | Foundation tasks of type `data`, one per New or Changed Entity Model row; schema, migration, backfill |
 | **API Contracts** (S11) | Build + Integration tasks per endpoint group; contract tests |
 | **Communication Model** (S3) | Integration tasks - events, queues, sync calls between components |
 | **Failure and Risk Analysis** (S5) | Ops-Readiness tasks - circuit breakers, retries, idempotency |
@@ -64,6 +64,7 @@ Read the design and extract the work it implies. Match the design's content to t
 | **Deployment Strategy** (S8) | Ops-Readiness tasks - rollout mechanism, migration order, rollback drill, flag config |
 | **Security Model / Authorization** (S3, S11) | Foundation + Ops-Readiness tasks - authz enforcement on each sensitive surface, audit logging, retention, key rotation |
 | **Guardrails** (S10) | Validation tasks - lint/arch-test rules that enforce each guardrail |
+| **Verification Plan** (S10) | Validation tasks grouped by Level, each depending on the work its Claim covers; a `rollout phase <n>` or `post-release` Gate is an Ops-Readiness check instead |
 | **Trade-Off / Significant Decisions** (S9) | Spikes where a decision is deferred; an `analysis` task per Hard-reversibility decision whose ADR is still unwritten |
 
 State which design sections you drew from. If a required design section is absent (e.g., no failure analysis for a high-blast-radius change), flag it under Open Questions rather than fabricating tasks. A design whose own status is below approved but which the request treats as signed off is broken down as written - its defects raised under Open Questions or as spikes, never corrected in the tasks - its status recorded under Design Coverage.
@@ -119,7 +120,7 @@ Each task:
 - **Name** - action-oriented ("Implement dual-mode /auth/validate"). Never "Backend work" or "Testing".
 - **Type** - one of: `implementation`, `infrastructure`, `data`, `validation`, `ops`, `analysis` (specs, contracts, audits, decision records)
 - **Description** - one or two sentences; what to build, not how
-- **Traces to** - the design section, heading, or component this task implements (e.g., "S3 NotificationRouter", or a free-form heading like "Approach: WebSocket gateway"). An ops-readiness task may trace to an implied need the design carries rather than states (e.g., observability or rollback for a flagged rollout) - that is not scope creep. A task tracing to nothing in the design is scope creep - move it to Scope and Risk Flags.
+- **Traces to** - the design section, heading, or component this task implements (e.g., "S3 NotificationRouter", or a free-form heading like "Approach: WebSocket gateway"). An ops-readiness task may trace to an implied need the design carries rather than states (e.g., observability or rollback for a flagged rollout) - that is not scope creep. A task tracing to nothing in the design is scope creep - move it to Scope and Risk Flags. When the design cites requirement IDs (`R<n>`, from a requirements analysis), the trace ends with the IDs the task serves (`S4 Entity Model: Shipment (R2, R5)`). An in-scope R-ID - one cited on an in-scope line of the design's functional scope, or on a change-inventory row's Why cell in a design brief, whatever a supplied analysis says - that no task traces to is listed under Design Coverage's `Requirements without a task` and raised as an Open Question.
 - **Depends on** - task name(s), `SP<n>` for a spike outcome, external (<team/system>), workstream (<same-team effort it waits on>), or none
 - **Size** - S (under 1 day) / M (1-2 days) / L (over 2 and up to 5 days) / XL (over 5 days - listed under Backlog with a Split note naming the cohorts or waves it breaks into). Size measures engineering effort; fixed elapsed time (soak windows, parallel runs) goes in the description, not the size.
 - **Complexity signals** - required for L or XL and on any task citing a deep-dive; cite which Step 4 signals justify the size. The signals check the effort estimate rather than replace it: a task carrying two or more, or any single signal touching production data or an externally consumed contract, rarely lands below L, and one that also spans cohorts, waves, or another team's schedule is XL. A deep-dive that reads the signal as low risk (backend-db-migration's Low lock risk on an additive column) releases that floor - cite it
@@ -163,12 +164,13 @@ When the verdict is `add spike`, define:
 ```markdown
 # Design-to-Tasks Breakdown: <Feature / System>
 
-**Stack:** <language / framework (detected) | <stack> (prompt-stated) | unknown> | **Design source:** <task-design-architecture proposal | design brief | HLD | LLD | sketch> | **Tasks:** <count, Backlog included, spikes excluded>{ | **Capacity:** <stated team constraint> - <N> parallel chains}
+**Stack:** <<language> / <framework> (detected) | <language> (no framework detected) | <stack> (prompt-stated) | unknown> | **Design source:** <task-design-architecture proposal | design brief | HLD | LLD | sketch> | **Tasks:** <count, Backlog included, spikes excluded>{ | **Capacity:** <stated team constraint> - <N> parallel chains}
 
 ## Design Coverage
 
 - Sections/areas drawn from: <list, e.g., S2 boundaries, S4 data model, S11 API>
 - Sections absent or thin: <list; each surfaces below as a Design gap or Open Question>
+- Requirements without a task: <in-scope R-IDs no task traces to, each also an Open Question | none | n/a - the design cites no requirement IDs>
 - Design status: <stated status> - broken down as written at the request's instruction {only when the design's status is below approved}
 
 ## Complexity Signals
@@ -220,7 +222,7 @@ When the verdict is `add spike`, define:
 ## Assumptions and Open Questions
 
 - <assumption made due to missing design detail>
-- <design decision left open that would change the breakdown>
+- <design decision left open, or an in-scope R-ID with no task, that would change the breakdown>
 ```
 
 Omit empty sections (Backlog, Spikes, Scope and Risk Flags, Assumptions).
@@ -229,7 +231,7 @@ Omit empty sections (Backlog, Spikes, Scope and Risk Flags, Assumptions).
 
 - [ ] Step 1: behavioral-principles loaded
 - [ ] **Step 2 (Setup):** stack-detect loaded; prompt-stated stack honored when detect is unknown
-- [ ] **Map:** design sections drawn-from and absent listed; every task traces to a design section/component; no architecture invented
+- [ ] **Map:** design sections drawn-from and absent listed; every task traces to a design section/component, with its R-IDs when the design cites them; in-scope R-IDs with no task listed under Design Coverage and raised as Open Questions; no architecture invented
 - [ ] **Scan:** every applicable signal listed with design-citing evidence; material deep-dive atomics loaded
 - [ ] **Tasks:** each has Name, Type (from enum), Description, Traces-to, Depends-on, Size; L/XL and deep-dive-citing tasks cite complexity signals; XL carries Split and sits under Backlog, and a task shipping in waves carries Split whatever its size; team/system named when external; Ops Readiness includes observability/rollback when the design implies them
 - [ ] **Dependencies:** critical path named by hop count with a "why" sentence; spikes cited by `SP<n>` where tasks depend on them
@@ -262,6 +264,7 @@ Does the plan cover the work the design (or stated scope) implies? For each area
 | Performance / capacity | Load-test tasks against stated targets; scaling-config tasks when the design states a scaling model |
 | Deployment and rollback | Rollout, migration-order, rollback-drill, flag-config tasks |
 | Guardrails | Validation tasks that enforce each guardrail |
+| Verification plan | A Validation task per Verification Plan claim at its Level; a `rollout phase <n>` or `post-release` Gate as an Ops-readiness check |
 | Trade-offs and decisions | An `analysis` task per Hard-reversibility decision whose ADR is unwritten; a spike per decision the design left open |
 
 The most common defect is a plan that tasks out the happy-path build and omits migration, backward-compat, rollback, and observability the design calls for. Severity by status:
@@ -313,7 +316,7 @@ Any non-Approve verdict lists its required changes as a checkbox list (for Needs
 
 - **Plan reviewed:** <one line>
 - **Source design:** <supplied | none - coverage judged against stated scope | none and no scope - internal soundness only>
-- **Stack:** <language / framework (detected) | <stack> (prompt-stated) | unknown>
+- **Stack:** <<language> / <framework> (detected) | <language> (no framework detected) | <stack> (prompt-stated) | unknown>
 - **Reviewer assumptions:** <reviewer-context facts; unavailable composed skills, if any>
 - **Deep-dives loaded:** <atomics loaded for a finding's severity, or none>
 
