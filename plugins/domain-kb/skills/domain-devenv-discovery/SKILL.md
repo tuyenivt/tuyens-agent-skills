@@ -54,7 +54,7 @@ Reads one service repository and states what it needs to run next to its peers: 
 | Port          | the server config (`config/puma.rb`, `server.port`, the `listen` call, `uvicorn` arguments), `PORT` default, then the profile default |
 | Infra keys    | `config/database.yml`, `config/*.yml`, `config/initializers/`, `application*.yml` and `.properties`, `settings.py`, a config module, `.env.example` |
 | Peers, external | client classes and their base-URL config, `surfaces/<repo>.md` outbound client rows, HTTP client construction sites          |
-| Secrets       | keys read with no default whose name or use is a credential (`*_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD`, Rails credentials), `.env.example` entries left blank that the service needs to boot, minus the `Uses` credentials |
+| Secrets       | keys read with no default whose name or use is a credential (`*_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD`, Rails credentials), `.env.example` entries left blank that the service needs to boot, minus the `Uses` credentials and the peers' ` (credential)` keys |
 | Roles         | authorization checks on a token role (`@PreAuthorize("hasRole(...)")`, `@Roles`, a claims lookup); a scope check (`hasAuthority('SCOPE_x')`) is an `Unknowns` line (`uses.keycloak.roles: client scope x - add it to the realm by hand`); a database-backed role check (`rolify` `has_role?`, the app's own roles table) is an `Unknowns` line (`uses.keycloak.roles: roles live in the database - seed them`) |
 | Topology      | rabbitmq only: exchange, queue, and binding declarations in code (`apps`); none in code and present in deploy configuration (`provisioned`, each declaration listed) |
 | Browser       | for a frontend: the API base URL key and every outbound call's host; for a backend: `from the frontends' inventories` (the consuming workflow fills it) |
@@ -124,7 +124,7 @@ One block per repo, every table kept with its header and one `none - <evidence>`
 - **Edge headers:** {<Header> from cookie <name> - file:line, ... | <Header> from <other source> - file:line | none}
 - **SAML:** {entity id <path> - file:line; acs <path> - file:line; IdP certificate pinned at <file:line or KEY>, effective value from <file:line> | none}
 - **Dev clients:** {<client id> / <secret> for <caller | any caller> - file:line, ... | none}
-- **Committed credentials:** {<kind> at file:line, ... | none}
+- **Committed credentials:** {<kind> at {file:line | path}, ... | none}
 - **HTTPS:** {required - <reason> file:line; ... | not required}
 - **Proxy scheme:** {KEY=value | trusted by default | not needed | set in code - file:line | not set - no absolute URLs built | unknown - <setting> absent, absolute URLs built at file:line}
 - **Unknowns:**
