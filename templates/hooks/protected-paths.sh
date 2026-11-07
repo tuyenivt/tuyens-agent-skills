@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # protected-paths.sh - PreToolUse guard for the Bash tool.
 #
-# Blocks shell writes into files that control host-side execution, and any command that references a credential path or a real .env file.
+# Blocks shell writes into files that control host-side execution, and any command that references a credential path or a production/staging .env file.
 #
 # This exists because permission rules only reach the Edit and Write tools.
 # Edit(**/.claude/settings.json) does not stop `sed -i` from rewriting the same file through the Bash tool, and Bash(sed:*) is allowlisted.
@@ -20,9 +20,9 @@ if printf '%s' "$IN" | grep -qiE '\.ssh/|\.aws/|\.gnupg/|id_rsa|id_ed25519|\.net
   exit 0
 fi
 
-# .env files, except the example/sample/template variants.
-if printf '%s' "$IN" | grep -qiE '\.env([^A-Za-z0-9_]|$)|\.envrc' && ! printf '%s' "$IN" | grep -qiE '\.env[._-]?(example|sample|template|dist)'; then
-  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Blocked: command references a .env file. Only .env.example/.env.sample style files may be touched."}}'
+# Production and staging .env files, and the dotenv-vault keys file. Local .env files stay readable: the agent reads and edits them to run tests.
+if printf '%s' "$IN" | grep -qiE '\.env\.(production|prod|staging|stage|keys)([^A-Za-z0-9]|$)'; then
+  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Blocked: command references a production or staging .env file (.env.production, .env.prod, .env.staging, .env.stage, .env.keys)."}}'
   exit 0
 fi
 
