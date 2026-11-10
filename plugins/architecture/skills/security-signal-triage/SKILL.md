@@ -47,16 +47,16 @@ Use skill: `ops-observability-fetch`: `security_signal` per signal URL or ID; `l
 | Qualification and rule | `Qualification: harmful`, or a `Rule` naming exploitation, on a request not marked blocked                                 | `Qualification: safe`                                                                                                                             |
 | Blocking and status   | -                                                                                                                          | every request either marked blocked (`Outcome: blocked`; AAP's block response is configurable, so the mark decides, not the status) or answered 401 or 403 by the auth layer, 302 to login, 404 on a nonexistent path, or 429 |
 | Auth outcome          | a login success for the actor's IP or token after a burst of failures                                                      | failures only                                                                                                                                     |
-| Payload reach         | the payload in an executed statement or outbound URL (a log line, a pasted statement), or data the payload asked for in the response | -                                                                                                                                                 |
+| Payload reach         | the payload in an executed statement or outbound URL (a log line, a pasted statement), or data the payload asked for in the response, or another account's data returned to the actor | -                                                                                                                                                 |
 
 `yes` on any effect row. `no` when no row shows effect and one anchor that fits the attack holds: every request blocked or rejected (Blocking row), failures only on a login attack (Auth row), or `Qualification: safe` (AAP rated every trace None successful). `unknown` otherwise - a `-` cell or an unknown qualification never blocks `no`. A blocked Exploit Prevention hit shows no effect but proves the route vulnerable: it is the hole in Step 3 and an escalation trigger. An edge WAF block leaves no trace on the targeted service (the AWS WAF integration surfaces it under service `aws.waf`).
 
-Volume decides nothing about effect; it separates **targeted** (sustained against one account or endpoint, many times that account's or endpoint's baseline, from one actor or many) from **sweep** (one pass across many paths, typical of a scanner).
+Volume decides nothing about effect; it separates **targeted** (sustained against one account or endpoint, many times that account's or endpoint's baseline, from one actor or many) from **sweep** (everything else - typically one pass across many paths by a scanner).
 
 ```
 Bad:  SQL injection signal from 203.0.113.9 -> Confirmed - uncontained; rotate the DB credentials
 Good: SQL injection signal from 203.0.113.9; every request marked blocked, one-pass sweep across 380 paths
-      -> False positive / scanner noise; containment: existing block holds; escalation: Not met - no effect shown
+      -> False positive / scanner noise; containment: existing block holds; tune: suppress notifications for the sweep pattern - detection-rule owner; escalation: Not met - no effect shown
 ```
 
 ### Step 3 - Resources and Verdict
@@ -65,14 +65,14 @@ Good: SQL injection signal from 203.0.113.9; every request marked blocked, one-p
 - Targets: endpoints and hosts from the signal; the handler behind each route and the tables or data classes it reads or writes, from the code path when the repo is readable; a route the code path or an Exploit Prevention hit shows exploitable is the hole, named whether or not the actor reached it
 - Accounts: every account the actor authenticated to or read, from the auth and access logs in the window; "none" when no auth succeeded
 - Data: what those accounts and handlers expose - the data class, not a row count, unless the logs give one
-- Time window: first to last event across the signal and logs; `continuing` when the latest window held still shows the actor - an activity flag, independent of the verdict
+- Time window: first to last event across the signal and logs; `continuing` when the latest event - the actor's, or the signal's pattern on the targeted endpoint when the actor is unknown - falls in the last 5 minutes of the latest window held (that window's end, not the current time, is the reference) - an activity flag, independent of the verdict, and what Step 4 means by attempts still arriving (with Time window `unknown`, they count as arriving)
 
 Verdict, the only statement of it:
 
 - `Confirmed - uncontained` - `yes`, and no lever stops the actor yet; silence alone is not containment
 - `Confirmed - contained` - `yes`, and a lever now stops the actor
-- `Attempted - blocked` - `no`, and targeted
-- `False positive / scanner noise` - `no`, and not targeted
+- `Attempted - blocked` - `no`, and targeted or carrying an Exploit Prevention detection; the label covers an attempt blocked, rejected, or handled safely, and the Containment record says which
+- `False positive / scanner noise` - `no`, not targeted, and no Exploit Prevention detection
 - `Insufficient evidence` - `unknown` after every applicable row ran or was `Not run`, with what would settle it in Remaining Uncertainty
 
 ### Step 4 - Containment Ladder
@@ -81,17 +81,17 @@ Ordered by blast radius on legitimate users; take the lowest rung that stops the
 
 | Rung | Lever                                                                                                                                                                                          | Owner                                | When                                                                                                                                    |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | Rate limit the actor, or the endpoint when the actor is unknown                                                                                                                                                                           | edge or platform                     | attempts still arriving, any verdict above noise; the default on `Insufficient evidence`                                                |
+| 1    | Rate limit the actor, or the endpoint when the actor is unknown                                                                                                                                                                           | edge or platform                     | attempts still arriving on any verdict above noise, `Insufficient evidence` included                                                |
 | 2    | Block the source: IP/CIDR or authenticated user in the AAP Denylist, user agent via an In-App WAF custom rule, ASN or token fingerprint at the edge; or switch the service's AAP policy from monitoring to blocking | SRE or platform                      | confirmed and the actor not yet blocked                                                                                                 |
 | 3    | Revoke tokens and sessions for the touched accounts and force their credential reset, through the session store and token library the code path shows                                         | application                          | an auth success for the actor                                                                                                           |
 | 4    | Rotate the secrets the actor could have read                                                                                                                                                   | application, plus the secret's owner | a config, key, or credential among the exposed data                                                                                     |
 | 5    | Disable the targeted route or feature, or the touched accounts                                                                                                                                 | application or product               | a hole usable by any caller who can reach the route, authenticated users included, or abuse rungs 1-3 did not stop; the fix itself is the owning engineer's |
 
-On `Attempted - blocked` and scanner noise no rung above 1 is emitted: a block that already exists is recorded as holding, and noise adds the tuning item (notification-side, the block untouched) with its owner.
+On `Attempted - blocked` and scanner noise no rung above 1 is emitted, and Containment records what already stops the attempt: `existing block holds` when the Blocking row anchors `no` and at least one request was marked blocked, otherwise `no effect - <why>` (a rejection or safe handling), ` - nothing further` appended when the record is the only Containment item. Rung 1 sits beside that record on `Attempted - blocked` while attempts still arrive; noise adds the tuning item (notification-side, the block untouched) with its owner. `Insufficient evidence` with nothing arriving records `nothing further - <what would settle it>`.
 
 ### Step 5 - Escalation
 
-Apply the floor from Rules. The line carries the trigger met, or the floor not crossed; `Unknown` when the deciding evidence is `Not run`, or Access succeeded is `unknown` on a path the floor names, with what would settle it.
+Apply the floor from Rules. The line carries the trigger met - a met trigger decides whatever else is unknown - or the floor not crossed; `Unknown` when no trigger is met and the deciding evidence is `Not run`, or Access succeeded is `unknown` on a path the floor names, with what would settle it.
 
 ## Output Format
 
@@ -113,7 +113,7 @@ Time window: {first to last event{, continuing} | unknown - <what would establis
 - {each check that could not be run: "Not run - <what was inaccessible>"; a row the signal type cannot have: "n/a - <row>"}
 
 ### Containment
-- [ ] {lever - owner - ETA in minutes | existing block holds - nothing further | nothing further - <why> | tune: <threshold, suppression, or passlist entry> - <owner>}
+- [ ] {lever{ (broken: <why> - use <alternative>)} - owner - ETA in minutes | existing block holds{ - nothing further} | no effect - <why>{ - nothing further} | nothing further - <what would settle it> | tune: <threshold, suppression, or passlist entry> - <owner>}
 
 ### Evidence Preserved
 - [ ] {capture to perform before rung 3 - session or token rows snapshotted, actor log window exported by IP and by account | nothing to preserve - rung 3 not recommended}
@@ -137,4 +137,3 @@ Time window: {first to last event{, continuing} | unknown - <what would establis
 ## Avoid
 
 - Setting Access succeeded from an unblocked 2xx, a DB service in `Services traversed`, or the rule's own severity
-- Emitting a rung whose When does not hold, or a lever without its owner

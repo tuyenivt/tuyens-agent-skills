@@ -14,10 +14,17 @@ user-invocable: false
 ## Rules
 
 - Review the artifact as written, not the artifact you would have authored. Facts the reviewer knows that the artifact omits (regulatory scope, hidden consumers) enter as reviewer assumptions in Review Context and may ground findings - cite them as "reviewer context"
-- Every finding cites a specific section, claim, or omission, and carries `F{n}`, a severity, and a recommendation wherever it is raised. Step 2's table carries each of its findings whole in three added columns (`F{n}`, severity, recommendation), `-` in each on a row with no Step 2 finding and several findings on one row joined with `; `, nothing repeated below the table; Step 4's and Step 6's tables cite a finding by `F{n}` only; a finding written in the Step 5 format sits under its step's table as a list
+- Every finding cites a specific section, claim, or omission, and carries `F{n}`, a severity, and a recommendation wherever it is raised. Step 2's table carries each of its findings whole in three added columns (`F{n}`, severity, recommendation), `-` in each on a row with no Step 2 finding, nothing repeated below the table; Step 4's and Step 6's tables cite a finding by `F{n}` only; a finding written in the Step 5 format sits under its step's table as a list
 - Every finding carries a severity: Blocker | Major | Minor | Nit. A finding is a Blocker when the decision cannot be made until it is resolved - that single test covers a load-bearing gap, a contradiction that changes the recommendation, a load-bearing factual error, and a Major or a required-factor gap nobody can bound into a specific pre-adoption change
 - Distinguish **Missing** (not present) from **Under-specified** (vague) from **Wrong** (incorrect on the facts). An author-acknowledged TODO is still Missing or Under-specified, at full severity
-- Record each finding once, numbered F1, F2, ... in the order raised across steps (Step 2's table first, then Step 3, and so on), so later steps reference rather than restate. A factor whose claim the artifact contradicts is Present, and the contradiction is its Wrong finding. Placement, in precedence order: a Missing or Under-specified factor's gap is a Step 2 finding; a Wrong claim goes to Step 3 when it contradicts the artifact; a finding opened by an assumption that undermines no Step 2 or Step 3 finding goes to Step 4; any other Wrong claim goes to Step 6 when Step 6 runs and its factor names the same axis as a Step 6 criterion or Step 5 has collapsed, otherwise to Step 5; any other finding on an overlapping factor goes to Step 6, or to Step 5 when Step 6 is skipped; everything else goes to the earliest step that captures it. Assumptions carry their own series (A1, A2, ...); an assumption whose severity-if-wrong is Major or Blocker reaches the verdict only through a finding - a new one, or an existing one raised to that severity, per Step 4
+- Record each finding once, numbered F1, F2, ... in the order raised across steps (Step 2's table first, then Step 3, and so on), so later steps reference rather than restate. A factor whose claim the artifact contradicts is Present, and the contradiction is its Wrong finding. Placement - the first line that fits:
+  1. A Missing or Under-specified factor's gap -> Step 2
+  2. A Wrong claim that another part of the artifact contradicts -> Step 3
+  3. A finding opened by an assumption that undermines no Step 2 or Step 3 finding -> Step 4
+  4. Any other Wrong claim -> Step 6 when Step 6 runs and its factor names the same axis as a Step 6 criterion or Step 5 has collapsed; otherwise Step 5
+  5. Any other finding on an overlapping factor -> Step 6, or Step 5 when Step 6 is skipped
+  6. Everything else -> the earliest step that captures it
+- Assumptions carry their own series (A1, A2, ...); an assumption whose severity-if-wrong is Major or Blocker reaches the verdict only through a finding - a new one, or an existing one raised to that severity, per Step 4
 - The verdict is driven by the highest-severity findings, not their count. Breadth reaches the verdict through one mechanism only: when no finding is itself a Blocker but findings across three or more factors together mean the decision cannot be made, open one Blocker citing them at the top of the Verdict section, and let it drive the verdict
 - Recommend the smallest concrete change that resolves each finding. Propose a redesign only when no targeted change resolves it, and say why
 
@@ -42,7 +49,7 @@ State in one sentence each: the problem (per the artifact), stated scope and non
 
 ### 2. Completeness Audit
 
-The workflow provides the factor list; standalone, use the Step 6 criteria as the factor list, all required (the Step 5/6 overlap rule then applies). For each factor mark **Present** (explicit, specific), **Under-specified** (the artifact addresses part of the factor, or addresses it without the specifics a decision needs), or **Missing** (the artifact does not address it at all). Partial coverage is Under-specified, not Missing; name the covered part and the remaining gap; the gap is the finding's statement, and its severity floor is judged against it. A factor irrelevant to the artifact is N/A with a one-line reason, not Missing. A Present or Under-specified factor whose Wrong finding sits in another step appends ` - see F{n}` to its mark (`Present - see F{n}`).
+The workflow provides the factor list; standalone, use the Step 6 criteria as the factor list, all required (the Step 5/6 overlap rule then applies). Table columns, in order: Factor, Mark, Evidence or gap, `F{n}`, Severity, Recommendation. For each factor mark **Present** (explicit, specific), **Under-specified** (the artifact addresses part of the factor, or addresses it without the specifics a decision needs), or **Missing** (the artifact does not address it at all). Partial coverage is Under-specified, not Missing; name the covered part and the remaining gap; the gap is the finding's statement, and its severity floor is judged against it. A factor irrelevant to the artifact is N/A with a one-line reason, not Missing. A Present or Under-specified factor whose Wrong finding sits in another step appends ` - see F{n}` to its mark (`Present - see F{n}`).
 
 Where a factor is also scored in Step 6, the two vocabularies must agree: Missing scores Not addressed, Under-specified scores Weak, N/A scores N/A, and a Present factor scores Adequate or Strong, or Weak when it carries a Wrong finding of Major or above.
 
@@ -57,13 +64,7 @@ Presence is settled here and quality in Step 5, so a Missing or Under-specified 
 
 Find contradictions inside the artifact - an appendix or numbers file the author supplies is part of it. Quote both sides with section references and state which is correct (or that the author must resolve). Severity: Major by default, Blocker when the decision cannot be made until the author resolves it. With none found, the section reads `No internal contradictions found` and nothing more.
 
-Common patterns:
-
-- Section claims async/stateless/strong-consistency but a later section assumes the opposite
-- Stated NFR conflicts with capacity ceiling or failure mode
-- "Easy to reverse" contradicted by a multi-step migration
-- Rollback contradicts migration/deploy ordering
-- Backward-compat claim contradicted by an explicit field rename or type change
+Typical: a claim (async, stateless, strongly consistent, easy to reverse, backward compatible) that a later section's mechanism contradicts; a stated NFR above a capacity ceiling; a rollback that contradicts the migration or deploy order.
 
 ### 4. Assumptions Audit
 
@@ -86,7 +87,7 @@ Format (repeat per finding):
 - F{n} {Severity}: {Specific finding referencing the section/claim}. Recommendation: {Smallest concrete change}.
 ```
 
-Example - a factor marked Present in Step 2, found wrong on its own terms here:
+Example - a factor marked Present in Step 2, whose mechanism is wrong on the facts (no other section contradicts it, so Step 3 does not take it):
 
 ```
 Idempotency of retried writes
@@ -97,7 +98,7 @@ Treat factors authors typically hand-wave (performance, deployment, trade-offs, 
 
 ### 6. Criteria Scoring
 
-Score each as **Strong** / **Adequate** / **Weak** / **Not addressed** / **N/A**, citing artifact evidence. A score is not a finding: a criterion scoring below Adequate opens a finding in the Step 5 format, attached under the criterion here, unless its gap is already a numbered finding from an earlier step, which it references instead - this is also where the overlap rule sends a factor that names the same axis as a criterion, and where the standalone collapse puts all per-factor findings. In workflow mode a criterion absent from the supplied factor list that scores Not addressed opens its finding at the Step 2 Missing floor.
+Score each as **Strong** / **Adequate** / **Weak** / **Not addressed** / **N/A**, citing artifact evidence. A score is not a finding: a criterion scoring below Adequate opens a finding in the Step 5 format, attached under the criterion here, unless its gap is already a numbered finding from an earlier step, which it references instead - this is also where the overlap rule sends a factor that names the same axis as a criterion, and where the standalone collapse puts all per-factor findings. A Step 3 or Step 4 finding is cited from the criterion it bears on; one bearing on no criterion stays where it was raised and is cited by none. In workflow mode a criterion absent from the supplied factor list that scores Not addressed opens its finding at the Step 2 Missing floor.
 
 | Criterion           | What to Assess                                                                                       |
 | ------------------- | ---------------------------------------------------------------------------------------------------- |
@@ -124,7 +125,7 @@ Required factors are those the workflow marks required; if unmarked, treat every
 
 ## Output Structure
 
-The workflow shapes formatting (tables vs. lists); standalone, default to tables for audits and lists for findings. Produce sections in this order:
+Outside the Step 2, Step 4 and Step 6 tables, which are fixed, the workflow shapes formatting (tables vs. lists); standalone, default to tables for audits and lists for findings. Produce sections in this order:
 
 1. **Review Context** - artifacts reviewed; depth (workflow-supplied, or `full` standalone); the single highest severity present, or `no findings`, so the reader meets it before the audits; any lens step skipped, with its one-line reason; reviewer assumptions, including reviewer-context facts and any unavailable composed skills
 2. **Intake** (Step 1)
@@ -138,6 +139,4 @@ The workflow shapes formatting (tables vs. lists); standalone, default to tables
 
 ## Avoid
 
-- Reviewing the artifact you wish the author had written
-- Opening a breadth Blocker when a finding is already a Blocker
 - Scoring a criterion Weak or Not addressed without opening or referencing a numbered finding

@@ -26,7 +26,7 @@ A pasted task breakdown (phased tasks, dependencies, sizes) with no authoring re
 
 ## Inputs
 
-**Breakdown Mode.** Required: a system design - HLD, LLD, or both. A `task-design-architecture` proposal or a `task-design-brief` is the ideal shape but not required. Optional: constraints, exclusions, owning teams, capacity.
+**Breakdown Mode.** Required: a system design - HLD, LLD, both, or an ADR that fixes the design. A `task-design-architecture` proposal or a `task-design-brief` is the ideal shape but not required. Optional: constraints, exclusions, owning teams, capacity.
 
 When input is a thin sketch rather than a real design, say so, list the design sections that would sharpen the plan, and break down on stated assumptions rather than inventing architecture. Do not design the system here - if a load-bearing decision is absent (sync vs. async, storage choice), raise it as an Open Question or spike, never resolve it silently.
 
@@ -67,9 +67,9 @@ Read the design and extract the work it implies. Match the design's content to t
 | **Verification Plan** (S10) | Validation tasks grouped by Level, each depending on the work its Claim covers; a `rollout phase <n>` or `post-release` Gate is an Ops-Readiness check instead |
 | **Trade-Off / Significant Decisions** (S9) | Spikes where a decision is deferred; an `analysis` task per Hard-reversibility decision whose ADR is still unwritten |
 
-State which design sections you drew from. If a required design section is absent (e.g., no failure analysis for a high-blast-radius change), flag it under Open Questions rather than fabricating tasks. A design whose own status is below approved but which the request treats as signed off is broken down as written - its defects raised under Open Questions or as spikes, never corrected in the tasks - its status recorded under Design Coverage.
+State which design sections you drew from. If a required design section is absent (e.g., no failure analysis for a high-blast-radius change), flag it under Open Questions rather than fabricating tasks. A design whose own status is below approved but which the request treats as signed off is broken down as written - its defects raised under Open Questions or as spikes, corrected in a task only as the deep-dive rule in Step 4 allows - its status recorded under Design Coverage.
 
-When the input is a `task-design-brief`, its change-inventory rows are the primary mapping surface - one or more tasks per row, phased by Kind: service -> Foundation scaffold + Build logic (a Modified service -> Build only); table/column, infra -> Foundation (a Modified column whose schema does not change -> Build; a Removed column or endpoint waiting on its readers -> Integration); endpoint, job -> Build; event/queue, third-party -> Integration; config -> Ops Readiness (a flag a Build task reads -> Foundation). A component the diagram shows but the inventory lacks is a design gap under Open Questions. Its Rollout and Back-out section supplies the Ops-Readiness tasks, and its remaining sections map by heading or topic through the table above. A row whose `Also touches` or `If it goes wrong` cell is marked `assumed` or `unknown` still yields its tasks: that cell is raised by the once-only rule below, and only work depending on it waits on the answer - never plan against it as verified. Its `Spike:` lines become `SP<n>` spikes; its confirm-questions and its `(assumed)` Switch and back-out data values go to Assumptions and Open Questions - each such cell or value raised once, as its `SP<n>` spike when the brief made it a Spike line, otherwise as the Open Question.
+When the input is a `task-design-brief`, its change-inventory rows are the primary mapping surface - one or more tasks per row, phased by Kind: service -> Foundation scaffold + Build logic (a Modified service -> Build only); table/column, infra -> Foundation (a Modified column whose schema does not change -> Build; a Removed column or endpoint waiting on its readers -> Integration); endpoint, job -> Build; event/queue, third-party -> Integration; config -> Ops Readiness (a flag a Build task reads -> Foundation). A component the diagram marks `- new` or `- changed` but the inventory lacks is a design gap under Open Questions; an unmarked one is current system and yields no task. Its Rollout and Back-out section supplies the Ops-Readiness tasks, and its remaining sections map by heading or topic through the table above. A row whose `Also touches` or `If it goes wrong` cell is marked `assumed` or `unknown` still yields its tasks: that cell is raised by the once-only rule below, and only work depending on it waits on the answer - never plan against it as verified. Its `Spike:` lines become `SP<n>` spikes; its confirm-questions and its `(assumed)` Switch and back-out data values go to Assumptions and Open Questions - each such cell or value raised once, as its `SP<n>` spike when the brief made it a Spike line, otherwise as the Open Question.
 
 ### Step 4 - Hidden Complexity Scan
 
@@ -103,7 +103,7 @@ Deep-dive mapping (load only when material):
 - Flag-gated rollout -> `Use skill: ops-feature-flags` - its Cleanup target yields an Ops Readiness flag-removal task; a permanent flag's Valid states and Review date go in its flag-config task's description
 - Work the design implies will touch production data, money, auth, or cross-service contracts -> run `Use skill: review-blast-radius` and `Use skill: review-change-risk` on the single riskiest one, judged from the design before tasks are drafted. Cite `review-change-risk`'s Overall Risk Level (with its `Provisional - N of M domains assumed` note when present) and `review-blast-radius`'s `Blast Radius:` level and Reversibility, not `review-change-risk`'s Reversibility line, in that task's Complexity signals; `review-blast-radius`'s unverified markers ride into the citation as emitted. Where several qualify, take the most sensitive surface: money and data integrity first, then auth, then cross-service contracts
 
-A material signal with no route above is handled inline: name it under Complexity signals and let it shape the task's size and description - the absence of a route is not permission to skip it. Deep-dives inform task descriptions, sizes, and flag rationales - cite their findings inline in the affected task's Complexity signals, in the Scope and Risk Flag they drive, and as one clause each on the Complexity Signals section's `Deep-dives loaded` line; do not paste their output blocks into the artifact. A `review-blast-radius` citation carries the line as emitted; in its two-state form the leading `Mitigation:` tag rides along, because it decides which value binds: the mitigated level when the leading tag is `in-place:`, the unmitigated one when it is `required:` (e.g. "Blast Radius: Critical (unmitigated) -> Moderate (with verified PITR) - Mitigation: required: - binds Critical").
+A material signal with no route above is handled inline: name it under Complexity signals and let it shape the task's size and description - the absence of a route is not permission to skip it. Deep-dives inform task descriptions, sizes, and flag rationales - cite their findings inline in the affected task's Complexity signals, in the Scope and Risk Flag they drive, and as one clause each on the Complexity Signals section's `Deep-dives loaded` line; do not paste their output blocks into the artifact. Where a deep-dive's required mitigation contradicts the design's text (a one-deploy rename, a rollout ladder), the task is written with the mitigation and cites the deep-dive, and one Open Question names the design sentence it departs from. A `review-blast-radius` citation carries the line as emitted; in its two-state form the leading `Mitigation:` tag rides along, because it decides which value binds: the mitigated level when the leading tag is `in-place:`, the unmitigated one when it is `required:` (e.g. "Blast Radius: Critical (unmitigated) -> Moderate (with verified PITR) - Mitigation: required: - binds Critical").
 
 ### Step 5 - Generate Tasks
 
@@ -164,7 +164,7 @@ When the verdict is `add spike`, define:
 ```markdown
 # Design-to-Tasks Breakdown: <Feature / System>
 
-**Stack:** <<language> / <framework> (detected) | <language> (no framework detected) | <stack> (prompt-stated) | unknown> | **Design source:** <task-design-architecture proposal | design brief | HLD | LLD | sketch> | **Tasks:** <count, Backlog included, spikes excluded>{ | **Capacity:** <stated team constraint> - <N> parallel chains}
+**Stack:** <<language> / <framework> | <language> (no framework detected) | <stack> (prompt-stated) | unknown> | **Design source:** <task-design-architecture proposal | design brief | HLD | LLD | HLD + LLD | ADR | sketch> | **Tasks:** <count, Backlog included, spikes excluded>{ | **Capacity:** <stated team constraint> - <N> parallel chains}
 
 ## Design Coverage
 
@@ -222,7 +222,7 @@ When the verdict is `add spike`, define:
 ## Assumptions and Open Questions
 
 - <assumption made due to missing design detail>
-- <design decision left open, or an in-scope R-ID with no task, that would change the breakdown>
+- <design decision left open, an in-scope R-ID with no task, or a design sentence a deep-dive mitigation departs from, that would change the breakdown>
 ```
 
 Omit empty sections (Backlog, Spikes, Scope and Risk Flags, Assumptions).
@@ -236,7 +236,7 @@ Omit empty sections (Backlog, Spikes, Scope and Risk Flags, Assumptions).
 - [ ] **Tasks:** each has Name, Type (from enum), Description, Traces-to, Depends-on, Size; L/XL and deep-dive-citing tasks cite complexity signals; XL carries Split and sits under Backlog, and a task shipping in waves carries Split whatever its size; team/system named when external; Ops Readiness includes observability/rollback when the design implies them
 - [ ] **Dependencies:** critical path named by hop count with a "why" sentence; spikes cited by `SP<n>` where tasks depend on them
 - [ ] **Flags:** each flag carries a verdict; design gaps surfaced; spikes have Question + Done + Time-box
-- [ ] **Assumptions and Open Questions** populated when the design left decisions open
+- [ ] **Assumptions and Open Questions** populated when the design left decisions open or a task departs from the design's text
 
 ---
 
@@ -264,7 +264,7 @@ Does the plan cover the work the design (or stated scope) implies? For each area
 | Performance / capacity | Load-test tasks against stated targets; scaling-config tasks when the design states a scaling model |
 | Deployment and rollback | Rollout, migration-order, rollback-drill, flag-config tasks |
 | Guardrails | Validation tasks that enforce each guardrail |
-| Verification plan | A Validation task per Verification Plan claim at its Level; a `rollout phase <n>` or `post-release` Gate as an Ops-readiness check |
+| Verification plan | Validation tasks covering every Verification Plan claim at its Level, each depending on the work its Claim covers; a `rollout phase <n>` or `post-release` Gate as an Ops-readiness check |
 | Trade-offs and decisions | An `analysis` task per Hard-reversibility decision whose ADR is unwritten; a spike per decision the design left open |
 
 The most common defect is a plan that tasks out the happy-path build and omits migration, backward-compat, rollback, and observability the design calls for. Severity by status:
@@ -316,7 +316,7 @@ Any non-Approve verdict lists its required changes as a checkbox list (for Needs
 
 - **Plan reviewed:** <one line>
 - **Source design:** <supplied | none - coverage judged against stated scope | none and no scope - internal soundness only>
-- **Stack:** <<language> / <framework> (detected) | <language> (no framework detected) | <stack> (prompt-stated) | unknown>
+- **Stack:** <<language> / <framework> | <language> (no framework detected) | <stack> (prompt-stated) | unknown>
 - **Reviewer assumptions:** <reviewer-context facts; unavailable composed skills, if any>
 - **Deep-dives loaded:** <atomics loaded for a finding's severity, or none>
 

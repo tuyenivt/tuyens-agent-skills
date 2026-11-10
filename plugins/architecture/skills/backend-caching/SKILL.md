@@ -9,7 +9,7 @@ user-invocable: false
 
 # Caching
 
-> Load `Use skill: stack-detect` first to determine the project stack. Its `Language` and `Framework` pick the cache abstraction and the stampede primitive in the Stack-Specific Adapter; the distributed engine is the `Additional` line `Cache: <engine>` when the project declares one, otherwise Redis. Those choices fill each Opportunity's stampede mitigation and each gap's `Fix`; the `Stack:` line carries the detected Language / Framework. When Language and Framework are `unknown`, apply the universal guidance and mark primitives unverified. The strategies, TTL bands and key rules are stack-agnostic.
+> Load `Use skill: stack-detect` first to determine the project stack. Its `Language` and `Framework` pick the cache abstraction and the stampede primitive in the Stack-Specific Adapter; the distributed engine is the `Additional` line `Cache: <engine>` when the project declares one, otherwise Redis. Those choices fill each Opportunity's stampede mitigation and each gap's `Fix`; the `**Stack:**` line renders Language and Framework as stack-detect's Stack slot does, an unknown Language written `unknown - universal guidance`. When Language is `unknown`, apply the universal guidance and mark primitives unverified. The strategies, TTL bands and key rules are stack-agnostic.
 
 ## When to Use
 
@@ -32,7 +32,7 @@ user-invocable: false
 - **Cache-aside (lazy)** - default. App checks cache; on miss, fetch, store with TTL, return.
 - **Write-through** - write to source and cache in the same operation. Fresh only where writes to the key are serialized (see Rules); adds write latency.
 - **Invalidation** - TTL (simplest), event-based (fresher, more complex), or version-based (new version segment in key). Layering is normal: state the primary mechanism plus any backstop (e.g., event-based with TTL backstop).
-- **Negative caching** - cache "not found" results with a short TTL (seconds) to stop miss storms on absent IDs.
+- **Negative caching** - cache "not found" results with a short TTL (seconds) to stop miss storms on absent IDs. Rails `fetch` already caches a `nil` block result, at the entry's full TTL - pass `skip_nil: true` to stop that, or write the not-found marker with its own short `expires_in`.
 
 ### Cache Stampede Prevention
 
@@ -109,14 +109,14 @@ Use the framework's cache abstraction for cache-aside: Spring Cache annotations,
 
 ## Output Format
 
-`Opportunities` covers caches to add, `Gaps` covers caches that already exist. Safeguards for a proposed cache belong inside its Opportunity entry, never in Gaps. `Missing` takes one value, so a component with several distinct gaps gets one entry per gap, listed together under that component and ordered by severity: High = active correctness or outage risk, Medium = degradation or cost, Low = hygiene. A gap that has already caused an incident is High. A fix that replaces the cache tier (in-process to distributed) is an Opportunity for the new tier, with the old tier's defects listed as Gaps, each `Fix` pointing at that Opportunity. Every existing cache appears under Gaps - a clean one as the second row form below, with no sub-slots - so the Assessment's existing-cache count is verifiable and its gap count excludes those rows; a manager-level default (a cache config with no TTL) is reported on each cache it governs, not as a row of its own.
+`Opportunities` covers caches to add, `Gaps` covers caches that already exist. Safeguards for a proposed cache belong inside its Opportunity entry, never in Gaps. `Missing` takes one value, so a component with several distinct gaps gets one entry per gap, listed consecutively, each repeating the component name, and ordered by severity: High = active correctness or outage risk, Medium = degradation or cost, Low = hygiene. A gap that has already caused an incident is High. A fix that replaces the cache tier (in-process to distributed) is an Opportunity for the new tier, with the old tier's defects listed as Gaps, each `Fix` pointing at that Opportunity. Every existing cache appears under Gaps - a clean one as the second row form below, one this review does not assess as the third, neither with sub-slots - so the Assessment's existing-cache count is verifiable and its gap count excludes those rows; a manager-level default (a cache config with no TTL) is reported on each cache it governs, not as a row of its own.
 
-Emit `Assessment` always, and every section that has content. Omit a section only when it would be empty, and write the one-line closing statement that names what was empty.
+Emit `Assessment` always, and every other section that has content; an empty section is omitted, and the Assessment line's counts are what account for it.
 
 ```
 ## Caching Assessment
 
-**Stack:** {detected language / framework; "unknown - universal guidance" when stack-detect reports Language and Framework as unknown}
+**Stack:** {language / framework | <language> (no framework detected) | unknown - universal guidance}
 
 ### Opportunities
 
@@ -135,22 +135,21 @@ Emit `Assessment` always, and every section that has content. Omit a section onl
 
 ### Gaps
 
-- [Severity: High | Medium | Low] {cache name or component} - {description}
+- [Severity: High | Medium | Low] {cache name or component} - {description}{; memory cap owned by {owner}, not seen}
   - Missing: {TTL | invalidation strategy | invalidation ordering | write-write race guard | stampede protection | safe key design | safe value type | memory bound | hit-rate observability | other (name it)}
   - Measured: {hit rate and what it implies per the Rules band, or "not measured"}
   - Risk: {unbounded growth | stale data | thundering herd | key collision/injection | stale shared state | wasted capacity | other (name it)}
   - Fix: {concrete correction, named in the detected stack's own primitives; when the stack is unknown, give the universal correction and mark it "(primitive unverified)"}
 - {cache name} - no gaps{ - memory cap owned by {owner}, not seen}
+- {cache name} - not assessed: {out of scope | owned by {team}, only read here}
 
 ### Assessment
 
 {One line, always present, naming all four counts so an omitted section is still accounted for: "{N existing caches | No existing caches}; {N gaps found | no gaps}; {N opportunities proposed | no additions recommended}{; nothing excluded | ; {N} excluded}". Where no caches exist and none are recommended, add why caching does not fit this workload.}
 ```
 
-An uncapped in-process cache (a plain map or dict, raw ETS) is a `memory bound` Gap; `correctness-critical` under Excluded is data that cannot tolerate any cache staleness, which is distinct from data that is cached under a lock. A writer and reader that disagree on a key is `safe key design` with Risk `stale data`, High when it makes an invalidation a no-op. A distributed cache whose cap is owned by another team and unseen is not a memory-bound Gap; name the owner on its row, with the clean-row suffix when it has no other gap. A figure the source does not give (a vendor quote's validity, a recompute duration) is written with `(assumed)` where it is used; an unknown hit rate is `not measured`, never an assumed figure.
+An uncapped in-process cache (a plain map or dict, raw ETS) is a `memory bound` Gap; `correctness-critical` under Excluded is data that cannot tolerate any cache staleness, which is distinct from data that is cached under a lock. A writer and reader that disagree on a key is `safe key design` with Risk `stale data`, High when it makes an invalidation a no-op. A distributed cache whose cap is owned by another team and unseen is not a memory-bound Gap; name the owner on its row - the clean-row suffix when it has no gap, else the `; memory cap owned by {owner}, not seen` suffix on its first Gap entry's description. A figure the source does not give (a vendor quote's validity, a recompute duration) is written with `(assumed)` where it is used; an unknown hit rate is `not measured`, never an assumed figure.
 
 ## Avoid
 
-- Calling a bare per-key lock "singleflight" when each waiter recomputes after acquiring it
-- Jittering a TTL upward past a stated staleness budget
 - Caching write-heavy data (low hit rate, high invalidation churn)

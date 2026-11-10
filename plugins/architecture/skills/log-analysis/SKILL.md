@@ -23,7 +23,7 @@ user-invocable: false
 - When multiple error classes interleave, establish first-appearance ordering - one is almost always causing the other
 - Label each Key Evidence entry `confirmed`, `contradicted`, or `requires evidence not yet held`, and name the source that settled it in the entry itself (logs, metric, trace, deploy, error event, dependency status, or several). Only the third is listed in Log Gaps - evidence in hand settles an entry whatever its source. Exception: the Likely trigger entry carries the trigger-confidence label from Step 4 instead, and a trigger left `candidate` or `unknown` also names in Log Gaps the evidence that would settle it
 - A theory, or a dependency's own all-clear (a status page reporting no incident), is not evidence and gets no Key Evidence entry; it is a Log Gaps item naming the signal that would test it. A dependency's own incident report or metrics can confirm or contradict an entry
-- Logs do not outrank metrics: when metric evidence pre-dates the first anomalous log line, the metric is the earliest anomaly. Time Window still opens at the first anomalous LOG line, since the window bounds what you read; the earlier metric is recorded in Key Evidence and leads the causal chain
+- Logs do not outrank metrics: when metric evidence pre-dates the first anomalous log line, the metric is the earliest anomaly. Time Window still opens at the first anomalous LOG line, since that line is the log-evidenced failure start (Step 1); the earlier metric is recorded in Key Evidence and leads the causal chain
 
 ## Inputs
 
@@ -45,7 +45,7 @@ For a time-window investigation:
 - **Failure end**: when logs returned to baseline (if resolved). Evidence outranks framing: where the logs show recovery after the time the requester called it ongoing, take the evidenced recovery and note the discrepancy in Key Evidence
 - **Comparison window**: equivalent healthy period (same time of day, same day of week). If none was provided and none can be fetched, set `Comparison Window: unavailable`, run only the Step 5 checks marked single-window, and record the absence in Log Gaps - do not invent a baseline.
 
-Default window: 5-10 minutes either side of onset. Judge size by the block's `of {total matched}` count, not by the sample you received: a block with no total, pasted or fetched, is judged by span alone - the failure's span, not the paste's - unless it is marked `truncated at tool cap`, which counts as above 2000. Pre-onset lines inside the same paste are not a comparison window; they feed the single-window checks. Above 2000 matched lines, or a span over 20 minutes, ask for three narrow windows instead of one - first 30s of anomaly (root signal), ~30s at peak (saturation pattern), last 30s before recovery, or the most recent 30s while ongoing. Narrowing happens in the fetch, since a returned sample cannot be re-sampled. Record on the Time Window line that the analysis saw segments rather than the whole span. On a fixed paste with no transport, analyze the sample as given, mark the Time Window line `unnarrowed sample` and list the three narrow windows under Log Gaps as the fetch to run; when the count equals the total, mark it `unnarrowed full export` instead and add no fetch to Log Gaps, since every line is already held.
+Default window: 5-10 minutes either side of onset. Judge size by the block's `of {total matched}` count, not by the sample you received: a block with no total, pasted or fetched, is judged by span alone - the failure's span, not the paste's - unless it is marked `truncated at tool cap`, which counts as above 2000. Pre-onset lines inside the same paste are not a comparison window; they feed the single-window checks. Above 2000 matched lines, or a span over 20 minutes, ask for three narrow windows instead of one - first 30s of anomaly (root signal), ~30s at peak (saturation pattern), last 30s before recovery, or the most recent 30s while ongoing. Narrowing happens in the fetch, since a returned sample cannot be re-sampled. Record on the Time Window line that the analysis saw segments rather than the whole span. On a fixed paste over those limits with no transport, analyze the sample as given, mark the Time Window line `unnarrowed sample` and list the three narrow windows under Log Gaps as the fetch to run; when the count equals the total, mark it `unnarrowed full export` instead and add no fetch to Log Gaps, since every line is already held.
 
 Within those size limits, prefer two passes - the full window for an overview, then the narrowed anomaly window for detail - filtering server-side rather than pulling everything and grepping.
 
@@ -69,7 +69,7 @@ When multiple error classes interleave, determine causation direction:
 
 1. **First-appearance ordering**: which class logged first? Earliest type is the likely upstream cause
 2. **Saturation signals**: if an error is a resource-exhaustion type (pool exhausted, queue full, an in-process OOM error such as `OutOfMemoryError`, FD limit, thread pool rejected), the error line already proves exhaustion - read the resource metric leading up to it (an attribute on the log line itself, such as heap % or pool active, counts as that metric) to tell a slow leak or creeping hold time (gradual climb) from a demand burst (sudden jump). A container OOM-kill leaves no app log line, so read the `OOMKilled` termination reason from the orchestrator instead - exit code 137 alone is any SIGKILL, including a grace-period kill after a failed liveness probe. Occupancy is a gauge sampled at the scrape interval: a burst shorter than one interval aliases into a single spike or is missed, so a flat series never disproves exhaustion; a rejection or timeout counter records the burst as a delta, so read it alongside the gauge
-3. **Timing correlation**: does onset coincide with a deploy, traffic spike, a change in input or workload shape, cron job, external dependency event, or an infra/config change (which may precede onset by hours to days - state the lag)? "Onset" here and in the output means the first anomalous signal, log or metric. A deploy marker in the log itself is deploy evidence for timing; `deploy_event` adds the commit and author. Where no event coincides and the failure traces to state that was already wrong (a missing record, an old misconfiguration), the Trigger is `pre-existing defect or missing record` with no lag. A second event or condition that widened the failure after onset without starting it - a retry storm, a tripped rate limit, a job landing mid-incident, a standing gap such as no retry configured - is the Amplifier, with the same confidence fields. Two candidates that coincide with onset share the Trigger line, each with its own confidence
+3. **Timing correlation**: does onset coincide with a deploy, traffic spike, a change in input or workload shape, cron job, external dependency event, or an infra/config change (a feature-flag flip in any repository included; it may precede onset by hours to days - state the lag)? "Onset" here and in the output means the first anomalous signal, log or metric. A deploy marker in the log itself is deploy evidence for timing; `deploy_event` adds the commit and author. Where no event coincides and the failure traces to state that was already wrong (a missing record, an old misconfiguration), the Trigger is `pre-existing defect or missing record` with no lag. A second event or condition that widened the failure after onset without starting it - a retry storm, a tripped rate limit, a job landing mid-incident, a standing gap such as no retry configured - is the Amplifier, with the same confidence fields. Two candidates that coincide with onset share the Trigger line, each with its own confidence
 
 Common upstream -> downstream chains:
 
@@ -84,7 +84,7 @@ Common upstream -> downstream chains:
 
 State the chain link by link: *"{upstream} causes {downstream} because {mechanism}, {confirmed by {evidence} | unproven - needs {evidence}}."* Each unproven link is also a Log Gaps item. Chains may have more than two links (e.g., dependency timeout -> pool exhausted -> 503); state each link's mechanism. A single error class can still have a multi-link resource chain behind it (e.g., heap pressure -> GC pauses -> query timeouts) - state that chain rather than writing "Single class".
 
-Label the trigger's confidence: `confirmed` (mechanism + timing both fit), `candidate` (timing fits, mechanism unproven), or `unknown`. An external-dependency trigger stays `candidate` until evidence from the dependency itself (status page, its own metrics) confirms it - caller-side timeouts alone do not.
+Label the trigger's confidence: `confirmed` (mechanism + timing both fit), `candidate` (timing fits, mechanism unproven), or `unknown`. An external-dependency trigger stays `candidate` until evidence from the dependency itself (status page, its own metrics) confirms it - caller-side timeouts alone do not. A `pre-existing defect or missing record` Trigger and a standing-gap Amplifier have no event to time, so their label rests on mechanism alone: `confirmed` when the logs or a record lookup show the bad state, else `candidate`.
 
 ### Step 5 - Healthy vs Unhealthy Comparison
 
@@ -100,7 +100,7 @@ Pull the three fixed entries from the steps that produced them: earliest anomaly
 
 ## Output
 
-Each Key Evidence entry is labeled `{confirmed | contradicted} by {logs | metric | trace | deploy | error event | dependency status | <two or more, named>}` or `requires evidence not yet held`; the Likely trigger entry carries the trigger-confidence label instead. The open-ended Key Evidence entry exists only for a Step 5 single-window observation when Comparison Window is unavailable, or a pasted or stated claim the logs contradict - one bullet per observation or claim. Healthy vs Unhealthy is omitted when Comparison Window is unavailable; the single-window observations still appear in Key Evidence.
+Each Key Evidence entry is labeled `{confirmed | contradicted} by {logs | metric | trace | deploy | error event | dependency status | <two or more, named>}` or `requires evidence not yet held`; the Likely trigger entry carries the trigger-confidence label instead. The open-ended Key Evidence entry exists only for a Step 5 single-window observation when Comparison Window is unavailable, or a pasted or stated claim the logs contradict - one bullet per observation or claim. Healthy vs Unhealthy is omitted when Comparison Window is unavailable; the single-window observations still appear in Key Evidence. With Time Window `unavailable` and no other evidence held, Rate, Scope, Classes and Causal chain each read `n/a - no evidence held`, Trigger reads `not identified (unknown)`, Amplifier `none identified`, Earliest anomaly reads `unknown` and Confirmed scope `unknown - no evidence held`, both labelled `requires evidence not yet held`.
 
 ```
 ## Log Analysis
@@ -113,10 +113,10 @@ Comparison Window: {healthy period {start} to {end} | sibling request {id} | "un
 {Traced path, naming the last logger and, when it made one, the outbound call that never logged | "IDs present to {component/boundary}, absent beyond it - observability gap" | "No correlation IDs - observability gap" | "n/a - no logs or trace to trace"}
 
 ### Error Distribution
-- Rate: {errors/minute or error % (from metric | full count | filtered count | counted off the sample), constant / spiking / tapering / climbing | "n/a - single-request investigation"}
-- Scope: {users (or "unknown") / endpoints / services}
-- Classes: {type and count for each}
-- Causal chain: {link-by-link chain + mechanisms, each link confirmed or unproven; "Single class" only when no chain exists behind it}
+- Rate: {errors/minute or error % (from metric | full count | filtered count | counted off the sample), constant / spiking / tapering / climbing | "n/a - single-request investigation" | "n/a - no evidence held"}
+- Scope: {users (or "unknown") / endpoints / services | "n/a - no evidence held"}
+- Classes: {type and count for each | "n/a - no evidence held"}
+- Causal chain: {link-by-link chain + mechanisms, each link confirmed or unproven; "Single class" only when no chain exists behind it | "n/a - no evidence held"}
 - Trigger: {deploy / traffic spike / input or workload shape / cron / external dep degradation / infra or config change / pre-existing defect or missing record (no change event) / "not identified"} ({confirmed | candidate | unknown}{, timestamp}{, lag to onset}){; <second coinciding candidate> (<its confidence>)}
 - Amplifier: {a second change, emergent condition or standing gap that widened the failure without starting it (Step 4), same fields; "none identified"}
 
@@ -127,9 +127,9 @@ Comparison Window: {healthy period {start} to {end} | sibling request {id} | "un
 - Latency shift: {p50/p99 baseline -> failing, coarse durations if no percentiles, single-request durations against the sibling, or "None notable"}
 
 ### Key Evidence
-- Earliest anomaly: {timestamp + signal, log or metric}{; first anomalous log line <timestamp + signal>} - {{confirmed | contradicted} by <source> | requires evidence not yet held}
-- Likely trigger: {event, with timestamp and {confirmed | candidate | unknown}}{; <second coinciding candidate>, with timestamp and its confidence}
-- Confirmed scope: {affected users/endpoints/services, or "unknown - {logs carry no user identifier | sample only, no filtered count or metric}"} - {{confirmed | contradicted} by <source> | requires evidence not yet held}
+- Earliest anomaly: {timestamp + signal, log or metric | "unknown"}{; first anomalous log line <timestamp + signal>} - {{confirmed | contradicted} by <source> | requires evidence not yet held}
+- Likely trigger: {event, with timestamp (none for a pre-existing defect or missing record, or when not identified) and {confirmed | candidate | unknown}}{; <second coinciding candidate>, with timestamp and its confidence}
+- Confirmed scope: {affected users/endpoints/services, or "unknown - {logs carry no user identifier | sample only, no filtered count or metric | no evidence held}"} - {{confirmed | contradicted} by <source> | requires evidence not yet held}
 - {<single-window observation> | <requester's claim (onset, "ongoing", a count)>, <what the logs show>} - {{confirmed | contradicted} by <source> | requires evidence not yet held}
 
 ### Log Gaps

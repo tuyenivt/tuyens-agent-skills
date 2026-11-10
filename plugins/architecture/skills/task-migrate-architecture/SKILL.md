@@ -54,7 +54,7 @@ Shape = Schema runs Sections 1, 3d, 5, 6, 7 only; Sections 2 and 4 do not apply 
 | Reference doc        | No       | Company template or an approved prior plan; path or pasted content                |
 | Depth                | No       | `quick`, `standard` (default), or `deep`                                          |
 
-When a reference doc is supplied, or the project's instruction file carries a `## Design Docs` section, load `Use skill: design-reference-pattern` (authoring only - in Review Mode do not load it; the review follows the lens's structure, and the house template is not review evidence). Supply it with this workflow's required-content list - one item per Output template section - and state that the deliverable carries no appendix for the required content - its appendix holds depth only - so a required section the skeleton cannot house resolves as `appended as <name>`. When its Source is `built-in`, keep this Output template's headings and order, emit its Reviewer value, unless it reads `none supplied`, on the header's `Reviewer:` line and its Attribution sentence on the `Attribution:` line, and add no Appendix on its account. Otherwise a supplied Reviewer fills the house reviewers slot, or a top metadata line when the pattern has none, its heading order wins over this template's, the Staff-Level Summary included - its content lands in the house summary heading - and the house title slot replaces the H1; a `Divergence` the pattern reports rides under Assumptions. It governs headings, order, and metadata slots only - the one sanctioned exception to the behavioral directive's structure rule; every section this workflow requires maps to a house heading or is appended as the pattern's mapping names it (related items in one section), unnumbered, after the last house section and before any trailing metadata block, in the Output template's order; the Shape, Scope, Assumptions and Stack header lines ride with the metadata slots, its Attribution sentence fills the header's `Attribution:` line, a house slot this plan does not produce reads `TBD`, and nothing is dropped to fit the template.
+When a reference doc is supplied, or the project's instruction file carries a `## Design Docs` section, load `Use skill: design-reference-pattern` (authoring only - in Review Mode do not load it; the review follows the lens's structure, and the house template is not review evidence). Supply it with this workflow's required-content list - one item per Output template section - and state that the deliverable carries no appendix for the required content - its appendix holds depth only - so a required section the skeleton cannot house resolves as `appended as <name>`. When its Source is `built-in`, keep this Output template's headings and order, emit its Reviewer value, unless it reads `none supplied`, on the header's `Reviewer:` line and its Attribution sentence on the `Attribution:` line, and add no Appendix on its account. Otherwise a supplied Reviewer fills the house reviewers slot, or a top metadata line when the pattern has none, its heading order wins over this template's, the Staff-Level Summary included - its content lands in the house summary heading - and the house title slot replaces the H1; a `Divergence` the pattern reports rides under Assumptions. It governs headings, order, and metadata slots only - the one sanctioned exception to the behavioral directive's structure rule; every section this workflow requires maps to a house heading or is appended as the pattern's mapping names it (related items in one section; numbered on from the house skeleton where it is numbered, as the mapping's name carries), after the last house section and before any trailing metadata block, in the Output template's order; the Shape, Scope, Assumptions and Stack header lines ride with the metadata slots, its Attribution sentence fills the header's `Attribution:` line, a house slot this plan does not produce reads `TBD`, and nothing is dropped to fit the template.
 
 Handle partial inputs gracefully. State assumptions explicitly when input is missing. For inputs naming only 1-3 specific services, skip the full landscape and scope the assessment to those and their immediate dependencies.
 
@@ -119,7 +119,7 @@ Use skill: `architecture-data-consistency` for inter-service consistency strateg
 
 Map each target service to an owning team; when ownership is unstated, propose the team whose current module work is closest and mark it Proposed. Flag services no team plausibly owns - team-autonomy drivers fail without Conway alignment. Name the communication model (sync vs async) and consistency requirement (strong vs eventual) per interaction. If the target stack differs from the source, add interoperability: serialization contracts, client-library strategy, contract testing across the language boundary.
 
-**Deploy cadence prerequisite.** Independently deployable services require frequent deployment. The test is literal: deploy frequency below weekly (every-two-weeks fails) makes CI/CD a prerequisite, not a nice-to-have. Recommend establishing continuous deployment first, or a modular monolith as the intermediate step. When only the cadence gate fails and the driver is valid, proceed and make Phase 0 the gate's remedy. A cadence that cannot be measured from the available evidence is unknown, not failed: say so, treat it as failed for planning, and make confirming it the first Phase 0 task.
+**Deploy cadence prerequisite.** Independently deployable services require frequent deployment. The test is literal: the current system's deploy frequency below weekly (every-two-weeks fails) makes CI/CD a prerequisite, not a nice-to-have. Recommend establishing continuous deployment first, or a modular monolith as the intermediate step. When only the cadence gate fails and the driver is valid, proceed and make Phase 0 the gate's remedy. A cadence that cannot be measured from the available evidence is unknown, not failed: say so, treat it as failed for planning, and make confirming it the first Phase 0 task.
 
 **Lowest-risk-first candidates.** Analytics/reporting (read-only, isolated), notifications (tolerates eventual consistency), and search (read model over events) are safe first extractions in nearly any system. Recommend one as Phase 1 unless unusually coupled here.
 
@@ -193,7 +193,7 @@ Use skill: `review-change-risk` to identify risk domains. Use skill: `backend-db
 | Operation                         | PostgreSQL                                      | MySQL 8.0 (MariaDB boundaries differ)                       |
 | --------------------------------- | ----------------------------------------------- | ----------------------------------------------------------- |
 | ADD COLUMN (nullable, no default) | Brief lock - safe                               | INSTANT on 8.0.12+ (appended position only before 8.0.29; not on tables with a FULLTEXT index or ROW_FORMAT=COMPRESSED, nor, from 8.0.29, once the table holds 64 instant row versions, which a rebuild resets - INPLACE rebuild on COMPRESSED or at the cap, COPY with writes blocked on a FULLTEXT table); INPLACE rebuild before 8.0.12 |
-| ADD COLUMN with DEFAULT (PG11+)   | Metadata only for a non-volatile default; a volatile one still rewrites under ACCESS EXCLUSIVE | INSTANT on 8.0.12+ (any position 8.0.29+; same exclusions and fallbacks); INPLACE rebuild with concurrent DML on 5.6-8.0.11 |
+| ADD COLUMN with DEFAULT (PG11+)   | Metadata only for a non-volatile default; a volatile one still rewrites under ACCESS EXCLUSIVE | INSTANT on 8.0.12+ for a literal default (any position 8.0.29+; same exclusions and fallbacks); INPLACE rebuild with concurrent DML on 5.6-8.0.11. An expression default (`DEFAULT (expr)`, 8.0.13+) is COPY with writes blocked, and a nondeterministic one (`UUID()`, `RAND()`) fails with error 1674 under the default ROW binlog - add nullable and backfill |
 | ADD COLUMN with DEFAULT (< PG11)  | Full table rewrite - dangerous                  | -                                                           |
 | CREATE INDEX                      | SHARE lock (blocks writes) for the full build; use CONCURRENTLY (cannot run in txn) | Plain secondary index INPLACE, LOCK=NONE; FULLTEXT, SPATIAL and functional indexes need LOCK=SHARED (writes blocked) |
 | ADD CONSTRAINT NOT NULL / FK      | FK: full scan under SHARE ROW EXCLUSIVE on both tables (writes blocked), `NOT VALID` defers it. NOT NULL: `SET NOT NULL` scans under ACCESS EXCLUSIVE; PG12-17 defer it via the CHECK proxy below (pre-12: no deferral), PG18+ accepts NOT NULL `NOT VALID` directly | NOT NULL is INPLACE (rebuild, concurrent DML; COPY with writes blocked on a FULLTEXT table). FK is INPLACE under `foreign_key_checks=0`, which validates nothing - reconcile existing rows in a separate checked pass - and COPY otherwise |
@@ -242,7 +242,7 @@ Rollout cadence follows `strangler-fig-pattern` on the non-Schema shapes and `op
 
 Per phase, the Output template fixes the fields. Every phase needs a rollback path and a concrete verification that must pass before the next begins - vague validation ("verify it worked") is not acceptable on a high-risk phase. A phase may move a group of units together when they share a transaction boundary; name the group in the phase header.
 
-When summed phase durations exceed a stated horizon, say so and re-scope: cut scope or parallelize independent phases - at most one of which contains a Route or Verify step, since `strangler-fig-pattern` advances one capability at a time, and Schema phases within one sub-change cycle stay sequential - never compress verification or bake time. Concurrent phases keep their numbers and name each other in the Phase Summary's Key Dependency column ("parallel with Phase N").
+A stated horizon, freeze, or blackout window is answered on the Phase Summary's `Window fit` line, which places each phase against it; a stated deploy freeze is a blackout under Calendar-critical systems that no phase deploys into, risky phases also clearing its pre-blackout freeze. When the critical path through the Phase Summary (sequential phases summed, the longest of each parallel set), plus the blackout and pre-blackout freeze days it waits out, exceeds a stated horizon, say so there and re-scope: cut scope or parallelize independent phases - at most one of which contains a Route or Verify step, since `strangler-fig-pattern` advances one capability at a time, and Schema phases within one sub-change cycle stay sequential - never compress verification or bake time. Concurrent phases keep their numbers and name each other in the Phase Summary's Key Dependency column ("parallel with Phase N").
 
 **Consumer migration.** Per affected consumer: strategy, deprecation timeline, coordination. Facade (old APIs preserved, routed internally - lowest disruption), versioned (new API alongside old with a deprecation window), or direct (consumers update - only safe with few consumers and coordinated deploys). For Schema, the equivalent is multi-service deploy ordering: non-app consumers (ETL jobs, BI dashboards, replication slots) need rows too - their "deploy" is a query or config update.
 
@@ -343,7 +343,7 @@ Scope: {what this plan covers; any deferred second shape}
 
 Assumptions: {stated assumptions from partial inputs}
 
-Stack: {<language / framework> (detected) | <stack> (prompt-stated) | unknown}{; engine <database and version>, <migration tool>} {engine clause on Schema only}
+Stack: {<language> / <framework> | <language> (no framework detected) | <stack> (prompt-stated) | <stack> (plan-stated) | unknown}{; engine <database and version>, <migration tool>} {engine clause on Schema only; plan-stated in Review Mode only}
 
 Reviewer: {design-reference-pattern's Reviewer value} {only when design-reference-pattern's Reviewer is not `none supplied` and no house reviewers slot holds it}
 
@@ -431,7 +431,7 @@ What: {CI/CD, routing layer, event infrastructure, test harness}
 
 Verification: {what proves the foundation is ready}
 
-Rollback: N/A
+Rollback: {how the foundation is bypassed or removed - a routing layer in front of live traffic reverts to direct-to-legacy by config; N/A only for work that changes no production path, such as CI/CD or a test harness}
 
 Duration:
 
@@ -464,6 +464,8 @@ Duration:
 
 | Phase | Unit | Risk Level | Duration | Key Dependency |
 | ----- | ---- | ---------- | -------- | -------------- |
+
+Window fit: {the phases mapped to the stated horizon and freeze or blackout windows; an overrun named with its re-scope} {only when one was stated}
 
 <!-- `Risk Level` is Low / Medium / High / Critical on every shape - not the Schema classification's five-point scale and not the blast-radius scale. Where a source used another, convert into it and say so - Low -> Low, Low-Medium -> Medium, Medium -> Medium, High -> High, Very High -> Critical, Variable resolved first per Section 3d; on Schema the overall level is Section 3d's overall (the higher of the highest sub-change and the whole-change Type level, converted), raised to `review-change-risk`'s where that is higher, and each phase takes it unless its own worst-case impact is lower - say so on the row; on the other shapes it is the phase's own worst-case impact against that scale. -->
 
@@ -518,7 +520,7 @@ Cleanup Plan:
 - Why not recommended: {reason} {only when Feasibility is Not recommended}
 - Recommended alternative: {what to do instead} {only when Feasibility is Not recommended}
 - {Shape-specific headline: services before -> after; target stack; change type and risk}
-- Estimated duration: {weeks or quarters; the critical path through the Phase Summary - sequential phases summed, the longest of each parallel set - each phase's being its bake plus its build or backfill estimate, basis named}
+- Estimated duration: {weeks or quarters; the critical path through the Phase Summary - sequential phases summed, the longest of each parallel set - each phase's being its bake plus its build or backfill estimate, plus the blackout and pre-blackout freeze days it waits out, basis named}
 - Highest-risk phase: {which and why}
 - Key prerequisite: {what must happen before the migration starts}
 

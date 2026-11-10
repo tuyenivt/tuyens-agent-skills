@@ -18,7 +18,7 @@ user-invocable: false
 
 - **A reference supplies shape, not substance.** Never carry a fact, entity name, decision, number, or diagram element from a filled reference into the new document. Contamination is this skill's primary failure mode.
 - **House structure wins on shape; required substance is never dropped.** Content the workflow requires that has no house section a reader would look in goes under an appendix heading when the deliverable carries an appendix, else into a clearly named section appended after the last skeleton section - with one line saying why it was added.
-- **Never invent a house pattern.** No usable reference means the built-in template and `Source: built-in`; a reference that was supplied but rejected is still named under `Rejected`, so the caller can see it was considered. A pattern read from fewer than three headings is partial: `Confidence: Low` when no complete reference sits beside it, otherwise a cap on the aspects it contributes.
+- **Never invent a house pattern.** No usable reference means the built-in template and `Source: built-in`; a reference that was supplied but rejected is still named under `Rejected`, so the caller can see it was considered. A pattern read from fewer than three headings, or whose skeleton carries an `<unseen>` gap, is partial: `Confidence: Low` when no complete reference sits beside it, otherwise a cap on the aspects it contributes.
 - **Read narrowly.** Only the supplied references and, at most, one instruction file's pointer section. Do not scan the project for more documents.
 
 ## Patterns
@@ -69,9 +69,9 @@ A house pattern that omits a section the workflow requires is a placement instru
 
 ### Step 4 - Map required content to house sections
 
-The caller supplies its required-content list, and states whether its deliverable carries an appendix; absent that, assume it does not. Map every item to a house section before writing a word of the document. Place an item in a house section only when that heading would let a reader find it; a loose thematic fit misleads more than it helps. Items with no such section resolve as `appendix as <heading>` when the deliverable carries one, else `appended as <name>`. Nothing resolves as dropped.
+The caller supplies its required-content list, and states whether its deliverable carries an appendix; absent that, it carries one exactly when the house skeleton has an appendix heading. Map every item to a house section before writing a word of the document. Place an item in a house section only when that heading would let a reader find it; a loose thematic fit misleads more than it helps. Items with no such section resolve as `appendix as <heading>` when the deliverable carries one, else `appended as <name>`. Nothing resolves as dropped.
 
-Items a single reader would look for in one place go in one appended section, or one appendix heading - a data migration plan and a rollback plan are both "how we get there and back"; a security sign-off is not. Unrelated items get their own. Name an appended section, or an appendix heading, for what it holds (appendix headings lettered A, B, ... in order of each heading's first required-content item, continuing after any letter the house appendix already uses; `<heading>` in the mapping row includes its letter), and never reuse a house heading that already exists elsewhere in the skeleton. Appended sections sit after the last skeleton section and before a trailing metadata block such as a version history. Each appended section carries its reason in the mapping row. Every item resolving as appended or appendix is listed under `Omits`.
+Items with no house section that a single reader would look for in one place go in one appended section, or one appendix heading - a data migration plan and a rollback plan are both "how we get there and back"; a security sign-off is not. Unrelated items get their own. Name an appended section, or an appendix heading, for what it holds (appendix headings lettered A, B, ... in order of each heading's first required-content item, continuing after any letter the house appendix already uses; `<heading>` in the mapping row includes its letter), and never reuse a house heading that already exists elsewhere in the skeleton. Appended sections sit after the last skeleton section and before a trailing metadata block such as a version history, continuing the skeleton's numbering where it has one, in order of each section's first required-content item (`<name>` in the mapping row includes its number). Each appended section carries its reason in the mapping row. Every item resolving as appended or appendix is listed under `Omits`.
 
 ## Output Format
 
@@ -82,7 +82,7 @@ House pattern:
   Source: {one line per reference used - "template: <path or pasted>" | "approved design: <path or pasted>{ (draft)}" | the single line "built-in"}
   Rejected: {one line per supplied reference not used - <path or paste> followed by the artifact it looks like, or "superseded by <which>" | "none"}
   Confidence: {High | Medium | Low}{ - capped on <aspects> by a partial reference}
-  Section skeleton: {ordered headings verbatim, with "<unseen>" where a fragment's numbering implies a section you cannot see | built-in (see The built-in template)}
+  Section skeleton: {ordered house headings verbatim, appended ones excluded, with "<unseen>" where a fragment's numbering implies a section you cannot see | built-in (see The built-in template)}
   Metadata slots: {slot names the pattern carries, e.g. doc ID, author, status, reviewers | none}
   Reviewer: {the Approver value, whether or not the pattern has a slot for it | none supplied}
   Depth convention: {per-section note, including headings the house leaves empty and any stated length or format rule | not observable - headings only | built-in}
@@ -108,7 +108,7 @@ Contract: every required-content item the caller supplied appears as a row, and 
 
 - `High` - a complete blank template plus at least one complete approved design.
 - `Medium` - one complete reference of either kind, or several complete references of the same kind.
-- `Low` - every reference is partial (a skeleton inferred from fewer than three headings, or a fragment classified as its nearest kind, with no complete reference beside it), or the built-in fallback was used.
+- `Low` - every reference is partial (a skeleton inferred from fewer than three headings or carrying an `<unseen>` gap, or a fragment classified as its nearest kind, with no complete reference beside it), or the built-in fallback was used.
 
 ## Avoid
 

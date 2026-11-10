@@ -28,7 +28,7 @@ Not this workflow: designing the solution (`task-design-architecture`, `task-des
 | Input | Required | Description |
 | --- | --- | --- |
 | Requirements | Yes | PRD, epic, ticket, or stories - pasted or a path |
-| Current system | No | The codebase when the run can read it; a `task-onboard` report, whose Modules and Critical Invariants rows and Primary Flow and Edge Cases That Matter entries are citable; or a description of the services, tables, jobs, and contracts touched |
+| Current system | No | The codebase when the run can read it; a `task-onboard` report, whose Modules and Critical Invariants rows and Primary Flow and Edge Cases That Matter entries are citable; or a description of the services, tables, jobs, and contracts touched, architecture and operations documents included |
 | Prior analysis | No | An earlier output of this workflow, with the requester's answers |
 | Requester | No | Name and role; the Findings are addressed to them |
 | Constraints | No | Deadline, frozen systems, compliance |
@@ -51,9 +51,9 @@ Collect the entities, states, actors and roles, flows, invariants, and contracts
 
 ### Step 4 - Register and analyze
 
-Use skill: `requirements-analysis` to register every requirement, then run its ambiguity, conflict, completeness, and feasibility patterns against the Step 3 list. When the requirements state or imply a latency, volume, availability, or retention figure, Use skill: `nfr-specification` for the conflicts and infeasible targets among those figures only. Each becomes a Conflict or Infeasible finding; its output block is not emitted, because design Section 1 owns it.
+Use skill: `requirements-analysis` to register every requirement, then run its ambiguity, conflict, completeness, and feasibility patterns against the Step 3 list. When the requirements state or imply a latency, volume, availability, or retention figure, Use skill: `nfr-specification` for the conflicts and infeasible targets among those figures only. Each becomes a Conflict or Infeasible finding citing the row the figure constrains; `nfr-specification`'s output block is not emitted, because design Section 1 owns it.
 
-With a prior analysis, carry its IDs and apply `requirements-analysis`'s re-run rules; name each row the revision drops on the header's Source line.
+With a prior analysis, carry its IDs and apply `requirements-analysis`'s re-run rules; name each row the revision drops, and each Implied row the requester declined, on the header's Source line.
 
 ### Step 5 - Design consequences
 
@@ -63,14 +63,14 @@ For each row whose System impact is neither `none` nor `UI only`, name what the 
 | --- | --- | --- |
 | A new entity, or data ownership moving between modules | `system-boundary-design` | Which module owns the change |
 | One requirement writing to two stores or services | `architecture-data-consistency` | The consistency model the requirement forces |
-| A change to an API, event, export, or report already consumed elsewhere | `ops-backward-compatibility` | Compatible (Yes / No / No (unverified)), and who is affected |
+| A change to an API, event, export, or report already consumed elsewhere | `ops-backward-compatibility` | `compatible: {Yes \| No \| No (unverified)} - <who is affected>` per row of the atomic's Changes Assessed table (one per discrete change, direction, and consumer class), separated by `; `, opening the row's What the design must decide cell |
 | At least one impacted row, over the impacted rows taken together | `review-blast-radius` | The header's Blast radius line, read as if the impacted surface were the change |
 
 Findings from these atomics land in a finding's Design consequence line or in the Design Consequences table; no atomic output block is emitted.
 
 ### Step 6 - Word for the requester
 
-Use skill: `design-audience-calibration` with the requester as the reader; with nothing stated and no signal to infer from, its default profile applies. Its Vocabulary governs the Question, Options, and Recommended lines, and its Attribution line becomes the header's `Written for` bullet. Its diagram and page budgets do not apply. Evidence and Design consequence lines stay in engineering terms, because the architect reads them.
+Use skill: `design-audience-calibration` with the requester as the reader; with nothing stated and no signal to infer from, its default profile applies. Its Vocabulary governs the Question, Options, and Recommended lines, and its Attribution line becomes the header's `Written for` bullet. Its diagram and page budgets, `Appendix carries` and `Domain context` do not apply. Evidence and Design consequence lines stay in engineering terms, because the architect reads them.
 
 ### Step 7 - Readiness and handoff
 
@@ -82,11 +82,11 @@ The verdict is **Not ready** when any Blocking finding is open, **Ready with def
 # Requirements Analysis: <feature>
 
 - **Readiness:** {Ready | Ready with defaults | Not ready} - {the open Blocking Q-IDs | the count of open Defaulted findings | no Blocking or Defaulted finding is open}
-- **Source:** <path | pasted>{ - revision of <prior analysis path | pasted prior analysis>}{; dropped: R<n>, ...}
+- **Source:** <path | pasted>{ - revision of <prior analysis path | pasted prior analysis>}{; dropped: R<n>, ...}{; declined: R<n>, ...}
 - **Current system:** {codebase read | task-onboard report | description | none - every system fact assumed}
 - **Constraints:** {<as supplied>{ - bears on Q<n>, ...} | none stated}
-- **Stack:** {<language> / <framework> (detected) | <language> (no framework detected) | <stack> (prompt-stated) | unknown}
-- **Blast radius:** {<review-blast-radius's Blast Radius value as printed, label dropped> - <the impacted surface in one clause> | n/a - no row has system impact beyond none or UI only}
+- **Stack:** {<language> / <framework> | <language> (no framework detected) | <stack> (prompt-stated) | unknown}
+- **Blast radius:** {<review-blast-radius's Blast Radius value as printed, any parenthetical included, label dropped> - <the impacted surface in one clause> | n/a - no row has system impact beyond none or UI only}
 - **Written for:** <design-audience-calibration's Attribution line>
 
 <requirements-analysis Requirement Register and Findings blocks, their headings included>
@@ -95,15 +95,15 @@ The verdict is **Not ready** when any Blocking finding is open, **Ready with def
 
 | Requirements | Impact | What the design must decide | Evidence |
 | --- | --- | --- | --- |
-| R2, R5 | data model | Shipment becomes its own record, one order to many shipments; orders placed before release need a backfill | `db/schema.rb:88` |
+| R2, R5 | data model | Order-to-shipment cardinality becomes one-to-many; the design decides where shipment state lives, and orders placed before release follow the answer to Q<n> | `db/schema.rb:88` |
 
 {instead, when no row has system impact beyond `none` or `UI only`: one line saying so}
 
 ## Handoff to Design
 
-- **Proceed on:** {<every R-ID neither Gated nor Out of scope; one resting on a Defaulted finding carries its Q-ID, taken as assumed> | none}
-- **Gated:** {<R-IDs whose Status is not Implied, waiting on Blocking Q-IDs, each with the design area it gates> | none}
-- **Out of scope until answered:** {<R-IDs whose Status is Implied> | none}
+- **Proceed on:** {<every R-ID neither Gated nor Out of scope; one resting on a Defaulted finding, an Implied row whose open findings are all Defaulted included, carries its Q-ID, taken as assumed> | none}
+- **Gated:** {<R-IDs whose Status is not Implied, waiting on Blocking Q-IDs, each with the design area it gates and any Defaulted Q-ID it also rests on> | none}
+- **Out of scope until answered:** {<R-IDs whose Status is Implied and that wait on a Blocking finding, each with its Q-IDs> | none}
 - **Next:** `/task-design-architecture` or `/task-design-brief` with this analysis as the Requirements analysis input; after the build, pass this file to the code review as `--req`
 ````
 

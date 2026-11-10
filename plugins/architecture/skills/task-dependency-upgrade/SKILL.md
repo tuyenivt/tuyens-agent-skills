@@ -13,10 +13,6 @@ user-invocable: true
 
 # Dependency Upgrade Assessment
 
-## Purpose
-
-Structured upgrade assessment: breaking change detection, compatibility analysis, effort estimate (S/M/L/XL), rollback plan, and Go/No-Go recommendation. Produces an assessment; no migration code.
-
 ## When to Use
 
 - Before upgrading a framework across a version that ships breaking changes, major or minor (e.g., Spring Boot 4.0 to 4.1, Rails 7 to 8, .NET 8 to .NET 10)
@@ -73,8 +69,8 @@ Categorize breaking changes by type:
 | ---------------------- | -------------------------------------------------------------- | ---------------------------- |
 | API removal            | Deleted class, method, or endpoint                             | Code change required         |
 | API rename / move      | Package rename, method rename, class rename                    | Automated refactor possible  |
-| Behavior change        | Different default, changed semantics, new required param       | Logic review and test update |
-| Configuration change   | New property name, removed property, changed default value     | Config file update           |
+| Behavior change        | Different default (a config property's default included), changed semantics, new required param       | Logic review and test update |
+| Configuration change   | New property name, removed property, changed value format     | Config file update           |
 | Transitive dep upgrade | Pulled-in dependency whose new version changes behaviour your code relies on | Logic review and test update; a version conflict with no code change is a Step 4 row |
 | Runtime requirement    | A new runtime or build-tool minimum that forces a code change (removed JDK API, changed language semantics) | Code change; a minimum with no code change is a Step 4 row |
 
@@ -92,7 +88,7 @@ Use skill: `dependency-impact-analysis` for deployment ordering when separately 
 
 ### Step 5 - Security Assessment
 
-State the security status of both versions regardless of whether the upgrade is security-motivated: the current version's EOL status, CVEs open on it, which of them the target fixes, and the risk of staying. Offline, a version whose support dates are not known reads `Unknown [VERIFY]`; `Supported` is written only when the dates are. A target in `Maintenance` does not fire rung 1; its next-target date is a Next Step; `Unknown [VERIFY]` on the target puts verifying its support in the verification slot that heads Next Steps. Check the target's own support status too - a target already past EOL is `No-Go - Block` unless a later supported version is out of scope for a stated reason - a named constraint such as a larger migration deferred to a later quarter, not merely the requester having named this version. If listing CVEs, cite source rather than speculating; offline, name known CVEs tagged [VERIFY] - never invent IDs.
+State the security status of both versions regardless of whether the upgrade is security-motivated: the current version's EOL status, CVEs open on it, which of them the target fixes, and the risk of staying. Offline, a version whose support dates the run has not read from a source (the request and project documents are sources; recall is not) reads `Unknown [VERIFY]`, a recalled date written beside it as `Unknown [VERIFY] - recalled EOL <date>`; `Supported` is written only when the dates were read, and rung 1's unsupported-target test fires only on a status that was read. A target in `Maintenance` does not fire rung 1; its next-target date is a Next Step; `Unknown [VERIFY]` on the target puts verifying its support in the verification slot that heads Next Steps. Check the target's own support status too - a target already past EOL is `No-Go - Block` unless a later supported version is out of scope for a stated reason - a named constraint such as a larger migration deferred to a later quarter, not merely the requester having named this version. If listing CVEs, cite source rather than speculating; offline, name known CVEs tagged [VERIFY] - never invent IDs.
 
 ### Step 6 - Migration Effort Estimate
 
@@ -118,7 +114,7 @@ Use skill: `review-blast-radius` for upgrade risk: affected features and flows, 
 
 | Risk Factor         | Level             | Notes                                     |
 | ------------------- | ----------------- | ----------------------------------------- |
-| Breaking changes    | None/Low/High     | High = removals, behavior changes, or a runtime major in the path (whether or not it forced code changes); Low = renames, config, or a minor runtime bump that forced a code change (a transitive bump, or a runtime minimum below a major, that resolves with none is a Step 4 row and does not level this factor; a `transitive` inventory row changes behaviour and is High); None = none in the inventory and no runtime major |
+| Breaking changes    | None/Low/High     | High = removals, behavior changes, or a runtime or build-tool major in the path (whether or not it forced code changes); Low = renames, config, or a minor runtime or build-tool bump that forced a code change (a transitive bump, or a runtime or build-tool minimum below a major, that resolves with none is a Step 4 row and does not level this factor; a `transitive` inventory row changes behaviour and is High); None = none in the inventory and no runtime or build-tool major |
 | Test coverage       | Good/Partial/Poor | Confidence level for catching regressions |
 | Rollback complexity | Easy/Hard         | Whether rollback requires data changes; `review-blast-radius` Reversibility Conditional or Irreversible maps to Hard; in its two-state form, read it by the `Mitigation:` line's leading tag as for Blast radius |
 | Blast radius        | Narrow/Wide       | Scope of affected functionality (review-blast-radius Moderate or above maps to Wide; in its two-state mitigated form, read the mitigated value when the `Mitigation:` line's leading tag is `in-place:`, the unmitigated one when it is `required:`) |
@@ -223,7 +219,7 @@ Output header: `# Upgrade Assessment Review` and use the output structure define
 
 ## Security Assessment  <!-- multi-dep: one block per dependency -->
 
-- Current version status: {Supported | Maintenance | End-of-life | Unknown [VERIFY]}, target version status: {Supported | Maintenance | End-of-life | Unknown [VERIFY]}
+- Current version status: {Supported | Maintenance | End-of-life | Unknown [VERIFY]{ - recalled EOL <date>}}, target version status: {Supported | Maintenance | End-of-life | Unknown [VERIFY]{ - recalled EOL <date>}}
 - Open CVEs on the current version: {list with source, "none identified", or "none identified [VERIFY]"}
 - CVEs addressed by target version: {list with source, "none identified", or "none identified [VERIFY]"}
 - Risk of staying: {one sentence}
@@ -243,7 +239,7 @@ Output header: `# Upgrade Assessment Review` and use the output structure define
 
 | Risk Factor         | Level               | Notes                             |
 | ------------------- | ------------------- | --------------------------------- |
-| Breaking changes    | {None/Low/High}     | {count, and the type or runtime major that set the level} |
+| Breaking changes    | {None/Low/High}     | {count, and the type, or runtime or build-tool major, that set the level} |
 | Test coverage       | {Good/Partial/Poor} | {confidence level}                |
 | Rollback complexity | {Easy/Hard}         | {data or config impact}           |
 | Blast radius        | {Narrow/Wide}       | {scope of affected functionality} |
