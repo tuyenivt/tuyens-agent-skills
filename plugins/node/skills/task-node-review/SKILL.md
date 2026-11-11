@@ -237,6 +237,7 @@ Skip on round 1. Otherwise use skill: `review-prior-findings-reconcile` with:
 - `prior_report`: the body of the file at the handle's `report_path` (frontmatter excluded), read here as in Step 3
 - `diff` and `name_status`: the full-range reads from Step 3
 - `head_sha`: `current_head_sha`
+- `base_ref`: the handle's `base_ref` - reconcile derives the merge base from it
 - `head_files`: `git ls-tree -r --name-only <current_head_sha>`
 
 Its table, note line, and tally render under `## Prior Round Reconciliation`.
@@ -276,7 +277,7 @@ Emit `report_body` as raw Markdown; the fence below delimits the template for di
 - **Depth:** standard | deep   {append `auto-promoted from standard; Blast Radius: <level>` when promoted}
 - **Round:** <N>   {round 2+ only}
 - **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}
-- **Requirement Source:** <path or origin> (Specified | Self-attested)   {this line and the next together, or both omitted when Step 3.7 resolved no source}
+- **Requirement Source:** <`review-change-intent`'s line value as emitted: each source with its authority, two joined by ` + `>   {this line and the next together, or both omitted when Step 3.7 resolved no source}
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 - **Notes:**   {omit when none}
   - <each note Steps 2-9.5 produced: round, scope, depth, short-circuit, inline or incomplete scopes, ORM `other`, the handle's own notes, reliability's `Resilience Libraries:` line>
@@ -370,7 +371,7 @@ Fix: ...
 - [ ] Step 9: lenses spawned in parallel with the prompt contract (or run inline, noted); each subagent loaded behavioral-principles, or rules inlined; failed scopes noted
 - [ ] Step 9.3: lens findings projected; same-claim entries merged with every source in `Scope:`; `out of lens` lines drafted; non-finding lens sections kept
 - [ ] Step 9.4: `review-finding-verify` ran on the assembled set; Dropped excluded; `Label` and split `Annotation` groups applied; four-term tally in Summary
-- [ ] Step 9.5: round 2+ reconciled from `report_path` with `head_sha`; unresolved rows carried with `_(carried from round <N>)_` and a Next Step; legacy labels mapped
+- [ ] Step 9.5: round 2+ reconciled from `report_path` with `head_sha` and `base_ref`; unresolved rows carried with `_(carried from round <N>)_` and a Next Step; legacy labels mapped
 - [ ] Step 10: Assessment from the open-label set; report written with every writer field; confirmation printed
 - [ ] Every `[Must]` states System Risk; every finding has a label, `file:line`, and a Node fix
 

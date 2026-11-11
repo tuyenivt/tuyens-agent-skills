@@ -199,7 +199,7 @@ Use skill: `review-finding-verify` with the assembled findings (Phase 0, Phases 
 
 ### Step 8 - Reconcile Prior Findings (round 2+ only)
 
-Use skill: `review-prior-findings-reconcile` with `prior_report` (the body of the file at the handle's `report_path`, frontmatter excluded - its `## High-Impact Findings` headings already carry `[Label] file:line` and annotation groups), the full-range `diff`, the full-range `name_status`, and `head_sha = current_head_sha`. Its output renders verbatim under `## Prior Round Reconciliation`.
+Use skill: `review-prior-findings-reconcile` with `prior_report` (the body of the file at the handle's `report_path`, frontmatter excluded - its `## High-Impact Findings` headings already carry `[Label] file:line` and annotation groups), the full-range `diff`, the full-range `name_status`, `head_sha = current_head_sha`, and `base_ref`. Its output renders verbatim under `## Prior Round Reconciliation`.
 
 A `Still open` / `Needs re-check` row this round did not re-derive publishes in `## High-Impact Findings` at its prior label (`[Blocker]` / `[High]` / `[Critical]` -> `[Must]`; other legacy labels -> `[Recommend]`; `[Praise]` never carried) with `_(carried from round <N>)_` as the last annotation group, and in Next Steps with the suffix `(open since round <N>)`; a row this round re-derived publishes once, as this round's finding. No separate carry-over section.
 
@@ -223,7 +223,7 @@ The fence delimits the template for display only; emit `report_body` as raw Mark
 - **Depth:** standard | deep{; auto-promoted from standard; Blast Radius: <level>}{; narrowed vs round <N> - re-run with deep to re-cover}
 - **Round:** <N>{; <Step 4 note>}   {round 2+, or round 1 when the legacy note applies}
 - **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}
-- **Requirement Source:** <path or origin> (Specified | Self-attested)   {with the next line, only when Phase 0 resolved a source}
+- **Requirement Source:** <`review-change-intent`'s line value as emitted: each source with its authority, two joined by ` + `>   {with the next line, only when Phase 0 resolved a source}
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 
 ## Change Brief
@@ -310,7 +310,7 @@ _Cross-cutting commentary; reference findings by file:line, never restate them._
 - [ ] Phase E: naming, magic numbers, function length, duplicated queries, logging hygiene checked
 - [ ] Step 6: extra scopes spawned in parallel with the declared `subagent_type` and the prompt contract; findings merged (dedupe, impact -> intent, strongest wins); failed scope noted `incomplete: <scope>`; deep-only sections kept
 - [ ] Step 7: `review-finding-verify` ran on every assembled finding; Dropped excluded; `file:line` / `Label` / `Annotation` published; tally in Summary
-- [ ] Step 8: round 2+ reconciled with `head_sha` and the handle's `report_path`; unresolved rows carried into High-Impact Findings and Next Steps with `(open since round <N>)`
+- [ ] Step 8: round 2+ reconciled with `head_sha`, `base_ref` and the handle's `report_path`; unresolved rows carried into High-Impact Findings and Next Steps with `(open since round <N>)`
 - [ ] Step 9: report written via `review-report-writer` with every field (branch, refs, SHAs, mode, round, prior_head_sha, writer-enum scope, depth, stack, pr_url); confirmation printed
 - [ ] Every `[Must]` cites system risk; every finding has a label, `file:line`, and an actionable Python fix
 

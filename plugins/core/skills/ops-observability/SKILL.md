@@ -25,6 +25,7 @@ Incident history is input: a signal whose absence let an incident run is a gap w
 - Trace context propagates across every service boundary using a standard header; receiving services create child spans, never new trace IDs. An internal call is a boundary too.
 - Never log secrets or personal data (passwords, tokens, names, contact details, card data). Opaque identifiers (`user_id`, `order_id`) are correlation fields, safe to log because they carry no directly identifying value. Deliberate logging is rarely the leak - check the indirect carriers: full URLs with query strings, request/response body dumps in error handlers, exception messages quoting the offending value (a leak whether or not a log statement currently prints them - they will be logged the first time someone adds one), and header dumps carrying `Authorization` or `Cookie`. Log the route template (`/users/search`), not the resolved URL.
 - Every entry point (API endpoint, queue consumer, scheduled job) has RED metrics: **R**ate, **E**rrors, **D**uration - measured per unit of work. Every critical operation has a business-metric counter; every scheduled or event-driven job has an absence alert.
+- A one-shot command a person runs (a CLI tool) is not an entry point and has no service identity: RED metrics, tracing, context propagation, SLOs and the `service` / `trace_id` / `span_id` log fields are not applicable to it and raise no gap. A swallowed error is still logged at `error`, without `trace_id`, and the rule on secrets or personal data in output still applies.
 - A caught exception that is not re-raised is logged at `error` with `trace_id` before it is swallowed.
 - Log levels carry meaning: `info` for state changes, `debug` for per-item detail. Never log per-iteration at `info` in hot loops - aggregate or sample.
 - Every critical path (one user-facing journey end to end) has an SLO; alerting thresholds without an SLO are arbitrary.
@@ -56,7 +57,7 @@ log({
 Use a standard propagation header end-to-end:
 
 - **W3C `traceparent`** (`00-<trace-id>-<parent-id>-<flags>`) with `tracestate` - recommended; OpenTelemetry default
-- **B3** - Zipkin and Brave; single header `b3: <trace-id>-<span-id>-<sampled>` or the multi-header set `X-B3-TraceId`, `X-B3-SpanId`, `X-B3-ParentSpanId`, `X-B3-Sampled` (forward the whole set, never the trace id alone)
+- **B3** - Zipkin and Brave; single header `b3: <trace-id>-<span-id>-<sampled>` or the multi-header set `X-B3-TraceId`, `X-B3-SpanId`, `X-B3-ParentSpanId`, `X-B3-Sampled`, `X-B3-Flags` (forward the whole set, never the trace id alone)
 - **`uber-trace-id`** - Jaeger
 
 A service mesh forwards whichever family its tracing provider uses; it cannot carry context through the application's own in-process hops, so the application propagates regardless.
@@ -71,6 +72,7 @@ http_request_duration_seconds_bucket{method, route, le}          // Duration his
   p99 = histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
 
 queue_messages_processed_total{queue, result}                    // consumer Rate + Errors
+queue_message_duration_seconds_bucket{queue, le}                 // consumer Duration
 job_runs_total{task, result}                                     // scheduled job Rate + Errors
 job_duration_seconds_bucket{task, le}                            // scheduled job Duration (`job` is Prometheus's scrape-target label; an exposed `job` is renamed `exported_job`)
 ```
@@ -118,12 +120,12 @@ After `stack-detect`, apply the patterns using the ecosystem's standard librarie
 
 ## Output Format
 
-Consuming workflow skills parse this structure to surface observability gaps. One gap per fix, where a fix is one change to one mechanism: the sites one change closes are one gap anchored at the entry point, naming the other sites (a missing tracer at three files; RED metrics missing on every endpoint of one framework, closed by one middleware); three leaks under one rule with three fix sites are three gaps; two Signal values at one site (RED metrics and an absence alert on one job) are two gaps; a queue consumer and a scheduled job are separate mechanisms. Gaps cover the axes the caller named, every rule when none is named. An `absent` gap names where the signal was searched for (alert rules and dashboards often live outside the reviewed files); a metric declared but never recorded on the path is `absent - metric`; a gap whose deciding file was not read (saturation with no infra config) ends its description with `(unverified - <file to check>)` and keeps the severity the Severity list gives that gap as if the unread file confirmed it; a gap with no code site (an alert rule, an SLO, infra saturation) anchors to the file or runbook that should declare it, or `<service>: no site` when none exists. Order gaps by severity, High first.
+Consuming workflow skills parse this structure to surface observability gaps. One gap per fix, where a fix is one change to one mechanism: the sites one change closes are one gap anchored at the entry point, naming the other sites (a missing tracer at three files; RED metrics missing on every endpoint of one framework, closed by one middleware); three leaks under one rule with three fix sites are three gaps; two Signal values at one site (RED metrics and an absence alert on one job) are two gaps; a queue consumer and a scheduled job are separate mechanisms. Gaps cover the axes the caller named, every rule when none is named. An `absent` gap names where the signal was searched for (alert rules and dashboards often live outside the reviewed files); a metric declared but never recorded on the path is `absent - metric`; a gap whose deciding file was not read (saturation with no infra config, an alert rule in an unread rules file) ends its description with `(unverified - <file to check>)` and keeps the severity the Severity list gives that gap as if the unread file confirmed it; a gap with no code site (an alert rule, an SLO, infra saturation) anchors to the file or runbook that should declare it, read or not, or `<service>: no site` once a listing of the repository shows no such file. Order gaps by severity, High first.
 
 ```
 ## Observability Assessment
 
-**Stack:** {language / framework | <language> (no framework detected) | unknown - verify against ecosystem docs}
+**Stack:** {language / framework | <language> (no framework detected) | unknown}
 
 ### Gaps                                        {when at least one gap}
 
@@ -137,7 +139,7 @@ Consuming workflow skills parse this structure to surface observability gaps. On
 
 **Severity:**
 
-- **High**: gap prevents detecting a production failure - no error rate on a critical path, no SLO on a critical path, an SLO with no burn-rate alerting (no absolute-count alert, for a path below a few hundred events in the shortest long window), no saturation alert on a resource that hard-fails, no absence alert on scheduled work, missing trace propagation across any boundary, no business metric on a flow whose failure RED cannot see, a cause-based page with no symptom alert (`replacement`) - or a secret/personal-data value reaching logs or exception messages
+- **High**: gap prevents detecting a production failure - no error rate on a critical path, no SLO on a critical path, an SLO with no burn-rate alerting (no absolute-count alert, for a path below a few hundred events in the shortest long window), no saturation alert on a resource that hard-fails, no absence alert on scheduled or event-driven work, missing trace propagation across any boundary, no business metric on a flow whose failure RED cannot see, a cause-based page with no symptom alert (`replacement`) - or a secret/personal-data value reaching logs or exception messages
 - **Medium**: gap slows diagnosis - a business metric with a dashboard but no alert, a signal off the critical path with no alert or dashboard, a span missing on a hot path, a missing mandatory log field, an error swallowed with no log, every `misuse` signal
 - **Low**: nice-to-have signal with no current blind spot
 

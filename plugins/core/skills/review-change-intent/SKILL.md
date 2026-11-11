@@ -24,7 +24,7 @@ Not for single-lens reviews (`*-review-perf` / `-security` / `-observability` / 
 | -------------------- | -------- | ---------------------------------------------------------------------------- |
 | `diff`               | yes      | `git diff <base_ref>...<head_ref>` - the full PR range, on every round |
 | `commit_log`         | yes      | `git log <base_ref>..<head_ref>` over the same range                         |
-| `requirement_source` | no       | `--req <path>` forwarded by the workflow, or requirement text already in context |
+| `requirement_source` | no       | `--req <path>` forwarded by the workflow, requirement text already in context, or both |
 | `prior_report_path`  | no       | `review-target.report_path` from the precondition handle, when round > 1     |
 
 Repository context outside these inputs (deploy plans, architecture docs) may inform Watch points and may be cited there by path; it becomes a traceability source only when the diff, commit log, or context names it (source row 3).
@@ -41,14 +41,14 @@ Repository context outside these inputs (deploy plans, architecture docs) may in
 
 ## Patterns
 
-### Source resolution (first row that resolves wins)
+### Source resolution (first row that resolves wins; text alongside a resolved `--req` file adds to it)
 
 | Order | Source                                                                                     | Authority     |
 | ----- | ------------------------------------------------------------------------------------------ | ------------- |
-| 1     | The file at `--req <path>`; a file with no criterion stating an observable outcome does not resolve this row, and resolution continues at row 2 | Specified; Self-attested when the diff adds or edits it, or it is the change's own PR description |
+| 1     | The file at `--req <path>`; a file with no criterion stating an observable outcome does not resolve this row, and resolution continues at row 2; when this row resolves, requirement text supplied alongside the path is a second source, never dropped: its criteria follow the file's in the table, at the authority row 2 or row 5 assigns that text, and one stating an outcome the file already states is the file's criterion, kept at the file's row and authority | Specified; Self-attested when the diff adds or edits it, or it is the change's own PR description |
 | 2     | Requirement text or file already in context and written independently of the change (pasted ticket, PRD, spec) - author-written text is row 5 | Specified     |
 | 3     | An in-tree spec the change names - a path appearing in the diff, commit log, or context, or a ticket ID resolved through an in-tree file named alongside it or naming the ID itself (a ticket ID with no such file leaves the row unresolved and is recorded under Watch points, as is a ticket ID that disagrees with the resolved source). Follow the reference; never guess a likely path. A referenced document with no criterion stating an observable outcome does not resolve this row | Specified; Self-attested when the diff adds or edits it |
-| 4     | The `Requirement Source` recorded in the prior report at `prior_report_path`, re-read at its path and evaluated at its current content; a recorded source with no re-readable path (pasted text, PR body) does not resolve | the authority the row that first resolved it assigns at the current range: Self-attested when the current diff adds or edits it, otherwise the prior authority |
+| 4     | The `Requirement Source` recorded in the prior report at `prior_report_path`, re-read at its path and evaluated at its current content; a recorded source with no re-readable path (pasted text, PR body) does not resolve, and of a two-part source only the part with a path does | the authority the row that first resolved it assigns at the current range: Self-attested when the current diff adds or edits it, otherwise the prior authority |
 | 5     | Pasted PR/MR body, other author-written requirement text in context, or commit messages in the range, when any enumerates at least one criterion stating an observable outcome - an unfetched PR body leaves the other sources of this row live | Self-attested |
 | 6     | Nothing resolves                                                                            | omit the block |
 
@@ -58,7 +58,7 @@ Repository context outside these inputs (deploy plans, architecture docs) may in
 | ------------- | ---------------------------------------------------------------------------------------------- |
 | `Met`         | An implementation anchor and a proof anchor both resolve and together cover the full stated outcome |
 | `Partial`     | Exactly one anchor resolves, or the anchors together cover part of the stated outcome          |
-| `Unmet`       | Neither anchor resolves, in the change or in the existing tree, or the implementation contradicts the stated outcome (a flag shipped on where the criterion says off) - a contradiction is `Unmet` whichever anchors resolve |
+| `Unmet`       | Neither anchor resolves, in the change or in the existing tree, or the implementation contradicts the stated outcome (a flag shipped on where the criterion says off, or declared and gating nothing) - a contradiction is `Unmet` whichever anchors resolve |
 | `Deferred`    | The source itself places the criterion outside this change (`part 1 of 3`, `follow-up`, a criterion marked out of scope) |
 | `Untraceable` | An enumerated criterion states no observable outcome (`improve UX`, `clean this up`) - no anchor is possible either way |
 
@@ -96,10 +96,10 @@ Every round derives this phase's findings from the full current range; prior-rou
 
 ## Output Format
 
-Emit the lines and blocks below in this order. `Requirement Source`, `Requirement Fit`, and `## Requirement Traceability` appear together or not at all: all three are present when a source resolved, all three omitted when none did. The consuming workflow copies the two lines into its report Summary and the four `## Change Brief` fields into the report body verbatim; findings feed its finding set and are not copied with the Brief.
+Emit the lines and blocks below in this order. `Requirement Source`, `Requirement Fit`, and `## Requirement Traceability` appear together or not at all: all three are present when a source resolved, all three omitted when none did. A second source (row 1) is appended to `Requirement Source` in its own row's form with its own authority. The consuming workflow copies the two lines into its report Summary and the four `## Change Brief` fields into the report body verbatim; findings feed its finding set and are not copied with the Brief.
 
 ```
-Requirement Source: <path for rows 1, 3, 4 and a row-2 file in context; `pasted <ticket ID or document title>` for row-2 pasted text; `PR body (pasted)`, `pasted <document title> (author-written)`, or `commit messages <base_ref>..<head_ref>` for row 5> (Specified | Self-attested)
+Requirement Source: <path for rows 1, 3, 4 and a row-2 file in context; `pasted <ticket ID or document title>` for row-2 pasted text (`pasted request text` when it has neither); `PR body (pasted)`, `pasted <document title> (author-written)`, or `commit messages <base_ref>..<head_ref>` for row 5> (Specified | Self-attested){ + <the second source, same forms> (Specified | Self-attested)}
 
 Requirement Fit: <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 
@@ -111,7 +111,7 @@ Requirement Fit: <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 
 **Author decisions:** <one bullet per choice the request did not imply and that is not unrequested scope, each with its consequence; `None observed` when nothing remains>
 
-**Watch points:** <what the reviewer should confirm by hand before reading findings - untested behavior, an assumption the change rests on, what it deliberately does not do, a self-attested deferral of a Specified criterion, an unresolved ticket ID or one that disagrees with the resolved source; never a defect, which is another lens's finding; `None` when there are none>
+**Watch points:** <what the reviewer should confirm by hand before reading findings - untested behavior, an assumption the change rests on, what it deliberately does not do, a self-attested deferral of a Specified criterion, an unresolved ticket ID or one that disagrees with the resolved source, a pasted source the prior round used that was not supplied again; never a defect, which is another lens's finding; `None` when there are none>
 
 ## Requirement Traceability
 

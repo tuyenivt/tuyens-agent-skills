@@ -24,8 +24,9 @@ The consuming workflow passes:
 | ---------------- | ----------------------------------------------------------------------- |
 | `prior_report`   | Full Markdown body of `review-<head>.md` (frontmatter already parsed) |
 | `diff`           | Output of `git diff <base_ref>...<head_ref>` (already read) - the full PR range |
-| `name_status`    | Output of `git diff -M --name-status <base_ref>...<head_ref>` - the same full range; `-M` pins rename detection on, so `diff.renames` config cannot emit `C` rows or turn detection off; a rename past `diff.renameLimit` or below 50% similarity still arrives as `D`+`A` (Step 2's basename rule) |
+| `name_status`    | Output of `git diff -M --name-status <base_ref>...<head_ref>` - the same full range; `-M` pins rename detection on, so `diff.renames` config cannot emit `C` rows or turn detection off; an inexact rename past `diff.renameLimit` (exact ones still pair, as do high-similarity moves that keep a unique basename on git 2.32+) or below 50% similarity still arrives as `D`+`A` (Step 2's basename rule) |
 | `head_sha`       | `git rev-parse <head_ref>` - every file read in Steps 2-4 uses `git show <head_sha>:<path>` (after the workflow's auto-fetch the checked-out tree may differ) |
+| `base_ref`       | The base `diff` and `name_status` were read against (the precondition handle's `base_ref`) - Step 2 derives `merge_base` from it |
 | `head_files`     | Optional. `git ls-tree -r --name-only <head_sha>`. When absent, probe a single path with `git cat-file -e <head_sha>:<path>`. |
 
 ## Rules
@@ -45,7 +46,7 @@ Parse the prior report's `## High-Impact Findings` section, matching the heading
 
 Collect `(label, file, line, smell_summary, provenance)` where `smell_summary` is a noun phrase naming the smell, drawn from the `Issue:` or `Improvement:` line (`check-then-act idempotency`, not the full sentence; a question restated as the defect it implies - `offset pagination instead of a cursor`; with neither line, `unstated smell` on a non-`[Praise]` row, the row noted `no Issue line, smell unstated` and classified `Needs re-check` unless Step 3 assigns `Obsolete` from touch state), and `provenance` is `pre-existing` only when the heading carries the exact group `_(pre-existing)_` - any other group, including one that merely starts with `pre-existing`, leaves it unset.
 
-If the section is present but empty, emit the empty table and the zeroed tally. If no heading matches at all, emit the empty table, the note line ``Prior report has no High-Impact Findings section (found: <the report's ## headings, comma-separated>); nothing reconciled``, and the zeroed tally - a report that should have had findings and a report that genuinely had none look identical otherwise. When a found heading starts with `## Findings` (the same prefix match), the caller passed a scoped-lens report without projecting it into the High-Impact shape: the note ends `nothing reconciled - lens report not projected` instead, and the caller projects and re-runs.
+If `name_status`, `head_sha` or `base_ref` was not passed, emit the empty table, one note line `missing input: <field>; nothing reconciled` per missing field, and the zeroed tally - the caller passes it and re-runs; none is derived here. If the section is present but empty, emit the empty table and the zeroed tally. If no heading matches at all, emit the empty table, the note line ``Prior report has no High-Impact Findings section (found: <the report's ## headings, comma-separated>); nothing reconciled``, and the zeroed tally - a report that should have had findings and a report that genuinely had none look identical otherwise. When a found heading starts with `## Findings` (the same prefix match), the caller passed a scoped-lens report without projecting it into the High-Impact shape: the note ends `nothing reconciled - lens report not projected` instead, and the caller projects and re-runs.
 
 ### Step 2 - Determine file touch state
 
@@ -86,7 +87,7 @@ This is the only judgment-heavy step. The prior finding cites a named smell (e.g
 
 ## Output Format
 
-Emit a single Markdown table, then a blank line, then any Step 1 note lines (missing section, unparsed heading, count mismatch), each followed by a blank line, then the tally line - this is what the workflow inserts under its own `## Prior Round Reconciliation` heading in the round-2+ report; the heading is the workflow's, not part of this output. Paths are repo-relative, as `name_status` prints them.
+Emit a single Markdown table, then a blank line, then any Step 1 note lines (missing input, missing section, unparsed heading, count mismatch), each followed by a blank line, then the tally line - this is what the workflow inserts under its own `## Prior Round Reconciliation` heading in the round-2+ report; the heading is the workflow's, not part of this output. Paths are repo-relative, as `name_status` prints them.
 
 ```markdown
 | Round N-1 Finding                          | file:line                | Status         | Notes                          |

@@ -37,7 +37,7 @@ Elicit across all six. For each, extract from context or ask the requester. When
 - Latency: p50 / p95 / p99 per operation class (read / write / batch) - one row per percentile and class the context supports
 - Throughput: requests per second sustained (baseline) and at peak, plus burst when a shorter spike is expected - one row each
 - Response budget: breakdown across layers if multi-service
-- Batch completion: a job that must finish by a clock time (statements by 06:00, reconciliation by 08:00) is a Performance row whose target is the deadline and whose measurement is the job's completion timestamp
+- Batch completion: a job that must finish by a clock time (statements by 06:00, reconciliation by 08:00) or within its own cadence (an hourly job's Target reads `before the next scheduled start`) is a Performance row whose target is the deadline and whose measurement is the job's completion timestamp
 
 **Availability**
 

@@ -54,6 +54,8 @@ Whenever the head (Step 2) or the base (Step 4) resolves as `refs/heads/<name>`,
 git status --porcelain
 ```
 
+When the command fails with `fatal: not a git repository` (exit 128), stop with `Not a git repository. Run the review from inside the repository.`
+
 Ignore lines whose path is a repository-root `review-*.md` file, untracked (`??`) or modified (` M`, a committed checkpoint the last round rewrote) - they are this workflow's own checkpoints and get no note, and porcelain paths are always repository-root-relative. If any other line remains, stop with this message followed by those lines:
 
 ```text
@@ -109,6 +111,8 @@ Switch to your feature branch and re-run, or pass an explicit feature branch or 
 ### Step 4 - Detect the base branch
 
 If the workflow forwarded `base`: resolve via `refs/heads/<base>`, then `refs/remotes/<base>`, then `refs/remotes/*/<base>` (one match: use it; several: ask the user which remote); record `base_source: explicit-override`. Not subject to the trunk fail-fast (that rule applies to the head). If it does not resolve, stop with `Base <base> not found locally or on any remote. Push or fetch it, then re-run.` - never fall back to a trunk.
+
+Otherwise, when this head has a valid prior checkpoint (Step 6's filename and validity rules, read here) whose `base_ref` still resolves, reuse that `base_ref`: a later round reviews the range the earlier one did. Record `base_source: prior-checkpoint` and add the note `Base <base_ref> reused from the round <N> checkpoint; pass --base <branch> to review against another.`
 
 Otherwise, auto-detect in order:
 
@@ -171,7 +175,7 @@ If frontmatter is valid, emit the block in the handle (see Output Format below).
 
 ## Output Format
 
-When all preconditions pass, emit this handle as one fenced `yaml` block and nothing more. `base_ref` and `head_ref` are short names (`origin/main`, `feature/x`, `pr-42`, `heads/hotfix-1` in the tag-collision case), never `refs/...`. Omit `notes` when empty; every note, and the `argument`, `head_ref`, `head_short_name`, `base_ref`, and `current_branch` values, is written double-quoted, with `\"` and `\\` escaped inside (a bare `42` would parse as an integer).
+When all preconditions pass, emit this handle as one fenced `yaml` block and nothing more. `base_ref` and `head_ref` are short names (`origin/main`, `feature/x`, `pr-42`, `heads/hotfix-1` in the tag-collision case), never `refs/...`. Omit `notes` when empty; every note, and the `argument`, `head_ref`, `head_short_name`, `base_ref`, and `current_branch` values, and the `prior_checkpoint` values the writer quotes (`branch`, both refs, the SHAs, `stack`, `pr_url`), is written double-quoted, with `\"` and `\\` escaped inside (a bare `42` would parse as an integer).
 
 ```yaml
 review-target:
@@ -179,7 +183,7 @@ review-target:
   argument: {verbatim user argument or "(none)"}
   report_type: {review | review-perf | review-security | review-observability | review-reliability}
   base_ref: {e.g., origin/main, phase-01}
-  base_source: {explicit-override | origin-head | trunk-fallback | user-prompted}
+  base_source: {explicit-override | prior-checkpoint | origin-head | trunk-fallback | user-prompted}
   head_ref: {e.g., pr-50273, feature/x, origin/feature/x}
   head_short_name: {e.g., feature/x - the writer's `branch` input}
   head_is_remote: {true | false}

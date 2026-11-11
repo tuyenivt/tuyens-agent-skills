@@ -238,7 +238,7 @@ The merge bullets apply when Step 6 ran; the rules after them apply to every run
 
 ### Step 7.5 - Reconcile Prior Findings (round 2+ only)
 
-Skip on round 1. Otherwise Use skill: `review-prior-findings-reconcile` with `prior_report` (the `## High-Impact Findings` section of the file at the handle's `report_path`, each heading kept as written with its `_(pre-existing)_` and `_(carried from round <N>)_` groups and its `- Issue:` bullet rewritten as a bare `Issue:` line; a prior round that reads `No findings.` projects as that heading with nothing under it, so the table is empty and nothing is dropped), the Step 3 diff and name-status, `head_sha = current_head_sha`, and `head_files` (`git ls-tree -r --name-only <current_head_sha>`) when the name-status has a `D` entry.
+Skip on round 1. Otherwise Use skill: `review-prior-findings-reconcile` with `prior_report` (the `## High-Impact Findings` section of the file at the handle's `report_path`, each heading kept as written with its `_(pre-existing)_` and `_(carried from round <N>)_` groups and its `- Issue:` bullet rewritten as a bare `Issue:` line; a prior round that reads `No findings.` projects as that heading with nothing under it, so the table is empty and nothing is dropped), the Step 3 diff and name-status, `head_sha = current_head_sha`, `base_ref`, and `head_files` (`git ls-tree -r --name-only <current_head_sha>`) when the name-status has a `D` entry.
 
 Its table, note line, and tally render under `## Prior Round Reconciliation`. A `Still open` or `Needs re-check` row this round re-derived publishes once in High-Impact Findings at this round's label. One it did not re-derive is still unresolved: publish it there at its prior label with `_(carried from round <prior.round>)_` as its own group on the heading - reconcile parses only that section, so a row kept out of it is invisible to round 3. Both kinds fold into Next Steps with an `(open since round <prior.round>)` suffix. A prior label outside `[Must]` / `[Recommend]` stays verbatim in the table and maps before publication: `[Blocker]`, `[High]`, `[Critical]` -> `[Must]`; anything else -> `[Recommend]`; `[Praise]` rows are never carried.
 
@@ -371,7 +371,7 @@ A review with no findings is Summary, Prior Round Reconciliation (round 2+), the
 - [ ] Same-line findings resolved per Step 7: one defect is one entry at the strongest intent, two defects stay two
 - [ ] Coverage Notes carry `Scope incomplete:`, handle notes, `signal:` lines, atomic header lines, `Not checked:`, `Pre-existing:`, unowned `Also seen:`, and `Outside this lens:` lines
 - [ ] Next Steps produced with `[Implement]` / `[Delegate]` tags, ordered by intent
-- [ ] Step 7.5 - on round 2+, `review-prior-findings-reconcile` ran on the projected High-Impact Findings section with `head_sha`; table under `## Prior Round Reconciliation`; unresolved rows carried into High-Impact Findings and Next Steps; legacy labels mapped
+- [ ] Step 7.5 - on round 2+, `review-prior-findings-reconcile` ran on the projected High-Impact Findings section with `head_sha` and `base_ref`; table under `## Prior Round Reconciliation`; unresolved rows carried into High-Impact Findings and Next Steps; legacy labels mapped
 - [ ] Step 8 - report written via `review-report-writer` with every required field (`stack: flutter`, `mode: full`, `scope` in the writer enum with `Full` as `+perf +sec`, round, both SHAs, `prior_head_sha` on round 2+); confirmation line printed
 
 ## Avoid

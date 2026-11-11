@@ -42,7 +42,7 @@ WHERE LOWER(email) = 'user@example.com'
 -- Good - rewrite as range, or use an expression index
 WHERE created_at >= '2024-01-01' AND created_at < '2024-01-02'
 CREATE INDEX idx_users_email_lower ON users (LOWER(email));          -- PostgreSQL, SQLite 3.9+
-CREATE INDEX idx_users_email_lower ON users ((LOWER(email)));        -- MySQL 8.0.13+ (double parentheses required)
+CREATE INDEX idx_users_email_lower ON users ((LOWER(email)));        -- MySQL 8.0.13+ (double parentheses required); only on a case-sensitive column - under the default utf8mb4_0900_ai_ci drop LOWER()
 ```
 
 On older MySQL or SQLite the rewrite is the only option, or store the normalized value in its own indexed column. For a timezone-aware column the range bounds are the day's instants in the intended zone, not naive dates.

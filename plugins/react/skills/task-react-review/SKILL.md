@@ -309,6 +309,7 @@ Skip on round 1. Otherwise Use skill: `review-prior-findings-reconcile` with the
 - `diff`: the full-range diff from Step 3
 - `name_status`: the full-range `git diff --name-status <base_ref>...<head_ref>` from Step 3
 - `head_sha`: `current_head_sha`
+- `base_ref`: the handle's `base_ref` - reconcile derives the merge base from it
 
 The reconcile skill returns a Markdown table, any note lines (a missing section, a lens report not projected, a count mismatch) and a tally line. Insert all three, in that order, under `## Prior Round Reconciliation` (see Output Format).
 
@@ -354,7 +355,7 @@ The fence below delimits the template for display only - it is not part of the r
 - **Assessment basis:** <the open-label set the Assessment line was read from: `<n> Must open, <n> Recommend open`>
 - **Round:** <N>                                _(include from round 2 onward)_
 - **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped (<F> false positive, <R> resolved by diff) _(the parenthetical only when K > 0)_
-- **Requirement Source:** <path or origin> (Specified | Self-attested) _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
+- **Requirement Source:** <`review-change-intent`'s line value as emitted: each source with its authority, two joined by ` + `> _(this line and the next are emitted together, or both omitted when Phase 0 resolved no source)_
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 - **Notes:** <one line per floor, round, scope or depth note the Workflow requires - the Step 2 below-floor line, `Prior report lacks checkpoint metadata`, `Same head as round <N>`, `Prior checkpoint unreachable`, `Base branch advanced`, `Base ref changed`, `Scope expanded round <N>`, `Scope narrowed vs round <N>`, `Depth narrowed vs round <N>`, `Scope incomplete: <scope>`, `lenses ran inline (no subagent runtime)`, `Local <head_short_name> is ahead of <remote>/<branch>`, the package the run was scoped to, and the per-signal `signal: <category> -> <file:line>` log; omit the line when none apply>
 
@@ -465,7 +466,7 @@ _Omit if no actionable findings._
 - [ ] Depth honored: `standard` ran Phases A-E (C-D skipped only by the low-risk short-circuit); `deep` additionally ran the Phase C and Phase D depth branches and spawned every extra scope at `deep`
 - [ ] Assessment set from the open-label set per the Output Format rule, not from overall impression
 - [ ] Step 6.5 - review-finding-verify ran on all assembled findings; Dropped rows excluded; verdict labels and annotations applied, an untouched-file finding marked `_(pre-existing)_` at publish; tally in Summary
-- [ ] Step 6.6 - on round 2+, review-prior-findings-reconcile ran with `head_sha` and the prior body passed as written; reconciliation table, any note lines and tally inserted in that order; Still open and Needs re-check rows carried into High-Impact Findings and Next Steps with mapped labels and `_(carried from round <N>)_`
+- [ ] Step 6.6 - on round 2+, review-prior-findings-reconcile ran with `head_sha`, `base_ref` and the prior body passed as written; reconciliation table, any note lines and tally inserted in that order; Still open and Needs re-check rows carried into High-Impact Findings and Next Steps with mapped labels and `_(carried from round <N>)_`
 - [ ] Step 7: review report written via `review-report-writer` with full checkpoint fields (`branch` = `head_short_name`, mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope, depth, stack); confirmation line printed
 
 ## Avoid

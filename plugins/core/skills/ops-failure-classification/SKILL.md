@@ -49,7 +49,7 @@ Two independent axes:
 
 | Axis      | Values                                                                              |
 | --------- | ----------------------------------------------------------------------------------- |
-| Requests  | `Total` (all requests affected), `Partial X%` (a subset - from metrics at the incident's peak; `Partial ~X%` when only a qualitative estimate exists, its source in Evidence; `Partial (unquantified)` when the record gives counts but no denominator, the counts in Evidence; `Partial X% aggregate, not split` when one rate spans several signatures), `Absent` (a silent failure: no requests exist to rate, the signal is the missing output) |
+| Requests  | `Total` (all requests affected), `Partial X%` (a subset - from metrics at the incident's peak; `Partial ~X%` when only a qualitative estimate exists, its source in Evidence; `Partial (unquantified)` when the record gives counts but no denominator, the counts in Evidence; `Partial X% aggregate, not split` when one rate spans several signatures), `Absent` (a silent failure, counted or not: no requests exist to rate, the signal is the missing output) |
 | Spread    | `Isolated` (stays within one component; rolling through replicas of one service is still Isolated), `Cascading` (a *different* component fails - identify the propagation path) |
 
 ### System Layers
@@ -71,7 +71,7 @@ Failure Type: Architectural boundary violation, External dependency failure, Res
 
 Scope: Partial 38% + Cascading (gateway latency -> checkout holds pooled DB connections across the external call -> unrelated endpoints starve)
 
-Layer: Application (the checkout path holds a pooled connection across the gateway call; a bulkhead survives a larger gateway outage, fixing the gateway does not; gateway p99 9s in Integration was the trigger)
+Layer: Application (the checkout path holds a pooled connection across the gateway call; releasing the connection before the call survives a larger gateway outage, fixing the gateway does not; gateway p99 9s in Integration was the trigger)
 
 Evidence: checkout in `orders.py` calls the gateway inside the request's DB session; gateway p99 9s (baseline 400ms); api pods `QueuePool limit of size 10 overflow 5 reached` with 6 threads awaiting a connection, GET /orders (no gateway call) returning 503
 ```

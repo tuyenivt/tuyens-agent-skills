@@ -43,7 +43,7 @@ Use skill: `behavioral-principles`.
 
 Establish `(base_ref, head_ref)` before any diff is read. PR creation runs against the current feature branch only.
 
-1. **Resolve head:** `head_ref = HEAD`; `current_branch = git rev-parse --abbrev-ref HEAD`.
+1. **Resolve head:** `head_ref = HEAD`; `current_branch = git rev-parse --abbrev-ref HEAD`. When it fails with `fatal: not a git repository`, stop with `Not a git repository. Run /task-pr-create from inside the repository.`
 2. **Reject trunk and detached heads:** if `current_branch` is `main`, `master`, `develop`, or `trunk` (case-insensitive), or the branch `git symbolic-ref --short refs/remotes/origin/HEAD` names with its `origin/` prefix stripped, stop:
 
    ```text

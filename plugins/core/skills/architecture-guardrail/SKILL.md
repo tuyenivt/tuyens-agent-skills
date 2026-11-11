@@ -27,7 +27,7 @@ user-invocable: false
 - Use the conventions already present in the codebase as the baseline, not a generic ideal. A convention is established when the project's instruction file documents it or, with no documented rule on the point, the majority of sites in the module follow it; a documented rule to the contrary makes the sites that break it violations, not a convention, however many there are
 - When no baseline exists yet (greenfield, first files of a module), the Patterns sections *are* the baseline: flag against universal layering, coupling, and erosion, since the first files set the convention every later one inherits. `Drift:` reads "none observed - establishing the pattern"; a circular dependency or cross-runtime import keeps "n/a - violation independent of convention"
 - When the established convention itself matches a Layer Violations pattern (controllers routinely hitting the ORM, with no documented rule against it), code following it is not flagged per site: raise the convention once, `[Recommend]`, anchored on the module, with the convention Drift variant carrying the migration cost. A violation the code under review newly introduces - a boundary the codebase does respect elsewhere - still flags `[Must]`
-- The unit under review is the diff when there is one and every file in scope in an audit; "the code under review" below means whichever applies. In a diff review, a violation on an unchanged line is out of scope unless the diff extends it (a new call into the violating construct, a new site copying it) - then it is flagged at the new site
+- The unit under review is the diff when there is one and every file in scope in an audit; "the code under review" below means whichever applies. In a diff review, a violation on an unchanged line is out of scope unless the diff extends it (a new call into the violating construct, a new site copying it) - then it is flagged at the new site; a proposed file not yet in the repository is reviewed as a diff adding it, anchored at its path and construct
 - In a monorepo, judge each file by the vocabulary of its own ecosystem, whatever stack-detect named primary
 - A published-contract break (an event field added without a default, a column rename a CDC consumer reads) is `ops-backward-compatibility`'s finding, not structural drift
 
@@ -54,8 +54,9 @@ Flag when the code under review:
 - Pushes presentation or transport concerns into the domain layer
 - Pulls infrastructure (HTTP, broker, ORM, DB driver) into the domain layer, or HTTP and broker clients into the service layer around the project's client or adapter abstraction (a service calling a DB driver directly is Drift when the module routes through repositories, as for the ORM above); presentation calling an infrastructure client directly skips the service layer, like a data-access call
 - Imports a service, transport, or delivery module from data access (a repository calling the webhook sender) - a layer violation whether or not a service tier exists
+- Imports a presentation or entry-point module from a service (a service importing a route module for a helper) - a layer violation; enqueueing a background job through the job's enqueue API, the import of the job that call needs included, is the queue's idiom from a service or an entry point, not one
 
-After `stack-detect`, translate these into the detected ecosystem's vocabulary - controllers, handlers, actions, resolvers, route functions, components.
+After `stack-detect`, translate these into the detected ecosystem's vocabulary - controllers, handlers, actions, resolvers, route functions, job and consumer entry points, components.
 
 ### Module Coupling
 
@@ -86,11 +87,11 @@ A violation that is a property of a module or a pair of modules - utils accumula
 ```
 ## Architecture Guardrail Findings
 
-**Stack:** {language / framework | <language> (no framework detected) | unknown - universal layering applied}{ - unfamiliar stack, verify against framework docs}{; monorepo: <dir> = <language / framework | <language> (no framework detected)>, ...}
+**Stack:** {language / framework | <language> (no framework detected) | unknown}{ - unfamiliar stack, verify against framework docs}{; monorepo: <dir> = <language / framework | <language> (no framework detected)>, ...}
 
 ### Violations                                  {when at least one violation}
 
-#### [Must | Recommend] {file:line, caller:line -> callee:line, or the module/edge the violation belongs to}
+#### [Must | Recommend] {file:line, caller:line -> callee:line, <proposed path> <construct> for a file not yet in the repository, or the module/edge the violation belongs to}
 
 - Issue: {what boundary or layer was violated}
 - Impact: {coupling or drift consequence}
@@ -101,7 +102,7 @@ A violation that is a property of a module or a pair of modules - utils accumula
 
 Drift values: the second when no baseline is visible; the third for a circular dependency or cross-runtime import; the fourth when intent is unclear; the fifth for the raise-the-convention-once finding; the sixth when the divergence is declared (commit message, ADR), and it wins over the second, third, and fifth.
 
-The ` - unfamiliar stack, verify against framework docs` suffix is appended to the leading slot, not substituted for it, when the framework was detected but its layer vocabulary (what it calls controllers, services, repositories) is not one the review knows. `unknown` is no detection at all. Write `<language> (no framework detected)` when stack-detect reports a known `Language` and `Framework: unknown`. Emit the `monorepo:` suffix when stack-detect's `Additional` carries a secondary stack entry (`Frontend: ...`, `Backend: ...`, not keys such as `Cache:`) or the review finds a second ecosystem's manifest in the one-level-down directories stack-detect checks: the leading slot names the primary, and the list tags every ecosystem judged, primary included, with the directory holding its manifest (`. = Python / FastAPI`, `apps/web = TypeScript / React (Next.js)`). A secondary's value is stack-detect's entry up to its first `;`, rewritten as `<language> / <framework>` (`Frontend: TypeScript (React, Next.js); build tool pnpm` -> `TypeScript / React (Next.js)`); an ecosystem found only by its own manifest is written from that manifest's dependencies, `<language> (no framework detected)` when they name no framework. A finding's path says which vocabulary applied.
+The ` - unfamiliar stack, verify against framework docs` suffix is appended to the leading slot, not substituted for it, when the framework was detected but its layer vocabulary (what it calls controllers, services, repositories) is not one the review knows. `unknown` is no detection at all, and universal layering applies. Write `<language> (no framework detected)` when stack-detect reports a known `Language` and `Framework: unknown`. Emit the `monorepo:` suffix when stack-detect's `Additional` carries a secondary stack entry (`Frontend: ...`, `Backend: ...`, not keys such as `Cache:`) or the review finds a second ecosystem's manifest in the one-level-down directories stack-detect checks: the leading slot names the primary, and the list tags every ecosystem judged, primary included, with the directory holding its manifest (`. = Python / FastAPI`, `apps/web = TypeScript / React (Next.js)`). A secondary's value is stack-detect's entry up to its first `;`, rewritten as `<language> / <framework>` (`Frontend: TypeScript (React, Next.js); build tool pnpm` -> `TypeScript / React (Next.js)`); an ecosystem found only by its own manifest is written from that manifest's dependencies, `<language> (no framework detected)` when they name no framework. A finding's path says which vocabulary applied.
 
 Intent:
 

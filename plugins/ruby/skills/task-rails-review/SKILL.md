@@ -254,6 +254,7 @@ Skip on round 1. Otherwise Use skill: `review-prior-findings-reconcile` with:
 - `diff`: the full-range diff from Step 3
 - `name_status`: the full-range `git diff -M --name-status <base_ref>...<head_ref>` from Step 3
 - `head_sha`: `current_head_sha`
+- `base_ref`: the handle's `base_ref` - reconcile derives the merge base from it
 - `head_files`: the file list at `current_head_sha` (`git ls-tree -r --name-only <current_head_sha>`) - reconcile probes it for a prior path that `name_status` does not list
 
 The reconcile skill returns a Markdown table, its note lines when any apply, and a tally line. Insert all of it under `## Prior Round Reconciliation` in the report (see Output Format).
@@ -295,7 +296,7 @@ The fence below delimits the template for display only - it is not part of the r
 - **Depth:** standard | deep   {append `auto-promoted from standard; Blast Radius: <level>` if applicable}
 - **Round:** <N>   {round 2+ only}
 - **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}
-- **Requirement Source:** <path or origin> (Specified | Self-attested)   {this line and the next together, or both omitted when Step 3.7 resolved no source}
+- **Requirement Source:** <`review-change-intent`'s line value as emitted: each source with its authority, two joined by ` + `>   {this line and the next together, or both omitted when Step 3.7 resolved no source}
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 - **Notes:** <every note line mandated by Depth and Scope, Steps 2/3.5/3.5c/3.5d/4/9 - declared-vs-code divergence, narrowing, expansion, carried lenses, short-circuit, incomplete or inline scopes, lenses not run, lens atomics not loaded - and every entry of the handle's `notes` (base fallback, approval gate, tag collision, pr-ref base reminder, legacy checkpoint)>   {omit when none}
 
@@ -379,7 +380,7 @@ _Omit empty sections. Omit Next Steps only when there are no High-Impact finding
 - [ ] Step 9: non-Core subagents ran in parallel with core Steps 5-8 on pre-resolved artifacts, the final depth and the Change Brief (or inline in sequence, noted; or carried per Step 3.5d); a lens with no surface in the diff not run, noted; every lens returned before Step 9.3, its `Loaded:` line checked; failed scopes noted
 - [ ] Step 9.3 - lens findings projected to `### [Label] file:line`; same-claim findings merged with strongest label and `raised by:`; distinct claims kept apart; core / Step 3.7 / atomic findings drafted in the same shape; lens `out of lens` lines drafted as findings; reliability's Map preserved; Notes sections filled from their named sources
 - [ ] Step 9.4 - review-finding-verify ran on the assembled set; gem- and framework-behaviour claims settled via `rails-gem-source-evidence`; Dropped rows excluded; plain `Pre-existing` rows listed under Pre-existing Risks, not High-Impact Findings; verdict labels and annotation groups applied; tally in Summary in the atomic's Summary form
-- [ ] Step 9.5 - on round 2+, review-prior-findings-reconcile ran with `head_sha`; reconciliation table inserted; Still open / Needs re-check rows folded into Next Steps with (open since round <N>) suffix at the right label; prior rows verify ruled plain `Pre-existing` this round listed under Pre-existing Risks, not carried; legacy labels mapped
+- [ ] Step 9.5 - on round 2+, review-prior-findings-reconcile ran with `head_sha` and `base_ref`; reconciliation table inserted; Still open / Needs re-check rows folded into Next Steps with (open since round <N>) suffix at the right label; prior rows verify ruled plain `Pre-existing` this round listed under Pre-existing Risks, not carried; legacy labels mapped
 - [ ] Step 10: Assessment derived from the open-label set, `Discuss` only with its one deciding question stated; one Next Steps entry per published finding; findings and Next Steps ordered by label; 2-4 systemic Key Takeaways, none restating a finding; report written via `review-report-writer` with every required input (report_type, report_body, branch, base_ref, head_ref, base_sha, head_sha, mode, round, prior_head_sha when round > 1, scope, depth, stack, pr_url when known)
 - [ ] Every Must cites system risk; every finding has label + `file:line` + actionable Rails fix
 

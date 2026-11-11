@@ -21,7 +21,7 @@ user-invocable: false
 - **Detect silently.** Do not prompt the user for stack information.
 - **Pass through, do not validate.** Any value is valid; no fixed enum of languages or frameworks.
 - **Precedence: explicit declarations beat inference.** When both an instruction file's stack section and marker-file inference provide the same field, the instruction file wins (`Java 21` over an inferred `Java`). Marker files fill fields the instruction file omits and carry no version (Unity's editor version excepted) - versions come only from the instruction file. Framework, ORM, and Test framework values inferred from marker files use the name the refinement gives, else the tool's canonical name (`Gin`, `FastAPI`, `SQLAlchemy`, `Jest`); instruction-file values stay verbatim, version and parenthetical included (`MySQL 8.0.36 (RDS)` as written).
-- **Read narrowly.** Check only marker files and the stack section (Step 2) of at most one instruction file (the first in Step 2's order that has the section). Do not scan the whole project. When a monorepo layout is evident (`apps/`, `packages/`, `services/`, a pair such as `frontend/`+`backend/` or `client/`+`server/`, or a workspace declaration - `package.json` `workspaces`, `pnpm-workspace.yaml` `packages`, `Cargo.toml` `[workspace] members`, `go.work` `use`), also check each immediate subdirectory those name (`apps/web/package.json`, each `crates/*` member) and directly inside each directory of a pair (`backend/go.mod`) for a manifest; when the root has no recognised manifest, check every immediate subdirectory - a manifest there fills the fields as a root one would, and several are a monorepo (Step 3 picks the primary). One extra level, no deeper.
+- **Read narrowly.** Check only marker files and the stack section (Step 2) of at most one instruction file (the first in Step 2's order that has the section). Do not scan the whole project. The project root is the repository root (the nearest ancestor directory holding `.git`; the working directory when none does): work confined to a sub-package still detects from the root. When a monorepo layout is evident (`apps/`, `packages/`, `services/`, a pair such as `frontend/`+`backend/` or `client/`+`server/`, or a workspace declaration - `package.json` `workspaces`, `pnpm-workspace.yaml` `packages`, `Cargo.toml` `[workspace] members`, `go.work` `use`), also check each immediate subdirectory those name (`apps/web/package.json`, each `crates/*` member) and directly inside each directory of a pair (`backend/go.mod`) for a manifest; when the root has no recognised manifest, check every immediate subdirectory - a manifest there fills the fields as a root one would, and several are a monorepo (Step 3 picks the primary). One extra level, no deeper.
 
 ## Patterns
 
@@ -71,7 +71,7 @@ Refinements (apply in this priority; where a refinement omits an ecosystem or li
 
 ### Step 2 - Instruction file (supplemental detail)
 
-Read the first file in this order that has a matching section (a `CLAUDE.md` without one falls through to `AGENTS.md`):
+Read the first file in this order, relative to the project root, that has a matching section (a file without one falls through to the next):
 
 1. `./CLAUDE.md`, then `.claude/CLAUDE.md`
 2. `./AGENTS.md`

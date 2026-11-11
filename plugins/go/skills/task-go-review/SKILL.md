@@ -300,6 +300,7 @@ Skip on round 1. Otherwise use skill: `review-prior-findings-reconcile` with:
 - `diff`: the full-range diff from Step 3
 - `name_status`: the full-range `git diff --name-status <base_ref>...<head_ref>` from Step 3
 - `head_sha`: `current_head_sha` - the ref every file read inside the skill uses
+- `base_ref`: the handle's `base_ref` - reconcile derives the merge base from it
 - `head_files`: the `git ls-tree -r --name-only <head_ref>` list from Step 3 (optional to the skill, which otherwise falls back to `git cat-file -e` per path; passing it saves one call per prior finding)
 
 The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
@@ -347,7 +348,7 @@ The fence below delimits the template for display only - it is not part of the r
 - **Round:** <N>                                {round 2 onward}
 - **Round Notes:** <notes, semicolon-separated>     {omit when none}
 - **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped (<F> false positive, <R> resolved by diff)
-- **Requirement Source:** <path or origin> (Specified | Self-attested)     {omit when Phase 0 resolved no source}
+- **Requirement Source:** <`review-change-intent`'s line value as emitted: each source with its authority, two joined by ` + `>     {omit when Phase 0 resolved no source}
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable     {omit when Phase 0 resolved no source}
 - **Blast Radius rationale:** <the one factor that set the level - contract break or the Code / Data / User dimension that reached it>
 
@@ -471,7 +472,7 @@ Mark a line N/A with its reason when the invocation mode makes it inapplicable -
 - [ ] Step 5: extra scopes ran in parallel with the full prompt contract (handle, refs, SHAs, diff, log, depth, stack, data access, messaging, acceptance criteria, no-write / no-verify instruction); a lens that could not spawn ran inline or was noted `Scope incomplete`
 - [ ] Step 6: lens findings projected onto `### [Label] file:line` under `## High-Impact Findings`, un-folded one entry per fix; every non-findings lens section preserved by heading text; no raw reports appended
 - [ ] Step 6.5: `review-finding-verify` ran on all assembled findings; Dropped rows excluded; labels and split annotations on the headings; tally in Summary
-- [ ] Step 6.6 (round 2+): `review-prior-findings-reconcile` ran with `head_sha` and `head_files`; table inserted preserving prior labels and lines; `Still open` / `Needs re-check` rows re-entered High-Impact Findings with `_(carried from round <N>)_` and Next Steps with `(open since round <N>)`
+- [ ] Step 6.6 (round 2+): `review-prior-findings-reconcile` ran with `head_sha`, `base_ref` and `head_files`; table inserted preserving prior labels and lines; `Still open` / `Needs re-check` rows re-entered High-Impact Findings with `_(carried from round <N>)_` and Next Steps with `(open since round <N>)`
 - [ ] Step 7: report written via `review-report-writer` with `branch = head_short_name` and the full checkpoint fields (mode, round, prior_head_sha when round > 1, head_sha, base_sha, scope mapped to the writer's enum, depth, stack); confirmation printed
 - [ ] Every finding has label + `file:line` + a concrete fix in whatever language the fix lives in (Go, SQL, YAML); every Must cites system risk; Next Steps tagged and ordered by intent
 

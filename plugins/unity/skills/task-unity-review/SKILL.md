@@ -281,7 +281,7 @@ Merge subagent findings into single Output Format. Do not append raw reports.
 
 ### Step 7.5 - Reconcile Prior Findings (round 2+ only)
 
-Skip on round 1. Otherwise Use skill: `review-prior-findings-reconcile` with `prior_report` (the body of the file at the handle's `report_path`, frontmatter excluded), the Step 3 diff and name-status, `head_sha = current_head_sha`, and `head_files` (`git ls-tree -r --name-only <current_head_sha>`) when the name-status has a `D` entry.
+Skip on round 1. Otherwise Use skill: `review-prior-findings-reconcile` with `prior_report` (the body of the file at the handle's `report_path`, frontmatter excluded), the Step 3 diff and name-status, `head_sha = current_head_sha`, `base_ref`, and `head_files` (`git ls-tree -r --name-only <current_head_sha>`) when the name-status has a `D` entry.
 
 Its table, note line, and tally render under `## Prior Round Reconciliation`. A `Still open` or `Needs re-check` row this round re-derived publishes once in High-Impact Findings at this round's label. One it did not re-derive is still unresolved: publish it there at its prior label and its prior heading verbatim, with its `_(pre-existing)_` group kept and `_(carried from round <prior.round>)_` as its own group, replacing any earlier carried group - reconcile parses only that section, so a row kept out of it is invisible to round 3. Re-deriving means reading the cited site at the head; a re-derived row publishes at the site where the smell now sits, and an untouched `_(pre-existing)_` row is carried without a read. Both kinds fold into Next Steps with an `(open since round <prior.round>)` suffix. A prior label outside `[Must]` / `[Recommend]` stays verbatim in the table and maps before publication: `[Blocker]`, `[High]`, `[Critical]` -> `[Must]`; anything else -> `[Recommend]`; `[Praise]` rows are never carried.
 
@@ -406,7 +406,7 @@ Next Steps order: Must > Recommend; within a band, by fix dependency - the item 
 - [ ] Every finding has label + `file:line` + concrete fix
 - [ ] Step 6 - extra scopes ran in parallel (or inline, noted) with the resolved refs, pre-read diff, full project shape, and the head-file citation rule
 - [ ] Step 7 - lens findings projected to `### [Label] file:line` with their annotation groups, merged into one intent-ordered list; `[Delegate]` entries derived from +Sec Control types; +Perf Routed lines resolved; no raw reports appended
-- [ ] Step 7.5 - on round 2+, `review-prior-findings-reconcile` ran with `head_sha`; table under `## Prior Round Reconciliation`; unresolved rows carried with their groups into High-Impact Findings and Next Steps; legacy labels mapped
+- [ ] Step 7.5 - on round 2+, `review-prior-findings-reconcile` ran with `head_sha` and `base_ref`; table under `## Prior Round Reconciliation`; unresolved rows carried with their groups into High-Impact Findings and Next Steps; legacy labels mapped
 - [ ] Lens seams (sec/perf, perf/rendering overlap) deduped to one line at strongest intent; unlisted seams resolved by the fallback rather than dropped
 - [ ] Lens non-finding returns routed to their fixed homes under `## Lens Detail` or the Summary's Unattributed line - none merged into findings, none dropped
 - [ ] Failed / missing subagent scope noted as `Scope incomplete: <scope>`

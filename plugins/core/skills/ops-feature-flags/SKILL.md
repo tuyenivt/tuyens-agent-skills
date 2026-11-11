@@ -20,13 +20,13 @@ user-invocable: false
 
 - Every flag has a single named owner (a person, with their team; a team alone is not an owner); when no person is named yet, the owner slot reads `unassigned - <role to assign>`. Release and user-targeting flags get a cleanup target set at creation; permanent flags (kill switch, ops, permission) get documented valid states and a review date instead - quarterly unless the owner sets otherwise.
 - Name flags positively for the new behavior (`pricing_v2_enabled`; the separator follows the provider's convention); never negations or double negatives (`disable_legacy_pricing_off`). A kill switch names the thing it stops, with `true` meaning stopped (`payments_v2_killed`) - the rule bans names that require a double negative to read, not the kill switch's inherent polarity. A name a spec mandates is kept as written (`payouts-v2`), any deviation from this rule noted beside it; an existing storage column is the flag's store, not its name.
-- Every high-risk feature can be disabled without a redeploy. While a release flag exists, turning it off is the kill switch - no second flag. A separate, permanent kill switch is designed only when the risky path must be disabled independently of the release flag's state, or after the release flag is cleaned up.
+- Every high-risk feature can be disabled without a redeploy. While a release flag exists, turning it off is the kill switch - no second flag. A separate, permanent kill switch is designed only when the risky path must be disabled independently of the release flag's state, or after the release flag is cleaned up. A kill switch already on the path is listed in `Interacting flags`; the release flag's off state stays its own kill switch.
 - A flag takes effect within the provider's propagation bound, which the design records as measured, or as computed until it is measured in staging before rollout: a streaming SDK in about a second; a polling client on its next poll (tens of seconds for server SDKs, minutes in the foreground and up to an hour in the background for mobile SDKs, by vendor default); plus any local cache TTL. It takes effect only when evaluated per request or per unit of work (the smallest item its effect applies to: a payout inside a sweep, not the sweep) - a flag read once at process start is a deploy-time switch, not a flag. When the provider is unreachable, the SDK keeps serving its last known values for as long as the process lives; the coded default is served when no value was ever fetched (cold start with no cache), the key is unknown, a config or database read fails, or evaluation fails (a context without a valid key; a wrong-typed value only through a typed accessor such as OpenFeature `get_boolean_value` or LaunchDarkly `boolVariation` - LaunchDarkly's untyped `variation` / `variation_detail`, the Python SDK's flag-value accessors, return it unchanged), so the coded default is the safe state (off for a release flag, running for a kill switch; a kill switch whose path must stay stopped through a cold start during a provider outage codes `true` and names that cost).
 - Promotion to the next stage requires every promotion criterion green; rollback fires on any breach of a rollback trigger.
 - One flag controls one behavior - the unit one rollback undoes: steps that are only safe together (a lock and its extend) are one behavior, steps that can be rolled back alone get their own flag. Flags that gate multiple behaviors cannot be rolled back cleanly; a new flag never reuses the name of a non-compliant one - redesign that flag or add a new one.
 - Flags never bypass auth or security checks.
 - Reaching 100% rollout starts the cleanup clock; record the date and remove flag and dead branches within one sprint. A flag already at 100% when the plan is written skips the Rollout Plan, and `Reached 100% on` carries that date (`before <date>` when unrecorded).
-- A flag declared in config but read by no code is dead: implement it or delete it. Dead means no code outside the declaration reads its key - search the whole service, not one module.
+- A flag declared in config but read by no code is dead: implement it or delete it. Dead means no code outside the declaration reads its key, or reads it only into a value nothing branches on - search the whole service, not one module.
 - A flag's state for every environment lives in one provider or config source; a flag whose value is set separately in code, env vars, and the provider has no single source of truth.
 
 ## Patterns
@@ -96,7 +96,7 @@ For `n` boolean flags in one code path, combinations grow as `2^n`. Limit concur
 
 ### Code Placement
 
-Evaluate the flag once per request at the boundary, with the evaluation context the rollout needs (the cohort key as its targeting key) and a coded default, and pass the chosen strategy down; never scatter the check through business logic.
+Evaluate the flag once per request or unit of work at the boundary, with the evaluation context the rollout needs (the cohort key as its targeting key) and a coded default, and pass the chosen strategy down; never scatter the check through business logic.
 
 ```
 # Bad - read inside business logic: re-evaluated per call, no context, no default
@@ -111,13 +111,9 @@ ctx = EvaluationContext(targeting_key=str(order.customer_id))
 pricing = PricingV2() if client.get_boolean_value("pricing_v2_enabled", False, ctx) else PricingV1()
 ```
 
-### Cleanup
-
-A flag left at 100% keeps a dead branch in production as a future failure surface. The Cleanup Checklist in the Output Format is the record; branches are deleted, not commented out.
-
 ## Output Format
 
-Release and user-targeting flags use this template. The Rollout Plan has one row per stage of the assessed risk's ladder (targets in widening order for a user-targeting flag); the final row is `100%` or the full target set, with `n/a` promotion criteria and soak.
+Release and user-targeting flags use this template. The Rollout Plan has one row per stage of the assessed risk's ladder (targets in widening order for a user-targeting flag); the final row is `100%` or the full target set, with `n/a` promotion criteria and soak. A flag already mid-ladder when the plan is written keeps every row, and `Reached 100% on` names the stage it is at.
 
 ```
 ## Feature Flag Design
@@ -134,13 +130,13 @@ Release and user-targeting flags use this template. The Rollout Plan has one row
 
 **Kill switch**: {this flag - off fully reverts | separate kill-switch `<name>` - why the path must be disabled independently}
 
-**Evaluation**: {provider and mode (streaming | polling <interval> | config or database read per unit of work | none - a runtime provider is required before rollout), where the flag is read per request, the cohort key, the control cohort the criteria compare against, and the measured propagation bound, or `computed: <bound> - measure in staging before rollout`}
+**Evaluation**: {provider and mode (streaming | polling <interval> | config or database read per unit of work | none - a runtime provider is required before rollout), where the flag is read per request or unit of work, the cohort key, the control cohort the criteria compare against, and the measured propagation bound, or `computed: <bound> - measure in staging before rollout`}
 
 **Interacting flags**: {other flags on the same path and the combinations tested, or "none"}
 
 **Cleanup target**: {date, or "within 1 sprint of 100% rollout"}
 
-**Reached 100% on**: {date | before <date> - when unrecorded | not yet}
+**Reached 100% on**: {date | before <date> - when unrecorded | not yet{ - at <stage>}}
 
 ## Rollout Plan                                {when the flag is below 100% when the plan is written}
 
@@ -181,7 +177,7 @@ A permanent flag (kill-switch, ops, permission) has no rollout progression and n
 
 **Kill switch**: {this flag | how the path it gates is disabled without a redeploy | n/a - not a high-risk path}
 
-**Evaluation**: {provider and mode as above, where the flag is read per request, and the measured propagation bound, or `computed: <bound> - measure in staging`}
+**Evaluation**: {provider and mode as above, where the flag is read per request or unit of work, and the measured propagation bound, or `computed: <bound> - measure in staging`}
 
 **Interacting flags**: {as above}
 
@@ -206,7 +202,7 @@ When reviewing existing flags rather than designing one, output findings instead
 ## Flag Review Findings
 
 - [Severity: High | Medium | Low] {flag name} ({file:line of its declaration, or of its first evaluation when it is declared only in the provider}) - {violations, comma-separated, each with its file:line when it differs from the anchor}
-  - Fix: {one or more of: rename, cleanup, split, assign owner, add kill switch, add single-transaction dual-write or shadow column so disable is reversible, remove auth/security bypass, define promotion criteria and triggers, implement or delete (dead flag), evaluate per request from a runtime provider, set safe coded default, bucket on a stable key and salt, consolidate flag state to one source, record 100% date, set cleanup target, set review date, document valid states, document interactions, record propagation bound, rehearse disable, reduce concurrent flags}
+  - Fix: {one or more of: rename, cleanup, split, assign owner, add kill switch, add single-transaction dual-write or shadow column so disable is reversible, remove auth/security bypass, define promotion criteria and triggers, implement or delete (dead flag), evaluate per request or unit of work from a runtime provider, set safe coded default, bucket on a stable key and salt, consolidate flag state to one source, record 100% date, set cleanup target, set review date, document valid states, document interactions, record propagation bound, rehearse disable, reduce concurrent flags}
 ```
 
 Severity: High = auth/security bypass, un-rollback-able data writes, or no working disable on a path that needs a kill switch (a dead flag there included); Medium = stale at 100%, multi-behavior flag, missing owner, missing promotion criteria or rollback triggers, a flag read once at process start or changeable only by redeploy, a coded default that is not the safe state (an unknown key served as on), bucketing that is not stable across processes (a per-process hash salt), per-environment state without a single source of truth, a dead ops or permission flag, undocumented valid states on a permanent flag; Low = naming, missing cleanup target, review date, or 100% date, undocumented interactions, an unrecorded propagation bound, an unrehearsed disable, more than 3 concurrent flags in one path, any other dead flag.

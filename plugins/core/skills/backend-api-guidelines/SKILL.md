@@ -55,7 +55,7 @@ For a GraphQL or gRPC API, the transport rules (paths, methods, status codes, pa
 
 ### Pagination shape
 
-A cursor response is `{ "items": [...], "next_cursor": "<opaque>" }`. A cursor is correct only when it encodes the full sort key and that sort is total. Sorting by a non-unique column (`created_at DESC`) with a cursor on a different one (`id`) skips or repeats rows whenever values tie - append a unique tiebreaker and encode both (`ORDER BY created_at DESC, id DESC`, cursor `{created_at, id}`). A well-shaped cursor API with a partial sort key is the common silent defect here.
+A cursor response is `{ "items": [...], "next_cursor": "<opaque>" }`. A cursor is correct only when it encodes the full sort key and that sort is total. A cursor on a non-unique sort column alone (`created_at DESC`) skips or repeats rows whenever values tie, and a cursor on a different column (`id`) skips and repeats rows wherever the two orders disagree - append a unique tiebreaker and encode both (`ORDER BY created_at DESC, id DESC`, cursor `{created_at, id}`). A well-shaped cursor API with a partial sort key is the common silent defect here.
 
 ### Stack-specific application
 
@@ -81,7 +81,7 @@ Consuming workflows parse this structure. Order violations by severity, High fir
 Notes: {a decision or scope boundary the findings cannot hold}       {only when one exists}
 ```
 
-In design mode (no existing code to review), apply Rules as constraints and emit this instead, with the same Stack line:
+In design mode (no existing code to review), apply Rules as constraints and emit this instead, with the same Stack line; an idempotent method is GET, PUT, DELETE, or a PATCH that only sets fields:
 
 ```
 ## API Design
@@ -90,7 +90,7 @@ In design mode (no existing code to review), apply Rules as constraints and emit
 
 | Method | Path | Status codes | Pagination | Idempotency |
 | ------ | ---- | ------------ | ---------- | ----------- |
-| {GET \| POST \| PUT \| PATCH \| DELETE} | {path} | {the codes this endpoint can return; 500 is implied everywhere} | {cursor (limit max <N>) \| offset (size max <N>) \| whole (bounded by <domain fact>, max <N>) \| -} | {Idempotency-Key required \| natural (idempotent method: GET, PUT, DELETE, or a PATCH that only sets fields) \| natural (repeat yields the same state) \| provider event ID dedup} |
+| {GET \| POST \| PUT \| PATCH \| DELETE} | {path} | {the codes this endpoint can return; 500 is implied everywhere} | {cursor (limit max <N>) \| offset (size max <N>) \| whole (bounded by <domain fact>, max <N>) \| -} | {Idempotency-Key required \| natural (idempotent method) \| natural (repeat yields the same state) \| provider event ID dedup} |
 
 Conventions: {error format, versioning scheme, rate-limit posture, field naming; any proposed change to a path a design document fixed, as `<fixed path> -> <proposed path>`}
 
@@ -103,7 +103,7 @@ Notes: {decisions the table cannot hold - ownership (403 vs 404), auth scheme, d
 - **Medium**: Wrong method or status code, an error body not in RFC 9457 shape, missing pagination (including an uncapped page size), offset pagination on high-write collection, a raw dict/map in place of a DTO, a deviation existing clients would break on (envelope shape, a breaking change without a deprecation cycle)
 - **Low**: Field naming drift, no version indicator (path or header) on a surface that has shipped a breaking change, missing `Deprecation` on a deprecated endpoint or missing `Sunset` on one whose removal is scheduled, verb path on a deliberate RPC endpoint
 
-These are examples, not a closed list. For unlisted violations, classify by impact: data exposure or unsafe retries = High, wrong semantics or scalability = Medium, naming and metadata hygiene = Low. When a finding matches multiple tiers, report the highest. One finding per obligation per endpoint: a rule with several independent obligations (webhook dedup and early ack; idempotency's required header, body fingerprint, and in-flight `409`) yields one finding per obligation broken, each with its own Fix; the same obligation broken the same way at N endpoints is one finding listing all N sites. Density is not capped - a file with eight distinct obligations broken gets eight findings.
+These are examples, not a closed list. For unlisted violations, classify by impact: data exposure or unsafe retries = High, wrong semantics or scalability = Medium, naming and metadata hygiene = Low. When a finding matches multiple tiers, report the highest. Findings are counted per obligation, not per endpoint: a rule with several independent obligations (webhook dedup and early ack; idempotency's required header, body fingerprint, and in-flight `409`) yields one finding per obligation broken, each with its own Fix; the same obligation broken the same way at N endpoints is one finding listing all N sites. An endpoint with no deduplication at all (no key, or a key accepted and never used) is one High finding covering its deduplication obligations; the split among them applies once a key store exists, and an obligation outside deduplication (a webhook's early ack) stays its own finding. Density is not capped - a file with eight distinct obligations broken gets eight findings.
 
 A convention the project has documented and built clients against (a response envelope, a field-naming scheme) is the baseline for consistency findings, not a violation - report deviation *from it*, and raise the convention itself only once, as Low, with the migration cost in its Fix. A convention is documented when the project's instruction file or the client's contract states it. Correctness and safety rules (validation, error leakage, idempotency, ORM exposure) hold regardless of local convention.
 

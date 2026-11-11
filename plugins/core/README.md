@@ -194,7 +194,7 @@ Scope options - asks interactively if not specified:
 
 **Re-review (round 2+)** is auto-detected. Rerunning the same command after the commenter pushes fixes will:
 
-1. Look for `review-<head>.md` from the prior round, parse its YAML checkpoint frontmatter (head_sha, base_sha, mode, round).
+1. Look for `review-<head>.md` from the prior round, parse its YAML checkpoint frontmatter (head_sha, base_sha, mode, round), and review against the base it recorded unless `--base` is passed.
 2. Fetch the head branch via its upstream tracking ref (no checkout). Skip silently if no upstream.
 3. If the new head equals the prior head, exit with `No new commits...` - the report file is left byte-identical.
 4. Otherwise review the full `base...head` range again - risk, blast radius, scope signals, and depth are re-scored on the whole PR every round - and reconcile prior High-Impact Findings as Addressed / Still open / Obsolete / Needs re-check. Open items fold into Next Steps with `(open since round <N>)`.

@@ -256,6 +256,7 @@ Skip on round 1. Otherwise use skill: `review-prior-findings-reconcile` with:
 - `diff`: the full-range diff from Step 3
 - `name_status`: the full-range `git diff --name-status` from Step 3
 - `head_sha`: `current_head_sha`
+- `base_ref`: the handle's `base_ref` - reconcile derives the merge base from it
 - `head_files`: `git ls-tree -r --name-only <current_head_sha>`, when `name_status` has a `D` entry; otherwise omit
 
 Insert the returned table, note line, and tally under `## Prior Round Reconciliation`. **A `Still open` or `Needs re-check` row stays a live finding.** When this round re-derived the same defect it is one entry, at this round's label and current `file:line`, with no carried group. Otherwise a carried finding republishes its prior block with the prior Location annotation kept (it skips verify, so the annotation is not re-derived), `raised by` included, at its prior label and `file:line` in `## High-Impact Findings`, plus `_(carried from round <N>)_` as its own group; `<N>` is the round the finding was first raised, and a finding that already carries `_(carried from round <N>)_` keeps it (never a second group). A legacy prior label maps `[Blocker]` / `[High]` -> `[Must]`, anything else -> `[Recommend]`, and `[Praise]` is never carried. Either way it goes into `## Next Steps` with an `(open since round <N>)` suffix. Do not emit a standalone "Carry-Over Open Items" section.
@@ -286,7 +287,7 @@ The fence below delimits the template for display only - it is not part of the r
 - **Depth:** standard | deep   {append `auto-promoted from standard; Blast Radius: <level>` when Phase A promoted it}
 - **Round:** <N>   {round 2+ only}
 - **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}
-- **Requirement Source:** <path or origin> (Specified | Self-attested)   {this line and the next together, or both omitted when Phase 0 resolved no source}
+- **Requirement Source:** <`review-change-intent`'s line value as emitted: each source with its authority, two joined by ` + `>   {this line and the next together, or both omitted when Phase 0 resolved no source}
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
 - **Notes:**   {omit when every entry below is empty; one bullet each}
   - `signal: <category> -> <path>`, one bullet per Step 5 record
@@ -384,7 +385,7 @@ No findings survived verification.   {instead of the finding blocks, only when n
 - [ ] Phase E - maintainability applied (skipped under the short-circuit)
 - [ ] Step 7 - lens returns projected (Attack scenario, Failure Mode, Blast Radius mapped; trailing lines to Notes); every finding tagged `raised by`; deduped across Phase 0, phases, and subagents; strongest label wins; severity-ordered; deep-only sections held for the appendix; no raw subagent report appended
 - [ ] Step 8 - `review-finding-verify` ran on all assembled findings; Dropped rows excluded; labels applied and annotations split into separate groups; obs missing-wire labels kept; four-count tally in Summary
-- [ ] Step 9 - on round 2+, `review-prior-findings-reconcile` ran with `prior_report`, `diff`, `name_status`, `head_sha` (and `head_files` on a `D`); table inserted; unresolved rows live in High-Impact Findings (carried with `_(carried from round <N>)_` unless re-derived) and in Next Steps
+- [ ] Step 9 - on round 2+, `review-prior-findings-reconcile` ran with `prior_report`, `diff`, `name_status`, `head_sha`, `base_ref` (and `head_files` on a `D`); table inserted; unresolved rows live in High-Impact Findings (carried with `_(carried from round <N>)_` unless re-derived) and in Next Steps
 - [ ] Step 10 - report written via `review-report-writer` with every required field; `branch` is `head_short_name`; scope mapped to the writer's enum in writer order; confirmation printed
 - [ ] Every Must cites system risk; every finding has one label, one citation, a `raised by` tag, and an actionable Spring fix
 
