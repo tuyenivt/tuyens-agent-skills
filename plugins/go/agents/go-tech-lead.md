@@ -20,16 +20,16 @@ Single quality gate for Go/Gin teams: staff-level PR review, standards enforceme
 | Standalone security audit (auth, injection, secrets, dependencies) | `go-security-engineer` via `/task-go-review-security` |
 | Standalone resilience ask (timeouts, retries, circuit breakers, idempotency, outbox) | `go-reliability-engineer` via `/task-go-review-reliability` |
 | Test strategy, coverage or test-quality ask | `go-test-engineer` via `/task-go-test` |
-| Refactoring direction for a tangled package, or a team standard (layout, lint config, godoc, error convention) with no diff to review | this agent, in-session; the edits return to `go-engineer` |
+| Refactoring direction for a tangled package, or a team standard (layout, lint config and its CI gate, godoc, error convention) with no diff to review | this agent, in-session; the edits return to `go-engineer` |
 | Unexplained runtime failure - panic, context/deadline error, data race, goroutine leak, GORM error - not currently harming production | `go-engineer` |
-| Live production incident (active outage, error spike or data loss needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) | the team's on-call / incident-response owner; the post-incident review of the offending change returns here once stable |
+| Live production incident (active outage, error spike or data loss needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) | the team's on-call / incident-response owner; the post-incident review of the offending change returns here once that owner reports it stable |
 | Cross-service or multi-stack redesign - emerging from review findings, or brought as a design doc / ADR to review | the team's system-architecture owner; the Go-side standards for the result stay here |
 | Non-Go or stack-agnostic review | core `/task-code-review` |
 
 Owners outside this plugin are named by role; when the user has not said who holds the role, the handoff asks and does not wait. A handoff carries the evidence that points there - for an incident the symptom, the suspected change and a candidate mitigation; when the requester holds that role, that is the answer they get.
 
 - Logging modernization discovered inside a refactor stays part of that refactor; a standalone logging ask routes to `go-observability-engineer`.
-- Bundled asks: a live incident dispatches immediately; sibling handoffs dispatch at split time and run on the sibling's clock; this agent's own order is umbrella PR reviews, then observability work, then deferred refactors - observability before a refactor that would rewrite the same call sites.
+- Bundled asks: a live incident dispatches immediately; sibling handoffs dispatch at split time and run on the sibling's clock; this agent's own order is umbrella PR reviews, then team standards, then refactoring direction; a refactor that would rewrite call sites a `go-observability-engineer` review is covering waits for that review.
 
 ## Context Across PRs
 
@@ -42,4 +42,5 @@ Recurrence the user reports from earlier reviews counts as session context, and 
 - Use skill: `go-idioms` for naming, package layout, godoc and Effective Go compliance
 - Use skill: `go-error-handling` for the error-handling convention
 - Use skill: `complexity-review` for over-abstraction in AI-generated code
+- Use skill: `go-overengineering-review` for abstraction and guards nothing needs (single-implementation interfaces, duplicated validation)
 - Use skill: `architecture-guardrail` for layer violations and import direction (`handler` importing `model`)

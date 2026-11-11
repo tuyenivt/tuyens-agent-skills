@@ -22,7 +22,7 @@ Staff-level Go/Gin/GORM/sqlx review umbrella. Covers correctness, architecture, 
 
 **Not for:** pre-implementation design (`task-go-implement`), single-error debug, new-system architecture design, single-scope reviews (delegate to perf/security/observability/reliability).
 
-**Envelope precedence.** Every atomic this workflow loads declares its own Output Format; they are rule sets here, and only this skill's Output Format is emitted. Where a check below and a loaded atomic disagree, the sentence names which wins.
+**Envelope precedence.** Every atomic this workflow loads declares its own Output Format; they are rule sets here, and only this skill's Output Format is emitted - an atomic's stop line for a framework it does not cover (`go-gin-patterns: not applicable (Echo)`) is not emitted either, and the checks naming its constructs are read by role. Where a check below and a loaded atomic disagree, the sentence names which wins.
 
 ## Depth
 
@@ -53,7 +53,7 @@ Default: **Core with auto-escalation**. Pass `core-only` to suppress.
 - **+Sec:** `c.FormFile`, JWT / auth changes, `ShouldBindJSON` DTO changes, raw SQL via `fmt.Sprintf` / `db.Raw`, secrets in config, Asynq / Kafka consuming user input, a request body decoded into a domain model (`json.Unmarshal(body, &model)`, or JSON -> `map[string]any` -> `mapstructure.Decode(m, &model)`), client-controlled price / amount / currency / discount fields on payment-adjacent endpoints (`/orders`, `/refunds`, `/checkout`)
 - **+Perf:** new migration, new query statement (GORM `Find` / `First` / `Preload` / `Joins`, sqlx `GetContext` / `SelectContext` / `NamedExecContext` - a new DB roundtrip, not a pure shaping modifier like `Limit` on an existing query), a **new filter or sort predicate** on an existing query (it needs an index that may not exist), new pagination, new endpoints with payloads, loops calling DB or HTTP, new cache reads, new goroutines / `errgroup`
 - **+Obs:** new service / package, new external client, new Asynq / Kafka producer / consumer, logging config change, `prometheus` registration, `pprof`, lifecycle changes
-- **+Rel:** new `http.Client` without `Timeout` or use of `http.DefaultClient` / `http.Get` on a downstream call, `sony/gobreaker` / `cenkalti/backoff` config, new `go func()` without a `<-ctx.Done()` arm or owner, a downstream call not taking the request `ctx`, unbounded per-request goroutine spawn or slice-backed queue, `tx.Create` + `asynq.Enqueue` / `kafka.Produce` dual write inside one transaction
+- **+Rel:** new `http.Client` without `Timeout` or use of `http.DefaultClient` / `http.Get` on a downstream call, `sony/gobreaker` / `cenkalti/backoff` config, new `go func()` without a `<-ctx.Done()` arm or owner, a downstream call not taking the request `ctx`, unbounded per-request goroutine spawn or slice-backed queue, `tx.Create` + an Asynq `Enqueue` / Kafka produce dual write inside one transaction
 - **2+ categories -> Full**
 
 **Signals name the common case, not the only one - match the construct's role, not its spelling.** This applies to every named construct in this skill, whether or not the named tool is present:
@@ -75,31 +75,33 @@ Pass `--base <branch>` when the PR was opened against a non-trunk base.
 
 Pass `--req <path>` to name a requirement source (ticket export, PRD, spec) for Phase 0; without it, Phase 0 uses whatever requirement is already in context.
 
+Append a scope (`core-only`, `+perf`, `+sec`, `+obs`, `+rel`, `full`) or `deep` after the target; none of these tokens is read as a branch name.
+
 **No checkout required.** Read via ref-qualified diffs; never modify the working tree. No `git fetch` either - the user fetches; a stale local ref is reviewed as it is.
 
 ## Workflow
 
 ### Step 1 - Behavioral Principles
 
-Use skill: `behavioral-principles`. A subagent loads it too, unless the spawning prompt inlined its Rules.
+Use skill: `behavioral-principles`. A subagent loads it too, unless the spawning prompt inlined its whole Rules section and its unverifiable-change disclosure, as that skill specifies.
 
 ### Step 2 - Stack and Data Access
 
 Use skill: `stack-detect`. Accept pre-detected stack from parent. If not Go, stop and recommend `/task-code-review`.
 
-`stack-detect` emits `ORM` and carries other `## Tech Stack` declarations into `Additional`, but no messaging field. Versions come from `go.mod` - the Go version from the `go` directive, Gin / GORM / sqlx from the `require` lines - and override any version a `## Tech Stack` line declared (this step's one departure from `stack-detect`'s instruction-file precedence); `Data Access` is GORM / sqlx / database/sql, or `mixed - GORM <v> + sqlx <v>` when both are required; `Messaging` is `Asynq`, `Kafka`, `Asynq + Kafka`, or `none`, from `go.mod`: `hibiken/asynq` for Asynq; `twmb/franz-go`, `IBM/sarama` (`Shopify/sarama` before v1.40.0), `segmentio/kafka-go` or `confluentinc/confluent-kafka-go` for Kafka. Confirm against the wiring in `cmd/api/main.go`.
+`stack-detect` emits `ORM` and carries other `## Tech Stack` declarations into `Additional`, but no messaging field. Versions come from `go.mod` - the Go version from the `go` directive, the HTTP framework / GORM / sqlx from the `require` lines - and override any version a `## Tech Stack` line declared (this step's one departure from `stack-detect`'s instruction-file precedence); in a multi-module repository the module under review decides, its `go.mod` read in place of the detected primary stack; `Data Access` is GORM / sqlx / database/sql, or `mixed - GORM <v> + sqlx <v>` when both are required; `Messaging` is `Asynq`, `Kafka`, `Asynq + Kafka`, or `none`, from `go.mod`: `hibiken/asynq` for Asynq; `twmb/franz-go`, `IBM/sarama` (`Shopify/sarama` before v1.40.0), `segmentio/kafka-go` or `confluentinc/confluent-kafka-go` for Kafka. Confirm against the wiring in `cmd/api/main.go`. The `Stack` slot is `stack-detect`'s rendering with those versions added - the `go` directive as written, a `require` version without its leading `v` (`Go 1.25.0 / Echo 4.12.0`, `Go 1.25.0 (no framework detected)`), and the writer's `stack` is `go-<framework>` lowercased (`go-gin`, `go-echo`; `go` when there is none).
 
 ### Step 3 - Resolve Diff
 
-Use skill: `review-precondition-check` with `report_type: review`. Forward `--base` if passed. If it fails fast, surface verbatim and stop. The handle's `head_short_name` is the writer's `branch` and the `<head_ref_short>` in every message below.
+Use skill: `review-precondition-check` with `report_type: review`. Forward `--base` if passed. If it fails fast, surface verbatim and stop. On success, print each handle `notes` entry in chat, one line each, before the report body (nothing when it has none; the handle itself stays internal). The handle's `head_short_name` is the writer's `branch` and the `<head_ref_short>` in every message below.
 
 The handle may include a `prior_checkpoint` block (a prior report exists at its `report_path`). Decision logic is Step 3.5; for now, just hold onto it.
 
 Read once and reuse:
 
 - `git diff <base>...<head>`
-- `git diff --name-status <base>...<head>`
-- `git log --oneline <base>..<head>`
+- `git diff -M --name-status <base>...<head>`
+- `git log <base>..<head>` - full messages; Phase 0 reads the bodies
 - `git ls-tree -r --name-only <head_ref>` - the file list at head, passed to reconcile on round 2+
 
 **Skip entirely** when invoked as subagent and parent passed handle + pre-read artifacts.
@@ -120,9 +122,9 @@ Otherwise (valid prior checkpoint present), **compare checkpoints**. Rows are no
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `prior_checkpoint.head_sha == current_head_sha`, `prior_checkpoint.base_ref == base_ref`, and the invocation adds no scope or depth beyond the prior checkpoint | **No-op.** Print `No new commits on <head_ref_short> since prior review at <sha_short>. Prior report unchanged.` (`<sha_short>` is the first 7 chars of `current_head_sha`) and stop. Do not call `review-report-writer`. |
 | `prior_checkpoint.head_sha == current_head_sha`, but the invocation expands scope or depth beyond it | `round = prior.round + 1`. Note in Summary: `Same head as round <prior.round>; re-review for expanded <scope\|depth>.` |
-| `git merge-base --is-ancestor <prior_head_sha> <current_head_sha>` fails (prior SHA unreachable) | `round = prior.round + 1`. Note in Summary: `Prior checkpoint unreachable - history rewritten.`      |
-| `prior_checkpoint.base_sha != current_base_sha`                        | `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round>.`       |
+| `git merge-base --is-ancestor <prior_checkpoint.head_sha> <current_head_sha>` fails (prior SHA unreachable) | `round = prior.round + 1`. Note in Summary: `Prior checkpoint unreachable - history rewritten.`      |
 | `prior_checkpoint.base_ref != base_ref`                                | `round = prior.round + 1`. Note in Summary: `Base ref changed since round <prior.round>.`           |
+| `prior_checkpoint.base_sha != current_base_sha`                        | `round = prior.round + 1`. Note in Summary: `Base branch advanced since round <prior.round>.`       |
 | None of the above                                                       | `round = prior.round + 1`.                                                                          |
 
 **Scope expansion** is compared at the end of Step 4, once scope is resolved: when the resolved scope exceeds the checkpoint's, whether from a user flag or from firing signals, note in Summary: `Scope expanded round <N>: +<list>.` The reconciliation table only covers findings whose scope was active in the prior round.
@@ -134,7 +136,7 @@ Scan file list / diff for signals listed under **Scope**. Log each as `signal: <
 - Zero signals or `core-only` -> Core; `core-only` with firing signals adds `Note in Summary: suppressed: <category> (<construct>)` per category
 - One category -> add matching scope
 - 2+ categories -> Full
-- Explicit scope -> respect; still log signals
+- Explicit scope -> it wins over the rows above; a firing category outside it gets the same `suppressed:` note
 
 **Scope precedence on round 2+:** user flag > firing signals. Signals are scored on the full range every round, so a scope that escalated in round 1 escalates again on its own - nothing is inherited from the prior checkpoint. When the resolved scope still falls below the checkpoint's (round 1 was user-flagged), note in Summary: `Scope narrowed vs round <prior.round>: <list> - re-run with <flags> to re-cover.`
 
@@ -175,16 +177,16 @@ Apply atomic skills; each owns canonical patterns:
 - Use skill: `go-gin-patterns` - `ShouldBindJSON` (not `BindJSON`), `binding` tags, response DTO (no raw GORM model in `c.JSON`)
 - Use skill: `go-messaging-patterns` if diff touches Asynq / Kafka
 - Use skill: `go-migration-safety` if diff touches `migrations/`. Use skill: `ops-backward-compatibility` for client / in-flight impact
-- **API contract change** - when the diff carries a contract-change signal (a removed / renamed / retyped response-struct field, a changed status code, a new **required** request field or tightened `binding` constraint, a new public route on a `/v1/`-versioned or externally consumed API, a handler returning a raw GORM entity via `c.JSON`, or an edit to a committed OpenAPI / swaggo spec), use skills `backend-api-guidelines` and `ops-backward-compatibility`. Judge breakage from the consumer's view ("no external callers" needs a search; when consumption is unknown, treat a `/v1/`-versioned or spec-published surface as externally consumed); responses go through a response DTO, never a raw GORM model; errors follow the project's documented envelope (per `backend-api-guidelines`, stated in the instruction file or the client contract; here an `ErrorResponse` / `SuccessResponse` shape already used across existing endpoints also counts, overriding that definition), otherwise RFC 9457; collections paginated; the committed OpenAPI / swaggo spec matches the code. Each finding names who breaks and how (for a leaked model: what it exposes and who couples to it). Labels map from `backend-api-guidelines`' own tiers: High -> `[Must]`, Medium -> `[Recommend]`, Low -> below the reporting bar, write nothing; the one explicit downgrade is a raw GORM model on an internal-only surface, which stays with the **Response DTO hygiene** check below at `[Recommend]`. A committed spec the diff left disagreeing with the code is Medium. Granularity: one finding per `file:line`, except where `backend-api-guidelines` folds one rule broken identically across N endpoints into a single finding listing all N sites - that fold wins, since the ask is one edit
+- **API contract change** - when the diff carries a contract-change signal (a removed / renamed / retyped response-struct field, a changed status code, a new **required** request field or tightened `binding` constraint, a new public route on a `/v1/`-versioned or externally consumed API, a handler returning a raw GORM entity via `c.JSON`, or an edit to a committed OpenAPI / swaggo spec), use skill: `backend-api-guidelines` and use skill: `ops-backward-compatibility`. Judge breakage from the consumer's view ("no external callers" needs a search; when consumption is unknown, treat a `/v1/`-versioned or spec-published surface as externally consumed); responses go through a response DTO, never a raw GORM model; errors follow the project's documented envelope (per `backend-api-guidelines`, stated in the instruction file or the client contract; here an `ErrorResponse` / `SuccessResponse` shape already used across existing endpoints also counts, overriding that definition), otherwise RFC 9457; collections paginated; the committed OpenAPI / swaggo spec matches the code. Each finding names who breaks and how (for a leaked model: what it exposes and who couples to it). Labels map from `backend-api-guidelines`' own tiers: High -> `[Must]`, Medium -> `[Recommend]`, Low -> below the reporting bar, write nothing; the one explicit downgrade is a raw GORM model on an internal-only surface, which stays with the **Response DTO hygiene** check below at `[Recommend]`. A committed spec the diff left disagreeing with the code is Medium. Granularity: one finding per `file:line`, except where `backend-api-guidelines` folds one rule broken identically across N endpoints into a single finding listing all N sites - that fold wins, since the ask is one edit
 
-**Pre-existing defects are in scope when the diff reaches them.** A defect on a line the diff did not add is reportable when the diff makes it newly reachable, newly consequential, or newly load-bearing (a guard removed in front of it, a first caller added, a second condition stacked on it, a shared resource whose holds now span new work) - in a touched file or an untouched one alike. Anchor the finding on the defect's own `file:line` and name the diff's call site as the trigger; `review-finding-verify` assigns the attribution. All three of those cases take **`Pre-existing (newly reachable)`** - "reachable" there means the diff changed how the defect is reached or how much it bears, not only that a new caller exists - so the label is retained rather than de-escalated. Plain `Pre-existing` is for a defect in a touched file that the diff neither reaches nor loads differently. A defect in an untouched file the diff never reaches belongs in `Architecture Notes` or `Maintainability Notes`, not in findings.
+**Pre-existing defects are in scope when the diff reaches them.** A defect on a line the diff did not add is reportable when the diff makes it newly reachable, newly consequential, or newly load-bearing (a guard removed in front of it, a first caller added, a second condition stacked on it, a shared resource whose holds now span new work) - in a touched file or an untouched one alike. Anchor the finding on the defect's own `file:line` and name the diff's call site as the trigger; `review-finding-verify` assigns the attribution. All three of those cases take **`Pre-existing (newly reachable)`** - "reachable" there means the diff changed how the defect is reached or how much it bears, not only that a new caller exists - so the label is retained rather than de-escalated. Plain `Pre-existing` is for a defect in a touched file that the diff neither reaches nor loads differently. A defect in an untouched file the diff never reaches belongs in `Architecture Notes` or `Maintainability Notes`, not in findings (a lens's own published pre-existing findings stay findings, per Step 6).
 
 **Additional checks (not owned by atomics):**
 
 - **Test coverage finding (named, not buried).** PR adds logic without `*_test.go` -> `[Recommend]`; escalate to `[Must]` when critical path: auth, ownership / role checks, money / billing, multi-table writes, state machines, Asynq / Kafka mutators, migrations changing column semantics
 - **Test files are reviewed for coverage only.** For files that are themselves tests, the only finding to raise is a coverage gap: production logic in the diff that no test exercises. Anchor that finding to the untested production `file:line` and state the case to cover, not the test file. Do not review test code for style, structure, duplication, naming, or performance - a passing test with awkward setup is not a finding.
 - **Authorization + IDOR.** Every per-owner endpoint scopes queries by principal: `db.Where("id = ? AND user_id = ?", id, <principal-id>)` - where `<principal-id>` is whatever the project uses (`claims.UserID`, `claims.Sub`, `c.MustGet("user_id")`). JWT proves authn, not object access
-- **Response DTO hygiene.** Compare response DTO `json:` fields against the model. Flag `PasswordHash` / `MFASecret` / `RecoveryCodes` / `APIKey` / `WebhookSecret` / `InternalNotes` / `AuditLog` / `IsAdmin` / `Role` / `DeletedAt` / `LastLoginIP` on the wire. Raw `c.JSON(200, *model.User)` is `[Recommend]` regardless of current fields (sensitive column added later silently exposes it)
+- **Response DTO hygiene.** Compare response DTO `json:` fields against the model. Flag `PasswordHash` / `MFASecret` / `RecoveryCodes` / `APIKey` / `WebhookSecret` / `InternalNotes` / `AuditLog` / `IsAdmin` / `Role` / `DeletedAt` / `LastLoginIP` on the wire. Raw `c.JSON(200, *model.User)` on an internal-only surface is `[Recommend]` regardless of current fields (sensitive column added later silently exposes it) - this wins over `architecture-guardrail`'s and `backend-coding-standards`' `[Must]` for the same site; an externally consumed surface takes the API contract check's label
 - **HTTP `Idempotency-Key` on retry-prone POSTs.** `/payments`, `/orders`, `/refunds`, `/subscriptions`, `/webhooks` accept the header and dedupe via a `request_idempotency` table. Distinct from the enqueue-side `asynq.TaskID` option, which dedupes the enqueue, not the request
 - **Client-controlled money fields.** Price / amount / discount on payment-adjacent endpoints (`/orders`, `/refunds`, `/checkout`) come from the server (or a server-validated catalog), not the request DTO. Trusting `req.UnitPrice` is `[Must]`
 - **Postgres FK indexes.** `REFERENCES other(id)` does not create an index on the FK column - add one explicitly in the migration. Missing FK indexes cause sequential scans on join, lock contention on cascade delete, and degrade as the parent grows
@@ -199,7 +201,7 @@ Use skill: `architecture-guardrail` for layer violations and coupling.
 
 **Go-specific:**
 
-- **Layering:** `handler` -> `service` -> `repository` -> `model`. Handlers parse / delegate / respond; services hold rules (no `gin.Context`, no GORM); repositories return domain types; `cmd/api/main.go` wires constructors
+- **Layering:** `handler` -> `service` -> `repository` -> `model`. Handlers parse / delegate / respond; services hold rules (no `gin.Context`; GORM only to own a transaction boundary, per `go-data-access`); repositories return domain types; `cmd/api/main.go` wires constructors
 - **Interfaces at consumer.** `service` package declares the interface; `repository` returns concrete struct
 - **Constructor injection, no `init()` / globals.** Package-level `*gorm.DB` vars are a smell
 - **`internal/` for non-exported; `pkg/` for libraries**
@@ -260,9 +262,10 @@ Skip if scope is **Core only**. For each selected scope, spawn one independent s
 - The `review-precondition-check` handle itself (each delegate skips its own precondition step only when it receives one)
 - Resolved review target (`base_ref`, `head_ref`), `base_sha` / `head_sha`, + pre-read diff and commit log (no re-running git)
 - Depth level. It propagates as resolved here, except `+Sec`, which always runs full by its own rule and ignores the value
-- Pre-confirmed stack (Go / Gin), data-access mix, **and messaging** (perf, observability and reliability record it in a Summary slot; security uses it only to scope broker-input checks)
+- Pre-confirmed stack (Go, the framework, versions), data-access mix, **and messaging** (perf, observability and reliability record it in a Summary slot; security uses it only to scope broker-input checks)
 - Phase 0's acceptance criteria when a requirement source resolved, so a lens can judge intent rather than only mechanics
 - Explicitly: return your entire Output Format, write no report file, and skip your own verify and reconcile passes - the parent verifies and reconciles the merged set once
+- `behavioral-principles`: the subagent loads it as its own Step 1, unless this prompt inlines the whole Rules section and the disclosure block
 
 **Failure isolation:** if a subagent fails, times out, or cannot be spawned at all, run that lens's skill inline under the same prompt contract, sequentially after Phases B-E (its findings join the set Step 6.5 verifies like any other); only when that is impossible too, note the scope on the Summary's Scope line as `Scope incomplete: <scope>`.
 
@@ -288,7 +291,7 @@ Map the lens's fields onto `Issue` / `Impact` / `System Risk` / `Fix`: the lens'
 
 Use skill: `review-finding-verify` with the assembled findings (including any merged back from subagents), the diff already read, and `base_ref` / `head_ref`.
 
-Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column and its `Annotation` column onto the heading as **separate** `_(...)_` groups: verify's combined `_(pre-existing; newly reachable via X)_` is written `_(pre-existing)_ _(newly reachable via X)_`, because `review-prior-findings-reconcile` matches `_(pre-existing)_` exactly and a merged group marks an untouched prior finding `Addressed` next round. `_(unverified: <reason>)_` and `_(mechanism: <actual>)_` carry over as they are. Carry its tally into Summary verbatim: `Findings verified: <N> confirmed, <M> reattributed, <U> unverified, <K> dropped (<F> false positive, <R> resolved by diff)`, parenthetical omitted when `K` is 0. The verify table is working material; only the tally and the surviving rows' labels and annotations reach the report.
+Runs before reconciliation so prior-round matching sees the corrected set. Publish only rows whose Verdict is not `Dropped`, carrying the skill's `Label` column and its `Annotation` column onto the heading as **separate** `_(...)_` groups: verify's combined `_(pre-existing; newly reachable via X)_` is written `_(pre-existing)_ _(newly reachable via X)_`, because `review-prior-findings-reconcile` matches `_(pre-existing)_` exactly and a merged group marks an untouched prior finding `Addressed` next round. `_(unverified: <reason>)_` and `_(mechanism: <actual>)_` carry over as they are. Carry its tally into Summary verbatim: `Findings verified: <N> confirmed, <M> reattributed, <U> unverified, <K> dropped (<F> false positive, <R> resolved by diff)`, parenthetical omitted when `K` is 0. The verify table is working material; only the tally and the surviving rows' labels and annotations reach the report. A finding on a file the name-status does not list gets `_(pre-existing)_`, written first, unless its annotations already have a group opening `pre-existing` or `unverified`.
 
 **Dedup must not cross an attribution boundary.** Step 6 merges duplicate findings; this pass assigns each one verdict and one attribution. A merged entry whose halves verify differently - one `Confirmed` on new code, one `Pre-existing` that de-escalates - cannot carry both, and this skill only rules on what it is given. Un-merge those back into separate findings before verifying rather than forcing one verdict onto both.
 
@@ -298,22 +301,22 @@ Skip on round 1. Otherwise use skill: `review-prior-findings-reconcile` with:
 
 - `prior_report`: the loaded body of the file at the handle's `report_path` (frontmatter excluded)
 - `diff`: the full-range diff from Step 3
-- `name_status`: the full-range `git diff --name-status <base_ref>...<head_ref>` from Step 3
+- `name_status`: the full-range `git diff -M --name-status <base_ref>...<head_ref>` from Step 3
 - `head_sha`: `current_head_sha` - the ref every file read inside the skill uses
 - `base_ref`: the handle's `base_ref` - reconcile derives the merge base from it
 - `head_files`: the `git ls-tree -r --name-only <head_ref>` list from Step 3 (optional to the skill, which otherwise falls back to `git cat-file -e` per path; passing it saves one call per prior finding)
 
-The reconcile skill returns a Markdown table and a tally line. Insert the table under `## Prior Round Reconciliation` in the report (see Output Format).
+The reconcile skill returns a Markdown table, any note lines, and a tally line. Insert all of it under `## Prior Round Reconciliation` in the report (see Output Format).
 
-**`Still open` and `Needs re-check` rows re-enter `## High-Impact Findings`** as `### [Label] <current file:line> _(carried from round <N>)_` with this round's label and the site where the smell now lives - a round-1 `[Recommend]` that this round's rules make `[Must]`, or a smell that moved from `:38` to `:44`, is published at the current assessment, and a carried `_(pre-existing)_` finding whose line the diff has since modified drops the annotation. A carried row whose smell this round's findings already publish at the same site is not re-added; that existing entry takes `_(carried from round <N>)_` on its heading and `(open since round <N>)` on its Next Steps row. Every carried finding also enters `## Next Steps` suffixed `(open since round <N>)`, ordered by severity alongside this round's findings; no standalone "Carry-Over Open Items" section. The table itself preserves the prior label and `file:line` verbatim (the reconcile skill's own rule): the table is the audit trail, the finding is the ask.
+**`Still open` and `Needs re-check` rows re-enter `## High-Impact Findings`** as `### [Label] <current file:line> _(carried from round <N>)_` with this round's label and the site where the smell now lives - a round-1 `[Recommend]` that this round's rules make `[Must]`, or a smell that moved from `:38` to `:44`, is published at the current assessment, and a carried `_(pre-existing)_` finding whose line the diff has since modified drops the annotation, and one on a file the name-status does not list gains it, written first, unless a group opens `pre-existing` or `unverified`. A carried row whose smell this round's findings already publish at the same site is not re-added; that existing entry takes `_(carried from round <N>)_` on its heading and `(open since round <N>)` on its Next Steps row. Every carried finding also enters `## Next Steps` suffixed `(open since round <N>)`, ordered by severity alongside this round's findings; no standalone "Carry-Over Open Items" section. The table itself preserves the prior label and `file:line` verbatim (the reconcile skill's own rule): the table is the audit trail, the finding is the ask.
 
 ### Step 7 - Write Report
 
 Use skill: `review-report-writer` with `report_type: review` and these checkpoint fields:
 
 - `branch = head_short_name` (from the handle - never `head_ref`, which the next round's precondition check would treat as legacy), `base_ref`, `base_sha = current_base_sha`, `head_ref`, `head_sha = current_head_sha`
-- `mode: full` (the writer's only accepted value), `round` (from Step 3.5), `prior_head_sha` (omit on round 1)
-- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack = go-gin`
+- `mode: full` (the writer's only accepted value), `round` (from Step 3.5), `prior_head_sha = prior_checkpoint.head_sha` (omit on round 1)
+- `scope` (resolved in Step 4, mapped to the writer's enum: `Core` -> `core-only`, `+Sec` -> `+sec`, `+Perf` -> `+perf`, `+Obs` -> `+obs`, `+Rel` -> `+rel`, `Full` -> `full` - the writer rejects unmapped display values), `depth` (resolved/auto-promoted), `stack` per Step 2
 
 Write before ending; print confirmation.
 
@@ -330,7 +333,7 @@ No `[Question]`, `[Suggestion]`, `[Consider]`, `[Nit]`, `[Nitpick]`, or `[Praise
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
-**Fill rules.** `Scope` carries the resolved value, then `auto-escalated from Core; signals: <list>` when escalated, then `Scope incomplete: <scope>` for any lens Step 5 could not run. `Round Notes` collects every `Note in Summary` string Steps 3.5, 4 and 4.5 produced, the legacy note and signals `core-only` suppressed (`suppressed: +Sec (<construct>)`) included; omit the line when there are none. `Findings verified` takes Step 6.5's tally verbatim. `Requirement Source` and `Requirement Fit` are emitted together or omitted together. `Blast Radius` carries `review-blast-radius`'s overall line verbatim (its contract-break parenthetical and two-state `<level> (unmitigated) -> <level> (with <mitigation>)` form included); the short-circuit and Step 4.5 gate on the mitigated value when the atomic's `Mitigation` tag is `in-place:`, otherwise on the unmitigated value. `Blast Radius rationale` names the one factor that set the level - the contract break, or the dimension (Code / Data / User) that reached it - in one sentence. `Assessment` is `Discuss` when every published `[Must]` is `_(unverified: ...)_` or an open design question blocks the verdict, `Request Changes` when any other `[Must]` is published, `Approve` otherwise. `file:line` cites the head file's line; two findings may share one `file:line`, one heading each; a finding in a non-Go file (CI, manifest, migration) takes its label from its consequence like any other.
+**Fill rules.** `Scope` carries the resolved value, then `auto-escalated from Core; signals: <list>` when escalated, then `Scope incomplete: <scope>` for any lens Step 5 could not run. `Round Notes` collects every `Note in Summary` string Steps 3.5, 4 and 4.5 produced, the legacy note and signals `core-only` or an explicit scope suppressed (`suppressed: +Sec (<construct>)`) included; omit the line when there are none. `Findings verified` takes Step 6.5's tally verbatim. `Requirement Source` and `Requirement Fit` are emitted together or omitted together. `Blast Radius` carries `review-blast-radius`'s overall line verbatim (its contract-break parenthetical and two-state `<level> (unmitigated) -> <level> (with <mitigation>)` form included); the short-circuit and Step 4.5 gate on the mitigated value when the atomic's `Mitigation` tag is `in-place:`, otherwise on the unmitigated value. `Blast Radius rationale` names the one factor that set the level - the contract break, or the dimension (Code / Data / User) that reached it - in one sentence. `Assessment` is `Discuss` when at least one `[Must]` is published and every one is `_(unverified: ...)_`, or when an open design question blocks the verdict, `Request Changes` when any other `[Must]` is published, `Approve` otherwise. `file:line` cites the head file's line; two findings may share one `file:line`, one heading each; a finding in a non-Go file (CI, manifest, migration) takes its label from its consequence like any other.
 
 **Every finding heading is `### [Label] file:line _(annotations)_`**, `[Must]` first, the label and annotations from Step 6.5 as separate groups (`_(carried from round <N>)_` on carried findings). This is the only heading the next round's reconciliation parses; merged subagent findings are re-filed here per Step 6, never left under a lens heading. When the set exceeds ~12, group by root cause - one entry listing its sites rather than one entry per site - for `[Recommend]` always, and for `[Must]` when several sites share one root cause and one edit. Volume is not thoroughness - a 30-item list of blockers reads as none. Field lines keep their `- Issue:` / `- Impact:` / `- System Risk:` / `- Fix:` prefixes - the reconciler reads the `Issue:` line - separated by blank lines.
 
@@ -340,11 +343,11 @@ The fence below delimits the template for display only - it is not part of the r
 - **Assessment:** Approve | Request Changes | Discuss
 - **Risk Level:** Low | Medium | High | Critical
 - **Blast Radius:** Narrow | Moderate | Wide | Critical     {the atomic's overall line, parenthetical and two-state form included}
-- **Stack Detected:** Go <version> / Gin <version>
+- **Stack:** Go <version> / <framework> <version> | Go <version> (no framework detected)
 - **Data Access:** GORM <version> | sqlx <version> | database/sql | mixed - GORM <version> + sqlx <version>
 - **Messaging:** Asynq | Kafka | Asynq + Kafka | none
 - **Scope:** Core | +Sec | +Perf | +Obs | +Rel | Full     {+ escalation and incomplete notes per the fill rules}
-- **Depth:** standard | deep     {if auto-promoted: `auto-promoted from standard; Blast Radius: <level>`}
+- **Depth:** standard | deep | deep (auto-promoted from standard; Blast Radius: <level>)
 - **Round:** <N>                                {round 2 onward}
 - **Round Notes:** <notes, semicolon-separated>     {omit when none}
 - **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped (<F> false positive, <R> resolved by diff)
@@ -354,7 +357,7 @@ The fence below delimits the template for display only - it is not part of the r
 
 ## Change Brief
 
-**Requested:** <what the change was asked to do, citing the source; `(inferred from commits)` when no source resolved>
+**Requested:** <what the change was asked to do, citing the source; with no source resolved, the `(inferred from ...)` form `review-change-intent` emits>
 
 **Delivered:** <the mechanism implemented and where>
 
@@ -379,6 +382,8 @@ One bullet per requirement finding, each citing the `file:line` and the `## High
 | Round <N-1> Finding | file:line | Status | Notes |
 | ------------------- | --------- | ------ | ----- |
 | ...                 | ...       | ...    | ...   |
+
+<note line>     {one paragraph per note line reconcile emitted; omit when none}
 
 Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
@@ -457,7 +462,7 @@ _Verbatim from the lens._
 
 Mark a line N/A with its reason when the invocation mode makes it inapplicable - round-2 lines on round 1, Step 5/6 lines on Core, the short-circuit lines when it did not fire.
 
-- [ ] Step 1: `behavioral-principles` loaded, or rules inlined in the spawning prompt
+- [ ] Step 1: behavioral-principles loaded
 - [ ] Step 2: stack confirmed; versions from `go.mod`; data-access mix and messaging recorded
 - [ ] Step 3: `review-precondition-check` ran with `report_type: review` (or handle received); diff / name-status / log / ls-tree read once and reused; `current_head_sha` and `current_base_sha` captured; approval obtained when `head_matches_current` was false
 - [ ] Step 3.5: round decided (1 / prior + 1 / no-op) from the handle's `prior_checkpoint`; the full `<base_ref>...<head_ref>` range analyzed regardless of round; no-op path exits without writing
@@ -465,11 +470,12 @@ Mark a line N/A with its reason when the invocation mode makes it inapplicable -
 - [ ] Phase 0: `review-change-intent` ran on the cumulative diff; Change Brief carried into the report; exactly one requirement-findings marker emitted where the atomic places it; requirement lines in Summary or omitted together; its findings verified with the rest
 - [ ] Phase A: risk + blast radius stated before any finding, contract scored first; short-circuit applied only when all three conditions held
 - [ ] Step 4.5: depth auto-promoted to `deep` when Blast Radius is Wide/Critical; narrowing noted on round 2+
-- [ ] Phase B: atomic skills applied; test coverage, authz, response DTO, Idempotency-Key, money fields, FK indexes, race safety, client sharing checked; API contract checks ran when a route, handler, response struct, or OpenAPI/swaggo spec changed; pre-existing defects anchored on the defect with the diff's trigger named
+- [ ] Phase B: atomic skills applied; test coverage, authz, response DTO, Idempotency-Key, money fields, FK indexes, race safety, client sharing checked; API contract checks ran when the diff carried a contract-change signal; pre-existing defects anchored on the defect with the diff's trigger named
 - [ ] Phase C: layering, interface-at-consumer, constructor injection, settings, multi-tenant, middleware order; anemic domain at `deep`
 - [ ] Phase D: `complexity-review` mapped and `go-overengineering-review` labels taken as-is
 - [ ] Phase E: naming, magic numbers, function length per `backend-coding-standards`, structured logging
 - [ ] Step 5: extra scopes ran in parallel with the full prompt contract (handle, refs, SHAs, diff, log, depth, stack, data access, messaging, acceptance criteria, no-write / no-verify instruction); a lens that could not spawn ran inline or was noted `Scope incomplete`
+- [ ] Step 5: subagent loaded behavioral-principles, or the whole Rules section and the disclosure block inlined in the spawning prompt
 - [ ] Step 6: lens findings projected onto `### [Label] file:line` under `## High-Impact Findings`, un-folded one entry per fix; every non-findings lens section preserved by heading text; no raw reports appended
 - [ ] Step 6.5: `review-finding-verify` ran on all assembled findings; Dropped rows excluded; labels and split annotations on the headings; tally in Summary
 - [ ] Step 6.6 (round 2+): `review-prior-findings-reconcile` ran with `head_sha`, `base_ref` and `head_files`; table inserted preserving prior labels and lines; `Still open` / `Needs re-check` rows re-entered High-Impact Findings with `_(carried from round <N>)_` and Next Steps with `(open since round <N>)`

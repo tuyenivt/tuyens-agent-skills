@@ -33,11 +33,11 @@ Use skill: `behavioral-principles`.
 
 ### Step 2 - Stack and Data Access
 
-Use skill: `stack-detect`. Accept pre-confirmed from parent. On a `go.work` tree with no root `go.mod`, the module under test is the stack (`stack-detect` finds no root `go.mod` and does not choose among the workspace's modules); name it in the header.
+Use skill: `stack-detect`. Accept pre-confirmed from parent. In a multi-module repository the module under test is the stack, its `go.mod` read in place of the primary stack `stack-detect` picked; on a `go.work` tree with no root `go.mod`, name it in the header.
 
-`stack-detect` emits `ORM` (from `gorm.io/gorm`), `Database` (from `jackc/pgx` or `go-sql-driver/mysql`; `lib/pq` is not in its driver list, so a `lib/pq` project reads `unknown` - infer PostgreSQL from the driver and say so), and `Test framework` (`testify` / `ginkgo` when required, else `testing (stdlib)`; the header composes `testing (stdlib) [+ testify <version> | ginkgo]`) - take those. Read the rest off `go.mod`, the driver import, and the repository constructors:
+`stack-detect` emits `ORM` (from `gorm.io/gorm`), `Database` (from the driver: `jackc/pgx` or `lib/pq` -> PostgreSQL, `go-sql-driver/mysql` -> MySQL), and `Test framework` (`testify` / `ginkgo` when required, else `testing (stdlib)`; the header composes `testing (stdlib) [+ testify <version> | ginkgo]`) - take those. Read the rest off `go.mod`, the driver import, and the repository constructors:
 
-- **Versions:** Go from the `go` directive; the HTTP framework (Gin, or the substitute named in Step 5), GORM, sqlx, testify from the `require` lines - `stack-detect` emits none
+- **Versions:** Go from the `go` directive; the HTTP framework (Gin, or the substitute named in Step 5), GORM, sqlx, testify from the `require` lines - these override any version `stack-detect` carried from an instruction file, in every header slot that renders one
 - **Data Access:** GORM | sqlx | database/sql | mixed - GORM <v> + sqlx <v>
 - **DB driver:** `lib/pq` and `jackc/pgx` are both PostgreSQL and raise *different* error types (Step 5)
 - **Messaging:** Asynq | Kafka | Asynq + Kafka | none
@@ -80,7 +80,7 @@ If exactly one existing test embodies a pattern `Avoid` rejects: write the new t
 
 Use skill: `go-testing-patterns` for canonical table-driven, fixtures, testcontainers, mocking, `synctest`. Notes below cover layer-specific or layout-specific items; where a note and the atomic disagree, the note says so and wins.
 
-**Adapt every API name below to the stack recorded in Step 2.** The examples are written Gin-GORM-Asynq-first because that is the common pairing. Another HTTP framework substitutes by role (Echo: `echo.New()` + `httptest`, `c.Bind` for `ShouldBindJSON`); a construct with no equivalent (Gin `binding:` tags on Echo) is dropped rather than manufactured into a finding. Say what you substituted.
+**Adapt every API name below to the stack recorded in Step 2.** The examples are written Gin-GORM-Asynq-first because that is the common pairing. Another HTTP framework substitutes by role (Echo: `echo.New()` + `httptest`, `c.Bind` followed by `c.Validate` against a registered `e.Validator` for `ShouldBindJSON`); a check with no equivalent (Gin `binding:` tag coverage on Echo) is dropped rather than manufactured into a finding; a `binding:` tag the framework never reads is dead validation and goes under `Findings`. Say what you substituted.
 
 **Unit tests** (`*_test.go` colocated):
 
@@ -96,7 +96,7 @@ Use skill: `go-testing-patterns` for canonical table-driven, fixtures, testconta
 - Real `gin.New()` engine; apply the same global middleware production mounts (recovery, request-id, error handler, auth)
 - `w := httptest.NewRecorder(); req := httptest.NewRequest(method, path, body); engine.ServeHTTP(w, req)`
 - One test per `(method, path, principal-state, outcome)` triple
-- Auth via test-issued JWT OR test-only middleware injecting fixed claims
+- Auth via test-issued JWT, test-only middleware injecting fixed claims, or a seeded key on an API-key service
 - Authorization: "anonymous -> 401" per protected endpoint; "wrong role -> 403" when a role gate exists (N/A otherwise, said so); "another owner's / tenant's resource -> 404 or 403, whichever the contract fixes" for per-owner resources
 - Validation: "rejects invalid payload" per DTO body
 - Response shape: assert key fields, status, headers, `Content-Type`
@@ -189,7 +189,7 @@ When the highest band points outside the requested scope (P1 names JWT middlewar
 
 ### Step 9 - Test Infrastructure Hygiene
 
-Failing boxes are listed under the Coverage Assessment's `Infrastructure` gap line or the Strategy Doc's `Prerequisites`.
+Failing boxes are listed under the Coverage Assessment's `Infrastructure` gap line, or the `Prerequisites` of the Strategy Doc or Test Scaffolds.
 
 - [ ] Testcontainers shared per package via `TestMain`; local reuse via `testcontainers.WithReuseByName(name)` (v0.37+; on v0.35-v0.36 `GenericContainerRequest{Reuse: true}` with a non-empty `Name`) - there is no `testcontainers.Reuse` symbol and no `testcontainers.reuse.enable` property in testcontainers-go
 - [ ] `go test -race ./...` in CI for concurrent packages
@@ -212,9 +212,9 @@ Failing boxes are listed under the Coverage Assessment's `Infrastructure` gap li
 | "Test strategy" / "test plan" | Strategy Doc |
 | Unclear | Strategy Doc |
 
-Whatever the row, when the Step 8 trigger fires (coverage under ~50% or more than 5 gaps) the Coverage Assessment is emitted **as well**, ahead of the others - it is the only deliverable with a `Prioritization` slot. Emit the header block once at the top, then the documents in that order separated by `---`; do not repeat the header inside each.
+Whatever the row, when the Step 8 trigger fires (coverage under ~50% or more than 5 gaps) the Coverage Assessment is emitted **as well**, ahead of the others - it is the only deliverable with a `Prioritization` slot. On a combined delivery the header block is emitted once, above the first document's heading, and each template's `<header block>` slot is left out; the documents follow in that order separated by `---`, a later one's `Findings`, `Open decisions` and `Residuals` listing only what is new to it (`as listed above` when nothing is).
 
-**Every deliverable opens with this header block**, so the Step 2 records and the coverage number always have a home:
+**Every delivery opens with this header block**, so the Step 2 records and the coverage number always have a home:
 
 ```markdown
 **Stack:** Go <version> / <framework> <version> - module <path>     {module suffix only on a go.work tree with no root go.mod}
@@ -231,7 +231,7 @@ Whatever the row, when the Step 8 trigger fires (coverage under ~50% or more tha
 
 **Coverage:** <n>% (measured | measured by enumeration | estimated - <method>) | n/a - not implemented
 
-**Auth in tests:** test-issued JWT | claims-injecting middleware | n/a - service has no auth
+**Auth in tests:** test-issued JWT | claims-injecting middleware | seeded API key | n/a - service has no auth
 
 **Proposed conventions:** <layout, fixtures, tag split, CI command>     {only when the repo has none to adopt}
 ```
@@ -271,7 +271,7 @@ Whatever the row, when the Step 8 trigger fires (coverage under ~50% or more tha
 5. **P5 - Plumbing:** [pass-through handlers / simple CRUD]
 ```
 
-**Test Scaffolds:** `## Go Test Scaffolds`, the header block, then `**Prerequisites:**` (what the scaffolds assume - a `testutil` bootstrap, the tag split, a migrated template, a defect that stops the target being exercised at all (it does not build, it panics on setup) or an untagged `TestMain` reshaped before an in-scope target can be tested - a defect a test can observe follows Step 3's skip-and-cite rule instead; `none` when the repo has it), then a file manifest (path, layer, `funcs / cases`; Step 8 priority order when its trigger fired, else request order), then the scaffolds themselves, then `**Findings:**` (non-test defects met while scaffolding, each `file:line` - the skipped contract tests from Step 3, model-migration drift, an unmounted middleware; `none` otherwise), then `**Open decisions:**` (as on the Strategy Doc; `none` otherwise), then `**Residuals:**` - prioritized work the request's scope excluded, named so it is not lost. Ready-to-run files using project conventions:
+**Test Scaffolds:** `## Go Test Scaffolds`, the header block, then `**Prerequisites:**` (what the scaffolds assume - a `testutil` bootstrap, the tag split, a migrated template, a defect that stops the target being exercised at all (it does not build, it panics on setup) or an untagged `TestMain` reshaped before an in-scope target can be tested - a defect a test can observe follows Step 3's skip-and-cite rule instead; `none` when the repo has it), then a file manifest (path, layer, `funcs / cases`; a support file - a mock, `TestMain`, a build-tag twin - takes layer `support` and no count; Step 8 priority order when its trigger fired, else request order), then the scaffolds themselves, then `**Findings:**` (non-test defects met while scaffolding, each `file:line` - the skipped contract tests from Step 3, model-migration drift, an unmounted middleware; `none` otherwise), then `**Open decisions:**` (as on the Strategy Doc; `none` otherwise), then `**Residuals:**` - prioritized work the request's scope excluded, named so it is not lost. Ready-to-run files using project conventions:
 
 - Right test type (handler / integration / unit / job)
 - Table-driven with `t.Run(tc.name, ...)`
@@ -326,8 +326,8 @@ Whatever the row, when the Step 8 trigger fires (coverage under ~50% or more tha
 
 Mark a line N/A with its reason when the routing table did not select that deliverable, or when the request's scope excludes it - an N/A line still names what was left undone.
 
-- [ ] Step 1: `behavioral-principles` loaded
-- [ ] Step 2: stack confirmed, module under test named on a workspace; versions, data access, driver, messaging, mock and test framework recorded in the header block
+- [ ] Step 1: behavioral-principles loaded
+- [ ] Step 2: stack confirmed, module under test named on a `go.work` tree with no root `go.mod`; versions, data access, driver, messaging, mock and test framework recorded in the header block
 - [ ] Step 3: code under test + existing tests + setup files read directly; absent ones named; contract-vs-defect tests skipped with the defect cited
 - [ ] Step 4: pyramid stated as three numbers with Job and Contract placed in their bands
 - [ ] Step 5: `go-testing-patterns` applied; every API name adapted to the detected stack (framework, driver error type, tx injection, queue client); the three stated overrides (untagged `TestMain` hooks, custom-tag validator tests, real-broker await) applied as written
@@ -335,7 +335,7 @@ Mark a line N/A with its reason when the routing table did not select that deliv
 - [ ] Step 7: factories over literals; shared via `testutil` only without an import cycle
 - [ ] Step 8: coverage number stated with its branch; P1-P5 run when the trigger fires, bands `not determinable` named; out-of-scope bands listed as residuals
 - [ ] Step 9: hygiene boxes checked; failing ones listed under `Infrastructure` or `Prerequisites`
-- [ ] Output: routing row named; header block once; every emitted deliverable carries Findings, Open decisions and Residuals (`none` when empty), Scaffolds also Prerequisites and the manifest; verification branch taken and stated, delivery labelled `unverified: not compiled` when nothing compiled it
+- [ ] Output: deliverables match the routing row; header block once; every emitted deliverable carries Findings, Open decisions and Residuals (`none` when empty; on a combined delivery a later document lists only what is new), Scaffolds also Prerequisites and the manifest; verification branch taken and stated, delivery labelled `unverified: not compiled` when nothing compiled it
 
 ## Avoid
 

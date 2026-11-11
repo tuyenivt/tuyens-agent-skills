@@ -9,7 +9,7 @@ user-invocable: false
 
 # Go Idioms
 
-> Load `Use skill: stack-detect` first. This skill reads `Framework` for the tag-key rule below; the Go version is the `go` directive in `go.mod` (a `## Tech Stack` `Language:` line may carry a version; the directive wins when they differ). Baseline: Go 1.25+ (`cmp.Ordered`, builtin `min`/`max`, `log/slog`, `testing/synctest`); the struct-tag examples carry GORM and sqlx tags because the plugin targets them; the tag-key rule covers Gin. Error idioms live in `go-error-handling`; concurrency idioms in `go-concurrency`. This skill owns language-level shape decisions for writing new code.
+> Load `Use skill: stack-detect` first. This skill reads `Framework` for the tag-key rule below; the Go version is the `go` directive in `go.mod` (a `## Tech Stack` `Language:` line may carry a version; the directive wins when they differ). In a multi-module repository (`go.work`, or several `go.mod`) the module under review decides: its own `go` directive and, when stack-detect's primary stack is another module, its own `require` lines in place of the detected values. A form that needs a newer Go version than that directive is written in its older equivalent. Baseline: Go 1.25+ (`cmp.Ordered`, builtin `min`/`max`, `log/slog`, `testing/synctest`); the struct-tag examples carry GORM and sqlx tags because the plugin targets them; the tag-key rule covers Gin. Error idioms live in `go-error-handling`; concurrency idioms in `go-concurrency`. This skill owns language-level shape decisions for writing new code.
 
 ## When to Use
 
@@ -281,7 +281,7 @@ When a type crosses a boundary (log, JSON, DB), implement the interface the cons
 
 slog's `JSONHandler` encodes `Any` values with `encoding/json`, so an `iota` enum logs as a number unless it has `MarshalText` - `String()` alone makes logs readable only on the `TextHandler`.
 
-`LogValue()` on a secret-holding type redacts it from every `slog` call without per-call effort - and `String()` covers `fmt`, which otherwise prints a named basic type's underlying value verbatim:
+`LogValue()` on a secret-holding type redacts it wherever slog logs it as an attribute value, without per-call effort. Nested in a logged struct the handlers never call it - the `TextHandler` formats with `fmt`, the `JSONHandler` with `encoding/json` - so `String()` and `MarshalJSON` carry the redaction there (an unexported field still prints through `fmt`), and `String()` covers `fmt` itself, which otherwise prints a named basic type's underlying value verbatim:
 
 ```go
 type Token string
@@ -336,21 +336,13 @@ Review - one block per non-idiomatic shape. A convention the input establishes (
 - Recommendation: {concrete edit}
 ```
 
-`[Must]` when the shape is a live defect - it loses data, crashes on a request path (a start-time fail-fast is not a crash), leaks a secret, makes a code path unreachable, or holds a resource past its scope (a `context.Context` field, a `defer` in a loop over many files). Those are examples, not the whole set: judge by consequence, not by matching the list. `[Recommend]` when the shape only costs clarity or future flexibility (an alias, a constructor returning an interface, a one-instantiation generic); a zero value that is a live state is `[Must]` when a missing or unset column then reads as that state. Cite `file:line` when the input carries line numbers, `file:<symbol>` when it does not (a missing doc comment cites the identifier); a range is `file:start-end`. Order `[Must]` first, then by file in the order the input listed them, then by start line. One shape at several sites, in one file or many, is one heading citing the first site, with the rest named on the `Code:` line. A defect in a file the input did not name is still a block, its heading suffixed `_(out of scope)_`. A defect this skill does not own (an unparameterised query, `InsecureSkipVerify`, a sentinel built as a function, an ignored error) is still reported, never dropped: one block per such defect after the owned findings, in the same file-then-line order, labelled by the criteria above, with its `Non-idiomatic because:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`. With no findings, emit `No non-idiomatic shapes found.`
+Owned findings: `[Must]` when the shape is a live defect - it loses data, crashes on a request path (a start-time fail-fast is not a crash), leaks a secret, makes a code path unreachable, or holds a resource past its scope (a `context.Context` field, a `defer` in a loop over many files). Those are examples, not the whole set: judge by consequence, not by matching the list. `[Recommend]` when the shape only costs clarity or future flexibility (an alias, a constructor returning an interface, a one-instantiation generic); a zero value that is a live state is `[Must]` when a missing or unset column then reads as that state. Cite `file:line` when the input carries line numbers, `file:<symbol>` when it does not (a missing doc comment cites the identifier); a range is `file:start-end`. Order owned findings `[Must]` first, then by file in the order the input listed them, then by start line. One shape at several sites, in one file or many, is one heading citing the first site, with the rest named on the `Code:` line. A defect in a file the input did not name is still a block, its heading suffixed `_(out of scope)_`. A defect this skill does not own (an unparameterised query, `InsecureSkipVerify`, a sentinel built as a function, an ignored error) is still reported, never dropped: one block per such defect after every owned finding, in that same order among themselves, labelled `[Must]` when it risks incorrect behaviour, data loss or a security hole and `[Recommend]` otherwise, with its `Non-idiomatic because:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`. With no findings, emit `No non-idiomatic shapes found.`
 
 ## Avoid
 
-- `type FooID = int64` (alias) when you want type safety - use `type FooID int64`
-- Generics with one concrete instantiation - inline the type
-- Functional options for 0-2 knobs - struct config is simpler
-- `defer f.Close()` inside `for` - wrap in an inner func
-- Embedding to "inherit" - Go has no virtual dispatch; use composition
 - `init()` doing real work - constructor injection is the Go answer
-- `context.Context` as a struct field - pass it per call
-- Constructors returning same-package interfaces - return the struct; interfaces belong to consumers
 - `interface{}` / `any` to silence a type error - find the actual type
 - A duration as a bare `int` - `time.Duration` carries the unit
 - A hand-written `String()` when `//go:generate stringer -type=T` (run by `go generate ./...`) produces the same tokens and no other boundary (`Value`/`Scan`, `MarshalText`) needs the table
-- `time.Sleep` for synchronization - channels or `testing/synctest`
+- `time.Sleep` for synchronization - channels or `testing/synctest` (Go 1.25+)
 - `panic` in library or service code (only `main` for unrecoverable startup); constructors return `error` for bad required args
-- Legacy `log` package in new code - use `log/slog`

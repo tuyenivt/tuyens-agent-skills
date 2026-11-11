@@ -45,29 +45,31 @@ Default: `standard`. Request deep by appending `deep` to the invocation (e.g. `/
 | `/task-go-review-observability <branch>` | `<branch>` vs base (3-dot) |
 | `/task-go-review-observability pr-<N>` | PR head fetched into local branch (user runs fetch) |
 
-**Subagent runs** (e.g. spawned by `task-go-review`). The parent passes the `review-precondition-check` handle, `base_ref` / `head_ref`, `base_sha` / `head_sha`, the pre-read diff and commit log, depth, the pre-confirmed stack, the data-access mix, and messaging. Step 3 is skipped whole, SHA capture included - never re-run git. Steps 13 and 14 are skipped (the parent verifies and reconciles the merged set once): labels come from the tier (High -> `[Must]`, Medium / Low -> `[Recommend]`), a finding whose cited line the diff did not add carries `_(pre-existing)_` and no other annotation (the parent's verify adds `newly reachable via`) so the parent's verify pass starts from it, and the `Findings verified` and `Round` lines are omitted. Step 15 returns the entire Output Format - Summary, Surface Map, Findings, Out of Lens, Recommendations (with the deep `### SLI / SLO` block when the parent's depth is `deep`), Next Steps - instead of writing, and prints no confirmation. Derive `Messaging` from `go.mod` and the diff when the parent did not send it.
+**Subagent runs** (e.g. spawned by `task-go-review`). The parent passes the `review-precondition-check` handle, `base_ref` / `head_ref`, `base_sha` / `head_sha`, the pre-read diff and commit log, depth, the pre-confirmed stack, the data-access mix, and messaging. Step 3 is skipped whole, SHA capture included - never re-run git. Steps 13 and 14 are skipped (the parent verifies and reconciles the merged set once): labels come from the tier (High -> `[Must]`, Medium / Low -> `[Recommend]`), a finding whose cited line the diff did not add carries `_(pre-existing)_` and no other annotation (the parent's verify adds `newly reachable via`) so the parent's verify pass starts from it, and the `Findings verified` and `Round` lines are omitted. Step 15 returns the entire Output Format (the Step 4 gate's short report when it fired) - Summary, Surface Map, Findings, Out of Lens, Recommendations (with the deep `### SLI / SLO` block when the parent's depth is `deep`), Next Steps - instead of writing, and prints no confirmation. Derive `Messaging` from `go.mod` and the diff when the parent did not send it.
 
 ## Workflow
 
 ### Step 1 - Load Behavioral Principles
 
-Use skill: `behavioral-principles`. A subagent loads it too, unless the spawning prompt inlined its Rules.
+Use skill: `behavioral-principles`. A subagent loads it too, unless the spawning prompt inlined its whole Rules section and its unverifiable-change disclosure, as that skill specifies.
 
 ### Step 2 - Confirm Stack
 
 Use skill: `stack-detect`. Accept pre-confirmed stack from parent. If not Go, stop and recommend `/task-code-review-observability`.
 
-Versions come from `go.mod` - the Go version from the `go` directive, Gin / GORM / sqlx from the `require` lines - and override any version a `## Tech Stack` line declared (this step's one departure from `stack-detect`'s instruction-file precedence). Data access is GORM / sqlx / database/sql, or `mixed - GORM <v> + sqlx <v>` when both are required. Messaging is `Asynq`, `Kafka`, `Asynq + Kafka`, or `none`, from `go.mod`: `hibiken/asynq` for Asynq; `twmb/franz-go`, `IBM/sarama` (`Shopify/sarama` before v1.40.0), `segmentio/kafka-go` or `confluentinc/confluent-kafka-go` for Kafka.
+Versions come from `go.mod` - the Go version from the `go` directive, the HTTP framework / GORM / sqlx from the `require` lines - and override any version a `## Tech Stack` line declared (this step's one departure from `stack-detect`'s instruction-file precedence); in a multi-module repository the module under review decides, its `go.mod` read in place of the detected primary stack. The `Stack` slot is `stack-detect`'s rendering with those versions added - the `go` directive as written, a `require` version without its leading `v` (`Go 1.25.0 / Echo 4.12.0`, `Go 1.25.0 (no framework detected)`), and the writer's `stack` is `go-<framework>` lowercased (`go-gin`, `go-echo`; `go` when there is none). The checks below name Gin constructs; on another framework apply each to that framework's equivalent and skip one that has none. Data access is GORM / sqlx / database/sql, or `mixed - GORM <v> + sqlx <v>` when both are required. Messaging is `Asynq`, `Kafka`, `Asynq + Kafka`, or `none`, from `go.mod`: `hibiken/asynq` for Asynq; `twmb/franz-go`, `IBM/sarama` (`Shopify/sarama` before v1.40.0), `segmentio/kafka-go` or `confluentinc/confluent-kafka-go` for Kafka.
 
 ### Step 3 - Resolve Diff and Round
 
 Standalone only - skip the whole step, SHA capture included, when a subagent received the handle.
 
-Use skill: `review-precondition-check` with `report_type: review-observability`. Any fail-fast: surface verbatim and stop. Read diff, log and `git diff --name-status <base_ref>...<head_ref>` once; reuse. Capture `base_sha = git rev-parse <base_ref>` and `head_sha = git rev-parse <head_ref>` (full SHAs). The writer's `branch` is the handle's `head_short_name`.
+Use skill: `review-precondition-check` with `report_type: review-observability`. Any fail-fast: surface verbatim and stop. On success, print each handle `notes` entry in chat, one line each, before the report body (nothing when it has none; the handle itself stays internal). Capture `base_sha = git rev-parse <base_ref>` and `head_sha = git rev-parse <head_ref>` (full SHAs) and resolve the round below; only then read diff, log and `git diff -M --name-status <base_ref>...<head_ref>`, once, for reuse. The writer's `branch` is the handle's `head_short_name`.
 
-**Resolve the round from the handle, before any surface is read.** No `prior_checkpoint`, or `prior_checkpoint: legacy` -> `round: 1`. Valid -> `round = prior_checkpoint.round + 1`, `prior_head_sha = prior_checkpoint.head_sha`. **When `prior_checkpoint.head_sha` equals the current `head_sha` and the invocation asks for nothing more (no `deep` where the prior was `standard`), print `No new commits on <head_short_name> since prior observability review at <sha_short>. Prior report unchanged.` and stop** - do not re-review and do not overwrite. On a genuine round 2+, re-review the full range; Step 14 reconciles the prior findings.
+**Resolve the round from the handle, before any surface is read.** No `prior_checkpoint`, or `prior_checkpoint: legacy` -> `round: 1`. Valid -> `round = prior_checkpoint.round + 1`, `prior_head_sha = prior_checkpoint.head_sha`. **When `prior_checkpoint.head_sha` equals the current `head_sha` and the invocation asks for nothing more (no `deep` where the prior was `standard`), print `No new commits on <head_short_name> since prior observability review at <sha_short>. Prior report unchanged.` and stop** - do not re-review and do not overwrite (`<sha_short>` is the first 7 characters of `head_sha`). On a genuine round 2+, re-review the full range; Step 14 reconciles the prior findings.
 
 ### Step 4 - Read the Instrumentation Surface
+
+**No-surface gate.** A diff that touches only docs, tests or comments has nothing for this lens to read: skip the rest of Steps 4-13. The whole report is then a Summary of `Stack` and `Overall: Adequate - diff contains no instrumentation surface` - plus, on a standalone run, `Round` on round 2+ and `Findings verified: 0 confirmed, 0 reattributed, 0 unverified, 0 dropped` - and `## Findings` holding only `Diff contains no instrumentation surface.` A subagent run returns that; a standalone run still reconciles on round 2+ (Step 14: carried rows publish as usual, with their Next Steps rows, and `Overall` reads `Gaps Found - <counts>`) and writes the report (Step 15).
 
 **Most important output:** a one-line verdict per surface - logging, OTel, Prometheus, one instrumentation row per broker `Messaging` reported, pprof, graceful shutdown, error tracker - of the form `wired | partial | absent | n/a`. A missing wire is itself the finding.
 
@@ -77,7 +79,7 @@ The verdict answers **how much of the surface exists**, not whether it is correc
 
 **Severity, and the diff-vs-repo scope rule.** A surface the diff touches - or that the diff makes load-bearing, such as sub-instrumentation missing on an unchanged client once this PR installs the tracer that would have used it - is scored on consequence, High when it leaves a failure undiagnosable. A surface the diff never approaches and never activates is **not** a merge blocker on this PR: report it at Medium or Low as standing debt; Step 13 annotates it `_(pre-existing)_`. Absent-surface findings are all in-scope only when the diff adds the service's entrypoint (`cmd/*/main.go` is `A` in the name-status); a Greenfield `Overall` on an existing service keeps the diff-vs-repo scope rule and the three-finding cap. Even then, do not tier them all High. A review that emits one `[Must]` per surface reads as none. Calibrate by what gates first production traffic: **High** for anything that leaks data, hides an active failure, or cannot be retrofitted without a redeploy of every caller (secrets in logs, no error signal, no request metrics); **Medium** for surfaces that make diagnosis slower but are additive later (pprof, queue-depth gauges, custom spans); **Low** for polish. Say in the Summary that the service ships without them and what the first-week follow-up is - a greenfield review is a sequencing document, not a merge gate.
 
-**Defects outside the diff or the lens.** A defect on a line the diff did not add: in this lens and made newly reachable or load-bearing by the diff -> a finding (Step 13 attributes it); in this lens and untouched by the diff -> a finding at its tier label with `_(pre-existing)_` (Step 13 de-escalates it to `[Recommend]`; on a subagent run the parent's verify does), at most the three most consequential - a grouped absent-surface finding counts once - the rest one line each under `## Out of Lens`; owned by another lens (a leaked `resp.Body`, a missing timeout, an auth gap, an error middleware never mounted) -> `## Out of Lens` with `file:line` and the owning lens.
+**Defects outside the diff or the lens.** A defect on a line the diff did not add: in this lens and made newly reachable or load-bearing by the diff -> a finding (Step 13 attributes it); in this lens and untouched by the diff -> a finding at its tier label with `_(pre-existing)_` (Step 13 de-escalates it to `[Recommend]`; on a subagent run the parent's verify does), at most the three most consequential (highest tier first), counting only findings this round publishes for the first time - a grouped absent-surface finding counts once - the rest one line each under `## Out of Lens`; owned by another lens, or by none (a leaked `resp.Body`, a missing timeout, an auth gap, an error middleware never mounted; a compile break or logic error is `task-go-review`'s) -> `## Out of Lens` with `file:line` and the owner.
 
 Open files that configure observability so findings cite real lines:
 
@@ -182,28 +184,28 @@ At `deep`, emit `### SLI / SLO` under Recommendations: one row per critical jour
 
 Runs at every depth. Assign each draft finding its label first (High -> `[Must]`, Medium / Low -> `[Recommend]`), since `review-finding-verify` takes labelled findings and returns adjusted ones.
 
-Use skill: `review-finding-verify` with those findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`. **The label it returns is final** - never re-derive one from the impact tier afterwards; a High finding tagged `[Recommend]` because it is pre-existing is correct output. Carry its `Annotation` column verbatim onto the heading (`_(pre-existing)_`, `_(pre-existing; newly reachable via <file:line>)_`, `_(unverified: <reason>)_`, `_(mechanism: <actual>)_`) and its tally into the Summary's `Findings verified` slot. The verify table is working material; only the tally and the surviving rows' labels and annotations reach the report.
+Use skill: `review-finding-verify` with those findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`. **The label it returns is final** - never re-derive one from the impact tier afterwards; a High finding tagged `[Recommend]` because it is pre-existing is correct output. Carry its `Annotation` column verbatim onto the heading (`_(pre-existing)_`, `_(pre-existing; newly reachable via <file:line>)_`, `_(unverified: <reason>)_`, `_(mechanism: <actual>)_`) and its tally into the Summary's `Findings verified` slot; the tally counts this round's drafts only. A finding on a file the name-status does not list gets `_(pre-existing)_`, written first, unless its annotations already have a group opening `pre-existing` or `unverified`. The verify table is working material; only the tally and the surviving rows' labels and annotations reach the report.
 
 Subagent runs skip this step entirely (see Invocation).
 
 ### Step 14 - Reconcile Prior Findings (round 2+, standalone)
 
-Skip on round 1. Otherwise read the prior report at the handle's `report_path` and project its findings into the reconciler's shape: `## High-Impact Findings` holding one `### [<Label>] <file:line>` heading per finding followed by an `Issue:` line, label and `file:line` copied from the `#### <n>. [Label] file:line - <title>` heading, annotations as separate `_(...)_` groups (`_(pre-existing; newly reachable via X)_` becomes `_(pre-existing)_ _(newly reachable via X)_`). Use skill: `review-prior-findings-reconcile` with `prior_report` (the projection), `diff`, `name_status`, `head_sha`, `base_ref`, and `head_files` (`git ls-tree -r --name-only <head_sha>`). Insert its table under `## Prior Round Reconciliation`. `Still open` and `Needs re-check` rows re-enter `## Findings` under the impact heading they were last published under (this round's tier when re-drafted), with the label and annotation groups they were last published with plus `_(carried from round <N>)_` (N = the round that first raised it, written once) on the heading; when this round re-drafted the same defect at the same site, publish only the re-drafted finding with that annotation appended. The table keeps the prior label and line verbatim.
+Skip on round 1. Otherwise read the prior report at the handle's `report_path` and project its findings into the reconciler's shape: `## High-Impact Findings` holding one `### [<Label>] <file:line>` heading per finding followed by an `Issue:` line, label and `file:line` copied from the `#### <n>. [Label] file:line - <title>` heading, annotations as separate `_(...)_` groups (`_(pre-existing; newly reachable via X)_` becomes `_(pre-existing)_ _(newly reachable via X)_`). Use skill: `review-prior-findings-reconcile` with `prior_report` (the projection), `diff`, `name_status`, `head_sha`, `base_ref`, and `head_files` (`git ls-tree -r --name-only <head_sha>`). Insert its output - the table, any note lines, the tally line - under `## Prior Round Reconciliation`. `Still open` and `Needs re-check` rows re-enter `## Findings` with the body the prior report gave them, cited where reconcile places the smell now, under the impact heading they were last published under (this round's tier when re-drafted; the higher tier when the prior heading combined two), with the label and annotation groups they were last published with (`_(pre-existing)_` written first when the name-status does not list the file and no group opens `pre-existing` or `unverified`) plus `_(carried from round <N>)_` (N = the round that first raised it, written once) on the heading; when this round re-drafted the same defect at the same site, publish only the re-drafted finding with that annotation appended. The table keeps the prior label and line verbatim.
 
 ### Step 15 - Write Report
 
 Standalone only - subagent runs return the Output Format to the parent, which writes the single merged report.
 
-Use skill: `review-report-writer` with `report_type: review-observability` and every required input: `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` from the handle, `base_sha` / `head_sha` from Step 3, `stack: go-gin`, `scope: +obs`, `depth` as resolved from the Depth table, `mode: full`, and the `round` / `prior_head_sha` resolved in Step 3. Write before ending; print confirmation.
+Use skill: `review-report-writer` with `report_type: review-observability` and every required input: `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` from the handle, `base_sha` / `head_sha` from Step 3, `stack` per Step 2, `scope: +obs`, `depth` as resolved from the Depth table, `mode: full`, and the `round` / `prior_head_sha` resolved in Step 3. Write before ending; print confirmation.
 
 ## Self-Check
 
 Mark a line N/A with its reason when the diff has no matching surface, or when the invocation mode makes it inapplicable (subagent, `standard` depth, round 1).
 
-- [ ] Step 1: `behavioral-principles` loaded, or rules inlined in the spawning prompt
+- [ ] Step 1: behavioral-principles loaded
 - [ ] Step 2: stack confirmed (or accepted from parent); versions from `go.mod`; data-access mix and messaging recorded
 - [ ] Step 3: `review-precondition-check` ran with `report_type: review-observability` (or handle received); diff, log and name-status read once; `base_sha` / `head_sha` captured; round resolved from the handle; same-SHA no-op honoured; approval obtained when `head_matches_current` was false
-- [ ] Step 4: surfaces read directly; Surface Map has one verdict per surface and one row per broker; grouping and diff-vs-repo scope rules applied before tiers; defects outside the diff or lens routed per the Step 4 rule
+- [ ] Step 4: no-surface gate applied to a docs / tests / comments-only diff; surfaces read directly; Surface Map has one verdict per surface and one row per broker; grouping and diff-vs-repo scope rules applied before tiers; defects outside the diff or lens routed per the Step 4 rule
 - [ ] Step 5: `slog` - JSON handler, correlation (handler wrapper for stdout-shipped logs; `otelslog` only when logs ship over OTLP), redaction, level discipline, errors as `err` attribute
 - [ ] Step 6: OTel - SDK before the engine, `tp` reaches `main`, instrumentation per dependency, sampling and resource attrs explicit
 - [ ] Step 7: Prometheus - client, runtime + HTTP metrics, namespace, bounded labels, template route label
@@ -229,17 +231,17 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Go Observability Review Summary
 
-- **Stack Detected:** Go <version> / Gin <version>
+- **Stack:** Go <version> / <framework> <version> | Go <version> (no framework detected)
 - **Data Access:** GORM <version> | sqlx <version> | database/sql | mixed - GORM <version> + sqlx <version>
 - **Messaging:** Asynq | Kafka | Asynq + Kafka | none
 - **Logging:** slog (JSON) | slog (text) | log (stdlib) | absent
 - **Metrics:** prometheus/client_golang | OTel metrics (Prometheus exporter) | absent
 - **Tracing:** OpenTelemetry (OTLP) | OpenTelemetry (Jaeger / Zipkin exporter) | absent
-- **pprof:** enabled (admin port) | enabled (non-prod only) | enabled (public, prod) | absent
+- **pprof:** enabled (admin port) | enabled (admin auth) | enabled (non-prod only) | enabled (public, prod) | absent
 - **Graceful shutdown:** wired | partial | absent
 - **<Broker> instrumentation:** wired | partial | absent     {one line per broker; omit when Messaging is none}
 - **Error Tracker:** Sentry | Honeybadger | absent
-- **Overall:** Adequate | Gaps Found - <N> High / <N> Medium / <N> Low | Greenfield - <N> High / <N> Medium / <N> Low
+- **Overall:** Adequate | Gaps Found - <N> High / <N> Medium / <N> Low | Greenfield - <N> High / <N> Medium / <N> Low     {`Adequate - diff contains no instrumentation surface` under the Step 4 gate}
 - **Round:** <N>                                {round 2 onward; omitted on subagent runs}
 - **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped (<F> false positive, <R> resolved by diff)
 
@@ -262,6 +264,8 @@ The fence below delimits the template for display only - it is not part of the r
 | Round <N-1> Finding | file:line | Status | Notes |
 | ------------------- | --------- | ------ | ----- |
 
+<note line>     {one paragraph per note line reconcile emitted; omit when none}
+
 Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## Findings
@@ -282,15 +286,19 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 [Same block]
 
-### Medium Impact / Low Impact
+### Medium Impact
 
 [Same blocks, numbering continues]
 
-Omit empty sections. When every section is empty, write "No observability issues found."
+### Low Impact
+
+[Same blocks, numbering continues]
+
+Omit empty sections. When every section is empty, write "No observability issues found." (the Step 4 gate writes its own sentence instead)
 
 ## Out of Lens
 
-[Defects another lens owns, and pre-existing in-lens defects beyond the three published - each with `file:line` and the owning lens. Omit when there are none.]
+[Defects another lens or `task-go-review` owns, each with `file:line` and the owner, and pre-existing in-lens defects beyond the three published, each with `file:line`. Omit when there are none.]
 
 ## Recommendations
 

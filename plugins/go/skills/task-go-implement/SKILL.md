@@ -31,7 +31,7 @@ Not for: single-file edits, bugfixes, frontend.
 
 **Envelope precedence.** Every atomic this workflow loads declares its own Output Format (`## API Design`, `## Data Access Design`, `## Migration Plan`, `## Error Design`, `## Messaging Design`, `## Concurrency Design`, `## Test Strategy`, decision tables). They are rule sets here: only this skill's Output Format is emitted, with one exception - `go-testing-patterns`' `Count` format (`funcs / cases`) governs the `## Tests` rows.
 
-**Every GORM name below is the common case, not the only one.** On a sqlx or `database/sql` project, substitute the equivalent and say you did: `clause.OnConflict{DoNothing: true}` becomes `INSERT ... ON CONFLICT DO NOTHING` on PostgreSQL (`INSERT ... ON DUPLICATE KEY UPDATE id = id` on MySQL, per `go-data-access`'s `Database` switch) with a `RowsAffected` check (on MySQL it tells insert from duplicate only while the DSN leaves `clientFoundRows` at its default `false`), `AutoMigrate` has no analogue, and "no GORM model on the wire" is the general rule that no persistence struct is a response DTO.
+**Every GORM name below is the common case, not the only one.** On a sqlx or `database/sql` project, substitute the equivalent and say you did: `clause.OnConflict{DoNothing: true}` becomes `INSERT ... ON CONFLICT DO NOTHING` on PostgreSQL (`INSERT ... ON DUPLICATE KEY UPDATE id = id` on MySQL, per `go-data-access`'s `Database` switch) with a `RowsAffected` check (on MySQL it tells insert from duplicate only while the DSN leaves `clientFoundRows` at its default `false`), `AutoMigrate` has no analogue, and "no GORM model on the wire" is the general rule that no persistence struct is a response DTO. Gin names read across the same way: on another HTTP framework `go-gin-patterns` returns only its not-applicable line, which is not emitted, so build each contract STEP 7 takes from it in that framework's own API - request binding together with the validation Gin's binder runs - and name the substitution in Deviations.
 
 ## Workflow
 
@@ -41,7 +41,7 @@ Use skill: `behavioral-principles`.
 
 ### STEP 2 - DETECT AND GATHER
 
-Use skill: `stack-detect`. Confirm Go/Gin, `Database`, and project layout.
+Use skill: `stack-detect`. Confirm Go, the HTTP framework, `Database`, and project layout; in a multi-module repository the module the feature lives in decides, its `go.mod` read in place of the detected primary stack.
 
 Ask before writing code, grouped so each cluster surfaces its own follow-ups. Skip clusters the feature does not touch (no External questions for a pure CRUD). A question the repo's own docs answer (a design doc, an answers file, `CLAUDE.md`) is answered - cite the source instead of asking.
 
@@ -118,7 +118,7 @@ External mutations (charge, refund, provision): never inside the `InTx` closure.
 
 ### STEP 7 - HTTP LAYER
 
-Use skill: `go-gin-patterns`. Use skill: `go-security-patterns` for the request DTO (no privilege-bearing fields, mass-assignment guard), default-deny router group, and JWT validation (`WithValidMethods`, `iss` / `aud` / `exp`); the middleware shape (the `principal` key, the `ErrorResponse` 401 body) comes from `go-gin-patterns`. `ShouldBindJSON` for JSON bodies; `ShouldBindQuery` / `ShouldBindUri` for params; `c.FormFile` behind `http.MaxBytesReader` for multipart uploads, whose type comes from sniffed bytes and whose stored name is server-generated. Response envelope, pagination - an envelope the project already uses wins over `go-gin-patterns`' `SuccessResponse` / `ErrorResponse`, named in Deviations. Map domain errors via centralized middleware, which writes only the domain-error rows at 400 and above; `go-gin-patterns`' `Idempotency` middleware writes the replay (at the stored original status, a stored 4xx included) and both 409 rows, adding `Retry-After` to the in-flight 409 as an extension of that middleware; every other row below 400 is written by the handler in the success envelope. The table adopts the statuses the loaded atomics already fix (`go-gin-patterns` / `go-security-patterns` idempotency and ownership, `go-error-handling` provider outcomes):
+Use skill: `go-gin-patterns`. Use skill: `go-security-patterns` for the request DTO (no privilege-bearing fields, mass-assignment guard), default-deny router group, and JWT validation (`WithValidMethods`, `iss` / `aud` / `exp`); the middleware shape (the `principal` key, the `ErrorResponse` 401 body) comes from `go-gin-patterns`. `ShouldBindJSON` for JSON bodies; `ShouldBindQuery` / `ShouldBindUri` for params; `c.FormFile` behind `http.MaxBytesReader` for multipart uploads, whose type comes from sniffed bytes and whose stored name is server-generated. Response envelope, pagination - an envelope the project already uses wins over `go-gin-patterns`' `SuccessResponse` / `ErrorResponse`, named in Deviations. Map domain errors via centralized middleware, which writes only the domain-error rows at 400 and above; `go-gin-patterns`' `Idempotency` middleware writes the replay (at the stored original status, a stored 4xx included) and both duplicate-request 409s, adding `Retry-After` to the in-flight 409 as an extension of that middleware; every other row below 400 is written by the handler in the success envelope. The table adopts the statuses the loaded atomics already fix (`go-gin-patterns` / `go-security-patterns` idempotency and ownership, `go-error-handling` provider outcomes):
 
 | Domain outcome | HTTP |
 |--------------|------|
@@ -135,8 +135,8 @@ Use skill: `go-gin-patterns`. Use skill: `go-security-patterns` for the request 
 | Payload too large (`*http.MaxBytesError`, row-count cap exceeded) | 413 |
 | Invalid transition | 422 |
 | Provider declined the operation (`go-error-handling`'s `ErrPaymentDeclined`) | 402 |
-| External unavailable before send (`ErrRetryable`, upstream down) | 503 |
-| Provider rejected the request with a decoded non-5xx error other than a decline (`ErrGatewayFailure`: invalid account, invalid parameters); an undecoded error or a 5xx after a mutation was sent is `ErrIndeterminate` and renders 202 per STEP 6 | 502 |
+| External unavailable before send, or rate-limited (`ErrRetryable`, upstream down) | 503 |
+| Provider rejected the request with a decoded non-5xx error other than a decline or a rate limit (`ErrGatewayFailure`: invalid account, invalid parameters); an undecoded error or a 5xx after a mutation was sent is `ErrIndeterminate` and renders 202 per STEP 6 | 502 |
 | Already-processed webhook event | 200 (return success so provider stops retrying) |
 
 401 and 403 are different answers: 401 means "we do not know who you are", 403 means "we do and you may not". 404 for another principal's resource is the default because the owner-scoped query finds nothing; a 403 after an unscoped load confirms the resource exists (an existence oracle) and repeats the handler-level ownership check `go-security-patterns` labels Bad.
@@ -171,6 +171,8 @@ Run `go build ./...`, `go vet ./...`, `go vet -tags=integration ./...`, `go test
 - Worker-only (no HTTP): skip STEP 7 and STEP 3's `go-gin-patterns` load; omit Endpoints from the design and from the output; test the job handler instead of httptest, and read the output's `Handler` count row as the handler-level tests of whatever the entry point is (a task processor, a consumer)
 
 ## Output Format
+
+While the STEP 3 gate is open the deliverable is the design presentation alone, open decisions first; the sections below are emitted once the design is approved and the code written.
 
 ```markdown
 ## Files Generated
@@ -208,20 +210,20 @@ _Omit this whole section for a worker-only feature._
 
 Mark a line N/A with its reason when the feature has no matching surface - no HTTP layer, no persistence, no webhook - or when a default needed no adaptation because the project already runs the library it names.
 
-- [ ] STEP 1: `behavioral-principles` loaded
+- [ ] Step 1: behavioral-principles loaded
 - [ ] STEP 2: stack and `Database` detected; requirements gathered, repo-answered questions cited; unanswered questions carried to the gate as named open decisions; existing-code defects recorded
 - [ ] STEP 3: design approved before code; deviations called out at the gate **and** written into `## Deviations`; decisions and approval written into `## Decisions`
 - [ ] STEP 4: migrations numbered after the highest version on base and branch; FKs and filters indexed; CHECK on status; unique index on idempotency keys
 - [ ] STEP 5: repository interface at the consumer with `WithTx`; every GORM-named default adapted to the detected data-access layer, with the substitution stated; list reads keyset-paginated, or an offset list kept for an existing endpoint named in `## Deviations`
 - [ ] STEP 6: errors wrapped with `%w`; constructor injection; `InTx` boundary in the service; jobs dispatched after commit; no side effects inside the closure; transitions validated; external mutations behind a committed intent state
-- [ ] STEP 7: status table applied; per-domain classifiers; request DTO free of privilege-bearing fields; webhook raw body, signature, outside JWT, duplicate-as-200
-- [ ] STEP 8: tests cover happy path, validation, not-found, conflict, timeout, every valid and invalid transition, a duplicate proving the side effect ran once, and another principal's resource
-- [ ] STEP 9: build, vet (both tag sets), and race tests pass - or, when only `-race` cannot run, `go test` passed without it and the race runs are labelled unverified - or, with no toolchain, the static substitute ran and the delivery is labelled `unverified: not compiled`
+- [ ] STEP 7: status table applied; per-domain classifiers; request DTO free of privilege-bearing fields; webhook raw body, signature, outside JWT, duplicate-as-200; on another HTTP framework, the substitution named in `## Deviations`
+- [ ] STEP 8: tests cover happy path, validation, not-found, conflict, timeout, every valid and invalid transition, valid / invalid / missing webhook signature, a duplicate proving the side effect ran once, and another principal's resource
+- [ ] STEP 9: build, vet (both tag sets), and race tests pass - or, when only `-race` cannot run, `go test` passed without it and the race runs are labelled unverified - or, when the integration run could not execute, it is labelled unverified in `## Validation` - or, with no toolchain, the static substitute ran and the delivery is labelled `unverified: not compiled`
 
 ## Avoid
 
 - `AutoMigrate` in production
 - Generating code before design approval
 - `ShouldBindJSON` on webhook endpoints
-- Returning 4xx for a duplicate webhook event (provider will retry forever)
+- Returning 4xx for a duplicate webhook event (a retrying provider keeps redelivering it)
 - Fixing a pre-existing defect the feature can compile and run without

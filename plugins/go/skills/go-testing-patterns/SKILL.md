@@ -9,7 +9,7 @@ user-invocable: false
 
 # Go Testing Patterns
 
-> Load `Use skill: stack-detect` first. This skill reads `Database` - the production engine the integration rule binds to; the Go version is the `go` directive in `go.mod` (a `## Tech Stack` `Language:` line may carry a version; the directive wins when they differ). Baseline: Go 1.25+ (`t.Context`, `b.Loop`, `synctest.Test`), testcontainers-go v0.35+ (`postgres.Run`, `BasicWaitStrategies`, `TerminateContainer`, `CleanupContainer`), testify v1.10+, stripe-go v82.1+ (`stripe.NewClient`).
+> Load `Use skill: stack-detect` first. This skill reads `Database` - the production engine the integration rule binds to; the Go version is the `go` directive in `go.mod` (a `## Tech Stack` `Language:` line may carry a version; the directive wins when they differ). In a multi-module repository (`go.work`, or several `go.mod`) the module under review decides: its own `go` directive and, when stack-detect's primary stack is another module, its own `require` lines in place of the detected values. A form that needs a newer Go version than that directive is written in its older equivalent. Baseline: Go 1.25+ (`t.Context`, `b.Loop`, `synctest.Test`), testcontainers-go v0.35+ (`postgres.Run`, `BasicWaitStrategies`, `TerminateContainer`, `CleanupContainer`), testify v1.10+, stripe-go v82.1+ (`stripe.NewClient`). A test dependency whose own `go` line is newer than the module's raises the directive on `go get` (testcontainers-go v0.35 needs Go 1.22): say so in the plan, or pin a release that fits.
 
 ## When to Use
 
@@ -62,6 +62,8 @@ func TestPaymentTransition(t *testing.T) {
 ```
 
 ### Handler Tests (httptest)
+
+The router below is Gin's; under another framework build its router and drive it the same way (Echo: `e := echo.New()`, then `e.ServeHTTP(rec, req)`).
 
 ```go
 func TestGetUser_NotFound(t *testing.T) {
@@ -203,7 +205,7 @@ func TestMain(m *testing.M) {
     gin.SetMode(gin.TestMode)
     ctx := context.Background()
     pg, err := postgres.Run(ctx, "postgres:16-alpine",
-        postgres.BasicWaitStrategies()) // v0.35+; the module sets no readiness wait of its own
+        postgres.BasicWaitStrategies()) // the module sets no readiness wait of its own
     if err != nil { _ = testcontainers.TerminateContainer(pg); log.Fatal(err) } // Run can return a container AND an error
     testDB = mustSetupDB(pg) // migrations run once
     code := m.Run()
@@ -310,6 +312,8 @@ go test -tags=integration -race -p 2 -parallel 4 ./...           # integration, 
 
 ## Output Format
 
+Open the deliverable with one line above everything else, `**Engine:** {database | unknown}` - stack-detect's `Database` value as written, or under the multi-module rule the engine of the reviewed module's driver.
+
 Emit these headings, in this order, for the engagement:
 
 | Engagement | Headings |
@@ -334,7 +338,7 @@ Emit these headings, in this order, for the engagement:
 |-----------|---------|----------|
 ```
 
-Cell values: `Layer` is `handler | middleware | service | repository | worker | client | ci` - `client` for outbound HTTP and producer tests. `Type` is `unit | handler | integration | job | benchmark | validation` - `validation` for a test that exercises DTO binding only, `integration` also for schema, query-plan and contention assertions, `unit` for a test of a test-local helper; table-driven is a style, named in `Key Scenarios`, not a `Type`. `Count` is test functions / subtest cases (`3 / 14`; a function with no subtests is `1 / 0`); for tests the design proposes, a delta (`+2 / +9`); when the inventory was not supplied, deltas only. `Strategy` is `function-field fake | hand-written mock | generated mock | real (container) | real (in-process broker) | real (substitute engine) | httptest server | not mocked` - `hand-written mock` covers `testify/mock`, `real (in-process broker)` is `kfake` or `miniredis`, `real (substitute engine)` is SQLite standing in for Postgres and is always paired with a finding, `not mocked` a concrete dependency used as-is (its `Interface` cell names the type). `Package` is the package that declares the interface - the consumer. `Builder` is `none (literal)` when tests construct the value inline. A table with no rows emits one row reading `(none)` with the reason, never an empty table. A cell the input does not supply is `unknown` and a column that does not apply to the row is `n/a`, whichever enum the column carries. `**Failing:**` names the symptoms; `**First fix:**` the one change the others depend on.
+Cell values: `Layer` is `handler | middleware | service | repository | worker | client | ci` - `client` for outbound HTTP and producer tests, `ci` for one row per CI or Makefile test invocation (`Type` and `Count` `n/a`, its flags in `Key Scenarios`). `Type` is `unit | handler | integration | job | benchmark | validation` - `validation` for a test that exercises DTO binding only, `integration` also for schema, query-plan and contention assertions, `unit` for a test of a test-local helper; table-driven is a style, named in `Key Scenarios`, not a `Type`. `Count` is test functions / subtest cases (`3 / 14`; a function with no subtests is `1 / 0`); for tests the design proposes, a delta (`+2 / +9`); when the inventory was not supplied, deltas only. `Strategy` is `function-field fake | hand-written mock | generated mock | real (container) | real (in-process broker) | real (substitute engine) | httptest server | not mocked` - `hand-written mock` covers `testify/mock` and a fixed-return stub, `real (in-process broker)` is `kfake` or `miniredis`, `real (substitute engine)` is SQLite standing in for Postgres and is always paired with a finding, `not mocked` a concrete dependency used as-is (its `Interface` cell names the type). `Package` is the package that declares the interface (the consumer, when the code follows the convention). `Builder` is `none (literal)` when tests construct the value inline. A table with no rows emits one row reading `(none)` with the reason, never an empty table. A cell the input does not supply is `unknown` and a column that does not apply to the row is `n/a`, whichever enum the column carries. `**Failing:**` names the symptoms; `**First fix:**` the one change the others depend on.
 
 Every finding carries exactly one label:
 
@@ -348,7 +352,7 @@ Every finding carries exactly one label:
 - Fix: {rewritten test code; for a CI or Makefile finding the corrected line; for an owned-by block the production change in one clause}
 ```
 
-`[Must]` when a test passes while the behavior it names is broken, fails without a code change (a timing wait, a captured signature), panics on its own failure path, races, leaks state into other tests, or a CI or Makefile setting masks failures (dropping `-race`, `-short` that never skips); `[Recommend]` otherwise. A missing test cites the production symbol as `<test file>:<missing Test...>`. Cite `file:line` when the input carries line numbers (a workflow file or Makefile is a file like any other), `file:<symbol>` when it does not; a range is `file:start-end`. Order `[Must]` first, then by file in the order the input listed them, then line. With no findings, `## Findings` holds the single line `None.` One root cause at several sites (TRUNCATE in every test) is one heading citing the first site, with the rest named on the `Defect:` line; one failure signature with one cause is one finding. A defect in the production code that a test exposes (a signature over the wrong bytes, a goroutine that outlives the request) is still reported, never dropped: one block per such defect after the owned findings, in the same file-then-line order, labelled by the criteria above, with its `Rule:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
+Owned findings: `[Must]` when a test passes while the behavior it names is broken, fails without a code change (a timing wait, a captured signature), panics on its own failure path, races, leaks state into other tests, or a CI or Makefile setting masks failures (dropping `-race`, `-short` that never skips); `[Recommend]` otherwise. A missing test cites the production symbol as `<test file>:<missing Test...>`. Cite `file:line` when the input carries line numbers (a workflow file or Makefile is a file like any other), `file:<symbol>` when it does not; a range is `file:start-end`. Order owned findings `[Must]` first, then by file in the order the input listed them, then line. With no findings, `## Findings` holds the single line `None.` One root cause at several sites (TRUNCATE in every test) is one heading citing the first site, with the rest named on the `Defect:` line; one failure signature with one cause is one finding. A defect in the production code that a test exposes (a signature over the wrong bytes, a goroutine that outlives the request) is still reported, never dropped: one block per such defect after every owned finding, in that same order among themselves, labelled `[Must]` when it risks incorrect behaviour, data loss or a security hole and `[Recommend]` otherwise, with its `Rule:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
 
 ## Avoid
 

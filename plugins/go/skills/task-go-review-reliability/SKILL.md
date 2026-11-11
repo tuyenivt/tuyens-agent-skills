@@ -41,7 +41,7 @@ At `deep`, trace each new or changed dependency's failure path with `failure-pro
 
 **Whole-service sweep** (resilience-debt pass with no feature branch, and the mode a "sweep before peak season" request asks for). When Step 3 fails fast on trunk, do not stop - skip the diff gate, keep Step 3's round paragraph (keyed to this lens's checkpoint on the trunk), and run Steps 4-14 repo-wide at `HEAD` (Step 12 confirmation-only, Step 13 on round 2+). Step 4's categories are read in full rather than per changed file, and every diff-worded rule downstream (the ripple clause, Step 4's `ops-resiliency` load gate) reads against the whole surface instead. Findings cite current code and are pre-existing by construction; a defect that is dormant today (an unreachable code path, a client no caller uses) keeps its severity, with the reachability stated under `Assumption`. Three things the sweep changes:
 
-- **Refs.** The precondition emits no handle on a fail-fast, so resolve the writer's inputs directly: `branch` = `base_ref` = `head_ref` = the trunk branch name, `base_sha` = `head_sha` = the full `git rev-parse <trunk>` - when the current branch is not the trunk, stop and ask the user to check out the trunk or name a feature branch; `scope` / `stack` as on a diff review. The fail-fast also returns no `prior_checkpoint`: read the frontmatter of `review-reliability-<sanitized trunk>.md` in the repo root yourself, with `review-precondition-check`'s filename and validity rules, and use it as `report_path` / `prior_checkpoint` for Step 3's round paragraph and Step 13; Step 13's `diff` / `name_status` then span `<prior_head_sha>...<trunk sha>` with `<prior_head_sha>` as the reconciler's `base_ref`, overriding its full-range inputs: a sweep has no base, so the commits since the prior sweep separate touched files from untouched ones.
+- **Refs.** The precondition emits no handle on a fail-fast, so resolve the writer's inputs directly: `branch` = `base_ref` = `head_ref` = the trunk branch name, `base_sha` = `head_sha` = the full `git rev-parse <trunk>` - when the current branch is not the trunk, stop and ask the user to check out the trunk or name a feature branch; `scope` / `stack` as on a diff review. The fail-fast also returns no `prior_checkpoint`: read the frontmatter of `review-reliability-<sanitized trunk>.md` in the repo root yourself, with `review-precondition-check`'s filename and validity rules, and use it as `report_path` / `prior_checkpoint` for Step 3's round paragraph and Step 13; Step 13's `diff` / `name_status` (read with `-M`) then span `<prior_head_sha>...<trunk sha>` with `<prior_head_sha>` as the reconciler's `base_ref`, overriding its full-range inputs: a sweep has no base, so the commits since the prior sweep separate touched files from untouched ones.
 - **Verify attribution.** Run `review-finding-verify` for confirmation only - its Step 1, against the code at `HEAD`, with an empty `diff`. **Skip its attribution and de-escalation.** With no diff, every finding attributes `Pre-existing` and every `[Must]` de-escalates, which would empty a debt sweep of the blockers it exists to surface. Labels come from the tier; every heading carries `_(pre-existing)_` plus any annotation the confirmation returned. Tally `<N> confirmed, - reattributed, <U> unverified, <K> dropped`.
 - **Depth.** A sweep defaults to `deep`: the Failure-Mode and Blast-Radius Map is the per-dependency loop-breaker table a standing-debt pass is asking for. Pass `standard` explicitly to suppress it.
 
@@ -55,7 +55,7 @@ At `deep`, trace each new or changed dependency's failure path with `failure-pro
 
 Append `deep` to request the deep pass (e.g. `/task-go-review-reliability <branch> deep`).
 
-**Subagent runs** (e.g. spawned by `task-go-review`). The parent passes the precondition handle, `base_ref` / `head_ref`, `base_sha` / `head_sha`, the pre-read diff and commit log, depth, the pre-confirmed stack, the data-access mix, messaging, and the acceptance criteria when a requirement source resolved. Steps 2 and 3 accept those instead of re-running - never re-run git. Steps 12 and 13 are skipped (the parent verifies and reconciles the merged set once): labels come from the tier, a finding whose cited line the diff did not add carries `_(pre-existing)_`, plus `_(unverified: <reason>)_` when the evidence rule assigned it, and no `newly reachable via` (the parent's verify adds that) so the parent's verify pass starts from it, and the `Findings verified` and `Round` lines are omitted. Step 14 returns the whole Output Format - Summary (`Depth` as the parent passed it), Findings, Out of Lens, Recommendations, Verified Clean, Next Steps, the `deep` Map - not the findings alone, and writes nothing.
+**Subagent runs** (e.g. spawned by `task-go-review`). The parent passes the precondition handle, `base_ref` / `head_ref`, `base_sha` / `head_sha`, the pre-read diff and commit log, depth, the pre-confirmed stack, the data-access mix, messaging, and the acceptance criteria when a requirement source resolved. Steps 2 and 3 accept those instead of re-running - never re-run git. Steps 12 and 13 are skipped (the parent verifies and reconciles the merged set once): labels come from the tier, a finding whose cited line the diff did not add carries `_(pre-existing)_` and no `newly reachable via` (the parent's verify adds that) so the parent's verify pass starts from it, and the `Findings verified` and `Round` lines are omitted. Step 14 returns the whole Output Format - Summary (`Depth` as the parent passed it), Findings, Out of Lens, Recommendations, Verified Clean, Next Steps, the `deep` Map - not the findings alone, and writes nothing.
 
 **Envelope precedence.** Every atomic this workflow loads declares its own Output Format, several with their own `## Findings`. They are rule sets here, not deliverables: emit this skill's Output Format only. Their blockquoted `Load stack-detect first` lines are satisfied by Step 2. Where a check below and a loaded atomic disagree, the sentence names which wins.
 
@@ -63,21 +63,21 @@ Append `deep` to request the deep pass (e.g. `/task-go-review-reliability <branc
 
 ### Step 1 - Load Behavioral Principles
 
-Use skill: `behavioral-principles`. A subagent loads it too, unless the spawning prompt inlined its Rules.
+Use skill: `behavioral-principles`. A subagent loads it too, unless the spawning prompt inlined its whole Rules section and its unverifiable-change disclosure, as that skill specifies.
 
 ### Step 2 - Confirm Stack
 
 Use skill: `stack-detect`. Accept a pre-confirmed stack from a parent and skip detection. If not Go, stop and route the user to `/task-code-review-reliability`.
 
-Versions come from `go.mod` - the Go version from the `go` directive, Gin / GORM / sqlx from the `require` lines - and override any version a `## Tech Stack` line declared (this step's one departure from `stack-detect`'s instruction-file precedence). `Data Access` is GORM / sqlx / database/sql, or `mixed - GORM <v> + sqlx <v>` when both are required. `Messaging` is `Asynq`, `Kafka`, `Asynq + Kafka`, or `none`, from `go.mod`: `hibiken/asynq` for Asynq; `twmb/franz-go`, `IBM/sarama` (`Shopify/sarama` before v1.40.0), `segmentio/kafka-go` or `confluentinc/confluent-kafka-go` for Kafka.
+Versions come from `go.mod` - the Go version from the `go` directive, the HTTP framework / GORM / sqlx from the `require` lines - and override any version a `## Tech Stack` line declared (this step's one departure from `stack-detect`'s instruction-file precedence); in a multi-module repository the module under review decides, its `go.mod` read in place of the detected primary stack. The `Stack` slot is `stack-detect`'s rendering with those versions added - the `go` directive as written, a `require` version without its leading `v` (`Go 1.25.0 / Echo 4.12.0`, `Go 1.25.0 (no framework detected)`), and the writer's `stack` is `go-<framework>` lowercased (`go-gin`, `go-echo`; `go` when there is none). The checks below name Gin constructs; on another framework apply each to that framework's equivalent and skip one that has none. `Data Access` is GORM / sqlx / database/sql, or `mixed - GORM <v> + sqlx <v>` when both are required. `Messaging` is `Asynq`, `Kafka`, `Asynq + Kafka`, or `none`, from `go.mod`: `hibiken/asynq` for Asynq; `twmb/franz-go`, `IBM/sarama` (`Shopify/sarama` before v1.40.0), `segmentio/kafka-go` or `confluentinc/confluent-kafka-go` for Kafka.
 
 ### Step 3 - Resolve the Diff and Round
 
 Standalone only - skip the whole step, SHA capture included, when running as a subagent with handle + artifacts pre-passed.
 
-Use skill: `review-precondition-check` with `report_type: review-reliability`. A trunk fail-fast switches to the whole-service sweep under **Depth**; any other fail-fast: surface verbatim and stop. Read `git diff <base>...<head>`, `git diff --name-status <base>...<head>` and `git log <base>..<head>` once and reuse. Capture `base_sha = git rev-parse <base_ref>` and `head_sha = git rev-parse <head_ref>` (full SHAs). The writer's `branch` is the handle's `head_short_name`.
+Use skill: `review-precondition-check` with `report_type: review-reliability`. A trunk fail-fast switches to the whole-service sweep under **Depth**; any other fail-fast: surface verbatim and stop. On success, print each handle `notes` entry in chat, one line each, before the report body (nothing when it has none; the handle itself stays internal). Capture `base_sha = git rev-parse <base_ref>` and `head_sha = git rev-parse <head_ref>` (full SHAs) and resolve the round below; only then read `git diff <base>...<head>`, `git diff -M --name-status <base>...<head>` and `git log <base>..<head>`, once, for reuse. The writer's `branch` is the handle's `head_short_name`.
 
-**Resolve the round from the handle, before any surface is read.** No `prior_checkpoint`, or `prior_checkpoint: legacy` -> `round: 1`. Valid -> `round = prior_checkpoint.round + 1`, `prior_head_sha = prior_checkpoint.head_sha`. **When `prior_checkpoint.head_sha` equals the current `head_sha` and no deeper depth than `prior_checkpoint.depth` was requested, print `No new commits on <branch> since prior reliability review at <sha_short>. Prior report unchanged.` and stop** - do not re-review and do not overwrite. On a genuine round 2+, re-review the full range; Step 13 reconciles the prior findings.
+**Resolve the round from the handle, before any surface is read.** No `prior_checkpoint`, or `prior_checkpoint: legacy` -> `round: 1`. Valid -> `round = prior_checkpoint.round + 1`, `prior_head_sha = prior_checkpoint.head_sha`. **When `prior_checkpoint.head_sha` equals the current `head_sha` and no deeper depth than `prior_checkpoint.depth` was requested, print `No new commits on <branch> since prior reliability review at <sha_short>. Prior report unchanged.` and stop** - do not re-review and do not overwrite (`<sha_short>` is the first 7 characters of `head_sha`). On a genuine round 2+, re-review the full range; Step 13 reconciles the prior findings.
 
 ### Step 4 - Read the Reliability Surface
 
@@ -95,7 +95,7 @@ Use skill: `ops-resiliency` for the canonical timeout / retry / breaker / bulkhe
 
 **Config the code reads but the deployment does not set** is in scope here: a base URL, DSN, or credential introduced in the diff and absent from the deploy manifest fails every call at runtime rather than at boot. Check the manifest for each new setting the wiring reads, and say so when the manifest is not in the repo.
 
-**Defects outside the diff or the lens.** A defect on a line the diff did not add: in this lens and made newly reachable or load-bearing by the diff -> a finding (Step 12 attributes it); in this lens and untouched by the diff -> a finding at its tier label with `_(pre-existing)_` (Step 12 de-escalates it to `[Recommend]`; on a subagent run the parent's verify does), at most the three most consequential on a diff review (a sweep publishes every one), the rest one line each under `## Out of Lens`; owned by another lens (a correctness bug, a leaked secret, a missing index) -> `## Out of Lens` with `file:line` and the owning lens. Out of Lens items never enter Next Steps. A finding that spans two files (a pool constant shared by two `main`s) anchors on the line that executes the failure and names the other file in `Issue`.
+**Defects outside the diff or the lens.** A defect on a line the diff did not add: in this lens and made newly reachable or load-bearing by the diff -> a finding (Step 12 attributes it); in this lens and untouched by the diff -> a finding at its tier label with `_(pre-existing)_` (Step 12 de-escalates it to `[Recommend]`; on a subagent run the parent's verify does), at most the three most consequential (highest tier first) on a diff review, counting only findings this round publishes for the first time (a sweep publishes every one), the rest one line each under `## Out of Lens`; owned by another lens (a correctness bug, a leaked secret, a missing index) -> `## Out of Lens` with `file:line` and the owning lens. Out of Lens items never enter Next Steps. A finding that spans two files (a pool constant shared by two `main`s) anchors on the line that executes the failure and names the other file in `Issue`.
 
 Gating skips atomic loads, never checklist rows. Every checklist row below runs on this skill's own text regardless of which atomics loaded; a row goes N/A only when the diff has no matching surface (the Self-Check rule).
 
@@ -121,7 +121,7 @@ resp, err := s.client.Do(req) // s.client = &http.Client{Timeout: 3*time.Second,
 ### Step 6 - Retries
 
 - [ ] **Bounded backoff with jitter** - `cenkalti/backoff` (`NewExponentialBackOff` adds jitter) or a manual capped loop; never an uncapped `for` retry. On v4: `WithMaxRetries` + `backoff.WithContext(b, ctx)` so retries stop on cancellation. On v5 both wrappers are gone: `backoff.Retry(ctx, op, backoff.WithBackOff(b), backoff.WithMaxTries(n))`, with ctx cancellation built in. Read the major version from `go.mod`.
-- [ ] **Transient + idempotent only** - retry 500 / 502 / 503 / 504, timeouts, `context.DeadlineExceeded`, connection resets, and 429 / 408 / 425, classified via `errors.Is`; a `Retry-After` header replaces the computed backoff, and a value beyond the remaining deadline means abandon, not wait; no other 4xx except, per `ops-resiliency`, a 409 carrying `Retry-After`, a 401 after one token refresh, and 412 / 423 after re-reading the state; never a non-idempotent write without an idempotency key (Step 8).
+- [ ] **Transient + idempotent only** - retry 500 / 502 / 503 / 504, timeouts, `context.DeadlineExceeded`, connection resets, and 429 / 408 / 425, classified via `errors.Is`; a `Retry-After` header replaces the computed backoff, and a value beyond the remaining deadline means abandon, not wait; no other 4xx except, per `ops-resiliency`, a 409 answering a request that carried an idempotency key, a 401 after one token refresh, and 412 / 423 after re-reading the state; never a non-idempotent write without an idempotency key (Step 8).
 - [ ] **Retry amplification bounded** - chained services do not each retry independently (N x M call blowup); a per-request retry budget is decremented and passed downstream.
 - [ ] **Non-retryable errors escape** - wrap them with `backoff.Permanent(err)` so the loop exits immediately instead of burning the budget.
 
@@ -131,14 +131,14 @@ resp, err := s.client.Do(req) // s.client = &http.Client{Timeout: 3*time.Second,
 - [ ] **Bounded fan-out** - `errgroup.WithContext` + `g.SetLimit(N)` or `golang.org/x/sync/semaphore.Weighted`; unbounded per-request goroutine fan-out exhausts the scheduler, FDs, and the pool. N/A only when the fan-out is a fixed set of legs rather than one per item.
 - [ ] **Optional legs separated from required ones** - `errgroup` cancels siblings on first error, so an optional downstream inside it fails the whole request. Use a separate `sync.WaitGroup` for optional legs, waited on every return path. Checked independently of the bound above: a fixed four-leg fan-out needs no `SetLimit` and can still be fatally mixed.
 - [ ] **Bulkhead isolation** - a worker pool or semaphore per downstream so one slow dependency cannot consume the concurrency budget others share (a Go bulkhead is a bounded semaphore / dedicated pool, not a thread pool).
-- [ ] **Acquire before spawn** - the limit / semaphore is taken before `go func()`; acquiring inside the goroutine spawns all N immediately and ignores `ctx` while blocked.
+- [ ] **Acquire before spawn** - the limit / semaphore is taken before `go func()`; acquiring inside the goroutine spawns all N immediately, and a bare channel-send acquire there ignores `ctx` while blocked.
 
 ### Step 8 - Idempotency and Delivery Semantics
 
 Use skill: `go-data-access` for post-commit dispatch, the transactional outbox, and idempotent upsert. Use skill: `go-messaging-patterns` for Asynq / Kafka delivery. Use skill: `backend-idempotency` for key strategy and atomic dedup.
 
 - [ ] **Idempotency keys** on money / notification / provisioning side effects; dedup is atomic - a unique constraint + `clause.OnConflict{DoNothing: true}` (or a `request_idempotency` table), not a read-then-write race.
-- [ ] **No in-transaction dual write** - `tx.Create(...)` + `asynq.Enqueue(...)` / `kafka.Produce(...)` inside one `db.Transaction(...)` can commit the row and lose the publish, or enqueue then roll back and orphan the task. Dispatch **after** the transaction returns nil, or use a transactional outbox (`FOR UPDATE SKIP LOCKED` relay). GORM `AfterCreate` / `AfterUpdate` hooks fire inside the tx - same hazard.
+- [ ] **No in-transaction dual write** - `tx.Create(...)` + an Asynq `client.Enqueue(...)` / a Kafka produce inside one `db.Transaction(...)` can commit the row and lose the publish, or enqueue then roll back and orphan the task. Dispatch **after** the transaction returns nil, or use a transactional outbox (`FOR UPDATE SKIP LOCKED` relay). GORM `AfterCreate` / `AfterUpdate` hooks fire inside the tx - same hazard.
 - [ ] **Idempotent consumers** - Asynq / Kafka deliver at least once; handlers re-fetch state, check, and return early on replay. `asynq.TaskID(businessKey)` dedups at enqueue; the handler must still be replay-safe. For retries and consumers alike: High when the duplicated or lost effect is financial or irreversible (charge, email, webhook), Medium when it is a recoverable database write, per `backend-idempotency`.
 - [ ] **DLQ / archive with bounded retry** - poison tasks land in Asynq's archive (its dead set) after capped `asynq.MaxRetry(N)` (`asynq.SkipRetry` archives a permanent failure immediately), or in a Kafka DLQ topic; no infinite in-place redelivery. Archive depth is monitored - an unwatched dead set is where a systematic failure goes to be invisible.
 - [ ] **Shutdown budget exceeds the longest task timeout** - `asynq.Config.ShutdownTimeout` defaults to **8 seconds** when unset, so any task with a longer `Timeout` is cut off on every rolling deploy and requeued to pending by `Shutdown` (after a SIGKILL, recovered on lease expiry as a counted retry). Ordering: task `Timeout` < `ShutdownTimeout` < platform grace period. This is what turns a non-idempotent handler from a rare race into a scheduled one.
@@ -151,6 +151,8 @@ Use skill: `go-data-access` for post-commit dispatch, the transactional outbox, 
 - [ ] **No unbounded queueing** - a Go channel's capacity is fixed at `make`; unbounded queueing is a slice- or list-backed job buffer, or a goroutine parked per pending send. Each has a cap; when full it rejects or blocks a bounded time.
 
 ```go
+var ErrBusy = errors.New("worker pool saturated")
+
 // Bad - blocks the request goroutine when the worker pool is saturated
 jobs <- job
 
@@ -183,32 +185,32 @@ Cross-aggregate consistency rule (inlined on purpose - do not re-delegate this t
 - [ ] **Panic safety** - Gin `Recovery()` middleware on the request path, AND a deferred `recover()` (or `sentry.Recover()`) at every goroutine boundary outside the request. A panic in a spawned goroutine crashes the whole process; Gin's recovery does not cover it.
 - [ ] **Crash-safe side effects** - a multi-step side effect interrupted mid-way leaves recoverable state (outbox pending, an idempotency-guarded re-run), not a half-applied change. Post-commit dispatch a crash can drop is acceptable only if the operation is re-drivable.
 - [ ] **Readiness on pod-local state only** - the readiness probe gates on a draining flag and initialised pools, so an unready replica sheds traffic it cannot serve; a readiness check that pings a shared dependency (DB, Redis) removes every replica when that dependency blips and is the High finding in this lens - this wins over `go-gin-patterns`' `Ready` example. Liveness stays dependency-free (probe-wiring depth -> `task-go-review-observability`).
-- [ ] **Migration rollout safety** - write-path migrations are expand-then-contract so a rollback does not corrupt in-flight writes (use skill: `go-migration-safety`, `ops-backward-compatibility`); a migration taking `ACCESS EXCLUSIVE` or `SHARE ROW EXCLUSIVE` on a hot table without `SET LOCAL lock_timeout` at the top of the file (up and down) is High, per `go-migration-safety`.
+- [ ] **Migration rollout safety** - write-path migrations are expand-then-contract so a rollback does not corrupt in-flight writes (use skill: `go-migration-safety`; use skill: `ops-backward-compatibility`); a migration taking `ACCESS EXCLUSIVE` or `SHARE ROW EXCLUSIVE` on a hot table without `SET LOCAL lock_timeout` at the top of the file (up and down) is High, per `go-migration-safety`.
 
 ### Step 12 - Verify Findings
 
 Assign each draft finding its label first (High -> `[Must]`, Medium / Low -> `[Recommend]`, escalating per the severity rules below), since `review-finding-verify` takes labelled findings and returns adjusted ones.
 
-Use skill: `review-finding-verify` with those findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`. **The label it returns is final** - never re-derive one from the severity tier afterwards. Carry its `Annotation` column verbatim onto the finding heading (`_(pre-existing)_`, `_(pre-existing; newly reachable via <file:line>)_`, `_(unverified: <reason>)_`, `_(mechanism: <actual>)_`) and its tally into the Summary's `Findings verified` slot. The verify table is working material; only the tally and the surviving rows' labels and annotations reach the report. Subagent runs skip this step entirely (see Invocation); whole-service sweeps run confirmation only, per the Depth clause.
+Use skill: `review-finding-verify` with those findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`. **The label it returns is final** - never re-derive one from the severity tier afterwards. Carry its `Annotation` column verbatim onto the finding heading (`_(pre-existing)_`, `_(pre-existing; newly reachable via <file:line>)_`, `_(unverified: <reason>)_`, `_(mechanism: <actual>)_`) and its tally into the Summary's `Findings verified` slot; the tally counts this round's drafts only. A finding on a file the name-status does not list gets `_(pre-existing)_`, written first, unless its annotations already have a group opening `pre-existing` or `unverified`. The verify table is working material; only the tally and the surviving rows' labels and annotations reach the report. Subagent runs skip this step entirely (see Invocation); whole-service sweeps run confirmation only, per the Depth clause.
 
 **Attribution when the diff changes the load, not the code.** `Pre-existing (newly reachable)` also covers an unchanged shared resource the diff makes newly load-bearing - a pool whose holds now span a broker round trip, a breaker whose dependency the diff put on the request path. No new caller is required; the character of the load changed. Cite the diff line that changed the load as the `via <file:line>` site, and retain the label rather than de-escalating.
 
 ### Step 13 - Reconcile Prior Findings (round 2+, standalone)
 
-Skip on round 1. Otherwise read the prior report at the handle's `report_path` and project its findings into the reconciler's shape: `## High-Impact Findings` holding one `### [<Label>] <file:line>` heading per finding followed by an `Issue:` line, label and `file:line` copied from the `#### <n>. [Label] file:line - <title>` heading, annotations as separate `_(...)_` groups (`_(pre-existing; newly reachable via X)_` becomes `_(pre-existing)_ _(newly reachable via X)_`). Use skill: `review-prior-findings-reconcile` with `prior_report` (the projection), `diff`, `name_status`, `head_sha`, `base_ref`, and `head_files` (`git ls-tree -r --name-only <head_sha>`). Insert its table under `## Prior Round Reconciliation`. `Still open` and `Needs re-check` rows re-enter `## Findings` under the impact heading they were last published under (this round's tier when re-drafted), with the label and every annotation group they were last published with plus `_(carried from round <N>)_` (N = the round that first raised it, written once) on the heading; when this round re-drafted the same defect at the same site, publish only the re-drafted finding with that annotation appended. The table keeps the prior label and line verbatim.
+Skip on round 1. Otherwise read the prior report at the handle's `report_path` and project its findings into the reconciler's shape: `## High-Impact Findings` holding one `### [<Label>] <file:line>` heading per finding followed by an `Issue:` line, label and `file:line` copied from the `#### <n>. [Label] file:line - <title>` heading, annotations as separate `_(...)_` groups (`_(pre-existing; newly reachable via X)_` becomes `_(pre-existing)_ _(newly reachable via X)_`). Use skill: `review-prior-findings-reconcile` with `prior_report` (the projection), `diff`, `name_status`, `head_sha`, `base_ref`, and `head_files` (`git ls-tree -r --name-only <head_sha>`). Insert its output - the table, any note lines, the tally line - under `## Prior Round Reconciliation`. `Still open` and `Needs re-check` rows re-enter `## Findings` with the body the prior report gave them, cited where reconcile places the smell now, under the impact heading they were last published under (this round's tier when re-drafted; the higher tier when the prior heading combined two), with the label and every annotation group they were last published with (`_(pre-existing)_` written first when the name-status does not list the file and no group opens `pre-existing` or `unverified`) plus `_(carried from round <N>)_` (N = the round that first raised it, written once) on the heading; when this round re-drafted the same defect at the same site, publish only the re-drafted finding with that annotation appended. The table keeps the prior label and line verbatim.
 
 ### Step 14 - Write Report
 
 Standalone only - subagent runs return the Output Format to the parent, which writes the single merged report.
 
-Use skill: `review-report-writer` with `report_type: review-reliability` and every required input: `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` from the handle, `base_sha` / `head_sha` from Step 3 (whole-service sweep: all five resolved per the Depth clause), `stack: go-gin`, `scope: +rel`, `depth` as resolved from the Depth table, `mode: full`, and the `round` / `prior_head_sha` resolved in Step 3. Write before ending; print confirmation.
+Use skill: `review-report-writer` with `report_type: review-reliability` and every required input: `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` from the handle, `base_sha` / `head_sha` from Step 3 (whole-service sweep: all five resolved per the Depth clause), `stack` per Step 2, `scope: +rel`, `depth` as resolved from the Depth table, `mode: full`, and the `round` / `prior_head_sha` resolved in Step 3. Write before ending; print confirmation.
 
 ## Self-Check
 
 Mark a line N/A with its reason when the diff has no matching surface (no messaging, no goroutine fan-out), or when the invocation mode makes it inapplicable (subagent, whole-service sweep, round 1). A row whose subject is absent entirely - no retries anywhere - is N/A for its checks and, when the absence is itself a gap, a finding.
 
-- [ ] Step 1: `behavioral-principles` loaded, or rules inlined in the spawning prompt
-- [ ] Step 2: stack confirmed Go 1.25+ / Gin (or accepted from parent); versions from `go.mod`; data access and messaging recorded
+- [ ] Step 1: behavioral-principles loaded
+- [ ] Step 2: stack confirmed (or accepted from parent); versions from `go.mod`; data access and messaging recorded
 - [ ] Step 3: `review-precondition-check` ran with `report_type: review-reliability` (or handle received; or trunk fail-fast routed to the sweep); diff, name-status and log read once; `base_sha` / `head_sha` captured; round resolved from the handle (sweep: from the self-read checkpoint); same-SHA no-op honoured; approval obtained when `head_matches_current` was false
 - [ ] Step 4: surface categories read, full `go.mod` and manifest consulted; `ops-resiliency` loaded per the gate; `failure-propagation-analysis` used for blast radius; defects outside the diff or lens routed per the Step 4 rule
 - [ ] Step 5: `ctx` propagation, per-call deadline, `http.Client` timeout + transport, chained budget, `ctx.Err()` honored
@@ -234,12 +236,12 @@ Labels: High -> `[Must]`; Low -> `[Recommend]`; Medium -> `[Recommend]`, escalat
 
 **One finding per root cause, where the unit is the edit that fixes it.** A defect satisfying several checklist items (an unbounded fan-out hits Steps 7 and 10) is one finding at the strongest severity. Several defects in one construct that one rewrite resolves - a detached goroutine that is also unbounded and also unrecovered - are likewise one finding; enumerate them (a)/(b)/(c) inside `Failure Mode` and `Blast Radius`, and count it once in `Overall`. Two defects at one call site that need **separate** fixes, or that survive each other's fix, are two findings. Two instances of one missing policy across different dependencies are one finding when the fix is a shared module, and separate findings when each site must be edited on its own terms.
 
-**Fill rules.** `Overall` counts every published finding, dormant ones included. `Findings verified` is omitted on subagent runs, its parenthetical when K is 0; a sweep writes `-` for reattributed. `Review shape` appears only on a sweep. `Resilience Libraries` lists, among `sony/gobreaker`, `cenkalti/backoff`, `golang.org/x/sync` and `golang.org/x/time`, every one `go.mod` declares. Each finding heading is `#### <n>. [Label] file:line - <short title> _(annotations)_` with the label and annotations from Step 12 verbatim (tier-derived label on subagent runs and sweeps; `_(pre-existing)_` on a subagent finding whose line the diff did not add and on every sweep finding, followed by any annotation verify's confirmation returned; `_(carried from round <N>)_` on carried findings); numbering continues across tiers.
+**Fill rules.** `Overall` counts every published finding by tier, dormant ones included; placement is by tier too, so a High finding verify de-escalated to `[Recommend]` stays under `### High Impact`. `Findings verified` is omitted on subagent runs, its parenthetical when K is 0; a sweep writes `-` for reattributed. `Review shape` appears only on a sweep. `Resilience Libraries` lists, among `sony/gobreaker`, `cenkalti/backoff`, `golang.org/x/sync` and `golang.org/x/time`, every one `go.mod` declares. Each finding heading is `#### <n>. [Label] file:line - <short title> _(annotations)_` with the label and annotations from Step 12 verbatim (tier-derived label on subagent runs and sweeps; `_(pre-existing)_` on a subagent finding whose line the diff did not add and on every sweep finding, followed by any annotation verify's confirmation returned; `_(carried from round <N>)_` on carried findings); numbering continues across tiers.
 
 ```markdown
 ## Go Reliability Review Summary
 
-- **Stack Detected:** Go <version> / Gin <version>
+- **Stack:** Go <version> / <framework> <version> | Go <version> (no framework detected)
 - **Data Access:** GORM <version> | sqlx <version> | database/sql | mixed - GORM <version> + sqlx <version>
 - **Messaging:** Asynq | Kafka | Asynq + Kafka | none
 - **Resilience Libraries:** every one detected, comma-separated with versions, each marked `(in use)` or `(declared, unused)`; `none detected` only when there are none
@@ -254,6 +256,8 @@ Labels: High -> `[Must]`; Low -> `[Recommend]`; Medium -> `[Recommend]`, escalat
 | Round <N-1> Finding | file:line | Status | Notes |
 | ------------------- | --------- | ------ | ----- |
 
+<note line>     {one paragraph per note line reconcile emitted; omit when none}
+
 Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## Findings
@@ -262,13 +266,13 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 #### 1. [Must] file:line - <short title> _(annotations)_     {annotation groups only when the Fill rules assign any}
 
-- **Issue:** [name the gap: `http.DefaultClient` with no timeout, missing `context.WithTimeout`, uncapped retry, in-tx `asynq.Enqueue`, unbounded goroutine fan-out, unrecovered panic in a goroutine, etc.]
+- **Issue:** [name the gap: `http.DefaultClient` with no timeout, missing `context.WithTimeout`, uncapped retry, in-tx Asynq `Enqueue`, unbounded goroutine fan-out, unrecovered panic in a goroutine, etc.]
 
 - **Failure Mode:** [what fails and how: "payment-gateway stall blocks the request goroutine indefinitely; each retained request pins a pooled DB conn"]
 
 - **Blast Radius:** [what else is affected: "SetMaxOpenConns(25) exhausts under sustained traffic; every endpoint sharing the pool returns 503"]
 
-- **Fix:** [`http.Client{Timeout}` + `gobreaker`, `context.WithTimeout`, `errgroup.SetLimit`, outbox, idempotency key, `recover()` at the goroutine boundary, etc.]
+- **Fix:** [`http.Client{Timeout}` + `gobreaker`, `context.WithTimeout`, `g.SetLimit` on the `errgroup.Group`, outbox, idempotency key, `recover()` at the goroutine boundary, etc.]
 
 - **Assumption:** [only when the finding rests on something the repo cannot settle - `verify: max_connections unknown`, `assumes no out-of-repo env source`, `dormant: no caller today`]
 
@@ -276,7 +280,11 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 [Same block, numbering continues across tiers]
 
-### Medium Impact / Low Impact
+### Medium Impact
+
+[Same blocks]
+
+### Low Impact
 
 [Same blocks]
 

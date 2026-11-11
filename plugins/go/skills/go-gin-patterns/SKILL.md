@@ -9,7 +9,7 @@ user-invocable: false
 
 # Go Gin Patterns
 
-> Load `Use skill: stack-detect` first. This skill reads `Framework`: when it names another framework (Echo, Chi, net/http) stop and emit the single line `go-gin-patterns: not applicable (<framework>)` - the HTTP-layer patterns here do not transfer; on `unknown` (what a stdlib-only service also detects as) proceed as Gin only when `github.com/gin-gonic/gin` is in `go.mod`, otherwise stop the same way. The Go version is the `go` directive in `go.mod` (a `## Tech Stack` `Language:` line may carry a version; the directive wins when they differ). Baseline: Go 1.25+, Gin v1.10+, stripe-go v82.1+ (`stripe.NewClient`).
+> Load `Use skill: stack-detect` first. This skill reads `Framework`: when it names another framework (Echo, Chi, net/http) stop and emit the single line `go-gin-patterns: not applicable (<framework>)` - the HTTP-layer patterns here do not transfer; on `unknown` (what a stdlib-only service also detects as) proceed as Gin only when `github.com/gin-gonic/gin` is in `go.mod`, otherwise stop the same way. The Go version is the `go` directive in `go.mod` (a `## Tech Stack` `Language:` line may carry a version; the directive wins when they differ). In a multi-module repository (`go.work`, or several `go.mod`) the module under review decides: its own `go` directive and, when stack-detect's primary stack is another module, its own `require` lines in place of the detected values. A form that needs a newer Go version than that directive is written in its older equivalent. A review spanning modules emits that line once per non-Gin module, as `go-gin-patterns: not applicable (<module path>: <framework>)`, above the headings, and covers the Gin ones. Baseline: Go 1.25+, Gin v1.10+, stripe-go v82.1+ (`stripe.NewClient`).
 
 ## When to Use
 
@@ -21,7 +21,7 @@ user-invocable: false
 
 ## Rules
 
-- Handlers orchestrate; services execute. No business logic in handlers - a handler binds, calls one service method, and writes the response. Middleware writes only its own rejection (`AbortWithStatusJSON`) or an idempotent replay of a stored response; every other success body comes from a handler
+- Handlers orchestrate; services execute. No business logic in handlers - a handler binds, calls one service method, and writes the response. Middleware writes only an error response - its own rejection (`AbortWithStatusJSON`), or `ErrorHandler` rendering `c.Errors` after `c.Next()` - or an idempotent replay of a stored response; every other success body comes from a handler
 - Use `gin.New()` with explicit middleware; never `gin.Default()` in production
 - `net.JoinHostPort(host, port)`, never string concat
 - One JSON envelope for success and error on every endpoint that returns a JSON body. Exempt: 204s, probe endpoints, and non-JSON content types (SSE, file downloads) - name each exemption rather than letting shapes drift. An empty body is a 204, never an empty 200
@@ -134,6 +134,7 @@ Untagged fields serialize as `Page` / `PageSize`, which no client expects and wh
 ```go
 limit, offset := q.PageSize, (q.Page-1)*q.PageSize
 users, total, err := svc.List(ctx, limit, offset, q.Status)
+if err != nil { c.Error(err); return }
 c.JSON(http.StatusOK, SuccessResponse{
     Data: users,
     Meta: &OffsetMeta{
@@ -341,7 +342,7 @@ Every finding carries exactly one label:
 - Fix: {concrete edit}
 ```
 
-`[Must]` when the service fails to start, a security control is void or bypassable (a spoofable `ClientIP`, a webhook behind the wrong auth, a non-constant-time compare), work is silently lost, a response makes the sender redeliver an event already processed, or a client-visible contract is wrong; `[Recommend]` otherwise. A deployment manifest is a file like any other (`k8s/api-deployment.yaml:41`). Cite `file:line` when the input carries line numbers, `file:<symbol>` when it does not; a range is `file:start-end`. Order `[Must]` first, then by file in the order the input listed them, then line. With no findings, `## Findings` holds the single line `None.` One root cause at several sites is one heading citing the first site, with the rest named on the `Defect:` line. An incident question is answered inside the `Defect:` line of the finding it concerns. A defect this skill does not own (transactions, goroutines, crypto choice, authorization rules) is still reported, never dropped: one block per such defect after the owned findings, in the same file-then-line order, labelled by the criteria above, with its `Rule:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
+Owned findings: `[Must]` when the service fails to start, a security control is void or bypassable (a spoofable `ClientIP`, a webhook behind the wrong auth, a non-constant-time compare), work is silently lost, a response makes the sender redeliver an event already processed, or a client-visible contract is wrong; `[Recommend]` otherwise. A deployment manifest is a file like any other (`k8s/api-deployment.yaml:41`). Cite `file:line` when the input carries line numbers, `file:<symbol>` when it does not; a range is `file:start-end`. Order owned findings `[Must]` first, then by file in the order the input listed them, then line. With no findings, `## Findings` holds the single line `None.` One root cause at several sites is one heading citing the first site, with the rest named on the `Defect:` line. An incident question is answered inside the `Defect:` line of the finding it concerns. A defect this skill does not own (transactions, goroutines, crypto choice, authorization rules) is still reported, never dropped: one block per such defect after every owned finding, in that same order among themselves, labelled `[Must]` when it risks incorrect behaviour, data loss or a security hole and `[Recommend]` otherwise, with its `Rule:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
 
 ## Avoid
 

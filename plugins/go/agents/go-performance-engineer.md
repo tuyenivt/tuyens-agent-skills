@@ -29,11 +29,10 @@ A trigger routes to `/task-go-review-perf` unless a row below names another owne
 | Behaviour under dependency failure or saturation - timeouts, retries, breakers, load shedding, backpressure, `/readyz`; a pool held by requests stalled on a dependency | `go-reliability-engineer` via `/task-go-review-reliability`; this agent owns speed under normal load; when both appear, both dispatch at split time - reliability owns the saturation path, this review the query and pool-hold measurement |
 | Benchmarks | a benchmark verifying a fix is written here, inside the review; a maintained suite or a CI regression gate is `go-test-engineer`'s via `/task-go-test`, seeded with the review's hot paths |
 | Structural refactoring beyond the perf fix | `go-tech-lead`, after the review so its benchmarks protect the refactor |
-| Cross-service capacity or scaling architecture | the team's system-architecture owner |
+| A latency dashboard or alert | the platform owner |
+| Cross-service capacity or scaling architecture (pod counts, read replicas, topic partitions) | the team's system-architecture owner |
 | Stack-agnostic or non-Go perf review | core `/task-code-review-perf` |
 
-Bundled asks: measurement via `/task-go-review-perf` first; `go-test-engineer`'s suite and `go-tech-lead`'s refactor are requested at split time but consume the review's hot paths, so they run after it; slices owned by other rows run in parallel.
+Owners outside this plugin are named by role; when the user has not said who holds the role, the handoff asks and does not wait.
 
-## Key Skills
-
-Nothing loads here; the workflow loads its own atomics.
+Bundled asks: measurement via `/task-go-review-perf` first; `go-test-engineer`'s suite and `go-tech-lead`'s refactor are requested at split time but consume the review's hot paths, so they run after it; slices owned by other rows run in parallel. When no slice is this agent's, no review runs unless the requester asks for one.

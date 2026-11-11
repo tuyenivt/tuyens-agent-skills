@@ -9,7 +9,7 @@ user-invocable: false
 
 # Go Security Patterns
 
-> Load `Use skill: stack-detect` first. This skill reads `Framework` and `Database`: the binder facts are Gin's (`binding:` tags, `ShouldBind*`) and do not apply under another framework, everything else does; on `Database` `unknown` the examples keep `$1`; placeholders are `$1` on PostgreSQL and `?` on MySQL/SQLite (GORM always takes `?`; sqlx passes SQL through unchanged, so write the driver's style). Baseline: Go 1.25+ (`os.Root`, `crypto/rand.Read` never returns an error, `math/rand` top-level is ChaCha8), Gin v1.10+, GORM v1.25+, golang-jwt/jwt v5, stripe-go v82.1+. SQL parameterization mechanics live in `go-data-access`; error-response shape in `go-error-handling`; router/middleware wiring in `go-gin-patterns`. This skill owns only the security-specific decisions.
+> Load `Use skill: stack-detect` first. This skill reads `Framework` and `Database`: the binder facts are Gin's (`binding:` tags, `ShouldBind*`) and do not apply under another framework - the DTO rule stands and validation is whatever that framework runs (Echo: `validate:` tags through `c.Validate`) - everything else does; on `Database` `unknown` the examples keep `$1`; placeholders are `$1` on PostgreSQL and `?` on MySQL/SQLite (GORM always takes `?`; sqlx passes SQL through unchanged, so write the driver's style). In a multi-module repository (`go.work`, or several `go.mod`) the module under review decides: its own `go` directive and, when stack-detect's primary stack is another module, its own `require` lines in place of the detected values. A form that needs a newer Go version than that directive is written in its older equivalent. Baseline: Go 1.25+ (`os.Root`, `crypto/rand.Read` never returns an error, `math/rand` top-level is ChaCha8), Gin v1.10+, GORM v1.25+, golang-jwt/jwt v5, stripe-go v82.1+. SQL parameterization mechanics live in `go-data-access`; error-response shape in `go-error-handling`; router/middleware wiring in `go-gin-patterns`. This skill owns only the security-specific decisions.
 
 ## When to Use
 
@@ -29,7 +29,7 @@ user-invocable: false
 - Password hashing: `bcrypt.GenerateFromPassword(pw, 12)` (cost >= 10) or `argon2.IDKey(...)`
 - API keys: never store plaintext; hash with sha256 at issuance, compare with `subtle.ConstantTimeCompare`
 - Load secrets from env/secret manager into a typed config struct at startup; fail fast on absence **and** on empty; never log tokens, passwords, JWTs, or PII
-- A retryable write takes a client `Idempotency-Key`, scoped to the principal and bound to a hash of the body: same key + same body replays the first response, same key + different body is `409`, a key from another principal is unknown. The record holds body hash, state (`in_flight | done`), status and response, kept 24h; a same-key request while `in_flight` is `409`, and a `5xx` releases the key. An API-key principal carries its merchant - a request naming another merchant's resource is `404`, exactly as for a JWT principal. The record holds body hash, state (`in_flight | done`), status and response, kept 24h; a same-key request while `in_flight` is `409`, and a `5xx` releases the key. An API-key principal carries its merchant - a request naming another merchant's resource is `404`, exactly as for a JWT principal
+- A retryable write takes a client `Idempotency-Key`, scoped to the principal and bound to a hash of the body: same key + same body replays the first response, same key + different body is `409`, a key from another principal is unknown. The record holds body hash, state (`in_flight | done`), status and response, kept 24h; a same-key request while `in_flight` is `409`, and a `5xx` releases the key; an `in_flight` row older than the handler's timeout (its replica died) is outcome unknown - a sweeper resolves it against the side effect's own record, never a silent re-execution. An API-key principal carries its merchant - a request naming another merchant's resource is `404`, exactly as for a JWT principal
 
 ## Patterns
 
@@ -82,9 +82,8 @@ if err != nil || !token.Valid {
 ```go
 func Required(verify func(raw string) (*Claims, error)) gin.HandlerFunc { // verify wraps the ParseWithClaims call above
     return func(c *gin.Context) {
-        h := c.GetHeader("Authorization")
-        raw, ok := strings.CutPrefix(h, "Bearer ")
-        if !ok {
+        scheme, raw, ok := strings.Cut(c.GetHeader("Authorization"), " ")
+        if !ok || !strings.EqualFold(scheme, "Bearer") { // the scheme is case-insensitive (RFC 9110)
             c.AbortWithStatus(http.StatusUnauthorized)
             return
         }
@@ -309,7 +308,7 @@ exec.Command("sh", "-c", "convert "+userFile+" out.png")
 exec.Command("convert", userFile, "out.png")
 
 // Good - the path is server-generated (the upload's stored name), the binary is from an allowlist,
-// and an explicit format prefix stops the tool reading the name as a coder (convert has no "--")
+// and an explicit format prefix stops the tool reading the name as an option or a coder ("--" guards only a leading "-")
 exec.Command("convert", "png:"+storedPath, "out.png")
 ```
 
@@ -327,7 +326,7 @@ mac := hmac.New(sha256.New, []byte(cfg.WebhookSecret))
 mac.Write(raw)
 got, _ := hex.DecodeString(strings.TrimPrefix(c.GetHeader("X-Hub-Signature-256"), "sha256="))
 if !hmac.Equal(mac.Sum(nil), got) {               // constant-time; compares the decoded MAC, never the header string
-    c.AbortWithStatus(http.StatusBadRequest) // 400, as the providers document; never a 2xx
+    c.AbortWithStatus(http.StatusBadRequest) // 400 (Stripe's samples; GitHub documents no status); never a 2xx
     return
 }
 // Replay: reject a signed timestamp older than the provider's tolerance (Stripe: 5 min) when one exists.
@@ -443,11 +442,11 @@ Every finding carries exactly one severity:
 - Category: {AuthN | AuthZ | Validation | Injection | Crypto | Secrets | SSRF | Traversal | Exposure | Availability}
 - Code: {one-line citation}
 - Attack scenario: {concrete exploit, regression risk, or topology-dependent note}
-- Chain: {locator of the finding this one compounds with}
+- Chain: {locators of the findings this one compounds with, comma-separated}
 - Fix: {concrete Go change with code}
 ```
 
-`Critical` = unauthenticated compromise, cross-tenant or cross-account data access, arbitrary file or command execution; `High` = authenticated privilege escalation, credential disclosure, or a security control that is present but inert; `Medium` = defense-in-depth gap or an information oracle; `Low` = hardening. Judge by what an attacker gains, not by matching the wording. `(unverified)` marks a finding whose impact depends on code the input did not supply - keep the severity the exploit would have and say what to check. `Exposure` covers debug surfaces, profiling endpoints, over-serialized responses, PII, and sensitive values in logs; a correct check at the wrong layer (handler instead of repository) is `Low`; severity is judged at exploit time - a control that makes the path unreachable today goes in `Attack scenario:`, not the label; `Availability` covers missing rate limits, uncapped bodies, and request-path panics. Order by severity, then by file in the order the input listed them, then line; with no findings, `## Findings` holds the single line `None.`; cite `file:line` when the input carries line numbers, `file:<symbol>` or `<area>` when it is a snippet or prose (say so once at the top rather than inventing numbers); a range is `file:start-end`. One root cause at several sites is one heading citing the first site, with the rest named on the `Code:` line. A `Chain:` line exists only on compounding findings - on both of them, each naming the other by locator - and marks them as such (a forged token that then reaches a tenant-scoping gap); each keeps its own severity, and partial remediation of a chain buys much less than the finding count suggests. A defect this skill does not own (a detached goroutine, a transaction held open) is still reported, never dropped: one block per such defect after the owned findings, in the same file-then-line order, labelled by the criteria above, with its `Attack scenario:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
+`Critical` = unauthenticated compromise, cross-tenant or cross-account data access, arbitrary file or command execution; `High` = authenticated privilege escalation, credential disclosure, or a security control that is present but inert; `Medium` = defense-in-depth gap or an information oracle; `Low` = hardening. Judge by what an attacker gains, not by matching the wording. `(unverified)` marks a finding whose impact depends on code the input did not supply - keep the severity the exploit would have and say what to check. `Exposure` covers debug surfaces, profiling endpoints, over-serialized responses, PII, and sensitive values in logs; a correct check at the wrong layer (handler instead of repository) is `Low`; severity is judged at exploit time - a control that makes the path unreachable today goes in `Attack scenario:`, not the label; `Availability` covers missing rate limits, uncapped bodies, and request-path panics. Order owned findings by severity, then by file in the order the input listed them, then line; with no findings, `## Findings` holds the single line `None.`; cite `file:line` when the input carries line numbers, `file:<symbol>` or `<area>` when it is a snippet or prose (say so once at the top rather than inventing numbers); a range is `file:start-end`. One root cause at several sites is one heading citing the first site, with the rest named on the `Code:` line. A `Chain:` line exists only on compounding findings - on each of them, naming the others by locator - and marks them as such (a forged token that then reaches a tenant-scoping gap); each keeps its own severity, and partial remediation of a chain buys much less than the finding count suggests. A defect this skill does not own (a detached goroutine, a transaction held open) is still reported, never dropped: one block per such defect after every owned finding, in that same order among themselves, labelled by the criteria above, with its `Attack scenario:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
 
 ```
 ## Remediation

@@ -65,7 +65,7 @@ if err := db.Create(&User{Email: req.Email}).Error; err != nil {
 }
 ```
 
-With `gorm.Config{TranslateError: true}` (GORM v1.25.1+ for the FK sentinel, with a dialector release that maps the FK code) the driver error is replaced by `gorm.ErrDuplicatedKey` / `gorm.ErrForeignKeyViolated` - match those with `errors.Is`; `errors.As(&pgErr)` never fires.
+With `gorm.Config{TranslateError: true}` the mapped codes arrive as `gorm.ErrDuplicatedKey` / `gorm.ErrForeignKeyViolated` (GORM v1.25.2+) instead - match those with `errors.Is` (driver versions and unmapped codes: `go-error-handling`).
 
 #### Service-layer presence guard duplicating binding + FK
 
@@ -152,7 +152,7 @@ Justified when: a test mock lives next to the interface, 2+ concrete impls exist
 
 #### `BaseRepository` embedded by one or two children
 
-Inline until 3+ repositories share genuine cross-cutting behavior.
+Inline until 3+ repositories share genuine cross-cutting behavior; label it by the generic-type rule below (`[Must]` when embedded).
 
 #### `Result[T]` over `(T, error)`
 
@@ -192,9 +192,9 @@ func (s *WarehouseService) GetByID(ctx context.Context, id int64) (*Item, error)
 
 Justified when sibling methods on the same type carry real logic (API consistency), or the same PR introduces a cross-cutting concern (authz, tx boundary) into the layer.
 
-#### Generic type with one instantiation
+#### Generic type with fewer than three instantiations
 
-`Repo[T]` / `Service[T]` instantiated once or twice. `Redundant because:` single instantiation - inline the concrete type (bad/good pair in go-idioms). `[Must]` when it is embedded or adds an indirect call on every path (`BaseRepository[T]`), `[Recommend]` otherwise.
+`Repo[T]` / `Service[T]` instantiated once or twice. `Redundant because:` fewer than three instantiations - inline the concrete type (bad/good pair in go-idioms). `[Must]` when it is embedded or adds an indirect call on every path (`BaseRepository[T]`), `[Recommend]` otherwise.
 
 #### Speculative struct tags
 
@@ -221,7 +221,7 @@ Justified when callers genuinely read fields off the error (`*ValidationError` c
 
 ### Category 4: Dead Code
 
-Exported types, methods, request fields or config keys that nothing reads (`ListByOrder` with no caller, an `Attachments` field the handler never uses, a `staleError` never returned). `Redundant because:` no reader - name the grep that proved it; grep first, since background jobs and CLI commands often read indirectly. `[Recommend]`, unless the dead path also hides a defect (an unused field that opens files is both dead and a leak - cite the leak as `Cost:` and label `[Must]`).
+Types, methods, request fields or config keys that nothing reads (`ListByOrder` with no caller, an `Attachments` field the handler never uses, a `staleError` never returned). `Redundant because:` no reader - name the grep that proved it; grep first, since background jobs and CLI commands often read indirectly. `[Recommend]`, unless the dead path also hides a defect (an unused field that opens files is both dead and a leak - cite the leak as `Cost:` and label `[Must]`).
 
 ## Output Format
 
@@ -238,7 +238,7 @@ Emit one block per finding, ordered `[Must]` first, then `[Recommend]`; within a
 - Justified when: {one-line note if legitimate reason might apply; otherwise omit}
 ```
 
-`pre-existing` marks a finding outside the PR hunks that the hunks build on; Close with one line `Checked, not flagged: <abstractions whose justification the repo confirmed>` (or `none`). Cite `file:line` when the input carries line numbers, `file:<symbol>` when it does not; a range is `file:start-end`. One shape at several sites is one block citing the first site, with the rest named on the `Code:` line. For each category with zero findings, emit exactly: `No <category> findings.` (using the category name from the enum) so the workflow knows the check ran; omit the line for categories that have at least one finding. A defect this skill does not own (an aborting `BindJSON`, an unparameterised query, a missing transaction) is still reported, never dropped: one block per such defect, sorted per the order above, labelled by the criteria above, with its `Redundant because:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
+`pre-existing` marks a finding outside the PR hunks that the hunks build on; Close with one line `Checked, not flagged: <abstractions whose justification the repo confirmed>` (or `none`). Cite `file:line` when the input carries line numbers, `file:<symbol>` when it does not; a range is `file:start-end`. One shape at several sites is one block citing the first site, with the rest named on the `Code:` line. For each category with zero findings, emit exactly: `No <category> findings.` (using the category name from the enum) so the workflow knows the check ran; omit the line for categories that have at least one finding. A defect this skill does not own (an aborting `BindJSON`, an unparameterised query, a missing transaction) is still reported, never dropped: one block per such defect, sorted per the order above, labelled `[Must]` when it risks incorrect behaviour, data loss or a security hole and `[Recommend]` otherwise, with its `Redundant because:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
 
 ## Avoid
 
@@ -246,8 +246,4 @@ Emit one block per finding, ordered `[Must]` first, then `[Recommend]`; within a
 - Flagging interfaces declared at the consumer (idiomatic)
 - Flagging `if err != nil { return err }` (idiomatic; the smell is `return nil` - silent swallow)
 - Flagging `gorm:"not null;uniqueIndex"` (schema definition)
-- Removing `recover()` in Gin middleware (legitimate use)
 - Flagging `context.Context` first param
-- Confusing "duplicated" with defense-in-depth across multiple write paths (HTTP + Asynq + cron + CLI)
-- Flagging a goroutine that submits to a worker pool / Asynq / outbox (tracked dispatch, not naked)
-- Citing a Gin guarantee (`Recovery()`, `binding:`) against an Echo or net/http module

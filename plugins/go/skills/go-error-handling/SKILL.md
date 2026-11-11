@@ -9,7 +9,7 @@ user-invocable: false
 
 # Go Error Handling
 
-> Load `Use skill: stack-detect` first. This skill reads `Database`; the Go version is the `go` directive in `go.mod` (a `## Tech Stack` `Language:` line may carry a version; the directive wins when they differ). The driver-error example is PostgreSQL on pgx v5 (`github.com/jackc/pgx/v5/pgconn`); on MySQL match `*mysql.MySQLError` and its `Number` (1062 duplicate key, 1452 FK); on `unknown`, keep the PostgreSQL form. Baseline: Go 1.25+ (`log/slog`, multi-`%w`, `errors.Join`), Gin v1.10+, GORM v1.25+ with a dialector implementing `gorm.ErrorTranslator` (postgres, mysql), stripe-go v82.1+ (`stripe.NewClient`).
+> Load `Use skill: stack-detect` first. This skill reads `Database`; the Go version is the `go` directive in `go.mod` (a `## Tech Stack` `Language:` line may carry a version; the directive wins when they differ). In a multi-module repository (`go.work`, or several `go.mod`) the module under review decides: its own `go` directive and, when stack-detect's primary stack is another module, its own `require` lines in place of the detected values. A form that needs a newer Go version than that directive is written in its older equivalent. The driver-error example is PostgreSQL on pgx v5 (`github.com/jackc/pgx/v5/pgconn`); on MySQL match `*mysql.MySQLError` and its `Number` (1062 duplicate key, 1451 / 1452 FK); on `unknown`, keep the PostgreSQL form. The middleware is Gin's; under another framework the same mapping lives in its one central error hook (Echo: `e.HTTPErrorHandler`). Baseline: Go 1.25+ (`log/slog`, multi-`%w`, `errors.Join`), Gin v1.10+, GORM v1.25.2+ (`gorm.ErrForeignKeyViolated`) with a dialector that maps the FK code (`gorm.io/driver/postgres` v1.5.3+, `gorm.io/driver/mysql` v1.5.5+), stripe-go v82.1+ (`stripe.NewClient`).
 
 ## When to Use
 
@@ -151,7 +151,7 @@ if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation { // "23505
 }
 ```
 
-With `gorm.Config{TranslateError: true}` GORM replaces the driver error with `gorm.ErrDuplicatedKey` / `gorm.ErrForeignKeyViolated`; match those with `errors.Is` instead - `errors.As(&pgErr)` never fires.
+With `gorm.Config{TranslateError: true}` GORM replaces the driver error for the codes the dialector maps (23505 -> `gorm.ErrDuplicatedKey`, 23503 -> `gorm.ErrForeignKeyViolated`); match those with `errors.Is` - `errors.As(&pgErr)` no longer fires for them, and an unmapped SQLSTATE still arrives as `*pgconn.PgError`.
 
 ### Retryable Classification (multi-`%w`, Go 1.20+)
 
@@ -231,7 +231,7 @@ func ErrorMiddleware() gin.HandlerFunc {
 }
 ```
 
-Every sentinel the service can return has a case here; an unmapped expected condition falls to 500 and an error-level log. `gin.Recovery()` records a panic in `c.Errors` only for broken-pipe panics; every other panic becomes a bare `AbortWithStatus(500)` this middleware never sees. Return errors instead of panicking. A handler with partial-success semantics (batch import) writes its own multi-status response and does not call `c.Error` at all; one `c.Errors.Last()` cannot express "412 of 500 rows succeeded".
+Every sentinel the service can return has a case here; an unmapped expected condition falls to 500 and an error-level log. `gin.Recovery()` records a panic in `c.Errors` only for a dead-connection panic (broken pipe or connection reset by peer); every other panic becomes a bare `AbortWithStatus(500)` this middleware never sees. Return errors instead of panicking. A handler with partial-success semantics (batch import) writes its own multi-status response and does not call `c.Error` at all; one `c.Errors.Last()` cannot express "412 of 500 rows succeeded".
 
 A webhook handler's status is a protocol: `2xx` acknowledges and the provider stops redelivering, `5xx` asks for redelivery, and a signature failure is `400`; Stripe retries every non-2xx for up to 3 days, so a wrong secret shows as sustained 400s, and the only response that stops redelivery is the 2xx a bad signature must never receive.
 
@@ -242,6 +242,8 @@ A webhook handler's status is a protocol: `2xx` acknowledges and the provider st
 - Some libraries return values that don't implement `error` - assert at the boundary
 
 ## Output Format
+
+Open the deliverable with one line above everything else, `**Engine:** {database | unknown}` - stack-detect's `Database` value as written, or under the multi-module rule the engine of the reviewed module's driver.
 
 Emit these headings, in this order, for the engagement:
 
@@ -270,7 +272,7 @@ Emit these headings, in this order, for the engagement:
 |----------------|--------------|------------|
 ```
 
-Cell values: `Declared In` is the package (one row per sentinel). `Matched By` is `errors.Is` or `errors.As` plus the layer that matches it (`errors.Is, middleware`). Layer Mapping has one row per layer per path through it - `Capture` via HTTP and `Capture` via the worker are two rows. `Input` is the error the layer receives (a driver type, a sentinel from the layer below, a `context` error); `Output` is what it returns (the sentinel or type it wraps to) or `handled (<what is returned instead>)` when it consumes the error. `Surface Result` is what the outermost caller sees on that path - an HTTP status, a worker decision, a CLI exit code, or for a webhook route the status plus `ack` / `redeliver`. Worker decisions are `Retry | Drop | DeadLetter | Resolve`: on Asynq `Retry` = return the error, `Drop` = return nil, `DeadLetter` = wrap `asynq.SkipRetry` (archived at once, no retries), `Resolve` = an indeterminate outcome the handler must look up before deciding; on a Kafka consumer `Drop` = commit, `DeadLetter` = produce to the DLQ topic then commit, `Retry` = re-process in the handler loop with backoff, then `DeadLetter` - an uncommitted record is not redelivered to the same running consumer. `Retryable?` is `Yes | No | Indeterminate`. `External Error` covers anything crossing into the package: third-party SDK, gRPC status, driver/SQLSTATE, `context` errors. A table with no rows emits `None.` rather than being dropped; a cell the input does not supply is `unknown` and a column that does not apply to the row is `n/a`, whichever enum the column carries - a layer the input names but does not show gets one row of `unknown` cells.
+Cell values: `Declared In` is the package (one row per sentinel). `Matched By` is `errors.Is` or `errors.As` plus the layer that matches it (`errors.Is, middleware`). Layer Mapping has one row per layer per path through it - `Capture` via HTTP and `Capture` via the worker are two rows. `Input` is the error the layer receives (a driver type, a sentinel from the layer below, a `context` error); `Output` is what it returns (the sentinel or type it wraps to) or `handled (<what is returned instead>)` when it consumes the error. `Surface Result` is what the outermost caller sees on that path - an HTTP status, a worker decision, a process exit code (a CLI, a `log.Fatal`), or for a webhook route the status plus `ack` / `redeliver`. Worker decisions are `Retry | Drop | DeadLetter | Resolve`: on Asynq `Retry` = return the error, `Drop` = return nil, `DeadLetter` = wrap `asynq.SkipRetry` (archived at once, no retries), `Resolve` = an indeterminate outcome the handler must look up before deciding; on a Kafka consumer `Drop` = commit, `DeadLetter` = produce to the DLQ topic then commit, `Retry` = re-process in the handler loop with backoff, then `DeadLetter` - an uncommitted record is not redelivered to the same running consumer. `Retryable?` is `Yes | No | Indeterminate`. `External Error` covers anything crossing into the package: third-party SDK, gRPC status, driver/SQLSTATE, `context` errors. A table with no rows emits `None.` rather than being dropped; a cell the input does not supply is `unknown` and a column that does not apply to the row is `n/a`, whichever enum the column carries - a layer the input names but does not show gets one row of `unknown` cells.
 
 Every finding carries exactly one label:
 
@@ -284,13 +286,10 @@ Every finding carries exactly one label:
 - Fix: {concrete edit}
 ```
 
-`[Must]` when the defect loses information the caller needs (severed chain, swallowed error, string-matched status, a failure after a side effect that is only logged), corrupts state, panics on a reachable path, reaches the client with internal detail, or answers a processed webhook event with a status the sender redelivers; `[Recommend]` otherwise. Cite `file:line` when the input carries line numbers, `file:<symbol>` when it does not; a range is `file:start-end`. Order `[Must]` first, then by file in the order the input listed them, then line. With no findings, `## Findings` holds the single line `None.` One root cause at several sites is one heading citing the first site, with the rest named on the `Defect:` line. A defect this skill does not own (a detached goroutine, a signature computed over the wrong bytes, a transaction held open) is still reported, never dropped: one block per such defect after the owned findings, in the same file-then-line order, labelled by the criteria above, with its `Defect:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
+Owned findings: `[Must]` when the defect loses information the caller needs (severed chain, swallowed error, string-matched status, a failure after a side effect that is only logged), corrupts state, panics on a reachable path, reaches the client with internal detail, or answers a processed webhook event with a status the sender redelivers; `[Recommend]` otherwise. Cite `file:line` when the input carries line numbers, `file:<symbol>` when it does not; a range is `file:start-end`. Order owned findings `[Must]` first, then by file in the order the input listed them, then line. With no findings, `## Findings` holds the single line `None.` One root cause at several sites is one heading citing the first site, with the rest named on the `Defect:` line. A defect this skill does not own (a detached goroutine, a signature computed over the wrong bytes, a transaction held open) is still reported, never dropped: one block per such defect after every owned finding, in that same order among themselves, labelled `[Must]` when it risks incorrect behaviour, data loss or a security hole and `[Recommend]` otherwise, with its `Defect:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
 
 ## Avoid
 
-- Discarding errors with `_`
-- `panic` for flow control or expected conditions
-- Logging and returning at the same layer
 - Leaking DB / third-party error types past the gateway
 - Generic `errors.New("failed")` with no context
 - Blind-retrying an indeterminate outcome

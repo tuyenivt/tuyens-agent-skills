@@ -29,13 +29,13 @@ Go-aware review naming GORM `Preload` / `Joins` / `Select`, sqlx `In` / `NamedEx
 | Depth | When | Runs |
 |-------|------|------|
 | `standard` | Default | All steps |
-| `deep` | Requested, handed down by `task-go-review`, or profiling data (pprof / OTel / benchmark output, including snapshots committed to the repo or an incident doc) is available | All + `### Capacity & Load Plan` under Sequencing |
+| `deep` | Requested, handed down by `task-go-review`, or profiling data (pprof / OTel / benchmark output, including snapshots committed to the repo or an incident doc) is available, whatever path it measures | All + `### Capacity & Load Plan` under Sequencing |
 
 Request deep by appending `deep` to the invocation (e.g. `/task-go-review-perf <branch> deep`).
 
 **Whole-service sweep** (the quarterly N+1 / pool / leak pass, with no feature branch). When Step 3 fails fast on trunk, do not stop - skip the diff gate and run Steps 4-14 repo-wide at `HEAD` (Step 12 confirmation-only, Step 13 on round 2+); Step 4's categories are read in full, not per changed file, and findings cite current code. Three things the sweep changes:
 
-- **Writer inputs.** The fail-fast returns no handle, so resolve them here: `branch` = `base_ref` = `head_ref` = the trunk name; `base_sha` = `head_sha` = the full `git rev-parse <trunk>` - when the current branch is not the trunk, stop and ask the user to check out the trunk or name a feature branch; `scope` / `stack` as on a diff review. The fail-fast also returns no `prior_checkpoint`: read the frontmatter of `review-perf-<sanitized trunk>.md` in the repo root yourself, with `review-precondition-check`'s filename and validity rules, and use it as `report_path` / `prior_checkpoint` for Step 3's round paragraph and Step 13; Step 13's `diff` / `name_status` then span `<prior_head_sha>...<trunk sha>` with `<prior_head_sha>` as the reconciler's `base_ref`, overriding its full-range inputs: a sweep has no base, so the commits since the prior sweep separate touched files from untouched ones.
+- **Writer inputs.** The fail-fast returns no handle, so resolve them here: `branch` = `base_ref` = `head_ref` = the trunk name; `base_sha` = `head_sha` = the full `git rev-parse <trunk>` - when the current branch is not the trunk, stop and ask the user to check out the trunk or name a feature branch; `scope` / `stack` as on a diff review. The fail-fast also returns no `prior_checkpoint`: read the frontmatter of `review-perf-<sanitized trunk>.md` in the repo root yourself, with `review-precondition-check`'s filename and validity rules, and use it as `report_path` / `prior_checkpoint` for Step 3's round paragraph and Step 13; Step 13's `diff` / `name_status` (read with `-M`) then span `<prior_head_sha>...<trunk sha>` with `<prior_head_sha>` as the reconciler's `base_ref`, overriding its full-range inputs: a sweep has no base, so the commits since the prior sweep separate touched files from untouched ones.
 - **Verify attribution.** Run `review-finding-verify` for confirmation only, with an empty `diff`, against the code at `HEAD`; skip its attribution and de-escalation. Labels come from the tier; every heading carries `_(pre-existing)_` plus any annotation the confirmation returned. Tally `<N> confirmed, - reattributed, <U> unverified, <K> dropped`.
 - **Depth.** A sweep defaults to `deep`. Fill the Summary's `Target:` slot with what was swept.
 
@@ -53,19 +53,19 @@ Request deep by appending `deep` to the invocation (e.g. `/task-go-review-perf <
 
 ### Step 1 - Load Behavioral Principles
 
-Use skill: `behavioral-principles`. A subagent loads it too, unless the spawning prompt inlined its Rules.
+Use skill: `behavioral-principles`. A subagent loads it too, unless the spawning prompt inlined its whole Rules section and its unverifiable-change disclosure, as that skill specifies.
 
 ### Step 2 - Stack and Data Access
 
-Use skill: `stack-detect`. Accept pre-confirmed from parent. Versions come from `go.mod` - the Go version from the `go` directive, Gin / GORM / sqlx from the `require` lines - and override any version a `## Tech Stack` line declared (this step's one departure from `stack-detect`'s instruction-file precedence). `Data Access` is GORM / sqlx / database/sql, or `mixed - GORM <v> + sqlx <v>` when both are required. `Messaging` is `Asynq`, `Kafka`, `Asynq + Kafka`, or `none`, from `go.mod`: `hibiken/asynq` for Asynq; `twmb/franz-go`, `IBM/sarama` (`Shopify/sarama` before v1.40.0), `segmentio/kafka-go` or `confluentinc/confluent-kafka-go` for Kafka.
+Use skill: `stack-detect`. Accept pre-confirmed from parent. Versions come from `go.mod` - the Go version from the `go` directive, the HTTP framework / GORM / sqlx from the `require` lines - and override any version a `## Tech Stack` line declared (this step's one departure from `stack-detect`'s instruction-file precedence); in a multi-module repository the module under review decides, its `go.mod` read in place of the detected primary stack. The `Stack` slot is `stack-detect`'s rendering with those versions added - the `go` directive as written, a `require` version without its leading `v` (`Go 1.25.0 / Echo 4.12.0`, `Go 1.25.0 (no framework detected)`), and the writer's `stack` is `go-<framework>` lowercased (`go-gin`, `go-echo`; `go` when there is none). The checks below name Gin constructs; on another framework apply each to that framework's equivalent and skip one that has none. `Data Access` is GORM / sqlx / database/sql, or `mixed - GORM <v> + sqlx <v>` when both are required. `Messaging` is `Asynq`, `Kafka`, `Asynq + Kafka`, or `none`, from `go.mod`: `hibiken/asynq` for Asynq; `twmb/franz-go`, `IBM/sarama` (`Shopify/sarama` before v1.40.0), `segmentio/kafka-go` or `confluentinc/confluent-kafka-go` for Kafka.
 
 ### Step 3 - Resolve Diff and Round
 
 Standalone only - skip the whole step, SHA capture included, when a subagent received the handle.
 
-Use skill: `review-precondition-check` with `report_type: review-perf`. A trunk fail-fast switches to the whole-service sweep under **Depth**; any other fail-fast: surface verbatim and stop. Read diff, log and `git diff --name-status <base_ref>...<head_ref>` once; reuse. Capture `base_sha = git rev-parse <base_ref>` and `head_sha = git rev-parse <head_ref>` (full SHAs). The writer's `branch` is the handle's `head_short_name`.
+Use skill: `review-precondition-check` with `report_type: review-perf`. A trunk fail-fast switches to the whole-service sweep under **Depth**; any other fail-fast: surface verbatim and stop. On success, print each handle `notes` entry in chat, one line each, before the report body (nothing when it has none; the handle itself stays internal). Capture `base_sha = git rev-parse <base_ref>` and `head_sha = git rev-parse <head_ref>` (full SHAs) and resolve the round below; only then read diff, log and `git diff -M --name-status <base_ref>...<head_ref>`, once, for reuse. The writer's `branch` is the handle's `head_short_name`.
 
-**Resolve the round from the handle, before any surface is read.** No `prior_checkpoint`, or `prior_checkpoint: legacy` -> `round: 1`. Valid -> `round = prior_checkpoint.round + 1`, `prior_head_sha = prior_checkpoint.head_sha`. **When `prior_checkpoint.head_sha` equals the current `head_sha` and no deeper depth than `prior_checkpoint.depth` was requested, print `No new commits on <branch> since prior perf review at <sha_short>. Prior report unchanged.` and stop** - do not re-review and do not overwrite.
+**Resolve the round from the handle, before any surface is read.** No `prior_checkpoint`, or `prior_checkpoint: legacy` -> `round: 1`. Valid -> `round = prior_checkpoint.round + 1`, `prior_head_sha = prior_checkpoint.head_sha`. **When `prior_checkpoint.head_sha` equals the current `head_sha` and no deeper depth than `prior_checkpoint.depth` was requested, print `No new commits on <branch> since prior perf review at <sha_short>. Prior report unchanged.` and stop** - do not re-review and do not overwrite (`<sha_short>` is the first 7 characters of `head_sha`).
 
 ### Step 4 - Read the Performance Surface
 
@@ -77,7 +77,7 @@ Cite real `file:line`. Open:
 
 **Both:** `migrations/`; Asynq / Kafka producers + consumers; worker concurrency; new goroutines / `errgroup.Go` / `wg.Go`; channel patterns; `sync.Pool`; pool config wherever it lives (`internal/db/*.go`, `cmd/*/main.go`). Pool sizing needs numbers the diff rarely carries - replica count and surge per binary (deploy manifest, `values.yaml`), DB `max_connections` and the reserved slots (`CLAUDE.md`, infra config). Read them; when still unknown, run the check with `go-data-access`'s surge assumption (25% of replicas, rounded up) and 10 reserved slots, and mark each `(assumed)` in the finding rather than skipping it. A performance number from an incident doc or runbook is evidence when the tree still matches it; when the tree disagrees, the finding is `_(unverified: <reason>)_`.
 
-**Defects outside the diff or the lens.** A defect on a line the diff did not add: in this lens and made newly reachable by the diff (a new endpoint calling an existing repository with an N+1) -> read the unchanged file and file a finding anchored on the defect, citing the new call site as the trigger (Step 12 attributes it); in this lens and untouched by the diff -> a finding at its tier label with `_(pre-existing)_` (Step 12 de-escalates it to `[Recommend]`; on a subagent run the parent's verify does), at most the three most consequential on a diff review (a sweep publishes every one), the rest one line each under `## Out of Lens`; owned by another lens (a dual write with no outbox is `+rel`, a missing span is `+obs`) -> `## Out of Lens` with `file:line` and the owning lens. A finding on this lens's path that a sibling lens also owns (an in-tx enqueue, unbounded fan-out) is kept here with `Also owned by: +rel | +obs` on its `Issue` line, so the parent's merge dedups deliberately. A finding that spans two changed files anchors on the line that executes the cost and names the other file in `Issue`.
+**Defects outside the diff or the lens.** A defect on a line the diff did not add: in this lens and made newly reachable by the diff (a new endpoint calling an existing repository with an N+1) -> read the unchanged file and file a finding anchored on the defect, citing the new call site as the trigger (Step 12 attributes it); in this lens and untouched by the diff -> a finding at its tier label with `_(pre-existing)_` (Step 12 de-escalates it to `[Recommend]`; on a subagent run the parent's verify does), at most the three most consequential (highest tier first) on a diff review, counting only findings this round publishes for the first time (a sweep publishes every one), the rest one line each under `## Out of Lens`; owned by another lens, or by none (a dual write with no outbox is `+rel`, a log line with no correlation id is `+obs`, a compile break or logic error is `task-go-review`'s) -> `## Out of Lens` with `file:line` and the owner. A finding on this lens's path that a sibling lens also owns (an in-tx enqueue, unbounded fan-out) is kept here with `Also owned by: +rel | +obs | +sec` on its `Issue` line, so the parent's merge dedups deliberately. A finding that spans two changed files anchors on the line that executes the cost and names the other file in `Issue`.
 
 ### Step 5 - ORM Hotspots (GORM or sqlx)
 
@@ -117,7 +117,7 @@ Use skill: `go-concurrency`.
 **Impact heuristic.** A leaked goroutine retains the request `context`, `gin.Context`, DB connections, mutexes. Under load, leaks compound (100/sec for an hour = 360k zombies). Phrase as "compounding leak proportional to sustained traffic," not "this one request leaks."
 
 - [ ] **Goroutine ownership + cancellation:** every `go fn()` has an owner (`errgroup.Group.Go`, `sync.WaitGroup`, Go 1.25+ `WaitGroup.Go`, worker pool with shutdown); blocking receive paired with `<-ctx.Done()`
-- [ ] **Bounded fan-out:** `errgroup.SetLimit(N)` or `semaphore.NewWeighted`; unbounded exhausts pool / FDs / scheduler
+- [ ] **Bounded fan-out:** `g.SetLimit(N)` on an `errgroup.Group`, or `semaphore.NewWeighted`; unbounded exhausts pool / FDs / scheduler
 - [ ] **`context.WithTimeout` / `WithDeadline`** on outbound calls (`http.Client` without `Timeout` is infinite)
 - [ ] **HTTP clients package-level:** one shared `*http.Client` via constructor; a per-request `&http.Transport{}` is what defeats connection reuse (`MaxIdleConnsPerHost`)
 - [ ] **`sync.Mutex` not held across I/O:** drop the lock before HTTP / DB / channel send. If serialization is needed: per-key mutex / `singleflight.Group`. Read-heavy maps use `sync.RWMutex`; `sync.Map` only for write-once / disjoint-key patterns
@@ -140,7 +140,7 @@ Use skill: `go-concurrency`.
 - [ ] **Stampede protection:** hot keys with expensive regen use `golang.org/x/sync/singleflight`; distributed via Redis `SET NX EX` lock
 - [ ] **Invalidation explicit** - document the staleness budget
 - [ ] **HTTP caching** (`Cache-Control`, `ETag`, `Last-Modified`) on read-heavy GETs via Gin middleware
-- [ ] **Response compression** via `gzip.Gzip(gzip.DefaultCompression, gzip.WithMinLength(2048))` (gin-contrib/gzip v1.2.6+; earlier versions compress every response)
+- [ ] **Response compression** via `gzip.Gzip(gzip.DefaultCompression, gzip.WithMinLength(2048))` (gin-contrib/gzip v1.2.6+, which requires Gin 1.12+; earlier versions compress every response)
 - [ ] **Per-request memoization** via `gin.Context.Set`
 
 ### Step 10 - Asynq / Kafka / Background Work
@@ -174,25 +174,25 @@ Depth belongs to `task-go-review-observability`. Confirm only:
 
 Applies to every finding in the review. Assign each draft finding its label first (High -> `[Must]`, Medium / Low -> `[Recommend]`), since `review-finding-verify` takes labelled findings and returns adjusted ones.
 
-Use skill: `review-finding-verify` with those findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`. **The label it returns is final** - it de-escalates `[Must]` to `[Recommend]` on untouched pre-existing code, and that survives onto the finding heading and into Next Steps. Carry its `Annotation` column verbatim onto the heading (every group it returned: `_(pre-existing)_`, `_(pre-existing; newly reachable via <file:line>)_`, `_(unverified: <reason>)_`, `_(mechanism: <actual>)_`) and its tally into the Summary's `Findings verified` slot; the tally counts this round's drafts only.
+Use skill: `review-finding-verify` with those findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`. **The label it returns is final** - it de-escalates `[Must]` to `[Recommend]` on untouched pre-existing code, and that survives onto the finding heading and into Next Steps. Carry its `Annotation` column verbatim onto the heading (every group it returned: `_(pre-existing)_`, `_(pre-existing; newly reachable via <file:line>)_`, `_(unverified: <reason>)_`, `_(mechanism: <actual>)_`) and its tally into the Summary's `Findings verified` slot; the tally counts this round's drafts only. A finding on a file the name-status does not list gets `_(pre-existing)_`, written first, unless its annotations already have a group opening `pre-existing` or `unverified`. The verify table is working material; only the tally and the surviving rows' labels and annotations reach the report.
 
 Subagent runs skip this step entirely (see Invocation); whole-service sweeps run confirmation only (see Depth).
 
 ### Step 13 - Reconcile Prior Findings (round 2+, standalone)
 
-Skip on round 1. Otherwise read the prior report at the handle's `report_path` and project its findings into the reconciler's shape: `## High-Impact Findings` holding one `### [<Label>] <file:line>` heading per finding followed by an `Issue:` line, label and `file:line` copied from the `#### <n>. [Label] file:line - <title>` heading, annotations as separate `_(...)_` groups (`_(pre-existing; newly reachable via X)_` becomes `_(pre-existing)_ _(newly reachable via X)_`). Use skill: `review-prior-findings-reconcile` with `prior_report` (the projection), `diff`, `name_status`, `head_sha`, `base_ref`, and `head_files` (`git ls-tree -r --name-only <head_sha>`). Insert its table under `## Prior Round Reconciliation`. `Still open` and `Needs re-check` rows re-enter `## Findings` under the impact heading they were last published under (re-tiered when this round re-drafted the defect and its cost grew), with the label and every annotation group they were last published with plus `_(carried from round <N>)_` (N = the round that first raised it, written once) on the heading; when this round re-drafted the same defect at the same site, publish only the re-drafted finding with that annotation appended. The table keeps the prior label and line verbatim.
+Skip on round 1. Otherwise read the prior report at the handle's `report_path` and project its findings into the reconciler's shape: `## High-Impact Findings` holding one `### [<Label>] <file:line>` heading per finding followed by an `Issue:` line, label and `file:line` copied from the `#### <n>. [Label] file:line - <title>` heading, annotations as separate `_(...)_` groups (`_(pre-existing; newly reachable via X)_` becomes `_(pre-existing)_ _(newly reachable via X)_`). Use skill: `review-prior-findings-reconcile` with `prior_report` (the projection), `diff`, `name_status`, `head_sha`, `base_ref`, and `head_files` (`git ls-tree -r --name-only <head_sha>`). Insert its output - the table, any note lines, the tally line - under `## Prior Round Reconciliation`. `Still open` and `Needs re-check` rows re-enter `## Findings` with the body the prior report gave them, cited where reconcile places the smell now, under the impact heading they were last published under (this round's tier when re-drafted; the higher tier when the prior heading combined two), with the label and every annotation group they were last published with (`_(pre-existing)_` written first when the name-status does not list the file and no group opens `pre-existing` or `unverified`) plus `_(carried from round <N>)_` (N = the round that first raised it, written once) on the heading; when this round re-drafted the same defect at the same site, publish only the re-drafted finding with that annotation appended. The table keeps the prior label and line verbatim.
 
 ### Step 14 - Write Report
 
 Standalone only - subagent runs return the Output Format to the parent, which writes the single merged report.
 
-Use skill: `review-report-writer` with `report_type: review-perf` and every required input: `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` from the handle, `base_sha` / `head_sha` from Step 3 (whole-service sweep: all five per the Depth clause), `stack: go-gin`, `scope: +perf`, `depth` as resolved from the Depth table, `mode: full`, and the `round` / `prior_head_sha` resolved in Step 3. Write before ending; print confirmation.
+Use skill: `review-report-writer` with `report_type: review-perf` and every required input: `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` from the handle, `base_sha` / `head_sha` from Step 3 (whole-service sweep: all five per the Depth clause), `stack` per Step 2, `scope: +perf`, `depth` as resolved from the Depth table, `mode: full`, and the `round` / `prior_head_sha` resolved in Step 3. Write before ending; print confirmation.
 
 ## Self-Check
 
 Mark a line N/A with its reason when the diff has no matching surface (no messaging, no migrations, no goroutine fan-out), or when the invocation mode makes it inapplicable (subagent, sweep, round 1).
 
-- [ ] Step 1: `behavioral-principles` loaded, or rules inlined in the spawning prompt
+- [ ] Step 1: behavioral-principles loaded
 - [ ] Step 2: stack confirmed; versions from `go.mod`; data-access mix and messaging recorded
 - [ ] Step 3: `review-precondition-check` ran with `report_type: review-perf` (or handle received; or trunk fail-fast routed to the sweep); diff, log and name-status read once; `base_sha` / `head_sha` captured; round resolved from the handle (sweep: from the self-read checkpoint); same-SHA no-op honoured; approval obtained when `head_matches_current` was false
 - [ ] Step 4: performance surface read directly; replica count, surge, `max_connections` and reserved resolved or marked `(assumed)`; defects outside the diff or lens routed per the Step 4 rule; sibling overlap marked `Also owned by`
@@ -222,7 +222,7 @@ The fence below delimits the template for display only - it is not part of the r
 ```markdown
 ## Go Performance Review Summary
 
-- **Stack Detected:** Go <version> / Gin <version>
+- **Stack:** Go <version> / <framework> <version> | Go <version> (no framework detected)
 - **Data Access:** GORM <version> | sqlx <version> | database/sql | mixed - GORM <version> + sqlx <version>
 - **Messaging:** Asynq | Kafka | Asynq + Kafka | none
 - **Scope:** Backend (Go)
@@ -238,15 +238,17 @@ The fence below delimits the template for display only - it is not part of the r
 | Round <N-1> Finding | file:line | Status | Notes |
 | ------------------- | --------- | ------ | ----- |
 
+<note line>     {one paragraph per note line reconcile emitted; omit when none}
+
 Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 ## Findings
 
 ### High Impact
 
-#### 1. [Must] file:line - <short title> _(annotations)_     {annotation groups only when the Fill rules assign any}
+#### 1. [Must] file:line - <short title> _(annotations)_     {annotation groups only when a rule above assigns any}
 
-- **Issue:** [Go idiom: N+1 via per-iteration `db.Find`, missing `Preload`, missing index, sync `bcrypt` on the request goroutine, leaked goroutine via missing `<-ctx.Done()`, Asynq `Enqueue` inside a transaction; `Also owned by: +rel | +obs` when a sibling lens shares it]
+- **Issue:** [Go idiom: N+1 via per-iteration `db.Find`, missing `Preload`, missing index, sync `bcrypt` on the request goroutine, leaked goroutine via missing `<-ctx.Done()`, Asynq `Enqueue` inside a transaction; `Also owned by: +rel | +obs | +sec` when a sibling lens shares it]
 
 - **Impact:** [measured: "552,914 calls, 418s DB time over the run" / estimated: "adds ~200 queries per request at 100 orders" / projected: "~4 queries after batching"]
 
@@ -256,7 +258,11 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 [Same block]
 
-### Medium Impact / Low Impact
+### Medium Impact
+
+[Same blocks, numbering continues]
+
+### Low Impact
 
 [Same blocks, numbering continues]
 
@@ -264,7 +270,7 @@ Omit empty sections. When every section is empty, write "No performance issues f
 
 ## Out of Lens
 
-[Defects another lens owns, and pre-existing in-lens defects beyond the three published - each with `file:line` and the owning lens. Omit when there are none.]
+[Defects another lens or `task-go-review` owns, each with `file:line` and the owner, and pre-existing in-lens defects beyond the three published, each with `file:line`. Omit when there are none.]
 
 ## Recommendations
 

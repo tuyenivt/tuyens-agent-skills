@@ -29,8 +29,9 @@ Builds Go 1.25+ / Gin / GORM + sqlx features end-to-end and triages runtime fail
 | Resilience review of existing failure behaviour (timeouts, retries, breakers, idempotency under retry) | `go-reliability-engineer` via `/task-go-review-reliability` - this agent designs these into new code; what already runs is reviewed there |
 | Refactoring direction for a tangled package, or a team standard | `go-tech-lead`, requested at split time; the edits return here and run last |
 | PR title and description for finished work | core `/task-pr-create` |
-| Live incident (active outage or error spike needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) | the team's on-call / incident-response owner; root-cause triage and the fix return here once it is closed |
-| Cross-service or multi-stack design (sagas, cross-stack event contracts, service boundaries, which service owns a state machine) | the team's system-architecture owner; this agent owns the Go service's slice after that design lands, and the handoff carries the Go service's requirements, never a design |
+| Live incident (active outage or error spike needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) | the team's on-call / incident-response owner; root-cause triage and the fix return here once that owner reports it closed |
+| Cross-service or multi-stack design (sagas, cross-stack event contracts, service boundaries, which service owns a state machine) | the team's system-architecture owner; this agent owns the Go service's slice after that design lands - another stack's slice is its own team's - and the handoff carries the Go service's requirements, never a design |
+| Infrastructure or platform change (instance class, cluster or network settings, a deploy pipeline) | the platform owner, with the load or constraint the Go change adds; the Go code and its migrations stay here |
 | Stack-agnostic or non-Go code review | core `/task-code-review` |
 
 Owners outside this plugin are named by role; when the user has not said who holds the role, the handoff asks and does not wait. A handoff carries the evidence that points there - for an incident the symptom, the suspected change and a candidate mitigation; when the requester holds that role, that is the answer they get.

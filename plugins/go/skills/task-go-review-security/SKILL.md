@@ -65,11 +65,13 @@ When several bullets fire on one handler, file **one** finding at the elevated t
 
 ### Step 1 - Load Behavioral Principles
 
-Use skill: `behavioral-principles`. A subagent loads it too, unless the spawning prompt inlined its Rules.
+Use skill: `behavioral-principles`. A subagent loads it too, unless the spawning prompt inlined its whole Rules section and its unverifiable-change disclosure, as that skill specifies.
 
 ### Step 2 - Confirm Stack
 
 Use skill: `stack-detect`. Accept pre-confirmed from parent. If not Go, stop and recommend `/task-code-review-security`.
+
+Versions come from `go.mod` - the Go version from the `go` directive, the HTTP framework and data-access libraries from the `require` lines - and override any version a `## Tech Stack` line declared (this step's one departure from `stack-detect`'s instruction-file precedence); in a multi-module repository the module under review decides, its `go.mod` read in place of the detected primary stack. The `Stack` slot is `stack-detect`'s rendering with those versions added - the `go` directive as written, a `require` version without its leading `v` (`Go 1.25.0 / Echo 4.12.0`, `Go 1.25.0 (no framework detected)`), and the writer's `stack` is `go-<framework>` lowercased (`go-gin`, `go-echo`; `go` when there is none). The checks below name Gin constructs; on another framework apply each to that framework's equivalent and skip one that has none.
 
 Detect: data access (GORM / sqlx / database/sql / mixed, with versions from the `go.mod` require lines), JWT library (`golang-jwt/jwt` v4 vs v5, `gin-jwt`, `lestrrat-go/jwx`), password hashing (`bcrypt` vs `argon2`).
 
@@ -77,9 +79,9 @@ Detect: data access (GORM / sqlx / database/sql / mixed, with versions from the 
 
 Standalone only - skip the whole step, SHA capture included, when a subagent received the handle.
 
-Use skill: `review-precondition-check` with `report_type: review-security`. Any fail-fast: surface verbatim and stop. Read diff, log and `git diff --name-status <base_ref>...<head_ref>` once; reuse. Capture `base_sha = git rev-parse <base_ref>` and `head_sha = git rev-parse <head_ref>` (full SHAs). The writer's `branch` is the handle's `head_short_name` in every invocation mode; `head_ref` is the handle's.
+Use skill: `review-precondition-check` with `report_type: review-security`. Any fail-fast: surface verbatim and stop. On success, print each handle `notes` entry in chat, one line each, before the report body (nothing when it has none; the handle itself stays internal). Capture `base_sha = git rev-parse <base_ref>` and `head_sha = git rev-parse <head_ref>` (full SHAs) and resolve the round below; only then read diff, log and `git diff -M --name-status <base_ref>...<head_ref>`, once, for reuse. The writer's `branch` is the handle's `head_short_name` in every invocation mode; `head_ref` is the handle's.
 
-**Resolve the round from the handle, before any surface is read.** No `prior_checkpoint`, or `prior_checkpoint: legacy` -> `round: 1`. Valid -> `round = prior_checkpoint.round + 1`, `prior_head_sha = prior_checkpoint.head_sha`. **When `prior_checkpoint.head_sha` equals the current `head_sha`, print `No new commits on <head_short_name> since prior security review at <sha_short>. Prior report unchanged.` and stop** - do not re-review and do not overwrite. On a genuine round 2+, re-review the full range; Step 10 reconciles the prior findings.
+**Resolve the round from the handle, before any surface is read.** No `prior_checkpoint`, or `prior_checkpoint: legacy` -> `round: 1`. Valid -> `round = prior_checkpoint.round + 1`, `prior_head_sha = prior_checkpoint.head_sha`. **When `prior_checkpoint.head_sha` equals the current `head_sha`, print `No new commits on <head_short_name> since prior security review at <sha_short>. Prior report unchanged.` and stop** - do not re-review and do not overwrite (`<sha_short>` is the first 7 characters of `head_sha`). On a genuine round 2+, re-review the full range; Step 10 reconciles the prior findings.
 
 ### Step 4 - Read the Security Surface
 
@@ -97,9 +99,9 @@ Cite real lines. Open:
 - `.env.example` for documented env vars
 - **Static file serving** - `r.Static` / `r.StaticFS` / `http.FileServer` and the directory each serves. A directory that is both writable by an upload handler and served on the app's own origin turns any upload defect into same-origin script execution; Go's file server picks `Content-Type` from the extension, not from whatever the handler validated
 
-When the diff **weakens the authorization posture** - removes middleware, registers a new route outside the authed group, drops `iss`/`aud`/`exp` validation, deletes alg-pinning, widens a limit, or lowers a work factor - `git log -p` the prior revision; the blame trail is authoritative. Any of these is evidence of Insecure Design (A04); call it out even when each change looks "small" in isolation. The team's stated rationale ("internal only, behind the VPC", "we'll add it back later", "QA kept getting locked out") is not a compensating control - a network boundary is not authentication, and a schedule is not a control. Record each removal, the rationale offered, and why it does not compensate, in the Summary paragraph.
+When the diff **weakens the authorization posture** - removes middleware, registers a new route outside the authed group, drops `iss`/`aud`/`exp` validation, deletes alg-pinning, widens a limit, or lowers a work factor - `git log -p` the prior revision; the blame trail is authoritative. Any of these is evidence of Insecure Design (A06:2025); call it out even when each change looks "small" in isolation. The team's stated rationale ("internal only, behind the VPC", "we'll add it back later", "QA kept getting locked out") is not a compensating control - a network boundary is not authentication, and a schedule is not a control. Record each removal, the rationale offered, and why it does not compensate, in the Summary paragraph.
 
-**Defects outside the diff.** A defect on a line the diff did not add: in this lens and made newly reachable by the diff -> a finding (Step 9 attributes it); in this lens and untouched by the diff -> a finding at its tier label with `_(pre-existing)_` (Step 9 de-escalates it to `[Recommend]`; on a subagent run the parent's verify does), at most the three most consequential, the rest one line each under `## Out of Lens`; owned by another lens (a leaked goroutine, a missing index) -> `## Out of Lens` with `file:line` and the owning lens.
+**Defects outside the diff.** A defect on a line the diff did not add: in this lens and made newly reachable by the diff -> a finding (Step 9 attributes it); in this lens and untouched by the diff -> a finding at its tier label with `_(pre-existing)_` (Step 9 de-escalates it to `[Recommend]`; on a subagent run the parent's verify does), at most the three most consequential (highest tier first), counting only findings this round publishes for the first time, the rest one line each under `## Out of Lens`; owned by another lens (a leaked goroutine, a missing index) -> `## Out of Lens` with `file:line` and the owning lens.
 
 ### Step 5 - OWASP Triage (Go Lens)
 
@@ -118,11 +120,13 @@ When the diff **weakens the authorization posture** - removes middleware, regist
 | Cryptographic Failures | `md5` / `sha1` for auth; hardcoded JWT key; `math/rand` for tokens; missing `bcrypt` / `argon2` |
 | Security Misconfiguration | `AllowAllOrigins: true`; `gin.DebugMode` in prod; ungated `pprof`; missing `gin-contrib/secure` |
 | SSRF | `http.Get(userURL)` without allowlist; RFC1918 / metadata IP not rejected |
-| XSS | `text/template` (not `html/template`); `c.HTML` with user-supplied template |
-| Insecure Design (A04) | Default-allow router (auth opt-in instead of opt-out) |
-| Vulnerable Components (A06) | Stale package with known CVE; missing `govulncheck` in CI |
-| Data Integrity (A08) | `gob.NewDecoder(r).Decode` on untrusted input; request body decoded into a domain model; missing request-size limit; `unsafe` |
-| Logging & Monitoring (A09) | `slog` logging `password` / `token` / `authorization`; missing auth event log; Sentry not stripping PII |
+| XSS | `text/template` (not `html/template`) for HTML output; a `template.HTML(userInput)` cast; `c.Data(..., "text/html; charset=utf-8", userBytes)` |
+| Insecure Design (A06:2025) | Default-allow router (auth opt-in instead of opt-out) |
+| Authentication Failures (A07:2025) | JWT accepted without a pinned algorithm or `iss` / `aud` / `exp` checks; no brute-force limit on a credential endpoint; session cookie flags missing |
+| Software Supply Chain Failures (A03:2025) | Stale package with known CVE; missing `govulncheck` in CI |
+| Data Integrity (A08:2025) | `gob.NewDecoder(r).Decode` on untrusted input; request body decoded into a domain model; missing request-size limit; `unsafe` |
+| Logging & Alerting (A09:2025) | `slog` logging `password` / `token` / `authorization`; missing auth event log; Sentry not stripping PII |
+| Mishandling of Exceptional Conditions (A10:2025) | An auth or verification error ignored so the request proceeds (`claims, _ := verify(raw)`); panic text or internal error detail returned to the client |
 
 ### Step 6 - Apply the Pattern Bank
 
@@ -191,25 +195,25 @@ Pattern bank in `go-security-patterns`. Diff-level checks:
 
 Assign each draft finding its label first - Critical / High -> `[Must]`, Medium / Low -> `[Recommend]` - because `review-finding-verify` takes labelled findings as input and returns adjusted ones.
 
-Use skill: `review-finding-verify` with those findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`. **The label it returns is final** - it de-escalates `[Must]` to `[Recommend]` on untouched pre-existing code, and that survives into the finding heading and into Next Steps. Never re-derive a label from the severity tier after this step; a `### Critical` finding tagged `[Recommend]` because it is pre-existing is the correct output, not a contradiction. Carry its `Annotation` column verbatim onto the heading (`_(pre-existing)_`, `_(pre-existing; newly reachable via <file:line>)_`, `_(unverified: <reason>)_`, `_(mechanism: <actual>)_`; only Step 10's projection splits the combined group) and its tally into the Summary's `Findings verified` slot. The verify table is working material; only the tally and the surviving rows' labels and annotations reach the report.
+Use skill: `review-finding-verify` with those findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`. **The label it returns is final** - it de-escalates `[Must]` to `[Recommend]` on untouched pre-existing code, and that survives into the finding heading and into Next Steps. Never re-derive a label from the severity tier after this step; a `### Critical` finding tagged `[Recommend]` because it is pre-existing is the correct output, not a contradiction. Carry its `Annotation` column verbatim onto the heading (`_(pre-existing)_`, `_(pre-existing; newly reachable via <file:line>)_`, `_(unverified: <reason>)_`, `_(mechanism: <actual>)_`; only Step 10's projection splits the combined group) and its tally into the Summary's `Findings verified` slot; the tally counts this round's drafts only. A finding on a file the name-status does not list gets `_(pre-existing)_`, written first, unless its annotations already have a group opening `pre-existing` or `unverified`. The verify table is working material; only the tally and the surviving rows' labels and annotations reach the report.
 
 Subagent runs skip this step entirely (see Invocation).
 
 ### Step 10 - Reconcile Prior Findings (round 2+, standalone)
 
-Skip on round 1. Otherwise read the prior report at the handle's `report_path` and project its findings into the reconciler's shape: `## High-Impact Findings` holding one `### [<Label>] <file:line>` heading per finding followed by an `Issue:` line, the label and `file:line` copied from the `#### <n>. [Label] file:line` heading, annotations as separate `_(...)_` groups (`_(pre-existing; newly reachable via X)_` becomes `_(pre-existing)_ _(newly reachable via X)_`). Use skill: `review-prior-findings-reconcile` with `prior_report` (the projection), `diff`, `name_status`, `head_sha`, `base_ref`, and `head_files` (`git ls-tree -r --name-only <head_sha>`). Insert its table under `## Prior Round Reconciliation`. `Still open` and `Needs re-check` rows re-enter `## Findings` under the severity heading they were last published under (re-rated only when this round re-drafted the defect), with the label and annotation groups they were last published with plus `_(carried from round <N>)_` (N = the round that first raised it, written once) on the heading, so the next round reconciles them again; when this round re-drafted the same defect at the same site, publish only the re-drafted finding with that annotation appended. The table keeps the prior label and line verbatim.
+Skip on round 1. Otherwise read the prior report at the handle's `report_path` and project its findings into the reconciler's shape: `## High-Impact Findings` holding one `### [<Label>] <file:line>` heading per finding followed by an `Issue:` line, the label and `file:line` copied from the `#### <n>. [Label] file:line` heading, annotations as separate `_(...)_` groups (`_(pre-existing; newly reachable via X)_` becomes `_(pre-existing)_ _(newly reachable via X)_`). Use skill: `review-prior-findings-reconcile` with `prior_report` (the projection), `diff`, `name_status`, `head_sha`, `base_ref`, and `head_files` (`git ls-tree -r --name-only <head_sha>`). Insert its output - the table, any note lines, the tally line - under `## Prior Round Reconciliation`. `Still open` and `Needs re-check` rows re-enter `## Findings` with the body the prior report gave them, cited where reconcile places the smell now, under the severity heading they were last published under (re-rated only when this round re-drafted the defect; the tier its `Severity rationale` names when the prior heading combined several), with the label and annotation groups they were last published with (`_(pre-existing)_` written first when the name-status does not list the file and no group opens `pre-existing` or `unverified`) plus `_(carried from round <N>)_` (N = the round that first raised it, written once) on the heading, so the next round reconciles them again; when this round re-drafted the same defect at the same site, publish only the re-drafted finding with that annotation appended. The table keeps the prior label and line verbatim.
 
 ### Step 11 - Write Report
 
 Standalone only - subagent runs return the Output Format to the parent, which writes the single merged report.
 
-Use skill: `review-report-writer` with `report_type: review-security` and every required input: `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` from the handle, `base_sha` / `head_sha` from Step 3, `stack: go-gin`, `scope: +sec`, `depth: deep` (this workflow always runs full depth), `mode: full`, and the `round` / `prior_head_sha` resolved in Step 3. Write before ending; print confirmation.
+Use skill: `review-report-writer` with `report_type: review-security` and every required input: `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` from the handle, `base_sha` / `head_sha` from Step 3, `stack` per Step 2, `scope: +sec`, `depth: deep` (this workflow always runs full depth), `mode: full`, and the `round` / `prior_head_sha` resolved in Step 3. Write before ending; print confirmation.
 
 ## Self-Check
 
 Mark a line N/A with its reason when the diff has no matching surface, or when the invocation mode makes it inapplicable (subagent, round 1).
 
-- [ ] Step 1: `behavioral-principles` loaded, or rules inlined in the spawning prompt
+- [ ] Step 1: behavioral-principles loaded
 - [ ] Step 2: stack confirmed; data-access mix with versions, JWT library, password hash recorded
 - [ ] Step 3: `review-precondition-check` ran with `report_type: review-security` (or handle received); diff, log and name-status read once; `base_sha` / `head_sha` captured; round resolved from the handle; same-SHA no-op honoured; approval obtained when `head_matches_current` was false
 - [ ] Step 4: security surface read directly; static file serving checked; prior revision consulted when a control was removed; defects outside the diff routed per the Step 4 rule
@@ -227,14 +231,14 @@ Mark a line N/A with its reason when the diff has no matching surface, or when t
 
 The fence below delimits the template for display only - it is not part of the report. Emit `report_body` as raw Markdown so headings, tables, and lists render; never wrap the whole report in a code fence.
 
-**Fill rules.** `Overall Posture` counts every published finding by tier, whatever its label: `Issues Found - <N> Critical / <N> High / <N> Medium / <N> Low`. `Depth` is always `deep`. `Password Hash` is `bcrypt | argon2 | weak (<algorithm>) | none | not observable` - `weak` for an unsalted or fast digest (`sha256`, `md5`) used as a password hash, `not observable` when only a verify call (`CompareHashAndPassword`) is in the tree and no hash is generated. `Authorization` is `router-group middleware + ownership checks | inline checks | partial - <where missing> | none`. `Findings verified` is omitted on subagent runs, its parenthetical when K is 0. Any field whose value the repo cannot settle takes the value plus `(inferred from <evidence>)`.
+**Fill rules.** `Overall Posture` counts every published finding by tier, whatever its label: `Issues Found - <N> Critical / <N> High / <N> Medium / <N> Low`. `Depth` is always `deep`. `Password Hash` is `bcrypt | argon2 | weak (<algorithm>) | none | not observable` - `weak` for an unsalted or fast digest (`sha256`, `md5`) used as a password hash, `none` for a password stored or compared in plaintext, `not observable` when the tree neither hashes nor verifies a stored password (a verify call alone settles it: `bcrypt.CompareHashAndPassword` is `bcrypt`). `Authorization` is `router-group middleware + ownership checks | inline checks | partial - <where missing> | none`. `Findings verified` is omitted on subagent runs, its parenthetical when K is 0. Any field whose value the repo cannot settle takes the value plus `(inferred from <evidence>)`.
 
 **Each finding is its own numbered block** under its severity heading, headed `#### <n>. [Label] file:line _(annotations)_` where the label and annotations come from Step 9 verbatim (tier-derived label and `_(pre-existing)_` on subagent runs; `_(carried from round <N>)_` on carried findings). Numbering continues across tiers so Recommendations and Next Steps can cite `finding <n>`. Blank lines separate the field lines; consecutive bare `**Label:** value` lines collapse into one paragraph when the report renders.
 
 ```markdown
 ## Go Security Review Summary
 
-- **Stack Detected:** Go <version> / Gin <version>
+- **Stack:** Go <version> / <framework> <version> | Go <version> (no framework detected)
 - **Data Access:** GORM <version> | sqlx <version> | database/sql | mixed - <both, named>
 - **JWT Library:** golang-jwt/jwt/v5 | golang-jwt/jwt/v4 | gin-jwt | lestrrat-go/jwx | none
 - **Password Hash:** bcrypt | argon2 | weak (<algorithm>) | none | not observable
@@ -257,14 +261,18 @@ The fence below delimits the template for display only - it is not part of the r
 | SSRF                      | ...                                                 | ...                                     |
 | XSS                       | ...                                                 | ...                                     |
 | Insecure Design           | ...                                                 | ...                                     |
-| Vulnerable Components     | ...                                                 | ...                                     |
+| Authentication Failures   | ...                                                 | ...                                     |
+| Supply Chain Failures     | ...                                                 | ...                                     |
 | Data Integrity Failures   | ...                                                 | ...                                     |
-| Logging & Monitoring      | ...                                                 | ...                                     |
+| Logging & Alerting        | ...                                                 | ...                                     |
+| Exceptional Conditions    | ...                                                 | ...                                     |
 
 ## Prior Round Reconciliation     {round 2+ only; omit otherwise}
 
 | Round <N-1> Finding | file:line | Status | Notes |
 | ------------------- | --------- | ------ | ----- |
+
+<note line>     {one paragraph per note line reconcile emitted; omit when none}
 
 Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
@@ -288,9 +296,17 @@ Reconciliation: <a> addressed, <s> still open, <o> obsolete, <r> needs re-check.
 
 [Same block]
 
-### High / Medium / Low
+### High
 
 [Same blocks, numbering continues across tiers]
+
+### Medium
+
+[Same blocks]
+
+### Low
+
+[Same blocks]
 
 Omit severity sections with no findings. When every section is empty, write "No security issues found." A composition that empties the High tier by folding its constituents into a Critical is expected - say so in the Summary assessment so the distribution does not read as miscalibrated.
 

@@ -9,7 +9,7 @@ user-invocable: false
 
 # Go Onboard Map (atomic)
 
-> Load `Use skill: stack-detect` first. Composed by `task-onboard` when `Language` is Go **or** stack-detect finds a `go.mod` in a service directory it scans (a fullstack monorepo with a React root puts Go in `Additional`). When Go is the primary stack, a `## Tech Stack` declaration wins over tree inference for Framework, Database, ORM and Test framework (stack-detect precedence); when the tree disagrees, report `<declared> (tree shows <inferred>)`. When Go sits in `Additional`, those scalar fields describe the primary stack and every Go value comes from the tree. The Go version is the `go` directive in each `go.mod`.
+> Load `Use skill: stack-detect` first. Composed by `task-onboard` when `Language` is Go **or** stack-detect finds a `go.mod` in a service directory it scans (a fullstack monorepo with a React root puts Go in `Additional`). When Go is the primary stack, a `## Tech Stack` declaration wins over tree inference for Framework, Database, ORM and Test framework (stack-detect precedence); when the tree disagrees, report `<declared> (tree shows <inferred>)`. When Go sits in `Additional`, those scalar fields describe the primary stack and every Go value comes from the tree. The Go version is the `go` directive in each `go.mod`; a `Language:` line naming another version follows it as `(declared: <value>)`.
 
 ## When to Use
 
@@ -32,6 +32,7 @@ user-invocable: false
 | ----------------- | ------------------------------------------------ |
 | `go.mod`          | Module path, Go version, direct and `// indirect` dependencies |
 | `go.mod` `require` + `cmd/<bin>/main.go` | Logging / Observability: the logger (`slog`, zap, logrus) and OTel modules, and where they are wired |
+| `go.mod` `require` + the compose file | Queue / Broker: the client library (Asynq, franz-go) and the broker service it connects to |
 | `go.work`         | Multi-module monorepo; governing `go` line; local module resolution |
 | `go.sum`          | Dependency checksums (a missing entry fails `go build` under `-mod=readonly`; `go mod tidy` writes it - a bootstrap step, note it) |
 | `Makefile` / `Taskfile.yml` | Project commands                       |
@@ -66,28 +67,6 @@ user-invocable: false
 
 The last two rows are orthogonal to the package convention - a feature-packaged monorepo is the common combination; report every row that applies. A layer-packaged repo without `internal/` is still layer-package: name the convention and note that the boundary is convention-only, not compiler-enforced. A small module split by concern (`config/`, `mail/`, `store/`) is layer-package.
 
-| Location                                  | Purpose                                       |
-| ----------------------------------------- | --------------------------------------------- |
-| `cmd/<binary>/main.go`                    | Entry; thin wire-up                           |
-| `internal/`                               | App code, not importable externally           |
-| `internal/server/`                        | Router, middleware                            |
-| `internal/handler/` or `api/`             | HTTP handlers                                 |
-| `internal/service/`                       | Business logic                                |
-| `internal/repository/` or `store/`        | DB access                                     |
-| `internal/domain/` or `model/`            | Entities, value objects                       |
-| `pkg/`                                    | Reusable libraries (some teams skip entirely) |
-| `migrations/`                             | SQL files                                     |
-| `configs/`, `scripts/`                    | Config templates, bootstrap                   |
-
-## Conventions
-
-- Errors are values; wrap with `fmt.Errorf("ctx: %w", err)`
-- `context.Context` as first param for I/O-bound functions
-- Interfaces declared at the consumer (small, often inline)
-- Constructor functions (`NewServer(...)`); no DI framework
-- Functional options for configurable constructors
-- Tests `_test.go` colocated; `testify` common but not universal
-
 ## Risk Hotspots (delegate depth to dedicated skills)
 
 - Goroutine lifetime + cancellation, unsupervised `go fn()`, loops in `init()` -> `go-concurrency`
@@ -111,23 +90,17 @@ Generic safe zones (replace with concrete equivalents from the tree):
 
 Riskier: `cmd/<binary>/main.go`, middleware (applies globally), pool config, goroutine / context patterns.
 
-## Ecosystem Currency
-
-- Gin dominant; Chi gaining on stdlib alignment
-- pgx 5+ for Postgres; sqlx for general database/sql; sqlc for type-safe generated SQL
-- OpenTelemetry replacing custom metric/trace libs
-- `slog` standard structured logger - replacing logrus/zap in new code
-
 ## Output
 
 Inject into `task-onboard` as Markdown sections in this order. Every value is read from the tree (or the instruction file, per the precedence above); mark a derived value `(inferred)` - a run command assembled from the tree alone, a hotspot named from a path with no code read - and an unavailable one `(unknown)` with the reason (`file unreadable`, `no filesystem access`). A directory listing that shows no linter config supports `none`; an unreadable tree is `(unknown)`. `docs/` is part of the tree: an incident or design doc that names a hotspot is read for Risk Hotspots. Never carry a value over from the shape below - it shows the section skeleton, not defaults. In a workspace, `Go`, `Framework`, `DB`, `Migrations` and `Tests` carry one sub-bullet per module.
 
 ```markdown
 ### Stack and Tooling
-- **Go:** <go directive> (<toolchain directive, or "no toolchain directive">; <support position, only when the current release is known>) - workspace: `go.work` line first, then per module
+- **Go:** <go directive>{ (declared: <value>)} (<toolchain directive, or "no toolchain directive">; <support position, only when the current release is known>) - workspace: `go.work` line first, then per module
 - **Framework:** <framework, or (unknown)>
 - **DB:** <library + driver + engine>
 - **Migrations:** <tool + command>
+- **Queue / Broker:** <library + broker (Asynq + Redis, franz-go + Kafka), or "none found">
 - **Logging / Observability:** <libraries>
 - **Lint:** <config file + effective linter set, or "none - no linter config">
 - **Build tags:** <required `-tags`, "none found", "defined but unused: <tag>", or "unverified - no filesystem access">
@@ -171,10 +144,6 @@ no CI, and no linter, this is the highest-value section for a new joiner.
 
 ## Avoid
 
-- Treating Go as having exceptions
 - Recommending DI frameworks (constructor injection is idiomatic)
-- Glossing over context propagation
 - Confusing `pkg/` and `internal/` (the latter is compiler-enforced)
 - Recommending logrus/zap for new 1.21+ projects (use `slog`)
-- Fabricating health paths, env var names, or default ports not visible in the tree - mark `(inferred)` or `(unknown)`
-- Listing `go work sync` or an unconditional `go mod download` as bootstrap steps
