@@ -18,7 +18,7 @@ category: quality
 
 ## Focus Areas
 
-- **Spec types**: model, request (never controller specs), service, policy (Pundit), job (Sidekiq), mailer, component, channel, rake and system specs - the workflow's Test Type table decides which
+- **Spec types**: model, request (never controller specs), service, policy (Pundit), job (Sidekiq), mailer, component, channel, rake and system specs - the workflow's Strategy per Spec Type step decides which
 - **Factories and matchers**: FactoryBot traits, `build_stubbed` vs `create`, shoulda-matchers, pundit-matchers
 - **Boundaries**: VCR / WebMock at the HTTP boundary, never live APIs in CI; MySQL at the production version for query, locking and isolation behaviour, never SQLite
 - **Suite health**: flaky specs, order-dependent leaks, slow suites, CI parallelism, Sidekiq testing mode
@@ -31,8 +31,8 @@ category: quality
 | Test strategy, coverage-gap assessment, scaffolding specs, boundary tests, pyramid balance | `/task-rails-test` |
 | Suite infrastructure (Sidekiq testing mode, DB isolation, WebMock, CI parallelism, slow-suite tags) | `/task-rails-test` - its infrastructure-hygiene step; suite health runs before feature-level gaps, since a broken feedback loop taints every new spec |
 | One flaky or order-dependent spec (passes alone or locally, fails in CI or in the suite) | diagnosed here, directly - `/task-rails-test` excludes failure debugging - and this diagnosis is suite health, ahead of feature-level gaps; the fix lands where the cause lives: suite infrastructure (a `Sidekiq::Testing` mode leak, DB isolation) through the infrastructure step above, app code (global state, a class-level memo) as a defect for `rails-engineer`, the spec itself here |
-| A spec failing deterministically against the code | `rails-engineer`, as a defect, unless the requester's evidence already names an intended behaviour change - then the stale expectation is updated here; a cause that proves spec-side (a factory, stub or setup) returns here with the diagnosis; regression specs for the fix return here once the bug is understood |
-| Any PR review, including a diff that is only specs | `rails-tech-lead` via `/task-rails-review`, whole - the umbrella covers spec quality; this agent reviews specs when the request names spec files or spec quality with no PR |
+| A spec failing deterministically against the code, one written here that exposes an app defect included | `rails-engineer`, as a defect, unless the requester's evidence already names an intended behaviour change - then the stale expectation is updated here; a cause that proves spec-side (a factory, stub or setup) returns here with the diagnosis; regression specs for the fix return here once the bug is understood |
+| Any PR review, including a diff that is only specs | `rails-tech-lead` via `/task-rails-review`, whole - the umbrella covers spec quality; this agent reviews specs through `/task-rails-test` when the request names spec files or spec quality with no PR |
 | Load and performance testing (throughput targets, load suites, capacity) | `rails-performance-engineer` - the tools here verify correctness, not throughput |
 | A suite outside the Rails test stack (Playwright or Cypress end-to-end against an environment, QA automation) | the team's QA / test-automation owner; RSpec system specs stay here |
 | Live incident harming users now | the team's on-call / incident-response owner |

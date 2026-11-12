@@ -54,7 +54,7 @@ Inspect `config/environments/*.rb`, `config/initializers/lograge*.rb`, every dif
 
 `filter_parameters` coverage belongs to `task-rails-review-security`. Cross-flag here only when a new log line clearly leaks fields the security review wouldn't catch (e.g., custom `params.to_unsafe_h` log).
 
-The pre-existing-gap rule generalizes across Steps 4-9: config or instrumentation the diff doesn't touch files as `[Recommend]` context, never a merge blocker (investigation mode suspends this - see Invocation). Exception: a pre-existing gap that a **new surface in the diff newly depends on** (a new job with no middleware bridge to restore its context, a new outbound call with no propagation) files at full severity, anchored to the new callsite - the diff created the blind spot even though the config predates it. Draft it anchored to the new callsite; verify rules it `Pre-existing (newly reachable)`, re-cites it at the unchanged config with the callsite named as the trigger, and keeps the drafted label - the verified `Label` governs what is published.
+The pre-existing-gap rule generalizes across Steps 4-9: config or instrumentation the diff doesn't touch files as `[Recommend]` context, never a merge blocker (investigation mode suspends this - see Invocation). Exception: a pre-existing gap that a **new surface in the diff newly depends on** (a new job with no middleware bridge to restore its context, a new outbound call with no propagation) is drafted at full severity, anchored to the new callsite - the diff created the blind spot even though the config predates it; verify attributes it, and the verified `Label` governs what is published.
 
 ### Step 5 - Business Events (AS::Notifications & custom spans)
 
@@ -73,7 +73,7 @@ Skip when diff doesn't touch correlation config (request-id middleware, `Current
 - [ ] **Request-scoped context** via `ActiveSupport::CurrentAttributes` for `user_id`, `tenant_id`, `request_id`. Flag new code adding the legacy `RequestStore` gem instead of extending `Current`
 - [ ] **Job middleware bridge**: Sidekiq client / server middleware (Active Job `around_enqueue` / `around_perform` on Solid Queue) captures `request_id`/`trace_id`/`tenant_id` at enqueue and restores it on `perform` (into `Current` or OTel context); a recurring job has no request origin - its job id is the correlation root. Without this, new jobs orphan their trace
 - [ ] **Outbound HTTP propagates `X-Request-ID`** (+ W3C `traceparent` when a tracer is configured - with `Tracing: none`, request-ID propagation alone satisfies this) - Faraday middleware, `Net::HTTP` patch, or APM auto-instrumentation
-- [ ] **`config.active_record.query_log_tags_enabled = true`** in production (Rails 7+); `:controller`, `:action` and `:job` are appended by the railties unless `log_query_tags_around_actions` / `log_query_tags_around_perform` is false - check those flags, not the list. `:request_id` and `:tenant` are **not** built-in taggings - a bare symbol resolves against `ActiveSupport::ExecutionContext`, returns nil and is dropped silently, so they must be hash entries with a callable (`{ request_id: ->(ctx) { ctx[:controller]&.request&.request_id } }`). A config listing them as bare symbols emits no such tag - check the form, not just the presence. No PII in tags
+- [ ] **`config.active_record.query_log_tags_enabled = true`** in production (Rails 7+); `:controller` (not when the list already has `:namespaced_controller`), `:action` and `:job` are appended by the railties unless `log_query_tags_around_actions` / `log_query_tags_around_perform` is false - check those flags, not the list. `:request_id` and `:tenant` are **not** built-in taggings - a bare symbol resolves against `ActiveSupport::ExecutionContext` and, unless the app writes that key there (`Rails.error.set_context`), returns nil and is dropped silently, so they must be hash entries with a callable (`{ request_id: ->(ctx) { ctx[:controller]&.request&.request_id } }`). A config listing them as bare symbols with no such writer emits no such tag - check the form, not just the presence. No PII in tags
 
 ### Step 7 - Tracing Setup (initializer/gem-change PRs only)
 
@@ -142,7 +142,7 @@ Fill rules: `Findings verified:` carries the verify tally on standalone runs and
 - **Target:** <path(s)>   {investigation mode only}
 - **Overall:** Adequate | Gaps Found - [<N> High / <N> Medium / <N> Low]
 - **Findings verified:** <per fill rules: `<N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}` from `review-finding-verify` | inline (no diff)>
-- **Notes:** <the Step 2 declared-vs-code divergence, each Step 6-8 or Step 10 skip with its trigger, each N/A step or row with its reason (investigation-mode N/A steps; the `/up` row when `config/routes.rb` is absent, any mode), each `<path> - absent` entry, every entry of the handle's `notes` (base fallback, approval gate, tag collision, pr-ref base reminder, legacy checkpoint)>   {omit when none}
+- **Notes:** <the Step 2 declared-vs-code divergence, each Step 6-8 or Step 10 skip with its trigger, each N/A step or row with its reason (investigation-mode N/A steps; the `/up` row when `config/routes.rb` is absent, any mode), each `<path> - absent` entry, every entry of the handle's `notes`>   {omit when none}
 
 ## Findings
 

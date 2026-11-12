@@ -106,7 +106,7 @@ The reconciliation table (when emitted) only covers findings whose scope was act
 
 **Scope on round 2+** resolves exactly as on round 1 (Step 4): the user's flags when any were passed, else the signals firing on the full range, with `core-only` suppressing them. Nothing is inherited from the checkpoint - a scope that escalated in round 1 escalates again on its own. When the resolved scope still falls below the checkpoint's (round 1 carried flags this round lacks, or this round's flags or `core-only` left out a lens round 1 ran), note in Summary: `Scope narrowed vs round <prior.round>: <list> - re-run with <flags> to re-cover.`
 
-**Step 3.5d - Lens re-run gate.** Core Steps 5-8 re-read the full range every round; the lenses re-run only when the commits since the prior round could change what they found. Decide it at the end of Step 4, where the lenses would spawn: run `git diff --name-only <prior_checkpoint.head_sha> <current_head_sha>`. The lenses are carried, not spawned, when all of these hold: the command exits 0; every path it lists (an empty list included) is documentation (`*.md`, `docs/`) or a spec / test file that is not a fixture, factory or cassette; the resolved scope and depth are covered by the checkpoint's; and the prior Summary carries no `Scope incomplete` note. A carried lens's prior findings reach this report through Step 9.5 as rows this round did not re-derive. Note in Summary: `Lenses carried from round <prior.round>: commits since touch no runtime file.` Any other outcome (a non-zero exit, one runtime path, a newly added lens, a deeper depth) runs Step 9 in full.
+**Step 3.5d - Lens re-run gate.** Core Steps 5-8 re-read the full range every round; the lenses re-run only when the commits since the prior round could change what they found. Decide it at the end of Step 4, where the lenses would spawn: run `git diff --no-renames --name-only <prior_checkpoint.head_sha> <current_head_sha>`. The lenses are carried, not spawned, when all of these hold: the command exits 0; the range's base side did not move (`git merge-base <base_ref> <current_head_sha>` equals `git merge-base <prior_checkpoint.base_sha> <prior_checkpoint.head_sha>`); every path it lists (an empty list included) is documentation (`*.md`, `docs/`) or a spec / test file that is not a fixture, factory or cassette; the resolved scope and depth are covered by the checkpoint's; and the prior Summary carries no `Scope incomplete` note. A carried lens's prior findings reach this report through Step 9.5 as rows this round did not re-derive. Note in Summary: `Lenses carried from round <prior.round>: commits since touch no runtime file.` Any other outcome (a non-zero exit, a moved merge base, one runtime path, a newly added lens, a deeper depth) runs Step 9 in full.
 
 ### Step 3.7 - Change Intent
 
@@ -298,7 +298,7 @@ The fence below delimits the template for display only - it is not part of the r
 - **Findings verified:** <N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}
 - **Requirement Source:** <`review-change-intent`'s line value as emitted: each source with its authority, two joined by ` + `>   {this line and the next together, or both omitted when Step 3.7 resolved no source}
 - **Requirement Fit:** <n> met, <n> partial, <n> unmet, <n> deferred, <n> untraceable
-- **Notes:** <every note line mandated by Depth and Scope, Steps 2/3.5/3.5c/3.5d/4/9 - declared-vs-code divergence, narrowing, expansion, carried lenses, short-circuit, incomplete or inline scopes, lenses not run, lens atomics not loaded - and every entry of the handle's `notes` (base fallback, approval gate, tag collision, pr-ref base reminder, legacy checkpoint)>   {omit when none}
+- **Notes:** <every note line mandated by Depth and Scope, Steps 2/3.5/3.5c/3.5d/4/9 - declared-vs-code divergence, narrowing, expansion, carried lenses, short-circuit, incomplete or inline scopes, lenses not run, lens atomics not loaded - and every entry of the handle's `notes`>   {omit when none}
 
 ## Change Brief
 
@@ -358,13 +358,13 @@ Not introduced or made newly reachable by this change; context only, not part of
 
 1. **[Implement]** [Must] file:line - one-line action
 2. **[Implement]** [Recommend] OldFile.rb:88 - N+1 in listAll (open since round 1)
-3. **[Delegate]** [Recommend] [+Sec] - run `/task-rails-review-security` (suppressed signal: <signal>)
+3. **[Delegate]** [Recommend] [+Sec] - run `/task-rails-review-security` (<suppressed signal | signal not escalated>: <signal>)
 4. **[Delegate]** [Recommend] [scope: platform] - one-line action for a fix leaving the PR's scope
 
 ## Failure-Mode and Blast-Radius Map   {reliability's, at deep, verbatim - Step 9.3}
 ```
 
-_Omit empty sections. Omit Next Steps only when there are no High-Impact findings, no carryovers, and no suppressed-signal delegates._
+_Omit empty sections. Omit Next Steps only when there are no High-Impact findings, no carryovers, and no Step 4 `[Delegate]` entries._
 
 ## Self-Check
 

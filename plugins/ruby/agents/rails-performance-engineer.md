@@ -32,7 +32,7 @@ category: engineering
 | --- | ----- |
 | Perf review of a Rails PR | `/task-rails-review-perf` on the PR |
 | Diagnosis with no branch (a named endpoint, file or migration, APM data only) | `/task-rails-review-perf` in its investigation mode on the named code |
-| Load-readiness before a traffic spike (throughput targets, headroom, pool arithmetic - threads x processes against `max_connections` - for normal load and deploy peaks) | here, in investigation mode on the named path; this agent sets the targets and reads the load-test results, the requester runs the load test |
+| Load-readiness before a traffic spike (throughput targets, headroom, pool arithmetic - threads x processes against `max_connections` - for normal load and deploy peaks) | here, in investigation mode on the named path; this agent sets the targets and reads the load-test results, the requester runs the load test; the pod or dyno count itself is the platform owner's to choose (the fleet-sizing row below) |
 | Behavior once saturation is reached: what the app does when the pool is exhausted, bounding (choosing a worker or thread cap - the arithmetic behind it is computed here first), load shedding, fallbacks when a dependency is down, breaker / retry design, surviving a kill mid-run (checkpoint and resume) | `rails-reliability-engineer`; a bare slowness report, and chunking for memory or throughput, stay here |
 | Instrumentation / tracing / alerting (what to instrument or alert on, a new metric, where request time goes) | `rails-observability-engineer`; this agent reads existing metrics and profiles to diagnose a specific regression |
 | Security-shaped slices (authorization, auth config, injection) | `rails-security-engineer` |

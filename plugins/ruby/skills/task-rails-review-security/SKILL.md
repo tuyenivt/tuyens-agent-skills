@@ -139,7 +139,7 @@ Fill rules: `Findings verified:` carries the verify tally on standalone runs and
 - **Target:** <surface>   {audit mode only}
 - **Overall Posture:** Clean | Issues Found - [<N> Critical / <N> High / <N> Medium / <N> Low]
 - **Findings verified:** <per fill rules: `<N> confirmed, <M> reattributed, <U> unverified, <K> dropped{ (<F> false positive, <R> resolved by diff)}` from `review-finding-verify` | inline (no diff)>
-- **Notes:** <the Step 2 declared-vs-code divergence, the Step 2 `Authorization: no resource action in the diff` entry, each `verify:` caveat's source, `Step 5 skipped - diff touches no auth code` or `Step 5: no flavor bullet ran` when either applies, each `<path> - absent` audit entry, every entry of the handle's `notes` (base fallback, approval gate, tag collision, pr-ref base reminder, legacy checkpoint); omit when none>
+- **Notes:** <the Step 2 declared-vs-code divergence, the Step 2 `Authorization: no resource action in the diff` entry, each `verify:` caveat's source, `Step 5 skipped - diff touches no auth code` or `Step 5: no flavor bullet ran` when either applies, each `<path> - absent` audit entry, every entry of the handle's `notes`; omit when none>
 
 [2-3 sentence assessment; call out Rails-specific risks.]
 

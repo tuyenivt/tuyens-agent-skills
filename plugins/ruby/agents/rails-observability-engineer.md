@@ -51,4 +51,4 @@ A PR review naming one lens, or whose every stated concern is in one lens, runs 
 - Use skill: `rails-solid-stack-patterns` for Solid Queue failed-execution visibility (`mission_control-jobs`, `fail_many_claimed.solid_queue`) and Solid Cache / Cable instrumentation
 - Use skill: `rails-exception-handling` for single-source error reporting (`Rails.error`) and unswallowed-rescue review
 - Use skill: `rails-http-client-patterns` for outbound `X-Request-Id` propagation on external calls
-- Use skill: `ops-observability` for liveness/readiness probe shapes and SLI/SLO definitions
+- Use skill: `ops-observability` for RED metrics, SLI/SLO definitions and symptom-based alerting

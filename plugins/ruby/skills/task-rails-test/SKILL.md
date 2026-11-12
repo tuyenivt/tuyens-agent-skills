@@ -29,7 +29,7 @@ Not for: test failure debugging, general code review (`task-code-review`).
 Use skill: `behavioral-principles`.
 
 ### Step 2 - Stack Detect
-Use skill: `stack-detect`. Accept pre-confirmed stack. Where the project's declared stack and its code disagree, record what the code does and note the divergence. If not Rails, stop and name the detected stack so the user can invoke that stack's test workflow. Versions: `stack-detect` carries them only when `## Tech Stack` declares them - otherwise read Ruby / Rails from `.ruby-version` / `Gemfile.lock`, else `unknown`.
+Use skill: `stack-detect`. Accept pre-confirmed stack. Where the project's declared stack and its code disagree, record what the code does and note the divergence. If not Rails, stop and name the detected stack so the user can invoke that stack's test workflow. Versions: `stack-detect` carries them only when the instruction file's stack section declares them - otherwise read Ruby / Rails from `.ruby-version` / `Gemfile.lock`, else `unknown`.
 
 ### Step 3 - Pyramid
 
@@ -125,11 +125,11 @@ When several rows match, emit the union of the matched rows' outputs - the reque
 
 ## Output Format
 
-Every deliverable opens with one `- **Stack:**` bullet (`stack-detect`'s Stack-slot form, `<Language> / <Framework>`, versions per Step 2) and one `- **Test framework:**` bullet (`RSpec` or `Minitest` per Step 4, with the version where `Gemfile.lock` lists `rspec-core` / `minitest`), then the mode blocks, then these trailing sections in this order - `## Infra Findings`, `## Infra To Confirm`, `## Blocking Defects` (the per-mode templates do not repeat them):
+Every deliverable opens with one `- **Stack:**` bullet (`stack-detect`'s Stack-slot form, `<Language> / <Framework>`, versions per Step 2) and one `- **Test framework:**` bullet (`RSpec` or `Minitest` per Step 4, with the version where `Gemfile.lock` lists `rspec-core` / `minitest`), then the mode blocks (the requested deliverable first, then whichever of Strategy Doc, Coverage Assessment, Test Scaffolds and `## Existing Spec Findings` also ship, in that order), then these trailing sections in this order - `## Infra Findings`, `## Infra To Confirm`, `## Blocking Defects` (the per-mode templates do not repeat them):
 
 `## Infra Findings` - Step 8 items that **are** in evidence and are broken (a global `Sidekiq::Testing.inline!`, WebMock absent from `rails_helper.rb`), one line each, `file:line` (or `suite-wide` for runtime, CI or parallelism items) + what breaks. Omit when none; in Review mode they are the first group of the numbered list instead.
 
-`## Infra To Confirm` - Step 8 items **not** in evidence, plus any step skip rationale and, when the Strategy Doc does not ship, the Step 7 decision as `API contract: <tool>{ (assumed external)} | skipped - <reason>`. Omit when there are none.
+`## Infra To Confirm` - Step 8 items **not** in evidence, each line a step routes here by name, plus any step skip rationale and, when the Strategy Doc does not ship, the Step 7 decision as `API contract: <tool>{ (assumed external)} | skipped - <reason>`. Omit when there are none.
 
 A code defect that is not a Step 8 item but blocks the specs being written (no spec can pass against the code as it is) - a scope referencing a column the schema lacks, a body read twice, an auth hole the coverage analysis walked into - is reported, never dropped and never silently designed around: one line under `## Blocking Defects`, giving `file:line`, what it breaks, and the workflow that owns the fix (`task-rails-implement` for a code change, `task-rails-review-security` for a security hole). Scaffold against the corrected behaviour and say so. An evidenced defect the specs will pin but that does not block them (a job enqueued inside a transaction) is one line under the same heading, marked `non-blocking`; code the request names that does not exist is one line marked `absent`. In Review mode the defect is a numbered finding and the `## Blocking Defects` line only cross-references it.
 

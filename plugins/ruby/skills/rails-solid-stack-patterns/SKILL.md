@@ -70,6 +70,8 @@ Single-database layout (one `database.yml` entry, the `*_schema.rb` contents mov
 
 ### Solid Queue - `config/queue.yml`
 
+With no `config/queue.yml` Solid Queue warns and runs its fallback - one worker of 3 threads on `*` and one dispatcher; a scheduler starts only when `config/recurring.yml` defines a task.
+
 ```yaml
 # Bad - one worker on every queue, deploy count unknown; a 10-minute report job starves the mailers
 production:
@@ -144,7 +146,7 @@ default: &default
 production:
   <<: *default
   size_estimate_samples: 1000
-  encrypt: true                       # environment level, not store_options; Active Record Encryption must be configured
+  encrypt: true                       # environment level, not store_options; Active Record Encryption configured and msgpack 1.7+ in Gemfile.lock
 ```
 
 `config.cache_store = :solid_cache_store` (the installer writes it in `production.rb`). Expiry is write-driven: each write has a `2 / expiry_batch_size` chance (`expiry_batch_size` 100: one batch per 50 writes on average) of starting a task that deletes one batch - over `max_entries` / `max_size` the oldest entries, otherwise entries older than `max_age` (2 weeks by default; `nil` only with `max_entries`). A cache that is read far more than written expires slowly; `max_age` unset means the 2-week default, and only an explicit `max_age: nil` (with `max_entries`) keeps entries until size pressure evicts them. Size `max_size` to the disk and buffer pool given to the cache database (a cache larger than the buffer pool reads from disk) and `max_age` to how long an entry stays correct. `max_key_bytesize` (1024) truncates longer keys with a digest, so a key carrying a serialized record is not a correctness bug but a readability one. `clear_with: :truncate` (`:delete` in test) is what `Rails.cache.clear` runs. A `fetch` inside a hot action writes a DB row per miss and `race_condition_ttl` still applies; a per-request `increment` (a `rate_limit` counter on a public endpoint) is a row update per request - acceptable at hundreds per second, Redis beyond that.
@@ -162,7 +164,7 @@ production:
   autotrim: true                      # SolidCable::TrimJob otherwise, on a recurring schedule
   trim_batch_size: 100
   use_skip_locked: true               # MySQL 8.0+ - leave on
-  encrypt: true                       # Solid Cable 4.1+; when broadcasts carry user data - Active Record Encryption configured and the msgpack gem in the Gemfile
+  encrypt: true                       # Solid Cable 4.1+; when broadcasts carry user data - Active Record Encryption configured and msgpack 1.7+ in Gemfile.lock
 ```
 
 Every process that broadcasts (web or job worker) holds cable-database connections for the `solid_cable_writer` thread and the autotrim thread, and a cable-serving process one more for its listener's polling - count them in the cable pool budget (`rails-connection-pool-sizing`'s Cable extra). Broadcasts queue in-process and are written in batches of up to `writer_batch_size` (4) per insert; subscriber cost is one poll per `polling_interval` per process, so lowering the interval multiplies queries by the process count, not the subscriber count. `message_retention` is why the table stays small.
@@ -190,7 +192,7 @@ Concurrency controls: {<JobClass>: key <expr>, to <N>, duration <N>, on_conflict
 
 Recovery: {fail_many_claimed subscriber retries idempotent jobs + failed-count alert | mission_control-jobs mounted (auth-gated) + failed-count alert | failed executions unwatched - GAP | n/a (Cache, Cable)}
 
-Encryption: {encrypt: true (Active Record Encryption configured) | off - payloads hold no personal or secret data | off - GAP (<what is stored>) | n/a (Queue - arguments are IDs)}
+Encryption: {encrypt: true (Active Record Encryption configured, msgpack 1.7+ in Gemfile.lock) | off - payloads hold no personal or secret data | off - GAP (<what is stored>) | n/a (Queue - arguments are IDs)}
 ```
 
 ## Avoid
