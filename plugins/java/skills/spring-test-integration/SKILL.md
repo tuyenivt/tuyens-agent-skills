@@ -27,7 +27,7 @@ Written for Boot 4: slice annotations live in per-technology modules (`org.sprin
 - Testcontainers with the production DB engine and major version - H2 silently passes or fails differently on engine-specific SQL (JSONB, partial indexes, `ON CONFLICT`, window functions, locking)
 - `@MockitoBean` / `@MockitoSpyBean` (Boot 3.4+; Boot 4 removed `@MockBean` / `@SpyBean`), declared on the test class or a shared base class - never inside a `@Configuration` / `@TestConfiguration` class
 - Mockito strict stubbing (the `MockitoExtension` default); fix `UnnecessaryStubbingException` by deleting the stub, not by `lenient()`
-- AssertJ over `assertEquals`; `@ActiveProfiles("test")` explicit. The test profile lives in `src/test/resources/application-test.yml` - a test-classpath `application.yml` replaces the main one entirely (every main key disappears), so a test suite that still passes with one is running without the production configuration
+- AssertJ over `assertEquals`; `@ActiveProfiles("test")` explicit. The test profile lives in `src/test/resources/application-test.yml` - a test-classpath `application.yml` replaces the main one entirely (every main key disappears), so a test suite that still passes with one is running without the production configuration. Every `${VAR}` placeholder with no default in the main config gets a value there, connection settings included - a `@ServiceConnection` container overrides them at runtime
 - No `Thread.sleep()` in async tests - use Awaitility
 - No `@DirtiesContext` - redesign or clean up explicitly
 - Context-cache fragmentation is the dominant cost in a slow suite, ahead of containers. Every distinct combination of `@MockitoBean`, `@TestPropertySource`, `@DynamicPropertySource`, `@EmbeddedKafka` and `@Import` is a separate cache key and a separate context build - declare them on shared base classes so classes collapse onto a handful of contexts, and count the target number before restructuring
@@ -39,12 +39,12 @@ Written for Boot 4: slice annotations live in per-technology modules (`org.sprin
 | Repository              | `@DataJpaTest` + Testcontainers                     |
 | Controller              | `@WebMvcTest` + MockMvc, `@MockitoBean` services    |
 | JSON (de)serialization  | `@JsonTest` + `JacksonTester`                       |
-| Outbound HTTP client    | `@RestClientTest` (RestClient/RestTemplate) or `@SpringBootTest` + WireMock (real timeouts/retries) |
+| Outbound HTTP client    | `@RestClientTest` (a client built from the injected `RestClient.Builder` / `RestTemplateBuilder`; request and response mapping only) or `@SpringBootTest` + WireMock (real timeouts/retries, or a client that builds its own `RestClient`) |
 | Service (pure logic)    | Plain JUnit + Mockito                               |
 | Service (Spring wiring) | `@SpringBootTest` + `@MockitoBean` externals        |
 | Full integration        | `@SpringBootTest(RANDOM_PORT)` + Testcontainers + `@AutoConfigureRestTestClient` (MVC) / `@AutoConfigureWebTestClient` (WebFlux) |
 
-"Spring wiring" means the proxy behavior itself is under test (tx rollback, `@PreAuthorize`, listener firing). Injectable collaborators alone don't make it Spring wiring - use plain JUnit. A commit-gated path (`AFTER_COMMIT` listener, outbox relay) is Spring wiring *and* needs the real database, because the commit has to happen: `@SpringBootTest` + Testcontainers, no `@Transactional`. A container-backed `@SpringBootTest` with no HTTP surface is "Service (Spring wiring)".
+"Spring wiring" means the proxy behavior itself is under test (tx rollback, `@PreAuthorize`, listener firing). Injectable collaborators alone don't make it Spring wiring - use plain JUnit. A commit-gated path (`AFTER_COMMIT` listener, outbox relay) is Spring wiring *and* needs the real database, because the commit has to happen: `@SpringBootTest` + Testcontainers, no `@Transactional`. A container-backed `@SpringBootTest` whose subject is a service - not an endpoint, not an outbound client - is "Service (Spring wiring)".
 
 Boot 4's `@SpringBootTest` wires no client by itself: `@AutoConfigureMockMvc` for MockMvc, `@AutoConfigureRestTestClient` for `RestTestClient` (the replacement for `TestRestTemplate`), `@AutoConfigureWebTestClient` for `WebTestClient`. An existing `TestRestTemplate` suite needs `@AutoConfigureTestRestTemplate`, the import moved to `org.springframework.boot.resttestclient.TestRestTemplate`, and the `spring-boot-resttestclient` + `spring-boot-restclient` dependencies. Boot 3.x: `RANDOM_PORT` supplies `TestRestTemplate` and `WebTestClient` itself; `RestTestClient` does not exist.
 
@@ -70,8 +70,8 @@ class OrderRepositoryTest {
 }
 ```
 
-- `@DataJpaTest` (`Replace.NON_TEST` default) keeps a test database - one wired through `@ServiceConnection`, a `@DynamicPropertySource` URL, or a `jdbc:tc:` URL - and swaps anything else for an embedded one. Boot 3.0-3.3: both wirings need `@AutoConfigureTestDatabase(replace = Replace.NONE)`.
-- Data slices (`@DataJpaTest`, `@JdbcTest`, `@JooqTest`) and `@SpringBootTest` run Flyway/Liquibase by default (on Boot 4 only with `spring-boot-starter-flyway` / `-liquibase` - a bare `flyway-core` migrates nothing), so tests exercise the real schema; `@WebMvcTest` / `@JsonTest` run none. Disable migrations only deliberately (`spring.flyway.enabled=false` + `ddl-auto: create-drop`).
+- `@DataJpaTest` (`Replace.NON_TEST` default) keeps a test database - one wired through `@ServiceConnection`, a `@DynamicPropertySource` URL, or a `jdbc:tc:` URL - and swaps anything else for an embedded one. Boot 3.0-3.3 (no `NON_TEST`): all three need `@AutoConfigureTestDatabase(replace = Replace.NONE)`.
+- Data slices (`@DataJpaTest`, `@JdbcTest`, `@JooqTest`) and `@SpringBootTest` run Flyway/Liquibase by default (on Boot 4 only through the `spring-boot-flyway` / `-liquibase` module, normally via its starter - a bare `flyway-core` migrates nothing), so tests exercise the real schema; `@WebMvcTest` / `@JsonTest` run none. Disable migrations only deliberately (`spring.flyway.enabled=false` + `ddl-auto: create-drop`).
 - Pin image tags to the production major version (`postgres:16-alpine`, `mysql:8.0` for Aurora MySQL 3, `rabbitmq:4.1-management`).
 
 ### `@WebMvcTest` controller slice
@@ -216,7 +216,7 @@ A singleton context also keeps its caches between tests: clear the `CacheManager
 
 @BeforeEach
 void waitForAssignment() {   // publishing before the consumer owns its partitions is the classic flake
-    registry.getListenerContainers().forEach(c -> ContainerTestUtils.waitForAssignment(c, 1));   // = the topic's partition count
+    registry.getListenerContainers().forEach(c -> ContainerTestUtils.waitForAssignment(c, 1));   // = total partitions the container is assigned, over all its topics
 }
 ```
 
@@ -293,10 +293,10 @@ assertThat(actual).usingRecursiveComparison().ignoringFields("id", "createdAt", 
 
 ## Output Format
 
-In every mode, emit the header block once (Engine, production changes, suite-level artifacts: build-file changes, test properties, shared base classes), then one block per test class of the target suite. Base classes and fixtures get no block. `Containers` lists every container the class uses, inherited ones included; `Mocking` lists every mechanism. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when a test passes for the wrong reason, is flaky, or cannot catch the regression it names, `[Recommend]` otherwise (deprecated-but-working APIs included) - then the blocks for the target suite. A request to write or migrate tests against an existing suite reviews that suite first: findings, then the blocks as the target suite; a greenfield request has no findings.
+In every mode, emit the header block once (Engine, production changes, suite-level artifacts: build-file changes, test properties, shared base classes), then one block per test class of the target suite. Base classes and fixtures get no block. `Containers` lists every container the class's context starts, inherited ones included; `Mocking` lists every mechanism. `Layer` is the Slice Selection row of the class's subject, whichever of that row's choices it takes: both Service rows are `Service`, Outbound HTTP client is `HTTP Client`, Full integration is `Integration`. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when a test does not compile or start, passes for the wrong reason, is flaky, or cannot catch the regression it names, `[Recommend]` otherwise (deprecated-but-working APIs included) - then the blocks for the target suite. A request to write or migrate tests against an existing suite reviews that suite first: findings, then the blocks as the target suite; a greenfield request has no findings.
 
 ```
-**Engine:** {PostgreSQL <major> | MySQL <major> | <other engine> <major> | unknown - <assumed version> | none}
+**Engine:** {PostgreSQL <major> | MySQL <major> | <other engine> <major> | <engine> <major> (assumed) | unknown - both variants given | none}
 
 Production changes: {one line per change | none}
 
@@ -310,14 +310,14 @@ Layer: {Controller | Service | Repository | JSON | HTTP Client | Integration}
 
 Slice: {@WebMvcTest | @DataJpaTest | @JsonTest | @RestClientTest | @SpringBootTest | Plain JUnit}
 
-Containers: {Postgres | MySQL | Kafka | RabbitMQ | Redis | none}
+Containers: {Postgres | MySQL | Postgres or MySQL - engine unknown | Kafka | RabbitMQ | Redis | none}
 
 Mocking: {@Mock | @MockitoBean | @MockitoSpyBean | WireMock | none}
 
 Cases: {list}
 ```
 
-A suite restructuring (or a review of one) closes with `Contexts: {n}` - scoped to the classes reviewed when the review is partial: the distinct Spring context cache keys the new layout produces. Count one per distinct merged configuration: each slice annotation counts separately, `@WebMvcTest(A.class)` and `@WebMvcTest(B.class)` are two, and any class adding its own `@MockitoBean`, property override or `@EmbeddedKafka` forks another. Verify with `logging.level.org.springframework.test.context.cache=DEBUG`.
+A new or restructured suite (or a review of one) closes with `Contexts: {n}` - scoped to the classes reviewed when the review is partial: the distinct Spring context cache keys the new layout produces. Count one per distinct merged configuration: each slice annotation counts separately, `@WebMvcTest(A.class)` and `@WebMvcTest(B.class)` are two, and any class adding its own `@MockitoBean`, property override or `@EmbeddedKafka` forks another. Verify with `logging.level.org.springframework.test.context.cache=DEBUG`.
 
 ## Avoid
 

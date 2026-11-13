@@ -291,27 +291,7 @@ The outbox is still the answer and the queue moves into the database: fan the ou
 
 ### Spring Application Events: required vs best-effort side effects
 
-In-process, same JVM, `AFTER_COMMIT` so listeners never see uncommitted state; a listener that writes takes `@Transactional(propagation = REQUIRES_NEW)` (Spring 6.1+ fails startup on any other propagation on the listener - `NOT_SUPPORTED` also accepted from 6.1.3, a class-level `@Transactional` checked from 6.2 - `spring-async-processing`). An exception in an `AFTER_COMMIT` listener is caught and logged by the transaction machinery and never retried, and nothing survives a crash - required delivery goes through the outbox (written inside the transaction); only best-effort effects stay in the listener:
-
-```java
-public record PaymentCompletedEvent(UUID paymentId, String phone) {}          // in-process, best-effort
-public record PaymentCompletedMessage(UUID eventId, UUID paymentId) {}      // outbox payload
-
-@Transactional
-public Payment complete(UUID paymentId) {
-    Payment p = payments.markCompleted(paymentId);
-    UUID eventId = UUID.randomUUID();
-    outboxRepo.save(OutboxEvent.of(eventId, "payment.completed", p.getId().toString(), new PaymentCompletedMessage(eventId, p.getId()), json));
-    events.publishEvent(new PaymentCompletedEvent(p.getId(), p.getPhone()));
-    return p;
-}
-
-@TransactionalEventListener(phase = AFTER_COMMIT)
-public void onPaymentCompleted(PaymentCompletedEvent e) {
-    try { sms.send(e.phone(), "Payment confirmed"); }               // best-effort only
-    catch (Exception ex) { log.warn("SMS failed for {}", e.paymentId(), ex); }
-}
-```
+In-process, same JVM, `AFTER_COMMIT` so listeners never see uncommitted state; a listener that writes takes `@Transactional(propagation = REQUIRES_NEW)` (Spring 6.1+ fails startup on any other propagation on the listener - `NOT_SUPPORTED` also accepted from 6.1.3, a class-level `@Transactional` checked from 6.2 - `spring-async-processing`). An exception in an `AFTER_COMMIT` listener is caught and logged by the transaction machinery and never retried, and nothing survives a crash - required delivery goes through the outbox (written inside the transaction); only best-effort effects stay in the listener, which catches and logs its own failures (one method may do both: save the outbox row, then `publishEvent` for the best-effort part).
 
 ### Webhook handlers
 
@@ -339,7 +319,7 @@ Broker: {Kafka | RabbitMQ | Spring Events | DB queue - outbox/jobs | Webhook (HT
 
 Topic/Queue: {name}
 
-Contract: {owner, payload record + version, eventId header, key + what it orders, retention, DLT owner | internal - producer and consumer share a team}
+Contract: {owner, payload record + version, eventId header, key + what it orders, retention, DLT owner | internal - producer and consumer share a team | external - <provider>'s documented payload | unknown - owner not stated}
 
 Producer: {class | external - <provider>}
 

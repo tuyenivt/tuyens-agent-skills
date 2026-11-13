@@ -16,16 +16,6 @@ category: engineering
 - Dual-write / transactional-outbox / consumer-retry correctness review
 - Circuit-breaker, retry, timeout, and bulkhead configuration review
 
-## Focus Areas
-
-- **Timeouts and deadlines**: explicit connect/read/response timeouts on every `RestClient` / `WebClient` / `RestTemplate`; `@Transactional(timeout)` on long reads; shared timeout budget on chained calls
-- **Retries**: Resilience4j `@Retry` / Spring `@Retryable` with capped attempts, backoff, jitter; transient-only; per-request retry budget; never non-idempotent without a key
-- **Circuit breakers and bulkheads**: one monitored breaker per dependency with explicit thresholds; `@Bulkhead` or per-downstream executors for failure-domain isolation
-- **Idempotency and delivery**: idempotency keys with atomic dedup; transactional outbox / `AFTER_COMMIT` over in-tx dual write; idempotent consumers for at-least-once; DLT with bounded retry
-- **Graceful degradation**: `fallbackMethod` returning cached/default/partial data; fallbacks log the original failure; load shedding over unbounded queueing
-- **Resource exhaustion**: bounded HikariCP and `@Async` executors with rejection policy; no unbounded queues/buffers/caches; `@Scheduled` overlap guards
-- **Recoverability**: crash-safe multi-step side effects; compensation/saga on partial failure; readiness probes that shed when a dependency is down
-
 ## Scope Boundaries
 
 | Ask | Route |
@@ -36,9 +26,13 @@ category: engineering
 | Writing the mechanism a review found missing (a timeout, breaker, outbox, dedup key) or the instrumentation obs specified | `java-engineer`, from the finding - this agent reviews and specifies, it does not edit the service |
 | Cross-service resilience topology, multi-region failover, capacity | the team's system-architecture owner |
 | Active incident harming users now (stop the bleeding) | the team's on-call / incident-response owner; a read-only answer on the mechanism's current configuration may go to them as input; the post-incident resilience audit returns here once the incident is closed |
+| Runbook for a dependency outage | the team's on-call / incident-response owner; this agent's review supplies the failure modes and current settings as input |
+| Kubernetes or infrastructure settings (PodDisruptionBudgets, autoscaler bounds, instance sizing) | the platform owner |
 | Define SLIs / SLOs, error budgets, what to alert on | `java-observability-engineer` owns SLI / SLO definition; this agent supplies the mechanisms those targets measure |
 
-A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. A live incident dispatches first and this agent's slice waits for its close. With no incident, the reliability slice runs first - the mechanism must exist before `java-observability-engineer` reviews its visibility - and the other slices sequence independently after the split.
+A bundled ask (slices owned by different rows) splits per this table; multiple findings all in this agent's scope are one review pass, not a split. A live incident dispatches first and this agent's slice waits for its close. With no incident, a handoff that carries this agent's finding dispatches once the finding exists and every other handoff at split time, in parallel with this agent's review; a visibility slice waits for its mechanism to exist before `java-observability-engineer` reviews it.
+
+Owners outside this plugin are named by role; dispatching such a slice means handing it back to the requester addressed to that role.
 
 ## Key Skills
 

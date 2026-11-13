@@ -161,7 +161,7 @@ class OrderQueryService {
 }
 ```
 
-Replica routing: `readOnly` reaches a read replica only behind a `LazyConnectionDataSourceProxy` (otherwise the connection is taken before the flag is set) - `new LazyConnectionDataSourceProxy(primary)` + `setReadOnlyDataSource(replica)` (Spring 6.1.2+), or the proxy around an `AbstractRoutingDataSource` keyed on `TransactionSynchronizationManager.isCurrentTransactionReadOnly()` - Boot 4.1's `spring.datasource.connection-fetch=lazy` adds the proxy with no replica, so it defers acquisition and routes nothing.
+Replica routing: `readOnly` reaches a read replica only behind a `LazyConnectionDataSourceProxy` (otherwise the connection is taken before the flag is set) - `new LazyConnectionDataSourceProxy(primary)` + `setReadOnlyDataSource(replica)` (Spring 6.1.2+).
 
 ### `REQUIRES_NEW` for records that must survive rollback
 
@@ -205,7 +205,7 @@ Alternative: the insert in a `@Transactional` method on another bean, called fro
 
 ## Output Format
 
-In every mode, emit the `**Engine:**` line once, then one block per method whose transactional configuration or call path the design sets or changes - including methods the fix extracts into new beans and the orchestrator that calls them; a callee that joins its caller's transaction unchanged, every repository method, and methods the design leaves exactly as they are get none; a callee the design changes whose source was not provided gets its block with `unknown - <class> not reviewed` in the slots its source would fill. Diagnosis answers (an incident's questions, with numbers) go in prose before the findings; a cause established by inference rather than evidence carries `(inferred)`. Carry a current broken value in `Reason` as `was: ...`; a setting considered and rejected (`isolation = SERIALIZABLE`, `REQUIRES_NEW`, outbox) goes in `Reason` as `rejected: <setting> - <why>`. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when it can exhaust the pool, commit a failure, lose a required side effect, or lose an update, `[Recommend]` otherwise - then the blocks for the target design. A design request against existing code reviews that code first: findings, then the blocks as the target state; a greenfield request has no findings. Close with the `Pool:` line whenever pool sizing or connection hold time is part of the analysis.
+In every mode, emit the `**Engine:**` line once, then one block per method whose transactional configuration or call path the design sets or changes - including methods the fix extracts into new beans and the orchestrator that calls them; a callee that joins its caller's transaction unchanged, every repository method, and methods the design leaves exactly as they are get none; a callee the design changes whose source was not provided gets its block with `unknown - <class> not reviewed` in the slots its source would fill. Diagnosis answers (an incident's questions, with numbers) go in prose before the findings; a cause established by inference rather than evidence carries `(inferred)`. Carry a current broken value in `Reason` as `was: ...`; a setting considered and rejected (`isolation = SERIALIZABLE`, `REQUIRES_NEW`, outbox) goes in `Reason` as `rejected: <setting> - <why>`. When reviewing or diagnosing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when it can exhaust the pool, commit a failure, lose a required side effect, or lose an update, `[Recommend]` otherwise - then the blocks for the target design. A design request against existing code reviews that code first: findings, then the blocks as the target state; a greenfield request has no findings. Close with the `Pool:` line whenever pool sizing or connection hold time is part of the analysis. `Compensation` and `Post-Commit Hooks` take several values joined with ` + ` when several apply.
 
 ```
 **Engine:** {PostgreSQL | MySQL | MariaDB - MySQL syntax | <detected engine> - both variants given | unknown - both variants given}
@@ -226,7 +226,7 @@ External-IO-In-Tx: {Yes | No}
 
 Concurrency: {none needed | atomic conditional UPDATE | @Version + retry | PESSIMISTIC_WRITE | unique constraint | isolation = SERIALIZABLE + retry on serialization failure}
 
-Compensation: {catch-and-release | TTL reservation | catch-and-release + TTL | reconciliation job | none needed - <the call is a read or idempotent> | n/a - this method makes no remote call}
+Compensation: {catch-and-release | TTL reservation | reconciliation job | none needed - <the call is a read or idempotent> | n/a - this method makes no remote call}
 
 Post-Commit Hooks: {AFTER_COMMIT events | outbox | none}
 

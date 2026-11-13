@@ -77,7 +77,7 @@ Order for modernizing any existing multi-module build (Maven or Groovy DSL): ver
 
 ```toml
 [versions]
-spring-boot = "4.1.1"            # pin the current 4.1.x patch
+spring-boot = "4.1.2"            # example; a new build pins the latest patch, an existing build keeps its version
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -223,7 +223,7 @@ dependencies {
 // the usual reason a scanner still reports the old version in one module.
 ```
 
-The pin value is the first fixed version from the advisory, and it must be at or above the version the BOM already manages - a pin below it downgrades. Confirm with `dependencyInsight`; when the fixed version is unknown, write the block with `(version to confirm)` rather than a guess. Multi-module: put the pin where every module sees it (the convention plugin, with the version from `gradle.properties`). On every Boot upgrade, delete pins the new BOM already clears. Jackson 2 artifacts next to Jackson 3 on Boot 4 are justified only by a named dependency that still needs them; otherwise they are removed, not pinned (a `scope` block) - except `com.fasterxml.jackson.core:jackson-annotations`, which Jackson 3 itself still depends on.
+The pin value is the first fixed version from the advisory, and it must be at or above the version the BOM already manages - a pin below it downgrades. Confirm with `dependencyInsight`; when the fixed version is unknown, write the block with `(version to confirm)` rather than a guess. Multi-module: put the pin where every module sees it (the convention plugin, with the version from `gradle.properties`). On every Boot upgrade, delete pins the new BOM already clears. Jackson 2 artifacts next to Jackson 3 on Boot 4 are justified only by a named dependency that still needs them; otherwise they are removed, not pinned (drop the declaration, or `exclude(group = "com.fasterxml.jackson.core", module = "jackson-databind")` on the dependency that brings it) - except `com.fasterxml.jackson.core:jackson-annotations`, which Jackson 3 itself still depends on.
 
 ```kotlin
 dependencyLocking { lockAllConfigurations() }
@@ -279,7 +279,7 @@ Default: `gradle/actions/setup-gradle@v5` - it caches the dependency and wrapper
 - run: ./gradlew integrationTest
 ```
 
-CI runs only `./gradlew` - never a `gradle` from the runner's PATH or an install step masked with `|| true`. `build` already runs `test` (via `check`) - a second `:<module>:test` step reruns the suite. Flags already set in `gradle.properties` (`--parallel`, `--build-cache`) need not be repeated. `--no-daemon` only stops a daemon from lingering after the build; when `org.gradle.jvmargs` differs from the client JVM, Gradle still forks a single-use daemon. Keep the daemon on self-hosted runners that persist across jobs.
+CI runs only `./gradlew` - never a `gradle` from the runner's PATH or an install step masked with `|| true`. `build` already runs `test` (via `check`) - a second `:<module>:test` step adds nothing: `UP-TO-DATE` when both steps share one Gradle and its inputs, a second full run otherwise. Flags already set in `gradle.properties` (`--parallel`, `--build-cache`) need not be repeated. `--no-daemon` only stops a daemon from lingering after the build; when `org.gradle.jvmargs` differs from the client JVM, Gradle still forks a single-use daemon. Keep the daemon on self-hosted runners that persist across jobs.
 
 Fallback without the action - key on every build-defining file, and expect stale entries to accumulate under `restore-keys`:
 
@@ -295,22 +295,7 @@ Fallback without the action - key on every build-defining file, and expect stale
 
 With `actions/cache` the configuration cache (`<project>/.gradle/configuration-cache`) does not survive an ephemeral runner - claim no ephemeral-CI delta for it there.
 
-Remote build cache (the biggest multi-module CI win) needs an existing cache node (Develocity or an HTTP cache server); with none, stay on the CI cache above rather than emitting placeholder config:
-
-```kotlin
-// settings.gradle.kts
-buildCache {
-    local { isEnabled = true }
-    remote<HttpBuildCache> {
-        url = uri("https://cache.example.com/cache/")
-        isPush = System.getenv("CI") == "true"
-        credentials {
-            username = System.getenv("GRADLE_CACHE_USER")
-            password = System.getenv("GRADLE_CACHE_PASSWORD")
-        }
-    }
-}
-```
+Remote build cache (the biggest multi-module CI win) needs an existing cache node (Develocity or an HTTP cache server); with none, stay on the CI cache above rather than emitting placeholder config. With one, `settings.gradle.kts` gets `buildCache { remote<HttpBuildCache> { url = uri("<node>/cache/"); isPush = System.getenv("CI") == "true"; credentials { username = System.getenv("GRADLE_CACHE_USER"); password = System.getenv("GRADLE_CACHE_PASSWORD") } } }` - only CI pushes, credentials come from the environment.
 
 ## Output Format
 
@@ -338,7 +323,7 @@ Risk: {None | Plugin-incompat | Behavior-change}
 
 One block per optimization; a file may appear in several blocks. `other:<label>` when no enum value fits; `wrapper` covers a missing or uncommitted `gradlew` / `gradle-wrapper.jar` and a wrapper bump. Priority: High = direct build-time win on its own, or a build-breaking / security fix; Medium = enabler or hygiene with indirect effect; Low = maintainability only. Expected Impact numbers come from `--scan`/`--profile` data; without it, append `(unmeasured estimate)`.
 
-Close with `Aggregate: estimated clean-build reduction ~X%; incremental/no-op reduction ~Y%; CI reduction ~Z%` (terms with no contributing block omitted) when at least one block's Expected Impact is a build-time delta; otherwise `Aggregate: no build-time change - correctness/maintainability only`.
+Close with `Aggregate: estimated clean-build reduction ~X%; incremental/no-op reduction ~Y%; CI reduction ~Z%` when at least one block's Expected Impact is a build-time delta, measured or not; otherwise `Aggregate: no build-time change - correctness/maintainability only`. Each term combines its blocks' deltas as successive reductions (two 20% cuts are ~36%); a block with no number is left out and marks the term `+ unquantified`, a term whose blocks all lack a number reads `not estimated` in place of `~X%`, and a term no block contributes to is omitted.
 
 ## Avoid
 

@@ -27,11 +27,11 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect` for the build tool and the production database engine - Steps 5 and 9 branch on the engine.
 
-Read the Spring Boot version from the build file (Gradle `org.springframework.boot` plugin or version catalog; Maven `spring-boot-starter-parent` or the imported `spring-boot-dependencies` BOM) and the Java version from `java.toolchain` / `<java.version>` / `maven.compiler.release`; `stack-detect` does not report either. Every construct the generated code uses must exist and bind on that version, composed-atomic forms included. Below Boot 4.0, write this workflow's or the atomic's Boot 3 form; when neither has one, say `Boot 3 form not given` rather than emitting the Boot 4 one.
+Read the Spring Boot version from the build file (Gradle `org.springframework.boot` plugin or version catalog; Maven `spring-boot-starter-parent` or the imported `spring-boot-dependencies` BOM) and the Java version from `java.toolchain` / `<java.version>` / `maven.compiler.release`; the build file outranks any version `stack-detect` carried from the instruction file. Every construct the generated code uses must exist and bind on that version, composed-atomic forms included. Below Boot 4.0, write this workflow's or the atomic's Boot 3 form; when neither has one, say `Boot 3 form not given` rather than emitting the Boot 4 one.
 
 From the same build file read Lombok (every Lombok annotation below applies only when present), the mapper library (MapStruct vs hand-written), and the web starter. Not Spring Boot, or WebFlux with no servlet starter (with both, servlet wins at runtime): stop and say so. Below the Boot 4.0 / Java 21 floor, do not stop: generate for the detected version and record each downgraded construct under `## Warnings`. Version-gated constructs: web starter (Boot 4 `spring-boot-starter-webmvc`; Boot 3 `spring-boot-starter-web`), Jackson 3 `tools.jackson.*` (Boot 3: `com.fasterxml.jackson.databind`; annotations stay `com.fasterxml.jackson.annotation` on both), auto-configuration classes and customizers (Boot 4 `org.springframework.boot.<tech>.autoconfigure`, e.g. `org.springframework.boot.kafka.autoconfigure.DefaultKafkaProducerFactoryCustomizer`; Boot 3 `org.springframework.boot.autoconfigure.<tech>`), the Step 9 test dependencies, `@MockitoBean` (`org.springframework.test.context.bean.override.mockito.MockitoBean` on both lines, Boot 3.4+; below that Boot's `@MockBean`), `@ServiceConnection` (Boot 3.1+), `@SQLRestriction` (Boot 3.2+; Boot 3.0-3.1 `@Where`), virtual threads (Java 21+).
 
-The generated code needs two modules; add each when absent and list it under `Modified`: `spring-boot-starter-validation` (no web starter brings it, and without it `@Valid` validates nothing), and the project's migration tool (Flyway only when none exists) - Boot 4 `spring-boot-starter-flyway` / `spring-boot-starter-liquibase` (a bare `flyway-core` / `liquibase-core` migrates nothing on Boot 4), Boot 3 `flyway-core` / `liquibase-core` - plus, on Flyway 10+, `org.flywaydb:flyway-database-postgresql` or `flyway-mysql`.
+The generated code needs two modules; add each when absent and list it under `Modified`: `spring-boot-starter-validation` (no web starter brings it, and without it `@Valid` validates nothing), and the project's migration tool (Flyway only when none exists) - Boot 4 `spring-boot-starter-flyway` / `spring-boot-starter-liquibase` (a bare `flyway-core` / `liquibase-core` migrates nothing on Boot 4), Boot 3 `flyway-core` / `liquibase-core` - plus the engine module Flyway needs: `org.flywaydb:flyway-mysql` on MySQL, `flyway-database-postgresql` on PostgreSQL from Flyway 10.
 
 ### Step 3 - Gather Requirements
 
@@ -67,13 +67,13 @@ Use skill: `spring-jpa-performance`, `spring-db-migration-safety`.
 
 Entity is a class (records cannot be JPA entities); Lombok on it is `@Getter` / `@Setter` only, even when existing entities carry `@Data`, whose `equals` / `hashCode` / `toString` walk LAZY associations and break across proxies. Audit fields via the project's existing `@MappedSuperclass` base, else `@EntityListeners(AuditingEntityListener.class)` on the entity; auditing no-ops unless `@EnableJpaAuditing` is on a configuration class, so add it if absent. Validation constraints live on request DTOs (Step 8); the entity mirrors them as DB constraints (`@Column` attributes matching the migration DDL exactly - `precision`/`scale` only for `BigDecimal`; money held as minor units is a `Long`/`BIGINT`), not duplicate Bean Validation annotations. LAZY on all associations; a foreign key that is never navigated is a plain id field, not a `@ManyToOne`. Status enums get a CHECK constraint; value invariants (non-negative amount or balance, date ordering) get CHECKs too - write them so a NULL column cannot pass, since `NULL OR FALSE` is NULL. FK and frequently-filtered columns get indexes. A migration that alters an existing table, or introduces the migration tool to a schema that already has tables, gets `spring-db-migration-safety`'s blocks in `## Migration Safety`. An introduction also ships the existing schema as a baseline that production skips and the Step 9 container builds: Flyway, a script at or below `spring.flyway.baseline-version` under `baseline-on-migrate`; Liquibase, changesets with `<preConditions onFail="MARK_RAN">` on the table's absence.
 
-Idempotency keys get a unique index **scoped the way Step 3 answered** - a globally unique key lets one caller's key collide with another's, and replay then returns the wrong caller's resource. Idempotent creates put the key on the aggregate; an idempotent operation verb (redeem, capture) instead gets a child operation record owning the key and storing the response fields replayed on duplicates.
+Idempotency keys get a unique index **scoped the way Step 3 answered** - a globally unique key lets one caller's key collide with another's, and replay then returns the wrong caller's resource. Idempotent creates put the key on the aggregate; an idempotent operation verb (redeem, capture) instead gets a child operation record owning the key and storing the response fields replayed on duplicates. Either way a fingerprint of the request payload is stored with the key - Step 7 tells a replay from a different request by it.
 
 Soft delete (when required): `deleted_at` column plus `@SQLDelete` + `@SQLRestriction` on the entity, which filters every JPQL and derived query automatically - repository-level filtering instead means every read, **including the aggregate queries of Step 6**, must remember the predicate, and native queries bypass both. A uniqueness rule that must allow re-creation after delete needs a partial unique index (`... WHERE deleted_at IS NULL`). MySQL has no partial indexes: add `active TINYINT GENERATED ALWAYS AS (IF(deleted_at IS NULL, 1, NULL))` to the unique index (NULLs never collide), and leave it out of the entity or map it `insertable = false, updatable = false` - mapped plainly, it breaks every insert.
 
 ### Step 6 - Repository
 
-Extend `JpaRepository<{Name}, {PK type}>`. Derived methods for simple filters; `@Query` only when names become unwieldy; `Specification` when an endpoint has 2+ optional filters. `Page<>` for all list endpoints. Aggregate reads (Step 3 item 4) computed per request are an aggregate `@Query` returning a projection interface or record, never a full-collection load. Idempotent writes need a lookup **scoped exactly like the unique index** (`findByMerchantIdAndIdempotencyKey`, not `findByIdempotencyKey`). Call a `@Modifying` query only from a read-write service transaction.
+Extend `JpaRepository<{Name}, {PK type}>`. Derived methods for simple filters; `@Query` only when names become unwieldy; `Specification` (the repository also extends `JpaSpecificationExecutor<{Name}>`) when an endpoint has 2+ optional filters. `Page<>` for all list endpoints. Aggregate reads (Step 3 item 4) computed per request are an aggregate `@Query` returning a projection interface or record, never a full-collection load. Idempotent writes need a lookup **scoped exactly like the unique index** (`findByMerchantIdAndIdempotencyKey`, not `findByIdempotencyKey`). Call a `@Modifying` query only from a read-write service transaction.
 
 ### Step 7 - Service
 
@@ -109,13 +109,13 @@ Class-level `@RequestMapping` is the longest prefix every method in the class sh
 
 Every hasRole / hasAuthority check is only as real as the JWT converter feeding it: a top-level claim needs authorities-claim-name plus an authority prefix; a nested claim (Keycloak realm_access.roles) yields no authorities through setAuthoritiesClaimName - Boot 4.1 `authorities-claim-expressions` plus `authority-prefix: ROLE_` (default prefix is `SCOPE_`), else a custom converter. The prefix is `authority-prefix: ROLE_` when the claim values are bare role names, and an empty prefix when they already carry `ROLE_`. Trace each role checked to what grants it (JWT converter, `UserDetailsService`, a roles table). When nothing grants it or the mapping yields nothing, every role gate denies everyone: say so, and never propose a role-based bypass.
 
-**The owner id comes from the principal, never from the request body or path.** When the codebase has no principal-to-owner mapping (custom principal, owner claim, or principal-to-account lookup), ask. Unanswered: a new aggregate stores `Authentication.getName()` as its owner and scopes every access by it; an owner that must be an existing domain id is held (Step 4). Never generate a principal interface nothing implements. Record the choice under `## Assumptions`.
+**The owner id comes from the principal, never from the request body or path.** When the codebase has no principal-to-owner mapping (custom principal, owner claim, or principal-to-account lookup), ask. Unanswered: an owner that must be an existing domain id (the row belongs to a customer or account that already exists) is held as Step 4 holds it, approved gate or not; only an aggregate with no such tie stores `Authentication.getName()` as its owner and scopes every access by it. Never generate a principal interface nothing implements. Record the choice under `## Assumptions`.
 
 ### Step 9 - Tests
 
 Use skill: `spring-test-integration`.
 
-- Dependencies: add the missing ones for the declared version and list each under `Modified`. Boot 4: one `spring-boot-starter-<tech>-test` per technology used (`-data-jpa-test`, `-webmvc-test`, `-security-test`), `spring-boot-testcontainers`, `org.testcontainers:testcontainers-<engine>` and `testcontainers-junit-jupiter` (2.x). Boot 3: `spring-boot-starter-test`, `spring-security-test`, `spring-boot-testcontainers`, `org.testcontainers:<engine>` and `junit-jupiter` (1.x). Versions come from the Boot BOM (Boot 3.0: pin Testcontainers).
+- Dependencies: add the missing ones for the declared version and list each under `Modified`. Boot 4: one `spring-boot-starter-<tech>-test` per technology used (`-data-jpa-test`, `-webmvc-test`, `-security-test`), `spring-boot-testcontainers`, `org.testcontainers:testcontainers-<engine>` and `testcontainers-junit-jupiter` (2.x). Boot 3: `spring-boot-starter-test`, `spring-security-test`, `spring-boot-testcontainers`, `org.testcontainers:<engine>` and `junit-jupiter` (1.x). Versions come from the Boot BOM (Boot 3.0 has no `spring-boot-testcontainers`: pin Testcontainers and wire with `@DynamicPropertySource`).
 - Service unit: plain Mockito, `@ExtendWith(MockitoExtension.class)`
 - Repository: `@DataJpaTest` + Testcontainers matching production, never H2, wired with `@ServiceConnection` or `@DynamicPropertySource` (Boot 3.0-3.3: plus `@AutoConfigureTestDatabase(replace = NONE)`). Let the migrations build the schema, not `ddl-auto`, or the CHECK constraints and unique indexes from Step 5 are absent from the tested schema. An existing migration chain that fails on an empty container, or entities the tests persist that do not match it, is a `Pre-existing:` warning and a failing test named in `Suite result`. **When the existing suite runs on H2**, adopt Testcontainers for this feature's tests only and record the split convention and the new Docker requirement under `## Warnings` - do not migrate the existing suite
 - Controller: `@WebMvcTest` + MockMvc, `@MockitoBean` collaborators. `@Import` the configuration classes declaring the `SecurityFilterChain` and `@EnableMethodSecurity`, and on a resource server add `@MockitoBean JwtDecoder` - without them the tests pass against Boot's default chain. On a JWT resource server, role tests send the production claim shape through the production converter (`spring-test-integration`, Security tests); bare `jwt()` skips the mapping. An owner check reading a custom principal needs `.with(user(<principal>))` / `@WithUserDetails` - `@WithMockUser` carries no domain id. State-changing requests need `.with(csrf())` when the production chain has CSRF; a session-based chain also needs a client token source (`spring-security-patterns`, CSRF), or the endpoints pass their tests and 403 in the browser
@@ -185,17 +185,17 @@ Warnings bullets appear only for the kinds that occurred, one per item. A stop e
 
 Tick, or mark `N/A` with the reason the workflow authorized it.
 
-- [ ] Step 1 - behavioral-principles loaded
-- [ ] Step 2 - every generated construct binds on the build file's Boot and Java versions
-- [ ] Step 3 - every requirement answered or defaulted into `## Assumptions`
-- [ ] Step 4 - design approved, or gate skipped with every risky part held
-- [ ] Step 5 - entity and migration match, constraints and indexes included
-- [ ] Step 6 - lookups scoped like their indexes, lists paged
-- [ ] Step 7 - money and idempotent writes race-safe, side effects durable where required
-- [ ] Step 8 - every access rule enforced where it can be
-- [ ] Step 9 - each case the feature has tested on the production engine
-- [ ] Step 10 - imports resolved; compiled and tests run, or the gap recorded
-- [ ] Every mandated output section present (a stop: its four)
+- [ ] Step 1: behavioral-principles loaded
+- [ ] Step 2: every generated construct binds on the build file's Boot and Java versions
+- [ ] Step 3: every requirement answered or defaulted into `## Assumptions`
+- [ ] Step 4: design approved, or gate skipped with every risky part held
+- [ ] Step 5: entity and migration match, constraints and indexes included
+- [ ] Step 6: lookups scoped like their indexes, lists paged
+- [ ] Step 7: money and idempotent writes race-safe, side effects durable where required
+- [ ] Step 8: every access rule enforced where it can be
+- [ ] Step 9: each case the feature has tested on the production engine
+- [ ] Step 10: imports resolved; compiled and tests run, or the gap recorded
+- [ ] Every mandated output section present (a stop: the sections a stop emits)
 
 ## Avoid
 

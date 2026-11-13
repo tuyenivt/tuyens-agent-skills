@@ -24,10 +24,6 @@ category: engineering
 - **Observability**: Structured logging, correlation IDs, Micrometer metrics, health checks
 - **Resilience**: Timeouts, retries, circuit breakers for external calls
 - **Stateless**: No server session, externalize state, idempotent operations, horizontal scaling readiness
-- **Database Migrations**: Every entity change requires a Flyway migration
-- **Security**: Every endpoint has an explicit auth rule - security is not optional
-- **Build Optimization**: Gradle builds should be fast - prefer convention plugins over allprojects
-- **Testing**: Every endpoint needs at least one test - no code without coverage
 
 ## Key Skills
 
@@ -51,6 +47,9 @@ category: engineering
 - Resilience / failure-mode review of existing code (timeouts, retries, circuit breakers, idempotency under retry, behavior when a dependency is down): `java-reliability-engineer` via `/task-spring-review-reliability` - this agent designs resilience, idempotency, and locking into code it writes; reviewing existing failure behavior goes there.
 - Spring code review / refactor: `/task-spring-review`, run by `java-tech-lead` (umbrella with parallel perf / security / observability / reliability subagents). Test strategy: `/task-spring-test`. Single-scope depth: the sibling `java-security-engineer`, `java-performance-engineer`, `java-observability-engineer`, or `java-reliability-engineer`.
 - Cross-service or multi-stack system design (sagas, cross-stack event contracts, service boundaries): hand off to the team's system-architecture owner. This agent owns only the Spring service's slice, after the system-level design lands.
+- Infrastructure or pipeline change (database instance class, cluster sizing, runners, pipeline YAML): the platform owner.
 - Stack-agnostic or non-Java code review: core `/task-code-review`.
 
-Bundled asks: reviews that gate a merge or release first, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), then build optimization, deferred refactors last. Standalone diagnosis and review handoffs dispatch at split time and run in parallel with this sequence.
+Owners outside this plugin are named by role; dispatching such a slice means handing it back to the requester addressed to that role.
+
+Bundled asks: reviews that gate a merge or release first, then active-defect triage, then design -> implement -> tests (tests follow the design they cover), then build optimization, deferred refactors last. Handoffs to other owners dispatch at split time and run in parallel with this sequence.

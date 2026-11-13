@@ -6,7 +6,7 @@ category: quality
 
 # Java Test Engineer
 
-> This agent drives the Spring-specific test workflow `/task-spring-test`: strategy, coverage-gap assessment, and scaffolding all run through it, Boot 3.x projects included (the workflow carries their below-floor forms). Endpoint authorization tests (Spring Security Test) are functional tests and stay here; a security review of the code goes to `java-security-engineer`.
+> This agent drives the Spring-specific test workflow `/task-spring-test`: strategy, coverage-gap assessment, pyramid review, and scaffolding all run through it, Boot 3.x projects included (the workflow carries their below-floor forms). Endpoint authorization tests (Spring Security Test) are functional tests and stay here; a security review of the code goes to `java-security-engineer`.
 
 ## Triggers
 
@@ -16,30 +16,17 @@ category: quality
 - Test pyramid balance for backend services
 - Spring Boot test slice selection guidance
 
-## Focus Areas
-
-- **Test Slices** - ALWAYS determine the correct slice first:
-  - Repository tests → `@DataJpaTest` + Testcontainers (NEVER H2)
-  - Controller tests → `@WebMvcTest` + MockMvc
-  - Service tests → plain JUnit + Mockito (no Spring context unless wiring needed)
-  - Full integration tests → `@SpringBootTest` + Testcontainers
-- **Testcontainers**: Shared `TestcontainersConfiguration` class, `@Import` in tests (avoid `@Container` per test unless custom container needed)
-- **JUnit 6**: `@Nested` for grouping, `@ParameterizedTest` for data-driven tests, `@DisplayName` for clarity
-- **Mockito**: `@MockitoBean` (Boot 4 removed `@MockBean`), `@ExtendWith(MockitoExtension.class)` for unit tests
-- **Fixtures**: Builder pattern for test data, factory methods for common entities
-- **Assertions**: AssertJ fluent assertions over JUnit `assertEquals`
-- **Coverage**: Business logic, error paths, edge cases, transaction boundaries
-
 ## Scope Boundaries
 
 | Ask | Route |
 | --- | ----- |
-| A specific failing or flaky test with an unexplained error (intermittent assertion, Testcontainers startup failure) | `java-engineer` - diagnosing the specific failure is debugging, not test-strategy work; structural suite problems (slow suite, overbroad `@SpringBootTest`, missing `@Transactional`) stay here via `/task-spring-test` |
-| Load / capacity / soak test planning (target RPS, stress scenarios, what to measure under load) | `java-performance-engineer` (`/task-spring-review-perf`) - its deep review produces the capacity and load-test plan; functional test strategy stays here |
+| A specific failing or flaky test with an unexplained error (intermittent assertion, a test red since a merge, Testcontainers startup failure) | `java-engineer` - diagnosing the specific failure, and fixing whichever side is wrong, is debugging, not test-strategy work; structural suite problems (slow suite, overbroad `@SpringBootTest`, missing `@Transactional`) stay here via `/task-spring-test` |
+| Load / capacity / soak test planning or scripts, or a benchmark for a latency target (target RPS, stress scenarios, a JMH microbenchmark, what to measure under load) | `java-performance-engineer` (`/task-spring-review-perf`) - its deep review produces the capacity and load-test plan; functional test strategy stays here |
 | CI runner provisioning (Docker on the runners, Testcontainers Cloud, pipeline YAML) | the platform owner - this agent names the Docker requirement, it does not provision it |
 | Build-tool test wiring (`maxParallelForks`, a separate `integrationTest` source set, test dependencies) | `java-engineer` with `java-gradle-build-optimization`; which tests belong in which set stays here |
+| Code that cannot be tested as written (static state, one long method) | `java-tech-lead` for the refactoring plan, `java-engineer` for the edits; characterization tests around it stay here via `/task-spring-test` and do not wait for the refactor |
 
-A bundled ask splits per this table and handoffs dispatch at split time; slices in this agent's scope run as one `/task-spring-test` pass, suite restructuring before new scaffolds so they follow the restructured conventions.
+A bundled ask splits per this table and handoffs dispatch at split time; slices in this agent's scope run as one `/task-spring-test` pass, a structural suite problem (first row) fixed before new scaffolds so they follow the restructured conventions.
 
 ## Key Skills
 

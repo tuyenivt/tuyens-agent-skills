@@ -21,7 +21,7 @@ user-invocable: false
 
 ## Rules
 
-- LAZY by default; never `EAGER` on `@OneToMany` / `@ManyToMany` (`@ManyToOne` and `@OneToOne` default to EAGER - set LAZY; an inverse-side `@OneToOne` stays eager unless it uses `@MapsId` or bytecode enhancement)
+- LAZY by default; never `EAGER` on `@OneToMany` / `@ManyToMany` (`@ManyToOne` and `@OneToOne` default to EAGER - set LAZY; an inverse-side `@OneToOne` stays eager even when marked LAZY, unless it is `optional = false` and the owning side shares its key via `@MapsId`, or bytecode enhancement is on)
 - `spring.jpa.open-in-view=false` (OSIV masks N+1 and `LazyInitializationException`, and holds a connection for the whole request). Flipping it on an existing app turns hidden lazy loads into serialization-time failures - sweep the other read endpoints in the same change
 - Read endpoints project to records/DTOs; never return entities
 - List endpoints take `Pageable` (or keyset); never unbounded `findAll()`

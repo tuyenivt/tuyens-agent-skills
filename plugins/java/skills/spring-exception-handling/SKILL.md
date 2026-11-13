@@ -9,7 +9,7 @@ user-invocable: false
 
 # Exception Handling
 
-> Load `Use skill: stack-detect` first to confirm Spring Boot; then read the build file's starters yourself - stack-detect does not report them. MVC vs WebFlux decides the base class and several rows: WebFlux when `spring-boot-starter-webflux` is declared without `spring-boot-starter-webmvc` (or its deprecated name `spring-boot-starter-web`). The 401/403 rows apply when any Spring Security starter is present (`spring-boot-starter-security`, `-security-oauth2-resource-server`, `-security-oauth2-client`, or the deprecated `-oauth2-*` names). Written for Spring Framework 7 / Boot 4; the Boot version read from the build file anchors the inline Boot 3 notes.
+> Load `Use skill: stack-detect` first to confirm Spring Boot; then read the build file's starters yourself - stack-detect does not report them. MVC vs WebFlux decides the base class and several rows: WebFlux when `spring-boot-starter-webflux` is declared without `spring-boot-starter-webmvc` (or its deprecated name `spring-boot-starter-web`). The 401/403 rows apply when any Spring Security starter is present (`spring-boot-starter-security` or any `spring-boot-starter-security-*`, or a deprecated `spring-boot-starter-oauth2-*` name). Written for Spring Framework 7 / Boot 4; the Boot version read from the build file anchors the inline Boot 3 notes.
 
 ## When to Use
 
@@ -23,7 +23,7 @@ user-invocable: false
 - Outside the security filter chain, `@RestControllerAdvice` is the only place that maps exceptions to HTTP; controllers and services throw, never catch for response shaping. Inside the chain, the `AuthenticationEntryPoint` and `AccessDeniedHandler` write the same envelope via the shared helper
 - Business exceptions extend one `DomainException` base carrying `HttpStatus` and `errorCode`; one handler covers the hierarchy
 - Response body is `ProblemDetail` (RFC 9457), produced by an advice that extends `ResponseEntityExceptionHandler`; also set `spring.mvc.problemdetails.enabled: true` (WebFlux: `spring.webflux.problemdetails.enabled`) as the fallback - it is inert while the advice exists
-- Log unexpected failures (5xx) at `ERROR` with stack trace; expected transient upstream failures (503) and client errors (4xx, access denials included) at `WARN` or below; expected authentication failures at `DEBUG` or not at all. `Logged` records the level where the exception is finally logged (for security rows, the entry point / denied handler). Never leak stack traces, exception class names, or vendor/parser messages to clients
+- Log unexpected failures (5xx) at `ERROR` with stack trace; expected transient upstream failures (503) and client errors the application raises (4xx - domain exceptions, optimistic-lock conflicts, access denials) at `WARN`; framework 4xx (validation, malformed body, 405/406/415, unknown path) get no log call in the advice - `none`, except an MVC 405, which the inherited handler logs at `WARN`; expected authentication failures at `DEBUG` or not at all. `Logged` records the level where the exception is finally logged (for security rows, the entry point / denied handler). Never leak stack traces, exception class names, or vendor/parser messages to clients
 - Error codes are UPPER_SNAKE_CASE, prefixed by the domain noun (`ORDER_NOT_FOUND`, `PAYMENT_DECLINED`)
 - Wrap vendor SDK exceptions at the integration boundary so callers depend only on domain types; the boundary authors the client-visible message
 - Catching an exception only to log it and carry on hides a failure the caller needed - rethrow, translate, or record a failure state
@@ -32,7 +32,7 @@ user-invocable: false
 
 | Exception                                                | Status |
 | -------------------------------------------------------- | ------ |
-| `MethodArgumentNotValidException`, `HandlerMethodValidationException`, `jakarta.validation.ConstraintViolationException` (from `@Validated` beans), `HttpMessageNotReadableException`, `MethodArgumentTypeMismatchException`, `MissingServletRequestParameterException`, `ServletRequestBindingException` | 400 |
+| `MethodArgumentNotValidException`, `HandlerMethodValidationException` (parameter validation), `jakarta.validation.ConstraintViolationException` (from `@Validated` beans), `HttpMessageNotReadableException`, `MethodArgumentTypeMismatchException`, `MissingServletRequestParameterException`, `ServletRequestBindingException` | 400 |
 | Webhook signature verification failure (domain)          | 400 - a client error; a forged payload has no provider behind it to retry (a genuine delivery failing verification, e.g. after a secret rotation, is redelivered like any non-2xx) |
 | `AuthenticationException` (from the filter chain)        | 401    |
 | `PaymentDeclinedException` (domain)                      | 402    |
@@ -45,7 +45,7 @@ user-invocable: false
 | `HttpMediaTypeNotSupportedException`                     | 415    |
 | `DomainException` subtype built with `UNPROCESSABLE_ENTITY` (well-formed request violating a business rule regardless of current state) | 422 |
 | `RateLimitedException` (domain - *our* throttle, not an upstream 429) | 429 |
-| Unhandled `Exception`, unclassified `DataIntegrityViolationException`, entity Bean Validation failure (bare `ConstraintViolationException` from an in-call flush; `TransactionSystemException` from a commit-time flush) | 500 |
+| Unhandled `Exception`, unclassified `DataIntegrityViolationException`, `HandlerMethodValidationException` for a return value, entity Bean Validation failure (bare `ConstraintViolationException` from an in-call flush; `TransactionSystemException` from a commit-time flush) | 500 |
 | Vendor-gateway wrapper (unclassified upstream failure, e.g. `PaymentGatewayException`) | 502 |
 | `RetryableException` subtypes (transient upstream failure) | 503  |
 
@@ -132,6 +132,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @Override   // parameter constraints, and body errors on a handler that has any
     protected ResponseEntity<Object> handleHandlerMethodValidationException(HandlerMethodValidationException ex,
             HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        if (ex.isForReturnValue()) {   // our own return value broke its constraint: 500, and there is no parameter name to key on
+            log.error("Return value failed validation", ex);
+            return ResponseEntity.internalServerError().body(ProblemDetails.of(INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "An unexpected error occurred"));
+        }
         var fieldErrors = new LinkedHashMap<String, String>();
         ex.getParameterValidationResults().forEach(r -> {
             if (r instanceof ParameterErrors pe)   // @Valid @RequestBody result: field-level errors, keyed by field
@@ -263,7 +267,7 @@ class StripePaymentGateway implements PaymentGateway {
 
 ## Output Format
 
-In every mode, emit the `**Stack:**` line once, then one block per exception type that reaches the web layer or the security handlers in the target design - including types today's code never lets reach it; vendor exceptions wrapped at the boundary are covered by their wrapping domain type's block; framework exceptions sharing status, code, log level and detail share one block that lists the types in `Exception`. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when an error leaks internals, lands in the wrong status class (4xx vs 5xx), or is swallowed, `[Recommend]` otherwise (a wrong code within the right class included) - then the blocks as the target state, carrying the current value as `was: ...` in each slot that changes. A finding that is not a mapping (a swallowed exception) has no block.
+In every mode, emit the `**Stack:**` line once, then one block per exception type that reaches the web layer or the security handlers in the target design - including types today's code never lets reach it; vendor exceptions wrapped at the boundary are covered by their wrapping domain type's block; framework exceptions sharing status, code, log level and detail share one block that lists the types in `Exception`. When reviewing, the consuming workflow owns the finding envelope; invoked standalone, list findings first - `### [Must|Recommend] file:line` (pasted input: `Class.method`), then `Issue:` and `Fix:` as separate paragraphs, `[Must]` first, `[Must]` when an error leaks internals, lands in the wrong status class (4xx vs 5xx), or is swallowed, `[Recommend]` otherwise (a wrong code within the right class included) - then the blocks as the target state, carrying the current value as `was: ...` in each slot that changes. A finding that is not a mapping (a swallowed exception) has no block. A design or authoring request against existing code reviews that code first: findings, then the blocks as the target state; a greenfield request has no findings.
 
 ```
 **Stack:** {Spring MVC | WebFlux}{ + Spring Security}, Boot {x.y | unknown}

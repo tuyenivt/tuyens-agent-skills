@@ -32,14 +32,14 @@ Use skill: `behavioral-principles`.
 
 Use skill: `stack-detect`. Accept pre-confirmed stack. If not Spring Boot, stop: a stop emits `**Stack:**` naming the detected stack and its test workflow; the other sections are omitted, never emitted empty.
 
-Read the Spring Boot version from the build file (Gradle `org.springframework.boot` plugin or version catalog; Maven `spring-boot-starter-parent` or the imported `spring-boot-dependencies` BOM) and the Java version from `java.toolchain` / `<java.version>` / `maven.compiler.release`; `stack-detect` does not report either. Every construct a finding cites as present and every fix recommends must exist and bind on that version - including fixes taken from a composed atomic. Below Boot 4.0, write the row's or the atomic's Boot 3 form; when it has none, say `Boot 3 form not given` rather than emitting the Boot 4 one. Here, every coordinate, annotation and import a scaffold emits counts as a fix. Boot 3.x: `spring-boot-starter-test` declared directly (JUnit 5; Awaitility bundled from 3.2), `spring-security-test`, Testcontainers 1.x, `@MockBean` / `@SpyBean` below 3.4. Boot 3.0: pin Testcontainers 1.x; no `@ServiceConnection`, use `@DynamicPropertySource`.
+Read the Spring Boot version from the build file (Gradle `org.springframework.boot` plugin or version catalog; Maven `spring-boot-starter-parent` or the imported `spring-boot-dependencies` BOM) and the Java version from `java.toolchain` / `<java.version>` / `maven.compiler.release`; the build file outranks any version `stack-detect` carried from the instruction file. Every construct a finding cites as present and every fix recommends must exist and bind on that version - including fixes taken from a composed atomic. Below Boot 4.0, write the row's or the atomic's Boot 3 form; when it has none, say `Boot 3 form not given` rather than emitting the Boot 4 one. Here, every coordinate, annotation and import a scaffold emits counts as a fix. Boot 3.x: `spring-boot-starter-test` declared directly (JUnit 5; Awaitility bundled from 3.2), `spring-security-test`, Testcontainers 1.x, `@MockBean` / `@SpyBean` below 3.4. Boot 3.0: pin Testcontainers 1.x; no `@ServiceConnection`, use `@DynamicPropertySource`.
 
 ### Step 3 - Read Code Under Test and Existing Tests
 
-Scaffolds must match project conventions, not generic templates. **The project's working setup outranks every default shape named in this skill** - container wiring, base classes, naming, assertion library, auth helpers. Deviate only to fix a defect, and say why. A setup that cannot work on the declared version (coordinates that do not resolve, a context that cannot start) is a defect, never a convention to copy.
+Scaffolds must match project conventions, not generic templates. **The project's working setup outranks every default shape named in this skill** - container wiring, base classes, naming, assertion library, auth helpers. Deviate only to fix a defect, and say why. A setup that cannot work on the declared version (coordinates that do not resolve, a context that cannot start) is a defect, never a convention to copy. A deprecated API that still works on the declared version (`@MockBean` on Boot 3.4-3.5) is a convention.
 
 - Target classes top-to-bottom: methods, DTOs, security annotations, transaction boundaries, collaborators
-- The requirement the target implements (the ticket or doc the request names, commit messages, `docs/`): tests assert the intended rule - who may act on which resource, what a duplicate does. Code that disagrees is a production defect the test pins; with no requirement found, name the pinned behavior as assumed
+- The requirement the target implements (the ticket or doc the request names, commit messages, `docs/`): tests assert the intended rule - who may act on which resource, what a duplicate does. Code that disagrees is a production defect the test pins; with no requirement found, the test pins what the Step 5 atomic defines for the construct, else the current behavior, and the slot that reports it says `assumed - no requirement found`
 - At least one existing `@WebMvcTest`, `@DataJpaTest`, service unit test - learn builders (Instancio / `@RecordBuilder` / static factories), assertion library, auth helpers (`@WithMockUser` vs custom `JwtRequestPostProcessor`)
 - `application-test.{properties,yml}` and any `IntegrationTestBase` / `TestContainersConfig` - reuse the container setup; note whether the test schema comes from Flyway/Liquibase or from `ddl-auto` (a `ddl-auto` schema that skips migrations is a finding, not a convention)
 - `build.gradle(.kts)` / `pom.xml` test deps - record which are **present, absent, and unresolvable**: the per-technology `spring-boot-starter-<tech>-test` starters (Boot 4; `spring-boot-starter-restclient-test` for `@RestClientTest`), `spring-security-test` (via `spring-boot-starter-security-test` on Boot 4), `spring-boot-testcontainers` (`@ServiceConnection`), Testcontainers plus the per-engine module, `spring-kafka-test`, WireMock, Instancio, Spring Cloud Contract, REST Assured, and on Gradle 9 `testRuntimeOnly 'org.junit.platform:junit-platform-launcher'`. An absent dep is a scaffold dependency to add or a technique to route around (Step 5) - never a silent assumption
@@ -58,7 +58,7 @@ No existing tests (greenfield, or the target has none): every convention above i
 | Contract     | Spring Cloud Contract / Pact                                  | Consumer/provider API contracts                                        |
 | E2E          | `@SpringBootTest(webEnvironment = RANDOM_PORT)` + REST Assured | Critical journeys only (signup, checkout, payment)                     |
 
-**Pyramid fill rule.** Start at 65/25/10 (unit / slice / full-context+E2E; contract tests tracked separately). Move 5-10 points **out of unit**: into slice for a repository/controller-heavy service, into full-context for a messaging/async-heavy one (outbox, listeners, scheduled jobs live there), split evenly across both when both hold. State the result as a target, not a measured value.
+**Pyramid fill rule.** Start at 65/25/10 (unit / slice / full-context+E2E; contract tests tracked separately). Move 5-10 points **out of unit**: into slice for a repository/controller-heavy service, into full-context for a messaging/async-heavy one (outbox, listeners, scheduled jobs live there), split evenly across both when both hold (5-10 in total). State the result as a target, not a measured value.
 
 ### Step 5 - Apply Patterns
 
@@ -134,16 +134,16 @@ Route on the request's verb, not on project state:
 | "Test strategy" / "test plan" / new service           | Strategy Doc        |
 | Unclear                                               | Strategy Doc        |
 
-A compound request produces each matched deliverable ("test plan and scaffolding" -> Strategy Doc + Test Scaffolds). When the request targets a whole module or service and the Step 7 estimate lands under ~50%, the Coverage Assessment's `Gaps` content joins the **first** deliverable produced - Test Scaffolds' `Gaps` slot, a Strategy Doc's `Prioritized gaps`, already present in a Coverage Assessment. A request naming flows or classes, one or several, gets no Gaps content.
+A compound request produces each matched deliverable ("test plan and scaffolding" -> Strategy Doc + Test Scaffolds). When the request targets a whole module or service and the Step 7 estimate lands under ~50%, the Coverage Assessment's `Gaps` content joins the **first** deliverable produced - Test Scaffolds' `Gaps` slot, a Strategy Doc's `Prioritized gaps`, already present in a Coverage Assessment. A request naming flows, classes or a package gets none: Test Scaffolds omit `Gaps`, and a Strategy Doc's `Prioritized gaps` orders the work on the named targets only; a Coverage Assessment keeps its own `Gaps`, scoped to what the request names. In a compound deliverable a later document writes `as above` for content an earlier one already carries.
 
-Composed atomics' Output Formats are never emitted: `spring-test-integration`'s Engine goes to `Stack`, its production changes and suite artifacts to `Scaffold notes` (Coverage Assessment: `Fix in this order`; Strategy Doc: production changes to `Prioritized gaps`, suite artifacts to `Tooling`), its `Contexts` line to `Suite hygiene`, its per-class blocks nowhere; other atomics' Stack lines and finding envelopes fold into this deliverable's slots.
+Composed atomics' Output Formats are never emitted: `spring-test-integration`'s Engine goes to `Stack`, its production changes and suite artifacts to `Scaffold notes` (Coverage Assessment: `Fix in this order`; Strategy Doc: production changes to `Prioritized gaps`, suite artifacts to `Tooling`), its `Contexts` line to `Suite hygiene`, its per-class blocks nowhere; its findings, and other atomics' Stack lines and findings, fold into this deliverable's slots.
 
 **Coverage Assessment** - the `Blockers`, `Production defects`, `Contract` and `Misuse` lines are omitted when empty:
 
 ```markdown
 ## Spring Boot Test Coverage Assessment
 
-**Stack:** Java <version> / Spring Boot <version> / <database engine> <major>{ - below the floor (<Boot 3.x | Java < 21 | Boot 3.x and Java < 21>)}
+**Stack:** Java <version> / Spring Boot <version> / <`spring-test-integration`'s `Engine` value>{ - below the floor (<Boot 3.x | Java < 21 | Boot 3.x and Java < 21>)}
 
 **Conventions:** <builder / assertions / auth helper / naming / container base>, each marked (observed) or (chosen - nothing to learn from)
 
@@ -158,7 +158,7 @@ Composed atomics' Output Formats are never emitted: `spring-test-integration`'s 
 **Gaps:**
 
 - **Blockers:** [context-start blockers and unresolvable test deps]
-- **Production defects:** [code-vs-requirement gaps and inert annotations, each with the test that pins the requirement]
+- **Production defects:** [code-vs-requirement gaps and inert annotations, in the target or met while reading it, each with the test that pins the requirement]
 - **Unit:** [services / mappers]
 - **@WebMvcTest:** [controllers; missing unauthenticated / wrong-role cases]
 - **@DataJpaTest:** [repos with @Query / derived; H2 or `ddl-auto` schema flagged]
@@ -195,7 +195,7 @@ Composed atomics' Output Formats are never emitted: `spring-test-integration`'s 
 
 - `<path>` - <what it covers; mark an edit to an existing file as (edit)>
 
-**Production defects:** <P0 blockers, code-vs-requirement gaps and inert annotations found while reading, each with the test that pins the requirement (for a retry: no retry of a non-idempotent money call without an idempotency key), never an inert annotation's intent, or `no test pins it`; `None`>
+**Production defects:** <P0 blockers, code-vs-requirement gaps and inert annotations found while reading, each with the test that pins the requirement and stays red until the production fix (for a retry: no retry of a non-idempotent money call without an idempotency key), never an inert annotation's intent, or `no test pins it`; `None`>
 
 **Publish paths:** <each send site -> its round-trip or converter test; `None`>
 
@@ -205,12 +205,12 @@ Composed atomics' Output Formats are never emitted: `spring-test-integration`'s 
 
 **Deferred:** <targets left for a next round, each with its reason; `None`>
 
-**Gaps:** <the Coverage Assessment's Gaps list>
+**Gaps:** <the Coverage Assessment's Gaps list>   {only when the rule above routes the Gaps content to this deliverable}
 ```
 
 Then the files themselves:
 
-- Right test type per target; layout mirrors the prod package under `src/test/java`
+- Right test type per target; layout mirrors the prod package under `src/test/java`, or under the source set the build already runs that test type from (a Gradle `integrationTest` set)
 - Naming `<Class>Test` (unit / slice), `<Flow>IT` (full-context) - on Maven `*IT` runs under Failsafe, so the build must bind it
 - Security cases live in the same controller slice class as the functional tests unless the existing suite separates `*SecurityTest` classes
 - Builders / factories over ad-hoc construction, records through their canonical constructor (Step 6)
@@ -252,7 +252,7 @@ Then the files themselves:
 
 ## Self-Check
 
-- [ ] Step 1: `behavioral-principles` loaded
+- [ ] Step 1: behavioral-principles loaded
 - [ ] Step 2: stack confirmed as Spring Boot; Boot and Java versions read from the build; every emitted construct binds on them
 - [ ] Step 3: code, requirement, tests and test deps read; every context-start check reported
 - [ ] Step 4: percentages derived by the fill rule

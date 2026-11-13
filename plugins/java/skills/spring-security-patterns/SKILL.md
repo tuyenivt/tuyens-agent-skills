@@ -45,6 +45,7 @@ public class SecurityConfig {
     SecurityFilterChain apiChain(HttpSecurity http) throws Exception {
         return http
             .securityMatcher("/api/**")
+            .cors(withDefaults())   // browser-facing: the CORS pattern below registers /api/**
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/public/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
@@ -81,15 +82,7 @@ public class SecurityConfig {
 
 Prometheus scraping: serve actuator on a separate `management.server.port` that is not exposed outside the cluster/VPC and permit `/actuator/prometheus` in the actuator chain; network placement is the control, so say so in `Cross-cutting`. `management.endpoints.web.exposure.include` lists only what is consumed (`health,prometheus`): `*` publishes `beans`, `conditions`, `configprops`, `env`, `mappings`, `threaddump` and a writable `loggers` (`env`/`configprops` values stay masked while `show-values` keeps its `never` default - changing that default is what leaks secrets; `heapdump` is exposed by `*` on Boot 3.4 and from Boot 3.5 (Boot 4 included) also needs `management.endpoint.heapdump.access`, default `none`), so `include: "*"` beyond local is a `[Must]`.
 
-Role hierarchy (ADMIN implies MANAGER implies USER):
-
-```java
-@Bean static RoleHierarchy roleHierarchy() {
-    return RoleHierarchyImpl.withRolePrefix("ROLE_")
-        .role("ADMIN").implies("MANAGER")
-        .role("MANAGER").implies("USER").build();
-}
-```
+Role hierarchy (ADMIN implies MANAGER implies USER): `@Bean static RoleHierarchy roleHierarchy() { return RoleHierarchyImpl.withRolePrefix("ROLE_").role("ADMIN").implies("MANAGER").role("MANAGER").implies("USER").build(); }`.
 
 ### OAuth2 Resource Server (JWT)
 
@@ -101,7 +94,7 @@ spring.security.oauth2.resourceserver.jwt:
   authority-prefix: ROLE_
 ```
 
-Properties cover top-level claims and audience; Boot 4.1 also maps a nested claim - `authorities-claim-expressions: "[realm_access][roles].![toUpperCase()]"` with `authority-prefix: ROLE_` (SpEL over the claims map; exclusive with `authorities-claim-name` and `authorities-claim-delimiter`; a missing claim yields no authorities). Security 7 validates the JWT `typ` header by default: `JWT` or absent passes, anything else is 401. For an IdP issuing RFC 9068 `at+jwt` tokens, either declare a `JwtTypeValidator` bean (`new JwtTypeValidator("at+jwt", "application/at+jwt")`), which Boot adds to its decoder in place of the default `JWT` check, or use a custom `JwtDecoder` with `decoder.setJwtValidator(JwtValidators.createAtJwtValidator().issuer(issuer).audience(aud).build())` - `createAtJwtValidator()` is a builder whose `build()` fails without `issuer` and `audience`, and its result registered as a bean does not help because the default `JWT` check still runs. Security 6.4/6.5 (Boot 3.4/3.5) rejects `at+jwt` inside Nimbus before any validator runs (6.4 has neither `JwtTypeValidator` nor `createAtJwtValidator()`; 6.5 has both, but they see an `at+jwt` token only after `.validateType(false)` on the builder) - on either: `NimbusJwtDecoder.withIssuerLocation(issuer).jwtProcessorCustomizer(p -> p.setJWSTypeVerifier(new DefaultJOSEObjectTypeVerifier<>(new JOSEObjectType("at+jwt"), new JOSEObjectType("application/at+jwt")))).build()`. A custom `JwtDecoder` bean makes Boot's decoder auto-configuration back off (including the `audiences` property), and a `JwtAuthenticationConverter` bean makes it ignore `authorities-claim-name` / `authority-prefix` - use the properties or the bean, never both, and inject bean values from properties.
+Properties cover top-level claims and audience; Boot 4.1 also maps a nested claim - `authorities-claim-expressions: "[realm_access][roles].![toUpperCase()]"` with `authority-prefix: ROLE_` (SpEL over the claims map; exclusive with `authorities-claim-name` and `authorities-claim-delimiter`; a missing claim yields no authorities). Security 7 validates the JWT `typ` header by default: `JWT` or absent passes, anything else is 401. For an IdP issuing RFC 9068 `at+jwt` tokens, either declare a `JwtTypeValidator` bean (`new JwtTypeValidator("at+jwt", "application/at+jwt")`), which Boot adds to its decoder in place of the default `JWT` check, or use a custom `JwtDecoder` with `decoder.setJwtValidator(JwtValidators.createAtJwtValidator().issuer(issuer).audience(aud).clientId(clientId).build())` - `createAtJwtValidator()` is a builder whose `build()` fails unless `issuer`, `audience` and `clientId` are all set, and its result registered as a bean does not help because the default `JWT` check still runs. Security 6.4/6.5 (Boot 3.4/3.5) rejects `at+jwt` inside Nimbus before any validator runs (6.4 has neither `JwtTypeValidator` nor `createAtJwtValidator()`; 6.5 has both, but they see an `at+jwt` token only after `.validateType(false)` on the builder) - on either: `NimbusJwtDecoder.withIssuerLocation(issuer).jwtProcessorCustomizer(p -> p.setJWSTypeVerifier(new DefaultJOSEObjectTypeVerifier<>(new JOSEObjectType("at+jwt"), new JOSEObjectType("application/at+jwt")))).build()`. A custom `JwtDecoder` bean makes Boot's decoder auto-configuration back off (including the `audiences` property), and a `JwtAuthenticationConverter` bean makes it ignore `authorities-claim-name` / `authority-prefix` - use the properties or the bean, never both, and inject bean values from properties.
 
 Nested claims (Keycloak `realm_access.roles`) are not resolvable by `JwtGrantedAuthoritiesConverter` - it silently yields zero authorities and every `hasRole` fails. One prefix applies to every claim it maps, so roles *and* scopes need a custom converter; a nested claim alone is, on Boot 4.0 and Boot 3.4/3.5 (Security 6.4+), an `ExpressionJwtGrantedAuthoritiesConverter` - `new ExpressionJwtGrantedAuthoritiesConverter(new SpelExpressionParser().parseExpression("[realm_access][roles].![toUpperCase()]"))` plus `setAuthorityPrefix("ROLE_")` (its default prefix is `SCOPE_`) - inside a `JwtAuthenticationConverter` bean, and below Boot 3.4 a custom converter. Make it a named class so tests can feed it:
 
@@ -154,7 +147,7 @@ AuthenticationManagerResolver<HttpServletRequest> tenantResolver(TenantRegistry 
 // TenantRegistry: an issuer allowlist read live from a store; a removed issuer stops matching on the next call.
 ```
 
-`iss` must match byte-for-byte, trailing slash included. A discovery failure for a trusted-but-down IdP must surface as 5xx, not 401 - a valid token is not an invalid one (test: a registry entry pointing at an unreachable issuer returns 5xx). A registry backed by a DB table, or `@RefreshScope` configuration (Spring Cloud), adds tenants without a restart; removals must take effect on the next request. Keep IdP role values' case as issued and write `hasRole` checks to match (normalise only when an IdP is known to lowercase, as Keycloak realm roles are). Per-IdP claim shapes (Entra `roles`, Okta `groups`) are one converter that reads whichever claim is present; a per-issuer `typ` difference (`at+jwt` from one IdP) is that issuer's `JwtValidators.createAtJwtValidator().issuer(i).audience(aud).build()` in place of `createDefaultWithIssuer(i)` in this resolver (`createDefaultWithIssuer` keeps the `JWT`-only check; Security 6.4/6.5 use the `jwtProcessorCustomizer` decoder above).
+`iss` must match byte-for-byte, trailing slash included. A discovery failure for a trusted-but-down IdP must surface as 5xx, not 401 - a valid token is not an invalid one (test: a registry entry pointing at an unreachable issuer returns 5xx). A registry backed by a DB table, or `@RefreshScope` configuration (Spring Cloud), adds tenants without a restart; removals must take effect on the next request. Keep IdP role values' case as issued and write `hasRole` checks to match (normalise only when an IdP is known to lowercase, as Keycloak realm roles are). Per-IdP claim shapes (Entra `roles`, Okta `groups`) are one converter that reads whichever claim is present; a per-issuer `typ` difference (`at+jwt` from one IdP) is that issuer's `JwtValidators.createAtJwtValidator().issuer(i).audience(aud).clientId(clientId).build()` in place of `createDefaultWithIssuer(i)` in this resolver (`createDefaultWithIssuer` keeps the `JWT`-only check; Security 6.4/6.5 use the `jwtProcessorCustomizer` decoder above).
 
 ### Method security
 
@@ -172,10 +165,10 @@ class OrderService {
 }
 ```
 
-Domain-scoped checks call a bean in SpEL; the principal carries the scope (a custom `UserDetails` with `storeId`, or a JWT claim), and the method takes the scoped ID as a parameter (add it when missing) or checks the loaded entity in `@PostAuthorize`. A resource ID taken from the path with no ownership check is an IDOR - `[Must]`. A URL rule and a `@PreAuthorize` on the same route both apply (AND) - check they agree:
+Domain-scoped checks call a bean in SpEL; the principal carries the scope (a custom `UserDetails` with `storeId`, or a JWT claim), and the method takes the ID of the resource it acts on as a parameter (add it when missing) or checks the loaded entity in `@PostAuthorize`. The bean resolves the scope from that resource (the sale's store) - a `storeId` the client sends alongside it proves nothing. A resource ID taken from the path with no ownership check is an IDOR - `[Must]`. A URL rule and a `@PreAuthorize` on the same route both apply (AND) - check they agree:
 
 ```java
-@PreAuthorize("hasAuthority('HEAD_OFFICE') or (#req.amount() <= 500 and @storeAuthz.isManagerOf(authentication, #req.storeId()))")
+@PreAuthorize("hasAuthority('HEAD_OFFICE') or (#req.amount() <= 500 and @storeAuthz.managesStoreOfSale(authentication, #req.saleId()))")
 Refund issue(RefundRequest req) { ... }
 ```
 
@@ -279,7 +272,7 @@ class OrderControllerSecurityTest {
 }
 ```
 
-`@MockitoBean` on a service replaces the Spring proxy, so its `@PreAuthorize` does not run - assert method-security rules against the real bean in a `@SpringBootTest`.
+A mapping configured through properties has no class to instantiate: `@Autowired JwtAuthenticationConverter` (Boot's bean is in the slice) and pass `converter.convert(jwt).getAuthorities()`. `@MockitoBean` on a service replaces the Spring proxy, so its `@PreAuthorize` does not run - assert method-security rules against the real bean in a `@SpringBootTest`.
 
 ## Output Format
 
