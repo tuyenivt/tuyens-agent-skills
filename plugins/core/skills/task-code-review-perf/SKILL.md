@@ -45,6 +45,7 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review-perf`   | `ruby`   |
 | Node.js / TypeScript | `task-node-review-perf`    | `node`   |
 | Go / Gin             | `task-go-review-perf`      | `go`     |
+| Rust / Axum          | `task-rust-review-perf`    | `rust`   |
 | React / Next.js      | `task-react-review-perf`   | `react`  |
 | C# / Unity           | `task-unity-review-perf`   | `unity`  |
 | Dart / Flutter       | `task-flutter-review-perf` | `flutter` |

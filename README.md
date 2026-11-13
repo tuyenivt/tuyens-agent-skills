@@ -1,6 +1,6 @@
 # Tuyen's Plugins Directory
 
-Single marketplace repository for Claude Code plugins: `architecture`, `java`, `python`, `ruby`, `node`, `go`, `react`, `unity`, and `flutter`.
+Single marketplace repository for Claude Code plugins: `architecture`, `java`, `python`, `ruby`, `node`, `go`, `rust`, `react`, `unity`, and `flutter`.
 
 ## Recommended: Project-Scoped Installation
 
@@ -53,6 +53,13 @@ claude plugin install node@tuyens-agent-skills --scope project
 ```bash
 claude plugin install core@tuyens-agent-skills --scope project
 claude plugin install go@tuyens-agent-skills --scope project
+```
+
+**Rust project:**
+
+```bash
+claude plugin install core@tuyens-agent-skills --scope project
+claude plugin install rust@tuyens-agent-skills --scope project
 ```
 
 **React / Next.js project:**
@@ -168,6 +175,15 @@ Go / Gin (plugin: go)
   reliability review                   -> /task-go-review-reliability
   test strategy / scaffolds            -> /task-go-test
 
+Rust / Axum (plugin: rust)
+  implement a new feature              -> /task-rust-implement
+  staff-level code review              -> /task-rust-review
+  performance review                   -> /task-rust-review-perf
+  security review                      -> /task-rust-review-security
+  observability review                 -> /task-rust-review-observability
+  reliability review                   -> /task-rust-review-reliability
+  test strategy / scaffolds            -> /task-rust-test
+
 React / Next.js (plugin: react)
   implement a new feature              -> /task-react-implement
   staff-level code review              -> /task-react-review
@@ -216,6 +232,7 @@ Flutter / Dart (plugin: flutter)
 | [ruby](plugins/ruby)                 | Ruby on Rails 8.1+                                                                                                                                                                  |
 | [node](plugins/node)                 | Node.js/TypeScript, NestJS (primary), Express (secondary)                                                                                                                           |
 | [go](plugins/go)                     | Go 1.25+ / Gin                                                                                                                                                                      |
+| [rust](plugins/rust)                 | Rust 1.94+ / Axum / sqlx                                                                                                                                                            |
 | [react](plugins/react)               | React 19 / Next.js 16 App Router / TypeScript fullstack. Server Components, Server Actions, Cache Components, Prisma data layer, self-hosted operations, TanStack Query, Zustand, Tailwind |
 | [unity](plugins/unity)               | Unity 6.3 LTS 2D games (casual and puzzle). Engine-free rules core, URP 2D, UI Toolkit, Input System, Addressables; mobile primary, desktop secondary, WebGL tertiary |
 | [flutter](plugins/flutter)           | Flutter / Dart 3 client apps. Riverpod, go_router, Dio, Drift, freezed; mobile primary, desktop secondary, web tertiary |

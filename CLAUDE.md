@@ -17,6 +17,7 @@ plugins/
   ruby/          # Ruby 3.4+ / Ruby on Rails 8.1+ / MySQL 8.0 - Sidekiq or Solid Queue, Solid Cache, Solid Cable
   node/          # Node.js/TypeScript, NestJS (primary), Express (secondary)
   go/            # Go 1.25+ / Gin / GORM+sqlx
+  rust/          # Rust 1.94+ / Tokio / Axum / sqlx
   react/         # React 19 / Next.js 16 App Router / TypeScript - fullstack
   unity/         # Unity 6.3 LTS 2D games / C# - engine-free rules core, URP 2D, UI Toolkit
   flutter/       # Flutter / Dart 3 client apps - Riverpod, go_router, Dio, Drift

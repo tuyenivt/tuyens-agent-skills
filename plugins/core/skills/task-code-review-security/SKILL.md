@@ -47,6 +47,7 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review-security`   | `ruby`    |
 | Node.js / TypeScript | `task-node-review-security`    | `node`    |
 | Go / Gin             | `task-go-review-security`      | `go`      |
+| Rust / Axum          | `task-rust-review-security`    | `rust`    |
 | React / Next.js      | `task-react-review-security`   | `react`   |
 | C# / Unity           | `task-unity-review-security`   | `unity`   |
 | Dart / Flutter       | `task-flutter-review-security` | `flutter` |

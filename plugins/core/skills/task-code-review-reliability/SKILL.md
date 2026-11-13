@@ -54,6 +54,7 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review-reliability`   | `ruby`   |
 | Node.js / TypeScript | `task-node-review-reliability`    | `node`   |
 | Go / Gin             | `task-go-review-reliability`      | `go`     |
+| Rust / Axum          | `task-rust-review-reliability`    | `rust`   |
 | React / Next.js      | `task-react-review-reliability`   | `react`  |
 
 Dispatch keys on the detection's primary `Language` / `Framework` pair; a secondary stack in `Additional` never dispatches. A row matches when both its language and its framework match - a trailing version never blocks a match (`Spring Boot 4.1`) and the Ruby row matches `Rails` or `Ruby on Rails`, while another language or framework does (Kotlin / Spring Boot and Java / Micronaut take the fallback). Python matches under any framework; Node.js / TypeScript matches Language `JavaScript` or `TypeScript` with a server framework (NestJS, Express, Fastify, Koa, Hono) or `unknown`; a Framework naming Next.js (`React (Next.js)`, `Next.js 16.3 (App Router)`) takes the React row, and every other frontend framework (Vite, CRA, React Router, Remix, Vue, Angular, Svelte) matches no row. Exactly one outcome follows, its one-line announcement printed in chat before anything else (Step 4's precondition prompts and the user's answers follow it) and never part of `report_body`:

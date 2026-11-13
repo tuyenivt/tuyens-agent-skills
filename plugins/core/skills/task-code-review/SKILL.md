@@ -43,6 +43,7 @@ Use skill: `stack-detect`.
 | Ruby / Rails         | `task-rails-review`   | `ruby`    |
 | Node.js / TypeScript | `task-node-review`    | `node`    |
 | Go / Gin             | `task-go-review`      | `go`      |
+| Rust / Axum          | `task-rust-review`    | `rust`    |
 | React / Next.js      | `task-react-review`   | `react`   |
 | C# / Unity           | `task-unity-review`   | `unity`   |
 | Dart / Flutter       | `task-flutter-review` | `flutter` |
