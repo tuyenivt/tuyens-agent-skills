@@ -38,7 +38,7 @@ Use skill: `domain-kb-layout` for every path, section, and empty form named belo
 
 ### Step 3 - Atlas or stale view (no target, or `stale`)
 
-Render the matching Output Format block and stop. The atlas view takes Synced, Repos, and Flows from Step 2, the learning path and every capability table verbatim from ATLAS (the `#` column as ATLAS numbers it), `### Untraced` and `### Unmapped changes` when their ATLAS table has a row other than the `none` row, the curated counts on one line, the two last-sync lines, and Next. The stale view lists what the last sync marked (while `in_progress` is set, what the unfinished run has marked so far) and the next `task-domain-sync` will touch (commits after the last fetched tip are not visible until it runs): the ATLAS rows whose Status is `stale`, the `### Untraced` rows (it traces missing cards too), and `## Unmapped changes`; orphaned rows go under their own heading, since `update` leaves them and `task-domain-sync init` deletes an orphan whose `## Notes` is empty.
+Render the matching Output Format block and stop. The atlas view copies the learning path and every capability table verbatim from ATLAS (the `#` column as ATLAS numbers it). The stale view lists what the last sync marked (while `in_progress` is set, what the unfinished run has marked so far) and the next `task-domain-sync` will touch (commits after the last fetched tip are not visible until it runs): the ATLAS rows whose Status is `stale`, the `### Untraced` rows (it traces missing cards too), and `## Unmapped changes`; orphaned rows go under their own heading, since `update` leaves them and `task-domain-sync init` deletes an orphan whose `## Notes` is empty.
 
 ### Step 4 - Resolve and render the lesson (any other target)
 
@@ -129,9 +129,9 @@ Stale view:
 
 `Flow` is the Markdown link copied from the ATLAS row, and `Capability` is the capability id the link carries (the directory name, not the heading text); a Missing row copies the `### Untraced` row's cells as written; Next follows the rule under the atlas view. Every table is present; one with nothing to list keeps its header and one row reading `none - <evidence>` in its first cell, the other cells empty (`none - no stale card`, `none - every trigger has a card`, `none - no orphaned card`, `none - no unmapped change since the last sync`).
 
-Lesson: the `domain-flow-explain` output, its remedies in the Step 2 form; when its Status starts with `stale`, a blank line and then `**Refresh:** run task-domain-sync{ --resume}`.
+Lesson: while `in_progress` is set the Sync line as the fences show it, then the `domain-flow-explain` output, its remedies in the Step 2 form; when its Status starts with `stale`, a blank line and then `**Refresh:** run task-domain-sync{ --resume}`.
 
-`{ --resume}` is the Step 2 form: ` --resume` while `in_progress` names `init` or `update`, nothing otherwise (null, or `import`). When `sync-state.json` records a non-null `in_progress`, every view, every Step 4 output (a lesson, or a `domain-flow-explain` resolution or stop line), and the `no atlas` stop line opens with the Sync line the fences show (`{command}:{pass}` the `in_progress` value as recorded) and a blank line, before the view's heading or the line.
+`{ --resume}` is the Step 2 form: ` --resume` while `in_progress` names `init` or `update`, nothing otherwise (null, or `import`). `{command}:{pass}` in the Sync line is the `in_progress` value as recorded, and a blank line follows the Sync line wherever it is emitted.
 
 Stop lines, each emitted alone (`no atlas` after the Sync line when `in_progress` is set; the other two are the no-`sha` lines, before which no Sync line is emitted):
 

@@ -108,12 +108,13 @@ external:
     # tls: true                         a person's: reached as https://partner-api.mock through the proxy (a client that forces TLS)
     # hijack: [api.partner.example]     a person's: hardcoded real hosts the proxy answers, inside containers only
 services:
+  # checkout-web (kind: frontend, route shop.checkout.test /, host_port 3001, no debug_port): same shape, omitted
   orders:                               # the service key is its directory name under repos/
     profile: rails                      # domain-devenv-stack-profiles id
     kind: backend                       # backend | frontend | worker (no port, no route, no health probe)
     runtime: "3.4.6"
     port: 3000
-    host_port: 3001
+    host_port: 3002
     debug_port: 12341                   # host side; the profile's debug port is the container side
     packages: [imagemagick]             # added to the profile's always-installed packages
     processes:
@@ -195,7 +196,7 @@ services:
     # tasks: {seed-clients: exec bin/rails runner /devenv/tasks/clients.rb}   opt-in one-shots: bin/dev task orders seed-clients
     evidence: {peers.payments: repos/orders/app/clients/payments_client.rb:8}   # slot (a field path such as peers.<peer>) -> repos/<repo>/file:line, from discovery
     unknowns: []                        # discovery's Unknowns lines, verbatim
-  # payments and checkout-web (kind: frontend, route shop.checkout.test /): same shape, omitted
+  # payments: same shape, omitted
 flows:
   all: [checkout-web, orders, payments]
   checkout/place-order: [checkout-web, orders, payments]
@@ -478,6 +479,7 @@ profiles() {
 }
 
 resolve() {  # $1 profiles, $2 an overlay appended before compose.local.yaml (solo)
+  local s k v m src mode abs sha snap files out
   [ "$TLS" = none ] || [ -f infra/tls/cert.pem ] || { echo "no certificate - run bin/dev certs" >&2; exit 1; }
   files=compose.yaml; out=""
   for s in $SERVICES; do
