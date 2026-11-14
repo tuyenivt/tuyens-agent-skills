@@ -32,7 +32,7 @@ Stack-specific delegate of `task-code-review-security` for Rust.
 
 | Severity     | Definition |
 | ------------ | ---------- |
-| **Critical** | Unauthenticated RCE, auth bypass, mass data exfiltration, working SQL injection (`sqlx::query(AssertSqlSafe(format!(..., user_input)))`, `QueryBuilder::push(user_input)`), `Command::new("sh").arg("-c")` with user input, secrets / signing keys committed, JWT signature checking disabled (`Validation::insecure_disable_signature_validation()`). Must fix before deploy; blocks merge. |
+| **Critical** | Unauthenticated RCE, auth bypass, mass data exfiltration, working SQL injection (`sqlx::query(AssertSqlSafe(format!(..., user_input)))`, `QueryBuilder::push(user_input)`), `Command::new("sh").arg("-c")` with user input, secrets / signing keys committed, JWT signature checking disabled (`Validation::insecure_disable_signature_validation()`, removed in jsonwebtoken 11, or `jsonwebtoken::dangerous::insecure_decode`). Must fix before deploy; blocks merge. |
 | **High**     | Authenticated privilege escalation, IDOR with sensitive data, SSRF reaching cloud metadata / internal services, mass assignment granting admin (a body deserialized straight into the domain struct), missing auth layer on a user-data route, path traversal via `Path::join` with no component or canonicalize-and-`starts_with` guard, a response that serializes a secret (`password_hash`, `mfa_secret`, a token), a profiling or `console_subscriber` endpoint on the production listener without auth, `unsafe` with no `// SAFETY:` invariant on attacker-reachable input. Also: **a control removed outright, or degraded until it no longer does its job**, with nothing replacing it - `iss`/`aud`/`exp` validation deleted (`validate_exp = false`, `validate_aud = false`), an algorithm pin removed, TLS verification disabled (`danger_accept_invalid_certs(true)`, a no-op rustls verifier), a work factor dropped to the library's floor, a brute-force limit widened by an order of magnitude on a credential endpoint. Must fix before merge. |
 | **Medium**   | Hardening gap with mitigating control elsewhere (missing CORS allowlist when proxy enforces origin), missing `validator` rules on DTO fields, debug exposure on non-prod, **resource exhaustion** reachable without auth (`DefaultBodyLimit::disable()` with no `RequestBodyLimitLayer`, unbounded upload or fetch, an `unwrap()` on attacker input under `panic = "abort"`), and a **control narrowed but still doing its job** (a limit loosened within a defensible range, a cost lowered but still above the recommended floor). Should fix this PR or next. |
 | **Low**      | Defense-in-depth, dependency advisory below actively-exploited (`cargo audit` warning, unmaintained crate), hardening without a concrete current attack - a raw `FromRow` struct in `Json(...)` that today serializes nothing sensitive is Low with framing (b). |
@@ -59,7 +59,7 @@ When several bullets fire on one handler, file **one** finding at the elevated t
 | `/task-rust-review-security <branch>` | `<branch>` vs base (3-dot) |
 | `/task-rust-review-security pr-<N>` | PR head fetched into local branch (user runs fetch) |
 
-**Subagent runs** (of `task-code-review-security` or `task-rust-review`). The parent passes the `review-precondition-check` handle, `base_ref` / `head_ref`, `base_sha` / `head_sha`, the pre-read diff and commit log, the pre-confirmed stack, and the data-access mix. Step 3 is skipped whole, SHA capture included - never re-run git. Steps 9 and 10 are skipped (the parent verifies and reconciles the merged set once): labels come from the tier (Critical / High -> `[Must]`, Medium / Low -> `[Recommend]`), a finding whose cited line the diff did not add carries `_(pre-existing)_` and no other annotation (the parent's verify adds `newly reachable via`) so the parent's verify pass starts from it, and the `Findings verified` and `Round` lines are omitted. Step 11 returns **the entire Output Format below except the report file** - Summary, OWASP Triage, Findings, Out of Lens, Recommendations, Next Steps - not the `## Findings` section alone; the parent's merge consumes all of it.
+**Subagent runs** (of `task-code-review-security` or `task-rust-review`). The parent passes the `review-precondition-check` handle, `base_ref` / `head_ref`, `base_sha` / `head_sha`, the pre-read diff and commit log, the pre-confirmed stack, and the data-access mix. Step 3 is skipped whole, SHA capture included - never re-run its git reads. Steps 9 and 10 are skipped (the parent verifies and reconciles the merged set once): labels come from the tier (Critical / High -> `[Must]`, Medium / Low -> `[Recommend]`), a finding whose cited line the diff did not add carries `_(pre-existing)_` and no other annotation (the parent's verify adds `newly reachable via`) so the parent's verify pass starts from it, and the `Findings verified` and `Round` lines are omitted. Step 11 returns **the entire Output Format below except the report file** - Summary, OWASP Triage, Findings, Out of Lens, Recommendations, Next Steps - not the `## Findings` section alone; the parent's merge consumes all of it.
 
 ## Workflow
 
@@ -69,7 +69,7 @@ Use skill: `behavioral-principles`. A subagent loads it too, unless the spawning
 
 ### Step 2 - Confirm Stack
 
-Use skill: `stack-detect`. Accept pre-confirmed from parent. If not Rust, stop and recommend `/task-code-review-security`.
+Use skill: `stack-detect`. A subagent run skips detection: it takes what the parent pre-confirmed (stack, versions, data-access mix, messaging) as passed and reads the manifests below only for a slot the parent left empty. If not Rust, stop and recommend `/task-code-review-security`.
 
 Versions come from the repository - the Rust version from `rust-toolchain.toml`'s `channel`, else `Cargo.toml`'s `rust-version`, with the `edition`; the HTTP framework and data-access crates as resolved in `Cargo.lock` - and override any version a `## Tech Stack` line declared (this step's one departure from `stack-detect`'s instruction-file precedence); in a Cargo workspace the member crate under review decides, its `Cargo.toml` (and any `[workspace.dependencies]` it inherits) read in place of the detected primary stack. The `Stack` slot is `stack-detect`'s rendering with those versions added (`Rust 1.94 (edition 2024) / Axum 0.8.9`, `Rust 1.94 (edition 2024) (no framework detected)`), and the writer's `stack` is `rust-<framework>` lowercased (`rust-axum`, `rust-actix-web`; `rust` when there is none). The checks below name Axum constructs; on another framework apply each to that framework's equivalent and skip one that has none.
 
@@ -85,23 +85,23 @@ Use skill: `review-precondition-check` with `report_type: review-security`. Any 
 
 ### Step 4 - Read the Security Surface
 
-Cite real lines. Open:
+Cite real lines, each file read at `head_ref` (`git show <head_ref>:<path>`, on subagent runs too) - the working tree may be on another branch. Open:
 
 - `src/main.rs` + router construction - which sub-routers carry the auth layer and in what order layers wrap (`.layer` is bottom-up: the last added runs first; a `Router::layer` / `route_layer` wraps only the routes added **before** it, so a `.route(...)` chained after the auth layer is public). A public rate limit sits outside auth so `/auth/login` is covered
 - The auth middleware or `FromRequestParts` extractor - JWT validation, claim extraction, rejection responses
 - `CorsLayer` setup for the origin allowlist
 - Rate limiter (`tower_governor`) on auth routes, and its key extractor (`SmartIpKeyExtractor` trusts `X-Forwarded-For`)
 - Every changed handler - auth at sub-router level, ownership checks, request DTO type, `.validate()` call
-- Every changed DTO's `validator` rules - `#[derive(Validate)]` and `#[validate(...)]` validate nothing until `.validate()` runs (or a `Valid<Json<T>>` / `Garde<Json<T>>` extractor wraps it)
+- Every changed DTO's `validator` rules - `#[derive(Validate)]` and `#[validate(...)]` validate nothing until `.validate()` runs (or axum-valid's `Valid<Json<T>>` wraps it; `Garde<Json<T>>` runs a `garde` DTO's `#[garde(...)]` rules, never `validator`'s)
 - Every changed query for parameterization
 - Config struct for `JWT_SECRET` / signing keys, allowed origins, env loading
-- `Cargo.toml` / `Cargo.lock`, `deny.toml`, `audit.toml` for dependency versions, sources and waivers
+- `Cargo.toml` / `Cargo.lock`, `deny.toml`, `.cargo/audit.toml` for dependency versions, sources and waivers
 - `.env.example` for documented env vars
 - **Static file serving** - `ServeDir` / `ServeFile` and the directory each serves. A directory that is both writable by an upload handler and served on the app's own origin turns any upload defect into same-origin script execution; `ServeDir` picks `Content-Type` from the extension, not from whatever the handler validated
 
 When the diff **weakens the authorization posture** - removes a layer, registers a new route outside the authed sub-router or after its `.layer`, drops `iss`/`aud`/`exp` validation, deletes alg-pinning, widens a limit, or lowers a work factor - `git log -p` the prior revision; the blame trail is authoritative. Any of these is evidence of Insecure Design (A06:2025); call it out even when each change looks "small" in isolation. The team's stated rationale ("internal only, behind the VPC", "we'll add it back later", "QA kept getting locked out") is not a compensating control - a network boundary is not authentication, and a schedule is not a control. Record each removal, the rationale offered, and why it does not compensate, in the Summary paragraph.
 
-**Defects outside the diff.** A defect on a line the diff did not add: in this lens and made newly reachable by the diff -> a finding (Step 9 attributes it); in this lens and untouched by the diff -> a finding at its tier label with `_(pre-existing)_` (Step 9 de-escalates it to `[Recommend]`; on a subagent run the parent's verify does), at most the three most consequential (highest tier first), counting only findings this round publishes for the first time, the rest one line each under `## Out of Lens`; owned by another lens (a leaked task, a missing index) -> `## Out of Lens` with `file:line` and the owning lens.
+**Defects outside the diff.** A defect on a line the diff did not add: in this lens and made newly reachable by the diff -> a finding (Step 9 attributes it); in this lens and untouched by the diff -> a finding at its tier label with `_(pre-existing)_` (Step 9 de-escalates it to `[Recommend]`; on a subagent run the parent's verify does), at most the three most consequential (highest tier first; within a tier a defect an incident record or measurement in the repo names before any other, then a file the diff touches before one it does not, then path and line order), counting only findings this round publishes for the first time, the rest one line each under `## Out of Lens`; owned by another lens (a leaked task, a missing index) -> `## Out of Lens` with `file:line` and the owning lens.
 
 ### Step 5 - OWASP Triage (Rust Lens)
 
@@ -134,7 +134,7 @@ Use skill: `rust-security-patterns` for the canonical AuthN, AuthZ, validation, 
 
 **AuthN diff triage:**
 
-- [ ] Exact algorithm pinned with `Validation::new(Algorithm::RS256)` (or `ES256`); an algorithm read from `decode_header` is not a pin; `iss` / `aud` set via `set_issuer` / `set_audience`; `exp` enforced (`validate_exp` stays `true`, `exp` stays in `required_spec_claims`); `insecure_disable_signature_validation()` appears nowhere outside tests
+- [ ] Exact algorithm pinned with `Validation::new(Algorithm::RS256)` (or `ES256`); an algorithm read from `decode_header` is not a pin; `iss` / `aud` set via `set_issuer` / `set_audience`; `exp` enforced (`validate_exp` stays `true`, `exp` stays in `required_spec_claims`); neither `insecure_disable_signature_validation()` (removed in jsonwebtoken 11) nor `dangerous::insecure_decode` appears outside tests
 - [ ] Access token lifetime short; refresh rotation; revocation surface (`jti` denylist or refresh UUID)
 - [ ] Password hashing via `Argon2::default()` (Argon2id) or `bcrypt` cost >= 10, run inside `spawn_blocking`; verify via `PasswordVerifier`
 - [ ] Auth rejection is 401 with no body details; brute-force rate limit on `/auth/login`, `/auth/refresh`, `/auth/reset-password`
@@ -179,7 +179,7 @@ Pattern bank in `rust-security-patterns`. Diff-level checks:
 - [ ] SSRF: user-controlled outbound URL resolves and rejects metadata / loopback / RFC1918 / link-local, connects to the checked IP (a filtering `dns_resolver`), and re-checks or disables redirects (`redirect::Policy::none()`)
 - [ ] Webhook: raw body via a `Bytes` extractor (the last extractor) before parsing; signature via `Mac::verify_slice`; route outside the JWT sub-router; body capped **before** the read; **replay window enforced** - the signed timestamp is parsed and compared to the clock (reject beyond ~5 min), not merely folded into the MAC. Binding `t` into the signature stops an attacker editing it; only a clock comparison stops replaying the original `(t, sig, body)` triple, and a dedup table with no retention policy is a weaker substitute
 - [ ] Postgres job queue / Kafka / AMQP / in-process queue payload trust: re-validate inside the consumer or job handler whenever the queue is a second entry path to a value an HTTP-boundary control protected, or the broker is reachable by anything outside this service - not only when the payload's original source is untrusted. A signed webhook that enqueues an amount, which the worker then writes without re-checking, has moved the trust boundary to the broker
-- [ ] `cargo audit` (or `cargo deny check advisories`) clean in CI; `deny.toml` `[sources]` rejects unknown registries and git sources; every `audit.toml` waiver carries a reason. `cargo audit` needs the RustSec advisory database; when it is unavailable, record `not verifiable here` in the triage and say so in the finding rather than implying a clean result
+- [ ] `cargo audit` (or `cargo deny check advisories`) clean in CI; `deny.toml` `[sources]` rejects unknown registries and git sources; every `.cargo/audit.toml` `ignore` entry carries its reason in a comment. `cargo audit` needs the RustSec advisory database; when it is unavailable, record `not verifiable here` in the triage and say so in the finding rather than implying a clean result
 
 ### Step 8 - Data Protection
 
@@ -195,7 +195,7 @@ Pattern bank in `rust-security-patterns`. Diff-level checks:
 
 Assign each draft finding its label first - Critical / High -> `[Must]`, Medium / Low -> `[Recommend]` - because `review-finding-verify` takes labelled findings as input and returns adjusted ones.
 
-Use skill: `review-finding-verify` with those findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`. **The label it returns is final** - it de-escalates `[Must]` to `[Recommend]` on untouched pre-existing code, and that survives into the finding heading and into Next Steps. Never re-derive a label from the severity tier after this step; a `### Critical` finding tagged `[Recommend]` because it is pre-existing is the correct output, not a contradiction. Carry its `Annotation` column verbatim onto the heading (`_(pre-existing)_`, `_(pre-existing; newly reachable via <file:line>)_`, `_(unverified: <reason>)_`, `_(mechanism: <actual>)_`; only Step 10's projection splits the combined group) and its tally into the Summary's `Findings verified` slot; the tally counts this round's drafts only. A finding on a file the name-status does not list gets `_(pre-existing)_`, written first, unless its annotations already have a group opening `pre-existing` or `unverified`. The verify table is working material; only the tally and the surviving rows' labels and annotations reach the report.
+Use skill: `review-finding-verify` with those findings, the diff already read, and `base_ref` / `head_ref`. Publish only rows whose Verdict is not `Dropped`. **The label it returns is final** - it de-escalates `[Must]` to `[Recommend]` on untouched pre-existing code, and that survives into the finding heading and into Next Steps. Never re-derive a label from the severity tier after this step; a `### Critical` finding tagged `[Recommend]` because it is pre-existing is the correct output, not a contradiction. Carry its `Annotation` column verbatim onto the heading (`_(pre-existing)_`, `_(pre-existing; newly reachable via <file:line>)_`, `_(unverified: <reason>)_`, `_(mechanism: <actual>)_`; only Step 10's projection splits the combined group) and its tally into the Summary's `Findings verified` slot; the tally counts this round's drafts only, a carried finding among them only when this round re-drafted it. A finding on a file the name-status does not list gets `_(pre-existing)_`, written first, unless its annotations already have a group opening `pre-existing` or `unverified`. The verify table is working material; only the tally and the surviving rows' labels and annotations reach the report.
 
 Subagent runs skip this step entirely (see Invocation).
 
@@ -207,7 +207,7 @@ Skip on round 1. Otherwise read the prior report at the handle's `report_path` a
 
 Standalone only - subagent runs return the Output Format to the parent, which writes the single merged report.
 
-Use skill: `review-report-writer` with `report_type: review-security` and every required input: `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` from the handle, `base_sha` / `head_sha` from Step 3, `stack` per Step 2, `scope: +sec`, `depth: deep` (this workflow always runs full depth), `mode: full`, and the `round` / `prior_head_sha` resolved in Step 3. Write before ending; print confirmation.
+Use skill: `review-report-writer` with `report_type: review-security` and every required input: `report_body`, `branch` (the handle's `head_short_name`), `base_ref` / `head_ref` from the handle, `base_sha` / `head_sha` from Step 3, `stack` per Step 2, `scope: +sec`, `depth: deep` (this workflow always runs full depth), `mode: full`, and the `round` / `prior_head_sha` resolved in Step 3. Write before ending; chat then carries the handle notes, the report body and the writer's confirmation line, in that order.
 
 ## Self-Check
 
@@ -223,9 +223,7 @@ Mark a line N/A with its reason when the diff has no matching surface, or when t
 - [ ] Step 8: data protection (encryption at rest, struct on the wire, `tracing` redaction, secrets in URLs, TLS / HSTS, typed config) checked
 - [ ] Step 9 (standalone): findings labelled before verify; verify's labels and annotations carried onto the headings verbatim; tally in the Summary
 - [ ] Step 10 (round 2+): prior report projected and reconciled with `head_sha` and `base_ref`; table inserted; `Still open` / `Needs re-check` rows carried into Findings
-- [ ] Step 11 (standalone): report written via `review-report-writer` with all checkpoint fields; confirmation printed. Subagent: Output Format returned, no file written
-- [ ] Severity rubric applied consistently; every finding has an attack scenario, "regression risk" rationale, or "topology-dependent" framing
-- [ ] Next Steps tagged `[Implement]` or `[Delegate]`, ordered Must > Recommend (omitted only when no issues)
+- [ ] Step 11 (standalone): report written via `review-report-writer` with all checkpoint fields; confirmation printed. Subagent: Output Format returned, no file written. Either way: severity rubric applied consistently; every finding has an attack scenario, "regression risk" rationale, or "topology-dependent" framing; Next Steps tagged `[Implement]` or `[Delegate]`, ordered Must > Recommend (omitted only when no issues)
 
 ## Output Format
 
@@ -312,7 +310,7 @@ Omit severity sections with no findings. When every section is empty, write "No 
 
 ## Out of Lens
 
-[Defects noticed while reading the surface that another lens owns, and pre-existing in-lens defects beyond the three published - each with `file:line` and the owning lens. Omit when there are none.]
+[Defects noticed while reading the surface that another lens owns, each with `file:line` and the owning lens, and pre-existing in-lens defects beyond the three published, each with `file:line`. Omit when there are none.]
 
 ## Recommendations
 

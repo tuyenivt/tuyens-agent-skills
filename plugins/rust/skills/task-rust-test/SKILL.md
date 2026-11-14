@@ -38,7 +38,7 @@ Use skill: `stack-detect`. Accept pre-confirmed from parent. When the code under
 `stack-detect` emits `ORM` (Diesel or SeaORM; sqlx is a query library and leaves it empty), `Database`, and `Test framework` (`rstest` or another declared test crate, else `cargo test`) - take those. `Database` stays `unknown` when only `sqlx` is declared: read its features (`postgres`, `mysql`, `sqlite`). Read the rest off `Cargo.toml`, `Cargo.lock`, and the repository constructors:
 
 - **Versions:** the toolchain from `rust-toolchain.toml` / `rust-version`, the edition, and the resolved Axum (or the substitute named in Step 5), Tokio, sqlx and Diesel versions from `Cargo.lock` - these override any version `stack-detect` carried from an instruction file, in every header slot that renders one
-- **Data Access:** sqlx macros (`query!` / `query_as!`) | sqlx runtime (`query_as::<_, T>`) | Diesel | SeaORM | tokio-postgres | mixed - sqlx <v> + Diesel <v>
+- **Data Access:** sqlx macros (`query!` / `query_as!`) | sqlx runtime (`query_as::<_, T>`) | sqlx macros + runtime | Diesel | SeaORM | tokio-postgres | mixed - sqlx <v> + Diesel <v>
 - **DB error type:** sqlx raises `sqlx::Error::Database` (`code()`, `is_unique_violation()`), Diesel `DatabaseError(DatabaseErrorKind::UniqueViolation, _)`, tokio-postgres `Error::code()` against `SqlState` - *different* types (Step 5)
 - **Messaging:** Postgres job table | apalis | Kafka (`rdkafka`) | AMQP (`lapin`) | in-process Tokio channel | none
 - **Mock Framework:** `mockall` | hand-written fakes (a test struct implementing the trait) | **none present** - when none, propose hand-written fakes rather than adding a crate the project has not chosen. HTTP stubs: `wiremock` | `mockito` | `httpmock` | none. A vendored tree (`cargo vendor` with a `[source]` replacement in `.cargo/config.toml`) or an offline CI blocks new dependencies: propose only what is already vendored, else hand-written fakes
@@ -52,7 +52,7 @@ Ground output in project conventions, not generic templates.
 - Read each target's module top-to-bottom: `pub` items, request/response types, layers, transaction boundaries, external collaborators
 - Find `#[cfg(test)] mod tests` blocks and `tests/*.rs`; read one existing handler test, one service / repository test, one job test, and `tests/common/mod.rs` - learn layout, mocks, HTTP stubs, auth helpers. Each file directly under `tests/` is its own crate; `tests/common/mod.rs` is the shared-helper form that does not become one
 - Read `Cargo.toml` `[dev-dependencies]` and features, `.config/nextest.toml`, `Makefile` / `justfile` / CI for `cargo test` vs `cargo nextest`, `#[ignore]` or feature segregation of Docker-backed tests, `SQLX_OFFLINE`, coverage
-- Read the function that builds the production `Router` (`app(state)` in `src/app.rs` or `main.rs`) for the layer order handler tests must reuse; a layer production never mounts (an error mapper registered nowhere) is not replicated - assert the observable error and record the gap under `Findings`
+- Read the function that builds the production `Router` (`app(state)` in `src/app.rs` or `main.rs`) for the layer order handler tests must reuse; a layer production never mounts (an error mapper registered nowhere) is not replicated - assert the observable error and record the gap under `Findings`; a router built inline in `main`, or a binary crate with no `lib` target for `tests/` to import, is a `Prerequisites` entry (extract `app(state)`, add `src/lib.rs`) the scaffolds are written against, not an edit this workflow makes and not the scaffold probe's build repair - the verification line names the scaffolds that import it as uncompiled pending that prerequisite
 
 **Conventions are the default, not the ceiling.** Adopt the project's layout, naming, helper, and fixture conventions. Do not adopt a convention this skill's `Avoid` list names as a defect - a house style of hand-built routers in handler tests, mocked-away auth, or SQLite standing in for Postgres is the gap you were called to close, not the pattern to copy. Say which convention you are departing from and why.
 
@@ -84,7 +84,7 @@ Use skill: `rust-testing-patterns` for canonical async tests, fixtures, Testcont
 
 **Unit tests** (`#[cfg(test)] mod tests` colocated):
 
-- One test function per public method; table-driven for outcomes (success, validation failure, external failure, edge) via `rstest` `#[case]` or a `Vec<Case>` loop whose assert message names the case
+- One test function per public method; table-driven for outcomes (success, validation failure, external failure, edge) via `rstest` `#[case]` (one named test function per outcome where Step 2's vendored-tree rule or the user rules out adding `rstest`)
 - **No `Router` / `PgPool`** - if a unit needs them, it's misclassified
 - Stub external HTTP via `wiremock::MockServer`, its `uri()` injected as the client's base URL
 - Trait mocks at service boundaries follow the `Mock Framework` recorded in Step 2: `#[automock]` on the consumer's trait (above `#[async_trait]` when both apply), or the hand-written fake already in the tree; **propose hand-written fakes when it is `none present`**
@@ -120,7 +120,7 @@ async fn send(app: Router, req: Request<Body>) -> (StatusCode, Bytes) {
 **Repository / data-layer integration:**
 
 - Real PostgreSQL - **not SQLite, not in-memory**. SQLite has no arrays, `LATERAL`, `FOR UPDATE`, jsonb containment / existence operators (`@>`, `?`) or GIN indexes, or SQLSTATE error codes, and its typing and FK checks are loose by default (it does have partial indexes, window functions, and `ON CONFLICT` upsert)
-- `#[sqlx::test]` hands each test a fresh database on the server `DATABASE_URL` names, with `migrations/` applied - the default where CI provides a Postgres service. Without one, start a Testcontainers Postgres once per test binary behind a `tokio::sync::OnceCell` that holds the **connection URL**, never a pool: each `#[tokio::test]` runs its own runtime, and a pool built on one runtime fails on the next. A container held in a `static` is never dropped, so the CI job, not the test, removes it
+- `#[sqlx::test]` hands each test a fresh database on the server `DATABASE_URL` names, with `migrations/` applied - the default where CI provides a Postgres service. Without one, start a Testcontainers Postgres once per test binary behind a `tokio::sync::OnceCell` that holds the **connection URL**, never a pool: each `#[tokio::test]` runs its own runtime, and a pool built on one runtime fails on the next. A container held in a `static` is never dropped, so the CI job, not the test, removes it. Under `cargo nextest` every test is its own process, so the `OnceCell` starts a container per test: there the one server is a CI service container
 - Per-test isolation, in preference order: **a fresh database per test** (`#[sqlx::test]`, or one cloned from a migrated template); **transactional rollback** when the repository methods take `&mut PgConnection` or an `Executor` - a `Transaction` dropped without `commit` rolls back. A test that must commit follows the atomic's committed-rows recipe (serial, explicit cleanup). Never edit production constructors just to inject a transaction
 - One test per non-trivial query; assert SQL semantics (filter, sort, joins), not just "method returns something"
 - N+1 detection: sqlx logs each statement as a `tracing` event on target `sqlx::query`; a test subscriber layer counting those events is the counter. Skip the check rather than fake it
@@ -168,7 +168,6 @@ fn rejects_blank_reason() {
 
 - Reserve for full-stack: auth flow end-to-end, commit + job dispatch, scheduled job behaviour
 - `axum::serve` on a `TcpListener` bound to `127.0.0.1:0` in a spawned task, `reqwest` against it, Testcontainers Postgres + broker
-- Avoid for what a handler test could cover
 
 **Concurrency:** safe Rust rules out data races, not logical ones (two requests transitioning one row, a lost update, a lock held across `.await`). A default `#[tokio::test]` is a current-thread runtime and never runs two tasks at once: concurrency tests use `#[tokio::test(flavor = "multi_thread", worker_threads = 4)]`, drive the calls through `tokio::join!` or a `JoinSet`, and assert against the real database. `loom` is for hand-written lock-free primitives only.
 
@@ -221,7 +220,7 @@ When the highest band points outside the requested scope (P1 names the JWT layer
 
 Failing boxes are listed under the Coverage Assessment's `Infrastructure` gap line, or the `Prerequisites` of the Strategy Doc or Test Scaffolds.
 
-- [ ] One database server per test binary (CI service or a `OnceCell`-held container URL), a fresh database or rollback per test - never a container per test, never a pool shared across runtimes
+- [ ] One database server per test binary (a CI service, or under `cargo test` a `OnceCell`-held container URL), a fresh database or rollback per test - never a container per test, never a pool shared across runtimes
 - [ ] Concurrency tests on the multi-thread runtime in CI
 - [ ] Test configuration overrides only what differs from prod - never silently disables auth
 - [ ] Docker-backed tests segregated (`#[ignore = "requires docker"]` run by a CI job with `--include-ignored`, or an `integration` cargo feature) and still compiled on every run
@@ -249,7 +248,7 @@ Whatever the row, when the Step 8 trigger fires (coverage under ~50% or more tha
 ```markdown
 **Stack:** Rust <version> (edition <year>) / <framework> <version> - crate <name>     {crate suffix only in a Cargo workspace}
 
-**Data Access:** sqlx <version> (macros | runtime) | Diesel <version> | SeaORM <version> | tokio-postgres | mixed - sqlx <version> + Diesel <version>
+**Data Access:** sqlx <version> (macros | runtime | macros + runtime) | Diesel <version> | SeaORM <version> | tokio-postgres | mixed - sqlx <version> + Diesel <version>
 
 **DB engine / driver:** PostgreSQL via sqlx | PostgreSQL via Diesel | MySQL via sqlx | ... (inferred from crate features)     {suffix only when no instruction file declared it}
 
@@ -304,7 +303,7 @@ Whatever the row, when the Step 8 trigger fires (coverage under ~50% or more tha
 **Test Scaffolds:** `## Rust Test Scaffolds`, the header block, then `**Prerequisites:**` (what the scaffolds assume - a `tests/common` bootstrap, the Docker segregation, a reachable `DATABASE_URL` or `.sqlx/` data, a dev-dependency feature (`tokio` `test-util`, `tower` `util`), a defect that stops the target being exercised at all (it does not build, it panics on setup) - a defect a test can observe follows Step 3's ignore-and-cite rule instead; `none` when the repo has it), then a file manifest (path, layer, `fns / cases`; a support file - a fake, `tests/common/mod.rs`, a `test_support` module - takes layer `support` and no count; Step 8 priority order when its trigger fired, else request order), then the scaffolds themselves, then `**Findings:**` (non-test defects met while scaffolding, each `file:line` - the ignored contract tests from Step 3, model-migration drift, an unmounted layer; `none` otherwise), then `**Open decisions:**` (as on the Strategy Doc; `none` otherwise), then `**Residuals:**` - prioritized work the request's scope excluded, named so it is not lost. Ready-to-run files using project conventions:
 
 - Right test type (handler / integration / unit / job)
-- Table-driven with `rstest` cases or a named `Vec<Case>` loop
+- Table-driven with `rstest` `#[case]` rows (one named test per case where `rstest` cannot be added)
 - Factories over raw literals
 - Handler: happy + 401 (when an auth surface exists) + 403 (when a role gate exists) + other-owner (for per-owner resources) + validation-error
 - Repository: real Postgres; assertions against the production engine's semantics

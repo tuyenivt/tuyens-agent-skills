@@ -37,7 +37,7 @@ Validation stack: **field type -> `Json<T>` deserialization -> `validator` rule 
 if req.name.is_empty() { return Err(AppError::Validation("name required".into())); } // dead
 ```
 
-`#[validate(required)]` is meaningful only on an `Option<T>`; on a plain field serde already enforces presence. A guard re-checking an invariant a newtype's constructor enforces (`Email::parse` then `email.as_str().contains('@')`) is the same shape.
+`#[validate(required)]` applies only to an `Option<T>` (on a plain field it does not compile); a non-`Option` field is already required by serde. A guard re-checking an invariant a newtype's constructor enforces (`Email::parse` then `email.as_str().contains('@')`) is the same shape.
 
 #### Existence probe before a write the DB already constrains
 
@@ -45,7 +45,7 @@ if req.name.is_empty() { return Err(AppError::Validation("name required".into())
 
 ```rust
 // Bad
-let taken = sqlx::query_scalar::<_, i64>("SELECT 1 FROM users WHERE email = $1")
+let taken = sqlx::query_scalar::<_, i32>("SELECT 1 FROM users WHERE email = $1")
     .bind(&req.email).fetch_optional(&pool).await?;
 if taken.is_some() { return Err(AppError::EmailTaken); }
 sqlx::query("INSERT INTO users (email) VALUES ($1)").bind(&req.email).execute(&pool).await?;
@@ -76,7 +76,7 @@ Justified when a non-HTTP write path (a job handler, a CLI, a gRPC service) reac
 
 ### Category 2: Defensive Code for Impossible States
 
-A guard on a state the types already exclude is `[Recommend]`; `[Must]` only when it reports success on failure or hides a wiring bug.
+A guard on a state the types already exclude is `[Recommend]`; `[Must]` only when it reports success on failure or hides a wiring bug; `catch_unwind` takes its own labels below.
 
 #### `Option` around a dependency the constructor always or never sets
 
@@ -219,7 +219,7 @@ fn audit(tag: &str) { /* ... */ }
 for tag in &tags { audit(tag); }
 ```
 
-Same shape: `Vec<T>` -> `&[T]`, `Box<T>` -> `&T`. `[Must]` on a request or per-record path, `[Recommend]` elsewhere.
+Same shape: `Vec<T>` -> `&[T]`, `Box<T>` -> `&T`. `[Must]` when confirmed on a hot path - per request, or a loop whose size the input sets; confirmed off one it is not a finding.
 
 #### Gratuitous `async` and `#[async_trait]`
 
@@ -231,12 +231,12 @@ Items, request fields or config keys nothing reads (a `pub fn list_by_order` wit
 
 ## Output Format
 
-Emit one block per finding, ordered `[Must]` first, then `[Recommend]`; within a label, in-hunk findings by file in the order the input listed them then line, then `pre-existing` blocks by path, then owned-by blocks; the consuming workflow merges them. Every finding carries exactly one label:
+Emit one block per finding, ordered `[Must]` first, then `[Recommend]`; within a label, three groups - this skill's in-hunk findings, its `pre-existing` blocks, then owned-by blocks - and within a group by file in the order the input listed them (a listed directory's files in path order at the directory's position, a file listed twice at its first; files the input did not list after those, in path order), then position in the file; the consuming workflow merges them. Every finding carries exactly one label:
 
 ```
 ### [{Must | Recommend}] {file:line | file:start-end | file:<symbol>}{ pre-existing}
 
-- Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction | Wasted Work | Dead Code}
+- Category: {Redundant Validation | Defensive Impossibility | Premature Abstraction | Wasted Work | Dead Code | n/a}
 - Code: {one-line citation}
 - Redundant because: {constraint(s) making the code dead; comma-separate when stacked}
 - Cost: {required for [Must]; omit otherwise}
@@ -244,12 +244,11 @@ Emit one block per finding, ordered `[Must]` first, then `[Recommend]`; within a
 - Justified when: {one-line note if legitimate reason might apply; otherwise omit}
 ```
 
-`pre-existing` marks a finding outside the PR hunks that the hunks build on. Close with one line `Checked, not flagged: <abstractions whose justification the repo confirmed>` (or `none`). Cite `file:line` when the input carries line numbers, `file:<symbol>` when it does not; a range is `file:start-end`. One shape at several sites is one block citing the first site, with the rest named on the `Code:` line; a trait and the `dyn` field consuming it are one shape. For each category with zero findings, emit exactly: `No <category> findings.` (using the category name from the enum) so the workflow knows the check ran; omit the line for categories that have at least one finding. A defect this skill does not own (an `unwrap()` on a request path, an unparameterised query, a missing transaction) is still reported, never dropped: one block per such defect, sorted per the order above, labelled `[Must]` when it risks incorrect behaviour, data loss or a security hole and `[Recommend]` otherwise, with its `Redundant because:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
+`pre-existing` marks a finding outside the PR hunks that the hunks build on. Close with one line `Checked, not flagged: <abstractions whose justification the repo confirmed>` (or `none`). Cite `file:line` when the input carries line numbers, `file:<symbol>` when it does not; a range is `file:start-end`. One shape at several sites is one block citing the first site in that order, with the rest named on the `Code:` line; a trait and the `dyn` field consuming it are one shape. For each of the five categories with zero findings, emit exactly: `No <category> findings.` (using the category name from the enum) so the workflow knows the check ran; omit the line for categories that have at least one finding. A defect this skill does not own (an `unwrap()` on a request path, an unparameterised query, a missing transaction) is still reported, never dropped: one block per such defect, sorted per the order above, labelled `[Must]` when it risks incorrect behaviour, data loss or a security hole and `[Recommend]` otherwise, with its `Redundant because:` line reading `owned by <concern>` in plain words and its `Category:` reading `n/a`, a value only such a block takes.
 
 ## Avoid
 
 - Flagging `#[derive(Validate)]` rules on request DTOs (that layer owns 422 responses)
-- Flagging traits declared at the consumer, or traits that carry a `mockall` mock the tests use
 - Flagging `?` propagation (idiomatic; the smell is `let _ =` / `.ok()` - a silent discard)
 - Flagging `.clone()` off hot paths, or `Arc<Mutex<T>>` on data more than one task mutates
 - Flagging an `#[allow(...)]` that carries a `reason = "..."` or a comment justifying it

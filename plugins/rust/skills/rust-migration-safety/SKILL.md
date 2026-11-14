@@ -21,11 +21,11 @@ user-invocable: false
 ## Rules
 
 - Never let the application emit unreviewed DDL at startup (a `CREATE TABLE IF NOT EXISTS` in `main`, an ORM schema sync): schema changes ship as versioned migration files
-- Every migration is reversible (`sqlx migrate add -r <name>` -> `<version>_<name>.up.sql` + `.down.sql`). A directory holds one kind - sqlx-cli refuses to add a reversible migration beside simple (`<version>_<name>.sql`) ones
+- Every migration is reversible (`sqlx migrate add -r <name>` -> `<version>_<name>.up.sql` + `.down.sql`). A directory holds one kind - sqlx-cli does not stop `add -r` beside simple (`<version>_<name>.sql`) ones, so the review does
 - Never mix DDL and DML in one file
 - Never write a destructive `down` (DROP COLUMN/TABLE with data) without backup or a compensating migration. A `down` undoes its `up` in exact reverse order - dropping a column first also drops its indexes, so a later `DROP INDEX` in the same file errors and strands the rollback
 - Zero-downtime DDL: add before delete; expand-contract, never in-place rename or retype
-- A version applied in any environment is never edited: sqlx stores a checksum per applied version and the next `run` or `sqlx::migrate!()` aborts with a version mismatch. A fix is a new version
+- A version applied in any environment is never edited: sqlx stores a checksum per applied version and the next `run` or `sqlx::migrate!()` aborts with `migration <N> was previously applied but has been modified`. A fix is a new version
 - `SET LOCAL lock_timeout = '3s'` at the top of any file taking `AccessExclusiveLock` or `ShareRowExclusiveLock` on a hot table, up and down. Those locks queue behind every transaction holding a conflicting lock and, once queued, block every read and write behind them - an unbounded wait turns one slow `ALTER` into an outage, a timeout is a clean retry. `LOCAL` scopes it to the migration's transaction; a plain `SET` persists on the migrator's single connection into every later file - including a `CREATE INDEX CONCURRENTLY`, which a lock timeout cancels into an INVALID index. A CONCURRENTLY file carries no `SET`, and the connection string sets no `lock_timeout`
 - sqlx wraps each migration in a transaction, so a multi-statement file is atomic: a failing statement rolls the whole file back and records nothing. `-- no-transaction` as the file's **first line** turns that off; it is required for `CREATE/DROP INDEX CONCURRENTLY`, `REINDEX CONCURRENTLY` and `VACUUM`, and such a file holds that one statement - the server runs a multi-statement simple query as one implicit transaction, which CONCURRENTLY cannot run inside. `ALTER TYPE ... ADD VALUE` runs inside a transaction on PG12+, but the new value cannot be used until that transaction commits - use it in the next file
 - **Constraint before repair, backfill before constraint - they are not in conflict.** A `NOT VALID` constraint enforces on new rows immediately, so install it first when existing rows already violate and new bad writes must stop (a FK with orphans, a CHECK a live writer still breaks). Backfill first when no writer produces violating rows and the column is simply unpopulated. Ask which one the situation is; the wrong order either races new bad writes or fails validation
@@ -37,7 +37,7 @@ migrations/20261114093000_add_email_index.up.sql
 migrations/20261114093000_add_email_index.down.sql
 ```
 
-`sqlx migrate add -r` stamps a UTC timestamp; `--sequential` (or an existing sequential directory) gives `0001_`. `sqlx migrate run` applies every version it has not recorded, in version order - a branch file versioned below one already applied elsewhere still runs, after it on a deployed database and before it on a fresh one. Check the repository's `.gitattributes` pins `*.sql` to `eol=lf`: a Windows checkout that rewrites line endings changes the checksum of every applied file.
+`sqlx migrate add -r` stamps a UTC timestamp; `--sequential` gives `0001_` - pass it on every `add -r`, since a reversible directory is not recognised as sequential. `sqlx migrate run` applies every version it has not recorded, in version order - a branch file versioned below one already applied elsewhere still runs, after it on a deployed database and before it on a fresh one. Check the repository's `.gitattributes` pins `*.sql` to `eol=lf`: a Windows checkout that rewrites line endings changes the checksum of every applied file.
 
 ## Zero-Downtime DDL
 
@@ -144,7 +144,7 @@ sqlx migrate add -r add_email_index          # reversible pair
 sqlx migrate run                             # applies pending versions in order
 sqlx migrate revert                          # reverts the newest applied version
 sqlx migrate revert --target-version 20261101000000
-sqlx migrate info                            # applied / pending / checksum per version
+sqlx migrate info                            # installed / pending per version; flags a changed checksum
 ```
 
 ### Embedding in the Binary
@@ -175,7 +175,7 @@ cargo sqlx prepare --check --workspace                        # .sqlx/ matches t
 
 ## Edge Cases
 
-- **Dirty version**: a transactional migration that fails rolls back and records nothing. A `-- no-transaction` migration is recorded with `success = false` before it runs, so a failure leaves that row and the next run stops with a dirty-version error. sqlx has no `force`: clean up what the statement left (an INVALID index), then `DELETE FROM _sqlx_migrations WHERE version = <N> AND NOT success` and run again. Inspect the real schema (`\d`, `pg_index.indisvalid`) first - the table records only that N failed
+- **Failed migration**: on PostgreSQL sqlx records a version only after its SQL succeeds, so a failed file - transactional or `-- no-transaction` - stays pending and the next run executes it again. A transactional file left nothing behind; a `-- no-transaction` file left whatever its statement built (an INVALID index): the re-run fails on it, or - with `IF NOT EXISTS` - skips it and records the version as applied over the INVALID index. Inspect the real schema (`\d`, `pg_index.indisvalid`) first, even after a re-run succeeded - `_sqlx_migrations` holds no trace of the failure. A `success = false` row (the dirty-version error) appears only on an engine without transactional DDL (MySQL) or after a hand edit; sqlx has no `force`, so delete that row once the schema matches
 - **Killed CONCURRENTLY**: a failed or cancelled `CREATE INDEX CONCURRENTLY` leaves an INVALID index; `IF NOT EXISTS` then skips it silently. `DROP INDEX CONCURRENTLY IF EXISTS` it first - a plain DROP takes AccessExclusiveLock
 - **Checksum mismatch**: `revert` the version where it is applied and fix the file only when no other environment applied it; otherwise restore the original bytes and ship a new version
 - **Empty down**: when a migration is truly irreversible, write a down that raises with an explanation rather than leaving it blank; when the inverse lives in another file (a VALIDATE's down), say so in a comment
@@ -183,7 +183,7 @@ cargo sqlx prepare --check --workspace                        # .sqlx/ matches t
 
 ## Output Format
 
-Open the deliverable with one line above everything else, `**Engine:** {database | unknown}` - stack-detect's `Database` value as written, or the engine named by the owning crate's sqlx feature.
+Open the deliverable with one line above everything else, `**Engine:** {database | unknown}` - stack-detect's `Database` value as written, version included, or the engine named by the owning crate's sqlx feature.
 
 Emit these headings, in this order, for the engagement:
 
@@ -191,7 +191,7 @@ Emit these headings, in this order, for the engagement:
 |------------|----------|
 | Plan | `## Migration Plan` with `### Files`, `### Safety Assessment`, `### Rollback Plan`; the SQL for each file follows under `### <file name>` headings in `Files` order. A plan handed existing files that violate a Rule emits `## Findings` first; a requested change already shipped in an applied file gets no new file - its `Files` row is that version marked `(applied)` |
 | Review | `## Findings`, then `## Migration Plan` describing the **corrected** files, then `### Pre-merge Queries` - the facts the diff cannot answer (row counts behind a NOT NULL, distinct values behind a new CHECK, whether a version is already applied somewhere) as runnable queries; a review that assumes them is a guess |
-| Recovery | two opening lines `**Schema now:**` (applied statements, invalid indexes, dirty or mismatched version) and `**First step:**` (the operator action that stops the bleeding - pause the rollout or pin the last good image - before any SQL), then `## Runbook` - numbered, each step one command or query, with the `_sqlx_migrations` edit as its own step - then `## Findings`, then `## Migration Plan` for the files still to run. A dirty version never completed: fix its file in place when no environment recorded it with `success = true`; otherwise ship the fix as a new version |
+| Recovery | two opening lines `**Schema now:**` (applied statements, invalid indexes, pending, dirty or mismatched versions) and `**First step:**` (the operator action that stops the bleeding - pause the rollout or pin the last good image - before any SQL), then `## Runbook` - numbered, each step one command or query, with the cleanup of a leftover object and any `_sqlx_migrations` edit each as its own step - then `## Findings`, then `## Migration Plan` for the files still to run. A failed version stays unrecorded until a re-run succeeds: fix its file in place when no environment recorded it with `success = true`; when one did, the file keeps its bytes and the runbook removes what made it fail here (the data, a leftover object, a lock holder) before the re-run |
 
 ```
 ## Migration Plan
@@ -223,15 +223,9 @@ Every finding carries exactly one label:
 - Fix: {the corrected SQL or file split}
 ```
 
-Owned findings: `[Must]` when the migration cannot succeed (CONCURRENTLY without `-- no-transaction` as line 1, an edited applied file), locks a hot table for a full scan or an unbounded lock wait, loses data, has no usable rollback, or leaves a dirty version; `[Recommend]` otherwise - judge by blast radius on the target table, not by matching the list. A `Guarded` down refuses by default; show the mechanism (a `DO $$ ... RAISE EXCEPTION $$` block gated on `current_setting('app.allow_destructive', true) = 'on'`, delivered on the runner's own session through the connection string's `options=-c app.allow_destructive=on` - an operator's `SET LOCAL` on another connection never reaches it) rather than describing it. Cite `file:line` when the input carries line numbers; a missing down file is cited as `<version>_<name>.down.sql:<missing>`; a range is `file:start-end`. Order owned findings `[Must]` first, then by file in the order the input listed them, then line. With no findings, `## Findings` holds the single line `None.` One root cause at several sites (the same unbounded lock in three files) is one heading citing the first site, with the rest named on the `Defect:` line. A defect this skill does not own (an index the query layer needs, a `query_as!` struct still selecting a dropped column, an image that cannot roll back) is still reported, never dropped: one block per such defect after every owned finding, in that same order among themselves, labelled `[Must]` when it risks incorrect behaviour, data loss or a security hole and `[Recommend]` otherwise, with its `Rule:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
+Owned findings: `[Must]` when the migration cannot succeed (CONCURRENTLY without `-- no-transaction` as line 1, an edited applied file), locks a hot table for a full scan or an unbounded lock wait, loses data, has no usable rollback, or leaves a half-applied `-- no-transaction` file behind (an INVALID index); `[Recommend]` otherwise - judge by blast radius on the target table, not by matching the list. A `Guarded` down refuses by default; show the mechanism (a `DO $$ ... RAISE EXCEPTION $$` block gated on `current_setting('app.allow_destructive', true) = 'on'`, delivered on the runner's own session through the connection string's `options=-c app.allow_destructive=on` - an operator's `SET LOCAL` on another connection never reaches it) rather than describing it. Cite `file:line` when the input carries line numbers; a missing down file is cited as `<version>_<name>.down.sql:<missing>`; a range is `file:start-end`. Order the blocks in four groups - owned `[Must]`, owned `[Recommend]`, then the not-owned blocks described below, `[Must]` then `[Recommend]` - and within a group by file in the order the input listed them (a listed directory's files in path order at the directory's position, a file listed twice at its first; files the input did not list after those, in path order), then position in the file. With no findings, `## Findings` holds the single line `None.` One root cause at several sites (the same unbounded lock in three files) is one heading citing the first site in that order, with the rest named on the `Defect:` line. A defect this skill does not own (an index the query layer needs, a `query_as!` struct still selecting a dropped column, an image that cannot roll back) is still reported, never dropped: one block per such defect in the last two groups, labelled `[Must]` when it risks incorrect behaviour, data loss or a security hole and `[Recommend]` otherwise, with its `Rule:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
 
 ## Avoid
 
-- DDL emitted by the application at startup
-- In-place column rename or retype (no expand-contract)
-- `DROP COLUMN/TABLE` without backup
-- Mixed DDL+DML in one file
 - `CREATE INDEX` without `CONCURRENTLY` on large tables, or CONCURRENTLY without `-- no-transaction` on line 1
 - `ALTER COLUMN SET NOT NULL` on a large table with no validated CHECK already in place
-- Editing a migration after any environment applied it
-- A plain `SET lock_timeout` (session-scoped on the migrator's connection) - always `SET LOCAL`

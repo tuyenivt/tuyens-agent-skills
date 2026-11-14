@@ -59,7 +59,7 @@ pub fn spawn_sweeper(token: CancellationToken) -> JoinHandle<()> {
 }
 ```
 
-A branch's body is not raced: a long `sweep().await` written directly in the arm delays shutdown by its full length, which is why it runs under `run_until_cancelled` (tokio-util 0.7.13+; earlier, a nested `select!`). Anything spawned in a constructor takes a token or returns its handle, or every construction leaks a task. Nested tasks take `token.child_token()`, so one `cancel()` reaches all of them.
+A branch's body is not raced: a long `sweep().await` written directly in the arm delays shutdown by its full length, which is why it runs under `run_until_cancelled` (tokio-util 0.7.12+; earlier, a nested `select!`). Anything spawned in a constructor takes a token or returns its handle, or every construction leaks a task. Nested tasks take `token.child_token()`, so one `cancel()` reaches all of them.
 
 ### Required Group
 
@@ -125,7 +125,7 @@ for item in items {
 while let Some(joined) = set.join_next().await { joined??; }
 ```
 
-Acquiring inside the spawned task creates all N tasks at once. Without spawning, `futures::stream::iter(items).map(process).buffer_unordered(n)` bounds concurrency on the current task. A bound is not a rate: a provider quota (25 req/s) needs a shared limiter (`governor`) awaited before each call. Size the bound against shared resources too - n tasks each holding a database connection need `n + every other consumer of the pool <= max_connections`. Limits are per replica.
+Acquiring inside the spawned task creates all N tasks at once. Without spawning, `futures::stream::iter(items).map(process).buffer_unordered(n)` bounds concurrency on the current task. A bound is not a rate: a provider quota (25 req/s) needs a shared limiter (`governor`) awaited before each call. Size the bound against shared resources too - n tasks each holding a database connection need `n + every other consumer of the pool <= max_connections`. Limits are per replica: divide a provider quota by the replica count, or run the batch on one replica.
 
 **Worker loop or bounded fan-out:** a known collection processed once -> bounded fan-out. An open-ended channel consumed by long-lived tasks -> N workers each looping on `recv()` with a cancellation arm (channel shape and backpressure: `rust-concurrency`).
 
@@ -135,7 +135,7 @@ Acquiring inside the spawned task creates all N tasks at once. Without spawning,
 |---------------|--------------|------------------------|
 | `mpsc::Receiver::recv`, `broadcast::Receiver::recv`, `watch::Receiver::changed`, `CancellationToken::cancelled`, `Interval::tick`, `TcpListener::accept`, `AsyncReadExt::read` | Yes | nothing |
 | `mpsc::Sender::send` | No | the unsent value is dropped - `reserve()` in the branch, then `permit.send(v)` |
-| `Mutex::lock`, `Semaphore::acquire` | Yes | the queue position |
+| `Mutex::lock`, `Semaphore::acquire` | No (fairness only) | the queue position, never data |
 | `read_exact`, `read_to_end`, `AsyncBufReadExt::read_line`, `AsyncWriteExt::write_all` | No | bytes already read or written |
 | an `async fn` or block with several `.await`s | Only if every step is | work done before the drop point is not undone |
 
@@ -266,13 +266,9 @@ Every finding carries exactly one label:
 - Fix: {concrete edit}
 ```
 
-Owned findings: `[Must]` for a detached task whose failure matters, a lost panic, a leak, a hang, a lost or silently dropped result, a task that cannot be cancelled, a non-cancel-safe branch that loses data, blocking work on a worker thread in a request path, a fan-out whose size the input sets with no bound, or a nested runtime; `[Recommend]` otherwise. A defect that is currently masked (by a caller that happens to serialize, by low traffic) is still `[Must]` - say what unmasks it. Cite `file:line` when the input carries line numbers, `file:<symbol>` when it does not; a range is `file:start-end`. Order owned findings `[Must]` first, then by file in the order the input listed them, then line. With no findings, `## Findings` holds the single line `None.` One root cause at several sites is one heading citing the first site, with the rest named on the `Defect:` line. A defect this skill does not own (a lock held across `.await`, a swallowed error, a transaction held open, an authorization gap) is still reported, never dropped: one block per such defect after every owned finding, in that same order among themselves, labelled `[Must]` when it risks incorrect behaviour, data loss or a security hole and `[Recommend]` otherwise, with its `Rule:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
+Owned findings: `[Must]` for a detached task whose failure matters, a lost panic, a leak, a hang, a lost or silently dropped result, a task that cannot be cancelled, a non-cancel-safe branch that loses data, blocking work on a worker thread in a request, job or consumer path, a fan-out whose size the input sets with no bound, or a nested runtime; `[Recommend]` otherwise. A defect that is currently masked (by a caller that happens to serialize, by low traffic) is still `[Must]` - say what unmasks it. Cite `file:line` when the input carries line numbers, `file:<symbol>` when it does not; a range is `file:start-end`. Order the blocks in four groups - owned `[Must]`, owned `[Recommend]`, then the not-owned blocks described below, `[Must]` then `[Recommend]` - and within a group by file in the order the input listed them (a listed directory's files in path order at the directory's position, a file listed twice at its first; files the input did not list after those, in path order), then position in the file. With no findings, `## Findings` holds the single line `None.` One root cause at several sites is one heading citing the first site in that order, with the rest named on the `Defect:` line. A direct question in the request is answered inside the `Defect:` line of the first finding it concerns. A defect this skill does not own (a lock held across `.await`, a swallowed error, a transaction held open, an authorization gap) is still reported, never dropped: one block per such defect in the last two groups, labelled `[Must]` when it risks incorrect behaviour, data loss or a security hole and `[Recommend]` otherwise, with its `Rule:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
 
 ## Avoid
 
-- `tokio::spawn` with the handle dropped
-- `tokio::time::sleep` loops with no cancellation branch
-- Re-creating a non-cancel-safe future on every `select!` iteration
-- `Runtime::new().block_on(...)` or `Handle::block_on` inside async code
 - One group for required and optional work, where the first optional failure aborts the required
 - `unsafe impl Send` to get a future past `tokio::spawn` (the real fix is in `rust-concurrency`)

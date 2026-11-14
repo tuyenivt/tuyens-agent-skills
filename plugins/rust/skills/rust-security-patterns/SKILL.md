@@ -9,7 +9,7 @@ user-invocable: false
 
 # Rust Security Patterns
 
-> Load `Use skill: stack-detect` first. This skill reads `Framework` and `Database`: the router, middleware and extractor facts are Axum 0.8's (`route_layer`, `FromRequestParts` without `#[async_trait]`, `/{id}` paths, `DefaultBodyLimit`) and do not apply under actix-web - the rules do; placeholders are `$1` on PostgreSQL and `?` on MySQL/SQLite (sqlx passes SQL through unchanged, so write the driver's style); on `Database` `unknown` the examples keep `$1`. In a Cargo workspace the crate under review decides: its own dependencies in place of the detected values. Baseline: Rust 1.94+ (edition 2024: `std::env::set_var` is `unsafe`; `IpAddr::to_canonical`, `Ipv6Addr::is_unique_local`), Axum 0.8, jsonwebtoken 9+, argon2 0.5, secrecy 0.10, validator 0.18+, reqwest 0.12, getrandom 0.3, hmac 0.12. SQL mechanics live in `rust-db-access`; `AppError` / `IntoResponse` shape in `rust-error-handling`; router and middleware wiring in `rust-web-patterns`. This skill owns only the security-specific decisions.
+> Load `Use skill: stack-detect` first. This skill reads `Framework` and `Database`: the router, middleware and extractor facts are Axum 0.8's (`route_layer`, `FromRequestParts` without `#[async_trait]`, `/{id}` paths, `DefaultBodyLimit`) and do not apply under actix-web - the rules do; placeholders are `$1` on PostgreSQL and `?` on MySQL/SQLite (sqlx passes SQL through unchanged, so write the driver's style); on `Database` `unknown` the examples keep `$1`. In a Cargo workspace the crate under review decides: its own dependencies in place of the detected values. Baseline: Rust 1.94+ (edition 2024: `std::env::set_var` is `unsafe`; `IpAddr::to_canonical`, `Ipv6Addr::is_unique_local`), Axum 0.8, jsonwebtoken 9+ (10+: enable one of its `rust_crypto` / `aws_lc_rs` features, or the first decode panics), argon2 0.5 (`std` feature, for `OsRng`), secrecy 0.10, validator 0.18+, reqwest 0.12, getrandom 0.3, hmac 0.12, sha2 0.10. SQL mechanics live in `rust-db-access`; `AppError` / `IntoResponse` shape in `rust-error-handling`; router and middleware wiring in `rust-web-patterns`. This skill owns only the security-specific decisions.
 
 ## When to Use
 
@@ -21,7 +21,7 @@ user-invocable: false
 
 - Default-deny: protected routes live on a router whose **last** call is `route_layer(auth)`; public endpoints are listed on a separate `public` router merged beside it. A layer covers only routes added before it, so a `.route()` chained after the layer is silently public
 - A handler that needs a principal takes an `AuthUser` extractor - it cannot run unauthenticated, and a missing principal is a 401, never a panic
-- JWT: `jsonwebtoken` with `Validation::new(<one Algorithm>)` - never a multi-family `algorithms` vec (HS/RS confusion); set `iss` and `aud` and require `exp`, `iss`, `aud` through `set_required_spec_claims`; HS256 key from env/secret manager (never committed) or RS256/ES256 for cross-service. `insecure_disable_signature_validation()` and trusting `decode_header` output are findings outside a test
+- JWT: `jsonwebtoken` with `Validation::new(<one Algorithm>)` - never a multi-family `algorithms` vec (HS/RS confusion); set `iss` and `aud` and require `exp`, `iss`, `aud` through `set_required_spec_claims`; HS256 key from env/secret manager (never committed) or RS256/ES256 for cross-service. `insecure_disable_signature_validation()` (removed in jsonwebtoken 11), `dangerous::insecure_decode` and trusting `decode_header` output are findings outside a test
 - Request DTOs are explicit `Deserialize` structs; never deserialize a request body into a domain model, `serde_json::Value`, a `HashMap`, or a `#[serde(flatten)]` catch-all on a write path - that is mass assignment. `#[derive(Validate)]` checks nothing until `req.validate()` runs. Responses are DTOs too; never `Json(row)` on a model with `password_hash`
 - Authorize after authenticating: scope every per-owner lookup by principal at the repository (`WHERE id = $1 AND user_id = $2`), not in the handler. An admin override is a second repository function chosen by role, not a flag that widens the scoped one
 - SQL via `query!` / `.bind()` / `QueryBuilder::push_bind` only; never `format!` into SQL. Identifiers (sort column, direction) come from an enum, never the request
@@ -66,7 +66,10 @@ let app = Router::new().merge(public).merge(protected).with_state(state);
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 
 #[derive(Clone)]
-pub struct AppState { pub pool: sqlx::PgPool, pub jwt_key: DecodingKey, pub jwt_validation: Validation }
+pub struct AppState {
+    pub pool: sqlx::PgPool, pub jwt_key: DecodingKey, pub jwt_validation: Validation,
+    pub dummy_phc: String, pub webhook_secret: secrecy::SecretString, // read by the login and webhook fences
+}
 
 pub fn jwt_validation(issuer: &str, audience: &str) -> Validation { // built once at startup
     let mut v = Validation::new(Algorithm::RS256); // exactly one algorithm; jsonwebtoken has no `none`
@@ -275,7 +278,7 @@ let target = Path::new("/srv/uploads").join(&name);
 // Good - exactly one normal component, then join
 let mut parts = Path::new(&name).components();
 let (Some(Component::Normal(file)), None) = (parts.next(), parts.next()) else {
-    return Err(StatusCode::BAD_REQUEST); // "..", "/x", "C:\\x", "a/b"
+    return Err(StatusCode::BAD_REQUEST); // "..", "/x", "a/b" (and "C:\\x" on Windows)
 };
 let bytes = tokio::fs::read(Path::new("/srv/uploads").join(file)).await?;
 ```
@@ -319,7 +322,7 @@ pub async fn github_webhook(State(st): State<AppState>, headers: HeaderMap, body
 }
 ```
 
-Stripe signs `"{t}.{payload}"` into `Stripe-Signature: t=...,v1=...` with a 5-minute tolerance - use the SDK's verifier or check `t` yourself; replay protection is that timestamp check plus the inbox. Route the webhook on the `public` router; the signature is the only auth. Stripe retries on non-2xx for up to 3 days, so keep inbox rows past that window (30 days is a safe default). Outbound callbacks to partners get the same treatment in reverse: `X-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">` with a per-partner secret, rotated by dual-signing through the overlap.
+`WebhookEvent` is the project's event DTO. Stripe signs `"{t}.{payload}"` into `Stripe-Signature: t=...,v1=...` with a 5-minute tolerance - use the SDK's verifier or check `t` yourself; replay protection is that timestamp check plus the inbox. Route the webhook on the `public` router; the signature is the only auth. Stripe retries on non-2xx for up to 3 days, so keep inbox rows past that window (30 days is a safe default). Outbound callbacks to partners get the same treatment in reverse: `X-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">` with a per-partner secret, rotated by dual-signing through the overlap.
 
 ### Password hashing
 
@@ -337,7 +340,7 @@ pub async fn hash_password(pw: SecretString) -> anyhow::Result<String> {
 }
 ```
 
-Argon2 on the async runtime stalls a worker thread for tens of ms per call - `spawn_blocking` for hash and verify alike. An existing bcrypt table keeps `bcrypt::verify` and rehashes to argon2id on the next successful login. Never `Sha256::digest(pw)` - fast hashes are crackable.
+Argon2 on the async runtime stalls a worker thread for tens of ms per call - `spawn_blocking` for hash and verify alike. An existing bcrypt table keeps `bcrypt::verify`, also inside `spawn_blocking`, and rehashes to argon2id on the next successful login. Never `Sha256::digest(pw)` - fast hashes are crackable.
 
 ### Secrets and config
 
@@ -438,6 +441,8 @@ Keep `unsafe` in a small module behind a safe API; enable `clippy::undocumented_
 
 ## Output Format
 
+Open the deliverable with one line above everything else, `**Engine:** {database | unknown}` - stack-detect's `Database` value as written, version included, or under the workspace rule the engine of the reviewed crate's driver.
+
 A **review** targets supplied code: emit `## Findings` and close with one coverage line naming what was not examined (routes, files, or layers the input did not supply), so silence is not read as a clean bill. An **audit** targets a named surface or a whole service: `## Findings`, then `## Remediation` with the table below, then `**Verdict:**` one line answering "are we ready" with the condition, then the coverage line. When invoked from an **implementation** workflow, emit the decision table, one row per decision the brief asked for plus any prerequisite the code needs first (marked `(prerequisite)`), with code for each decision that needs it under `### <Concern>` headings in row order; existing code handed with the brief that violates a Rule emits `## Findings` first; close with the coverage line naming the surfaces the brief did not supply (callers, routes, config).
 
 Every finding carries exactly one severity:
@@ -447,14 +452,14 @@ Every finding carries exactly one severity:
 
 ### [{Critical | High | Medium | Low}] {file:line | file:start-end | file:<symbol> | <area>}{ (unverified)}
 
-- Category: {AuthN | AuthZ | Validation | Injection | Crypto | Secrets | SSRF | Traversal | Exposure | Availability | Unsafe | Dependencies}
+- Category: {AuthN | AuthZ | Validation | Injection | Crypto | Secrets | SSRF | Traversal | Exposure | Availability | Integrity | Unsafe | Dependencies | n/a}
 - Code: {one-line citation}
 - Attack scenario: {concrete exploit, regression risk, or topology-dependent note}
 - Chain: {locators of the findings this one compounds with, comma-separated}
 - Fix: {concrete Rust change with code}
 ```
 
-`Critical` = unauthenticated compromise, cross-tenant or cross-account data access, arbitrary file or command execution, memory corruption reachable from request input; `High` = authenticated privilege escalation, credential disclosure, or a security control that is present but inert (a `Validate` derive never called, a route chained after its auth layer); `Medium` = defense-in-depth gap or an information oracle; `Low` = hardening. Judge by what an attacker gains, not by matching the wording. `(unverified)` marks a finding whose impact depends on code the input did not supply - keep the severity the exploit would have and say what to check. `Exposure` covers debug routes, over-serialized responses, PII, and sensitive values in logs or `#[instrument]` fields; `Unsafe` covers an `unsafe` block without a stated invariant or with one the code does not uphold; `Dependencies` covers RustSec advisories and a missing audit gate - an advisory on a reachable path takes its exploit's severity, an unmaintained crate is `Low`; `Availability` covers missing rate limits, uncapped bodies, and request-path panics. A correct check at the wrong layer (handler instead of repository) is `Low`; severity is judged at exploit time - a control that makes the path unreachable today goes in `Attack scenario:`, not the label. Order owned findings by severity, then by file in the order the input listed them, then line; with no findings, `## Findings` holds the single line `None.`; cite `file:line` when the input carries line numbers, `file:<symbol>` or `<area>` when it is a snippet or prose (say so once at the top rather than inventing numbers); a range is `file:start-end`. One root cause at several sites is one heading citing the first site, with the rest named on the `Code:` line. A `Chain:` line exists only on compounding findings - on each of them, naming the others by locator - and marks them as such (a forged token that then reaches a tenant-scoping gap); each keeps its own severity, and partial remediation of a chain buys much less than the finding count suggests. A defect this skill does not own (a detached `tokio::spawn`, a transaction held open across an HTTP call) is still reported, never dropped: one block per such defect after every owned finding, in that same order among themselves, labelled by the criteria above, with its `Attack scenario:` line reading `owned by <concern>` in plain words and any enum slot it cannot fill reading `n/a`.
+`Critical` = unauthenticated compromise, cross-tenant or cross-account data access, arbitrary file or command execution, memory corruption reachable from request input; `High` = authenticated privilege escalation, credential disclosure, or a security control that is present but inert (a `Validate` derive never called, a route chained after its auth layer); `Medium` = defense-in-depth gap or an information oracle; `Low` = hardening. Judge by what an attacker gains, not by matching the wording. `(unverified)` marks a finding whose impact depends on code the input did not supply - keep the severity the exploit would have and say what to check. `Exposure` covers debug routes, over-serialized responses, PII, a credentialed CORS policy open to any origin, and sensitive values in logs or `#[instrument]` fields; `Unsafe` covers an `unsafe` block without a stated invariant or with one the code does not uphold; `Dependencies` covers RustSec advisories and a missing audit gate - an advisory on a reachable path takes its exploit's severity, an unmaintained crate is `Low`; `Availability` covers missing rate limits, uncapped bodies, request-path panics, and a webhook route behind the JWT layer (the provider's deliveries are rejected); `Integrity` covers a write that an attacker or a retry can apply twice - a missing or unscoped `Idempotency-Key`, a webhook with no inbox. A correct check at the wrong layer (handler instead of repository) is `Low`; severity is judged at exploit time - a control that makes the path unreachable today goes in `Attack scenario:`, not the label. Order the blocks in two groups - owned findings, then the not-owned blocks described below - and within a group by severity, then by file in the order the input listed them (a listed directory's files in path order at the directory's position, a file listed twice at its first; files the input did not list after those, in path order), then position in the file; with no findings, `## Findings` holds the single line `None.`; cite `file:line` when the input carries line numbers, `file:<symbol>` or `<area>` when it is a snippet or prose (say so once at the top rather than inventing numbers); a range is `file:start-end`. One root cause at several sites is one heading citing the first site in that order, with the rest named on the `Code:` line. A `Chain:` line exists only on compounding findings - on each of them, naming the others by locator - and marks them as such (a forged token that then reaches a tenant-scoping gap); each keeps its own severity, and partial remediation of a chain buys much less than the finding count suggests. A defect this skill does not own (a detached `tokio::spawn`, a transaction held open across an HTTP call) is still reported, never dropped: one block per such defect in the second group, labelled by the criteria above, with its `Attack scenario:` line reading `owned by <concern>` in plain words and its `Category:` reading `n/a`, a value only such a block takes.
 
 ```
 ## Remediation
@@ -473,15 +478,8 @@ One row per finding heading, `Finding` being the heading's locator plus a short 
 
 ## Avoid
 
-- `Json<User>` (a domain model) as a write-path extractor, or `Json(row)` as a response
-- `format!` into any SQL string, including `ORDER BY` and `LIMIT`
-- `sh -c` / `cmd /C` with any user-controlled segment
 - `rand::rngs::SmallRng`, `StdRng::seed_from_u64`, `fastrand`, or timestamps for tokens, nonces, or secrets
-- `==` on MACs, signatures, or hashes (timing attack)
-- API keys stored or looked up in plaintext
 - `danger_accept_invalid_certs(true)` outside a test fixture
 - `CorsLayer::very_permissive()` or a mirrored origin with credentials in production
-- `#[tracing::instrument]` on a function taking a password, token, or `Authorization` header without `skip`
-- Argon2 or bcrypt on the async runtime instead of `spawn_blocking`
 - `unwrap_or("dev")` env fallbacks for secrets
 - Login responses that differ between "user missing" and "wrong password"

@@ -13,7 +13,7 @@ Single quality gate for Rust/Axum teams: staff-level PR review, standards enforc
 
 | Ask | Route |
 | --- | ----- |
-| PR / branch review of Rust changes spanning more than one concern | `/task-rust-review` (umbrella; runs parallel perf / security / observability / reliability subagents); the workflow sets depth and escalation - "thorough" is its default, not a flag set here |
+| PR / branch review of Rust changes spanning more than one concern | `/task-rust-review` (umbrella; runs parallel perf / security / observability / reliability subagents); the workflow sets depth and escalation - a "thorough" ask is its `standard` default, not a flag set here |
 | PR review naming one lens, or whose every stated concern sits in one lens (a `tracing` + `/metrics` PR, a JWT-middleware PR; a PR stating no concern is the umbrella's) | that lens's agent and workflow - `/task-rust-review-observability`, `/task-rust-review-perf`, `/task-rust-review-security`, `/task-rust-review-reliability`; `task-rust-review` declines single-scope reviews, so never both |
 | Standalone logging / metrics / tracing / runtime-introspection ask (`tracing`, OTel, Prometheus, tokio-console, Sentry) beyond a PR | `rust-observability-engineer` via `/task-rust-review-observability` |
 | Standalone latency, throughput or memory diagnosis - slow with no error | `rust-performance-engineer` via `/task-rust-review-perf` |
@@ -21,12 +21,13 @@ Single quality gate for Rust/Axum teams: staff-level PR review, standards enforc
 | Standalone resilience ask (timeouts, retries, circuit breakers, idempotency, outbox) | `rust-reliability-engineer` via `/task-rust-review-reliability` |
 | Test strategy, coverage or test-quality ask | `rust-test-engineer` via `/task-rust-test` |
 | Refactoring direction for a tangled module, or a team standard (module layout, clippy / rustfmt config and its CI gate, rustdoc, error convention) with no diff to review | this agent, in-session; the edits return to `rust-engineer` |
-| Unexplained runtime failure - panic, `unwrap` on `Err`, sqlx error, task leak, a future stalled on a lock held across `.await` - not currently harming production | `rust-engineer` |
+| Unexplained runtime failure - panic, `unwrap` on `Err`, sqlx error, a task leaking at a named site, a future stalled on a lock held across `.await` - not currently harming production | `rust-engineer` |
 | Live production incident (active outage, error spike or data loss needing immediate mitigation - rollback, flag-off, scaling - not just a code fix) | the team's on-call / incident-response owner; the post-incident review of the offending change returns here once that owner reports it stable |
 | Cross-service or multi-stack redesign - emerging from review findings, or brought as a design doc / ADR to review | the team's system-architecture owner; the Rust-side standards for the result stay here |
 | Non-Rust or stack-agnostic review | core `/task-code-review` |
+| Getting oriented in an unfamiliar Rust codebase | core `/task-onboard` |
 
-Owners outside this plugin are named by role; when the user has not said who holds the role, the handoff asks and does not wait. A handoff carries the evidence that points there - for an incident the symptom, the suspected change and a candidate mitigation; when the requester holds that role, that is the answer they get.
+Owners outside this plugin are named by role; when the user has not said who holds the role, the handoff asks who does, and work here continues without the answer. A handoff carries the evidence that points there - for an incident the symptom, the suspected change and a candidate mitigation; when the requester holds that role, that is the answer they get.
 
 - Logging modernization (`println!` / `eprintln!` to `tracing`) discovered inside a refactor stays part of that refactor; a standalone logging ask routes to `rust-observability-engineer`.
 - Bundled asks: a live incident dispatches immediately; sibling handoffs dispatch at split time and run on the sibling's clock; this agent's own order is umbrella PR reviews, then team standards, then refactoring direction; a refactor that would rewrite call sites a `rust-observability-engineer` review is covering waits for that review.

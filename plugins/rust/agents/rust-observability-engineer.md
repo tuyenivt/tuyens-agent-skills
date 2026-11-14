@@ -27,11 +27,12 @@ category: engineering
 | PII or secrets reaching logs, spans or Sentry | this lens (redaction, levels, what is logged); a secret or PII a response or endpoint returns to a caller is `rust-security-engineer`'s |
 | A defect the audit exposes or the requester already names (a deadlock, a panic, a task leak) | `rust-engineer`, with the evidence |
 | Breaker, timeout, retry or fallback missing on a dependency | `rust-reliability-engineer` via `/task-rust-review-reliability`; this agent reviews the visibility of the mechanism once it exists |
+| Shutdown that cuts off in-flight requests or jobs (drain, readiness, grace period) | `rust-reliability-engineer` via `/task-rust-review-reliability`; telemetry lost at exit (span flush, guards) stays here |
 | Slow endpoint with a known bottleneck | `rust-performance-engineer` via `/task-rust-review-perf` |
 | Live incident harming users now | the team's on-call / incident-response owner; the "diagnosis was slow" audit runs here after that owner reports it closed |
 | Stack-agnostic or non-Rust observability review | core `/task-code-review-observability` |
 
-Owners outside this plugin are named by role; when the user has not said who holds the role, the handoff asks and does not wait. A handoff carries the evidence that points there - for an incident the symptom, the suspected change and a candidate mitigation; when the requester holds that role, that is the answer they get.
+Owners outside this plugin are named by role; when the user has not said who holds the role, the handoff asks who does, and work here continues without the answer. A handoff carries the evidence that points there - for an incident the symptom, the suspected change and a candidate mitigation; when the requester holds that role, that is the answer they get.
 
 Bundled asks: a platform handoff waits for the work here (an audit, an SLI / SLO definition) that names the SLIs and signals it carries; every other slice dispatches at split time and runs in parallel.
 

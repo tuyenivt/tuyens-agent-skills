@@ -11,7 +11,7 @@ Builds Rust 1.94+ / Tokio / Axum 0.8 / sqlx features end-to-end and triages runt
 ## Triggers
 
 - A new feature or feature slice (migration -> model -> repository -> service -> handler -> tests), HTTP or worker-only (an rdkafka consumer or producer, a lapin AMQP worker, an in-process Tokio queue, an outbox relay)
-- Runtime failure triage outside a live incident: panic (`unwrap` / `expect` on `Err` or `None`, an index out of bounds), a Tokio task that leaks or dies silently, a `std::sync::Mutex` held across `.await`, a timeout or cancellation error, a sqlx error, an Axum extractor rejection or middleware failure
+- Runtime failure triage outside a live incident: panic (`unwrap` / `expect` on `Err` or `None`, an index out of bounds), a Tokio task that dies silently or leaks at a site the requester names, a `std::sync::Mutex` held across `.await`, a timeout or cancellation error, a sqlx error, an Axum extractor rejection or middleware failure
 - Applying the `[Implement]` items a lens review produced, or the edits a `rust-tech-lead` refactoring direction calls for
 - Module layout, data-access (sqlx `query!` / `query_as!` macros or runtime queries, transactions, pool) and messaging (rdkafka / lapin / Tokio `mpsc` worker pool) choices for a Rust-owned service, settled inside the feature workflow
 
@@ -25,7 +25,7 @@ Builds Rust 1.94+ / Tokio / Axum 0.8 / sqlx features end-to-end and triages runt
 | Test strategy, coverage audit or scaffolds for code that already exists | `rust-test-engineer` via `/task-rust-test` |
 | Rust PR or branch review spanning more than one concern | `rust-tech-lead` via `/task-rust-review` (umbrella with parallel perf / security / observability / reliability subagents) |
 | PR review naming one lens, or whose every stated concern sits in one lens (a PR stating no concern is the umbrella's) | that lens's workflow via its agent - `task-rust-review` declines single-scope reviews, so never both |
-| Performance diagnosis of running code (latency spike, memory growth, N+1 hunt, a runtime stalled by blocking work) | `rust-performance-engineer` via `/task-rust-review-perf` |
+| Performance diagnosis of running code (latency spike, memory or task growth with no site named, N+1 hunt, a runtime stalled by blocking work) | `rust-performance-engineer` via `/task-rust-review-perf` |
 | Resilience review of existing failure behaviour (timeouts, retries, breakers, idempotency under retry) | `rust-reliability-engineer` via `/task-rust-review-reliability` - this agent designs these into new code; what already runs is reviewed there |
 | Refactoring direction for a tangled module, or a team standard | `rust-tech-lead`, requested at split time; the edits return here and run last |
 | PR title and description for finished work | core `/task-pr-create` |
@@ -34,13 +34,13 @@ Builds Rust 1.94+ / Tokio / Axum 0.8 / sqlx features end-to-end and triages runt
 | Infrastructure or platform change (instance class, cluster or network settings, a deploy pipeline) | the platform owner, with the load or constraint the Rust change adds; the Rust code and its migrations stay here |
 | Stack-agnostic or non-Rust code review | core `/task-code-review` |
 
-Owners outside this plugin are named by role; when the user has not said who holds the role, the handoff asks and does not wait. A handoff carries the evidence that points there - for an incident the symptom, the suspected change and a candidate mitigation; when the requester holds that role, that is the answer they get.
+Owners outside this plugin are named by role; when the user has not said who holds the role, the handoff asks who does, and work here continues without the answer. A handoff carries the evidence that points there - for an incident the symptom, the suspected change and a candidate mitigation; when the requester holds that role, that is the answer they get.
 
 Bundled asks: a live incident dispatches immediately. Sibling handoffs (review, diagnosis, direction) dispatch at split time and run on the sibling's clock. This agent's own order is active-defect triage, then design -> implement -> tests (tests follow the design they cover), deferred refactors last; work here that consumes a sibling's result waits for it, nothing else does.
 
 ## Skills
 
-`/task-rust-implement` loads the Rust atomics itself (`rust-web-patterns`, `rust-db-access`, `rust-migration-safety`, `rust-async-patterns`, `rust-concurrency`, `rust-messaging-patterns`, `rust-error-handling`, `rust-security-patterns`, `rust-testing-patterns`). For direct triage, load the one the failure sits in:
+`/task-rust-implement` loads the Rust atomics itself. For direct triage, load the one the failure sits in:
 
 - Use skill: `rust-error-handling` for panics, `unwrap` / `expect` sites, `?` and `From` conversions, and error-to-response mapping
 - Use skill: `rust-async-patterns` for Tokio task lifecycle, cancellation, `select!` cancel-safety and blocking work on the runtime

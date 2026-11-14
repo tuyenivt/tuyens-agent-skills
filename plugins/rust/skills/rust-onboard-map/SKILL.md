@@ -21,9 +21,9 @@ user-invocable: false
 - Report the toolchain verbatim: `rust-toolchain.toml` `channel` (an exact `1.94.0`, or a floating `stable` / `nightly` - say "floating"), `Cargo.toml` `rust-version` (the MSRV cargo enforces; an older toolchain fails the build), and `edition` (`2024` needs Rust 1.85+). State a support position only if the current stable release is known from the environment; otherwise report the values and skip the judgment rather than inventing a release number
 - Identify framework, single-valued: Axum / actix-web / Rocket / warp / bare hyper / none; and the async runtime: Tokio / async-std / smol / none, even when pulled in by the framework. Two runtimes in one binary is a finding, not a list
 - Identify the DB layer: sqlx / SeaORM / Diesel (+ `diesel-async`) / tokio-postgres; with sqlx, whether queries are the checked macros (`query!`, `query_as!`) or runtime `query()` - the macros need a live `DATABASE_URL` or the `.sqlx/` offline cache at compile time, and a pre-0.7 `sqlx-data.json` is stale
-- Identify the layout convention (drives where new code lands). Report every convention that applies: the module convention, and orthogonally single crate, multi-binary crate (`src/bin/`), or a Cargo workspace. In a workspace, report the root first - `resolver` (a virtual manifest has no edition to infer it from, so an unset one is resolver 1 with a warning), `[workspace.package]`, `[workspace.dependencies]`, `[workspace.lints]` - then each member's role (bin / lib), framework, DB layer and which sibling crates it depends on; flag members that bypass `workspace = true` for a shared dependency (version skew)
+- Identify the layout convention (drives where new code lands). Report every convention that applies: the module convention, and orthogonally single crate, multi-binary crate (`src/bin/`), or a Cargo workspace. In a workspace, report the root first - `resolver` (a virtual manifest has no edition to infer it from, so an unset one is resolver 1 - cargo warns only when a member is on edition 2021 or later), `[workspace.package]`, `[workspace.dependencies]`, `[workspace.lints]` - then each member's role (bin / lib), framework, DB layer and which sibling crates it depends on; flag members that bypass `workspace = true` for a shared dependency (version skew)
 - Features are Rust's build tags: grep `[features]` and `cfg(feature = ...)`. Code behind a non-default feature is excluded from `cargo build` / `cargo test` unless `--features` / `--all-features` names it - report what CI passes; a feature declared that no `cfg` reads is `defined but unused: <feature>`; a `cfg(feature = "x")` with no declared `x` is flagged by the `unexpected_cfgs` lint. Note a member whose `default-features = false` a sibling undoes (features unify across crates built together). Without filesystem access, say the feature surface is unverified
-- Deps: a committed `Cargo.lock` lets CI build `--locked`; absent on a binary is a finding. `vendor/` plus a `[source]` replacement in `.cargo/config.toml` builds offline. Name what `build.rs` generates (`prost-build` / `tonic-build` need `protoc`) and each native dependency (`openssl-sys`: OpenSSL headers + `pkg-config` unless rustls features are chosen; `rdkafka`: librdkafka or `cmake`)
+- Deps: a committed `Cargo.lock` lets CI build `--locked`; absent on a binary is a finding. `vendor/` plus a `[source]` replacement in `.cargo/config.toml` builds offline. Name what `build.rs` generates (`prost-build` / `tonic-build` need `protoc`) and each native dependency (`openssl-sys`: OpenSSL headers + `pkg-config` unless rustls features are chosen; `rdkafka`: a C toolchain + `make` for its bundled librdkafka, `cmake` only under the `cmake-build` feature)
 - Report the test surface as its own fact: inline `#[cfg(test)]` modules, `tests/` integration files, `#[sqlx::test]`, doctests, feature-gated suites, nextest config (`.config/nextest.toml`), or none at all - per member in a workspace. "This codebase has no tests" is a top-three onboarding fact, not a footnote
 
 ## Patterns
@@ -65,6 +65,7 @@ user-invocable: false
 | ---------- | ----- | ---- |
 | **Layer-module** | `src/{handlers,services,repository,models}/` | Default for < ~5 domains; tutorials. A mixed tree reports the dominant convention first (`layer-module, one feature module: billing/`) |
 | **Feature-module** | `src/orders/{handler,service,repo,model}.rs` | Recommended for medium+ services |
+| **Flat** | `src/main.rs` plus a few sibling modules (`db.rs`, `routes.rs`) | A service too small to show either convention - report `flat` |
 | **Hexagonal** | a `domain` crate (or module) with no `axum` / `sqlx` / `reqwest` in its dependencies; adapters in `infra/` or `api/` | Teams enforcing ports and adapters - confirm from the crate's `Cargo.toml`, not the directory name |
 | **Multi-binary** | `src/bin/{api,worker}.rs` or `crates/{api,worker,migrate}/` + shared library crates | One repo serves API + workers |
 | **Cargo workspace** | root `[workspace]` + `crates/*/Cargo.toml`, each member with its own layout | Independently built crates in one repo |
@@ -114,11 +115,9 @@ Inject into `task-onboard` as Markdown sections in this order. Every value is re
 - **CI / Deploy:** <workflow file + what it runs; k8s or compose manifests; or (unknown)>
 
 ### Local Bootstrap
-Ordered commands, each one runnable. Omit steps the tree does not support rather than
-inventing them; sqlx macros with no committed `.sqlx/` mean the database step comes before
-the build. Name each native system dependency the build needs. Verify with `/health` or
-`/healthz`; if neither route exists, name the first routed endpoint. A port counts as set when
-code, config, or a manifest sets it - say which; never state one the tree does not set.
+Ordered commands, each one runnable, in Bootstrap Path order. Omit steps the tree does not
+support rather than inventing them. A port counts as set when code, config, or a manifest
+sets it - say which; never state one the tree does not set.
 
 ### Architecture Map
 - Entry: <src/main.rs, src/bin/*, or member crates>, and whether wire-up is thin
@@ -150,7 +149,4 @@ no CI, and no lint config, this is the highest-value section for a new joiner.
 
 ## Avoid
 
-- Recommending a DI container (constructor-built `AppState` is idiomatic)
-- Reading a `domain/` directory name as hexagonal without checking its crate's dependencies
-- Recommending actix-web patterns on an Axum project, or the reverse
 - Recommending `log` + `env_logger` for a new async service (use `tracing`)

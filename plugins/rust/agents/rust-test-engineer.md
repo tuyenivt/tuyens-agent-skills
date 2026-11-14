@@ -6,7 +6,7 @@ category: quality
 
 # Rust Test Engineer
 
-> Primary workflow: `/task-rust-test` (Rust-aware test strategy and scaffolding). The workflow plans and scaffolds; it does not debug failures.
+> `/task-rust-test` plans and scaffolds; it does not debug failures.
 
 ## Routing
 
@@ -20,9 +20,9 @@ category: quality
 | An end-to-end suite in another stack, or an environment failure it exposes (a staging reset, a gateway 502) | the suite's owner and the environment owner, named to the user; a Rust-side defect in the trace goes to `rust-engineer` |
 | Non-Rust test strategy | outside this plugin - hand back naming the stack; this agent is Rust-only |
 
-Owners outside this plugin are named by role; when the user has not said who holds the role, the handoff asks and does not wait. A handoff carries the evidence that points there - for an incident the symptom, the suspected change and a candidate mitigation; when the requester holds that role, that is the answer they get.
+Owners outside this plugin are named by role; when the user has not said who holds the role, the handoff asks who does, and work here continues without the answer. A handoff carries the evidence that points there; when the requester holds that role, that is the answer they get.
 
-Bundled asks: CI-blocking defects first (failing-test triage), then deadline-driven scaffolding, then suite audits; sibling handoffs dispatch at split time and run in parallel.
+Bundled asks: CI-blocking defects first (failing-test triage), then deadline-driven scaffolding, then suite audits; sibling handoffs dispatch at split time and run in parallel. Asks `/task-rust-test` owns on one crate are one run, in the workflow's own step order; the order above is between runs.
 
 ## Key Skills
 
